@@ -237,30 +237,28 @@ class _KnowledgeEditScreenState extends ConsumerState<KnowledgeEditScreen> {
                   (v) => (v == null || v.trim().isEmpty) ? 'Required' : null,
             ),
             const SizedBox(height: AppSpacing.md),
-            Row(
-              children: [
-                Expanded(
-                  child: TextFormField(
-                    controller: _docId,
-                    decoration: const InputDecoration(
-                      labelText: 'Document ID',
-                      hintText: 'e.g. diet-basics-01',
-                    ),
-                    validator:
-                        (v) =>
-                            (v == null || v.trim().isEmpty) ? 'Required' : null,
-                  ),
-                ),
-                const SizedBox(width: AppSpacing.md),
-                Expanded(
-                  child: TextFormField(
-                    controller: _section,
-                    decoration: const InputDecoration(
-                      labelText: 'Section (optional)',
-                    ),
-                  ),
-                ),
-              ],
+            // Stacked, not side by side. In half a phone's width the label
+            // "Document ID" and the example under it both ran out of room, so
+            // the one field on this form nobody can guess the format of was
+            // the one showing "e.g. diet-basi…".
+            TextFormField(
+              controller: _docId,
+              decoration: const InputDecoration(
+                labelText: 'Document ID',
+                hintText: 'e.g. diet-basics-01',
+                helperText: 'Groups the sections of one document together',
+                helperMaxLines: 2,
+              ),
+              validator:
+                  (v) => (v == null || v.trim().isEmpty) ? 'Required' : null,
+            ),
+            const SizedBox(height: AppSpacing.md),
+            TextFormField(
+              controller: _section,
+              decoration: const InputDecoration(
+                labelText: 'Section',
+                hintText: 'Optional — e.g. Breakfast',
+              ),
             ),
             const SizedBox(height: AppSpacing.md),
             TextFormField(
@@ -321,15 +319,17 @@ class _KnowledgeEditScreenState extends ConsumerState<KnowledgeEditScreen> {
             TextFormField(
               controller: _source,
               decoration: const InputDecoration(
-                labelText: 'Source citation (optional)',
+                labelText: 'Source citation',
+                hintText: 'Optional — where this guidance comes from',
               ),
             ),
             const SizedBox(height: AppSpacing.md),
             TextFormField(
               controller: _tags,
               decoration: const InputDecoration(
-                labelText: 'Tags (comma-separated)',
+                labelText: 'Tags',
                 hintText: 'diet, breakfast',
+                helperText: 'Separate with commas',
               ),
             ),
           ],

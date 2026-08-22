@@ -122,6 +122,19 @@ class _AddPatientScreenState extends ConsumerState<AddPatientScreen> {
     }
   }
 
+  /// How many vitals have been typed. Shown on the collapsed header so a
+  /// section that has been filled in does not look skipped.
+  int get _vitalsFilled =>
+      [
+        _height,
+        _weight,
+        _systolic,
+        _diastolic,
+        _pulse,
+        _spo2,
+        _sugar,
+      ].where((c) => c.text.trim().isNotEmpty).length;
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -267,102 +280,112 @@ class _AddPatientScreenState extends ConsumerState<AddPatientScreen> {
               ),
 
               const SizedBox(height: AppSpacing.lg),
-              const _SectionLabel('Vitals', trailing: 'optional'),
-              const SizedBox(height: AppSpacing.sm),
-              Row(
+              _OptionalSection(
+                title: 'Vitals',
+                subtitle: 'Height, weight, BP, pulse, SpO₂, blood sugar',
+                filled: _vitalsFilled,
                 children: [
-                  Expanded(
-                    child: _numField(
-                      _height,
-                      'Height',
-                      'cm',
-                      VitalsValidators.height,
+                    Row(
+                      children: [
+                        Expanded(
+                          child: _numField(
+                            _height,
+                            'Height',
+                            'cm',
+                            VitalsValidators.height,
+                          ),
+                        ),
+                        const SizedBox(width: AppSpacing.md),
+                        Expanded(
+                          child: _numField(
+                            _weight,
+                            'Weight',
+                            'kg',
+                            VitalsValidators.weight,
+                          ),
+                        ),
+                      ],
                     ),
-                  ),
-                  const SizedBox(width: AppSpacing.md),
-                  Expanded(
-                    child: _numField(
-                      _weight,
-                      'Weight',
-                      'kg',
-                      VitalsValidators.weight,
+                    const SizedBox(height: AppSpacing.md),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: _numField(
+                            _systolic,
+                            'BP systolic',
+                            'mmHg',
+                            VitalsValidators.systolic,
+                            integer: true,
+                          ),
+                        ),
+                        const SizedBox(width: AppSpacing.md),
+                        Expanded(
+                          child: _numField(
+                            _diastolic,
+                            'BP diastolic',
+                            'mmHg',
+                            (v) => VitalsValidators.diastolic(
+                              v,
+                              systolicText: _systolic.text,
+                            ),
+                            integer: true,
+                          ),
+                        ),
+                      ],
                     ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: AppSpacing.md),
-              Row(
-                children: [
-                  Expanded(
-                    child: _numField(
-                      _systolic,
-                      'BP systolic',
-                      'mmHg',
-                      VitalsValidators.systolic,
+                    const SizedBox(height: AppSpacing.md),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: _numField(
+                            _pulse,
+                            'Heart rate',
+                            'bpm',
+                            VitalsValidators.pulse,
+                            integer: true,
+                          ),
+                        ),
+                        const SizedBox(width: AppSpacing.md),
+                        Expanded(
+                          child: _numField(
+                            _spo2,
+                            'SpO₂',
+                            '%',
+                            VitalsValidators.spo2,
+                            integer: true,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: AppSpacing.md),
+                    _numField(
+                      _sugar,
+                      'Blood sugar',
+                      'mg/dL',
+                      VitalsValidators.sugar,
                       integer: true,
                     ),
-                  ),
-                  const SizedBox(width: AppSpacing.md),
-                  Expanded(
-                    child: _numField(
-                      _diastolic,
-                      'BP diastolic',
-                      'mmHg',
-                      (v) => VitalsValidators.diastolic(
-                        v,
-                        systolicText: _systolic.text,
-                      ),
-                      integer: true,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: AppSpacing.md),
-              Row(
-                children: [
-                  Expanded(
-                    child: _numField(
-                      _pulse,
-                      'Heart rate',
-                      'bpm',
-                      VitalsValidators.pulse,
-                      integer: true,
-                    ),
-                  ),
-                  const SizedBox(width: AppSpacing.md),
-                  Expanded(
-                    child: _numField(
-                      _spo2,
-                      'SpO₂',
-                      '%',
-                      VitalsValidators.spo2,
-                      integer: true,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: AppSpacing.md),
-              _numField(
-                _sugar,
-                'Blood sugar',
-                'mg/dL',
-                VitalsValidators.sugar,
-                integer: true,
-              ),
 
+                ],
+              ),
               const SizedBox(height: AppSpacing.lg),
-              const _SectionLabel('Complaints', trailing: 'optional'),
-              const SizedBox(height: AppSpacing.sm),
-              TextFormField(
-                controller: _complaints,
-                textCapitalization: TextCapitalization.sentences,
-                minLines: 2,
-                maxLines: 4,
-                decoration: const InputDecoration(
-                  labelText: 'Presenting complaint',
-                  alignLabelWithHint: true,
-                  hintText: 'e.g. increased thirst and fatigue for 2 weeks',
-                ),
+              _OptionalSection(
+                title: 'Complaints',
+                subtitle: 'What brought them in today',
+                filled: _complaints.text.trim().isEmpty ? 0 : 1,
+                children: [
+                    TextFormField(
+                      controller: _complaints,
+                      textCapitalization: TextCapitalization.sentences,
+                      minLines: 2,
+                      maxLines: 4,
+                      decoration: const InputDecoration(
+                        labelText: 'Presenting complaint',
+                        alignLabelWithHint: true,
+                        hintText: 'e.g. increased thirst and fatigue for 2 weeks',
+                      ),
+                    ),
+                ],
               ),
 
               if (_error != null) ...[
@@ -446,35 +469,151 @@ class _AddPatientScreenState extends ConsumerState<AddPatientScreen> {
 }
 
 class _SectionLabel extends StatelessWidget {
-  const _SectionLabel(this.text, {this.trailing});
+  const _SectionLabel(this.text);
 
   final String text;
-  final String? trailing;
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(
+      text,
+      style: const TextStyle(
+        fontSize: 14,
+        fontWeight: FontWeight.w800,
+        letterSpacing: 0.2,
+      ),
+    );
+  }
+}
+
+/// An optional part of the form, folded away until it is wanted.
+///
+/// Registering a walk-in needs a name, a phone number and a login. Vitals and
+/// complaints are worth capturing when the desk has them and pure scrolling
+/// when it does not — and the form was long enough that the Register button
+/// sat well below the fold on every phone. Collapsed by default, with a count
+/// on the header so a section somebody has already filled in never looks
+/// skipped.
+///
+/// The children stay mounted while collapsed (Visibility keeps their state), so
+/// a value typed and then folded away is still validated and still submitted —
+/// hiding a field must never quietly drop what is in it.
+class _OptionalSection extends StatefulWidget {
+  const _OptionalSection({
+    required this.title,
+    required this.subtitle,
+    required this.filled,
+    required this.children,
+  });
+
+  final String title;
+  final String subtitle;
+  final int filled;
+  final List<Widget> children;
+
+  @override
+  State<_OptionalSection> createState() => _OptionalSectionState();
+}
+
+class _OptionalSectionState extends State<_OptionalSection> {
+  bool _open = false;
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    return Row(
+    // Re-open on its own if something in here failed validation, otherwise the
+    // form would refuse to submit and point at nothing the doctor can see.
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          text,
-          style: const TextStyle(
-            fontSize: 14,
-            fontWeight: FontWeight.w800,
-            letterSpacing: 0.2,
-          ),
-        ),
-        if (trailing != null) ...[
-          const SizedBox(width: 8),
-          Text(
-            trailing!,
-            style: TextStyle(
-              fontSize: 12,
-              color: scheme.onSurfaceVariant,
-              fontStyle: FontStyle.italic,
+        Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: () => setState(() => _open = !_open),
+            borderRadius: BorderRadius.circular(AppSpacing.buttonRadius),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 6),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Flexible(
+                              child: Text(
+                                widget.title,
+                                style: const TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w800,
+                                  letterSpacing: 0.2,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Text(
+                              widget.filled > 0
+                                  ? '${widget.filled} filled'
+                                  : 'optional',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color:
+                                    widget.filled > 0
+                                        ? AppColors.primary
+                                        : scheme.onSurfaceVariant,
+                                fontWeight:
+                                    widget.filled > 0
+                                        ? FontWeight.w700
+                                        : FontWeight.w400,
+                                fontStyle:
+                                    widget.filled > 0
+                                        ? FontStyle.normal
+                                        : FontStyle.italic,
+                              ),
+                            ),
+                          ],
+                        ),
+                        if (!_open) ...[
+                          const SizedBox(height: 2),
+                          Text(
+                            widget.subtitle,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 12.5,
+                              color: scheme.onSurfaceVariant,
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: AppSpacing.sm),
+                  AnimatedRotation(
+                    turns: _open ? 0.5 : 0,
+                    duration: const Duration(milliseconds: 180),
+                    child: Icon(
+                      Icons.expand_more_rounded,
+                      color: scheme.onSurfaceVariant,
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
-        ],
+        ),
+        Visibility(
+          visible: _open,
+          maintainState: true,
+          child: Padding(
+            padding: const EdgeInsets.only(top: AppSpacing.sm),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: widget.children,
+            ),
+          ),
+        ),
       ],
     );
   }

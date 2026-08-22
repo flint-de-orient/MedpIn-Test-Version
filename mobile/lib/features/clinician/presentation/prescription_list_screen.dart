@@ -5,17 +5,20 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:open_filex/open_filex.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:share_plus/share_plus.dart';
 
 import '../../../core/config/app_config.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../shared/providers/core_providers.dart';
+import '../../medications/domain/strength.dart';
 import '../domain/clinician_models.dart';
 import 'clinician_providers.dart';
 
 /// The patient's prescriptions, latest first — each a dated card with a summary
-/// (diagnosis, medicine count, tests, follow-up) and a Download button that
-/// pulls the server-generated PDF and opens it in the phone's viewer.
+/// (diagnosis, medicine count, tests, follow-up), expandable to the full
+/// prescription, with actions to open the server-generated PDF in the phone's
+/// viewer or send it on.
 class PrescriptionListScreen extends ConsumerWidget {
   const PrescriptionListScreen({
     super.key,
@@ -126,41 +129,97 @@ class _PrescriptionCard extends ConsumerStatefulWidget {
 
 class _PrescriptionCardState extends ConsumerState<_PrescriptionCard> {
   bool _busy = false;
+  bool _expanded = false;
 
-  Future<void> _download() async {
+  /// Fetch the PDF to a cached file and return its path, or null.
+  ///
+  /// Split out of the open so sharing does not download a second copy — a
+  /// prescription is immutable once issued, so whatever is on disk is current.
+  Future<String?> _fetchPdf() async {
     final url = widget.rx.pdfUrl;
-    if (url == null || url.isEmpty || _busy) return;
+    if (url == null || url.isEmpty) return null;
+    final dir = await getTemporaryDirectory();
+    final name = '${widget.rx.referenceNo ?? widget.rx.id}.pdf'.replaceAll(
+      RegExp(r'[^\w.\-]'),
+      '_',
+    );
+    final cached = File('${dir.path}/rx_${url.hashCode}_$name');
+    if (!await cached.exists() || await cached.length() == 0) {
+      final bytes = await ref
+          .read(apiClientProvider)
+          .getBytes('${AppConfig.apiOrigin}$url');
+      if (bytes.isEmpty) throw Exception('empty pdf download');
+      await cached.writeAsBytes(bytes, flush: true);
+    }
+    return cached.path;
+  }
+
+  Future<void> _open() async {
+    if (_busy || widget.rx.pdfUrl == null) return;
+    final messenger = ScaffoldMessenger.of(context);
     setState(() => _busy = true);
     try {
-      final dir = await getTemporaryDirectory();
-      final name = '${widget.rx.referenceNo ?? widget.rx.id}.pdf'.replaceAll(
-        RegExp(r'[^\w.\-]'),
-        '_',
-      );
-      final cached = File('${dir.path}/rx_${url.hashCode}_$name');
-      // Immutable documents, so a cached copy is always current.
-      if (!await cached.exists() || await cached.length() == 0) {
-        final bytes = await ref
-            .read(apiClientProvider)
-            .getBytes('${AppConfig.apiOrigin}$url');
-        if (bytes.isEmpty) throw Exception('empty pdf download');
-        await cached.writeAsBytes(bytes, flush: true);
-      }
-      final res = await OpenFilex.open(cached.path);
-      if (res.type != ResultType.done && mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
+      final path = await _fetchPdf();
+      if (path == null) return;
+      final res = await OpenFilex.open(path);
+      if (res.type != ResultType.done) {
+        messenger.showSnackBar(
           const SnackBar(content: Text('No app on this phone can open a PDF')),
         );
       }
     } catch (_) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Could not download the prescription')),
-        );
-      }
+      messenger.showSnackBar(
+        const SnackBar(content: Text('Could not open the prescription')),
+      );
     } finally {
       if (mounted) setState(() => _busy = false);
     }
+  }
+
+  Future<void> _share() async {
+    if (_busy || widget.rx.pdfUrl == null) return;
+    final messenger = ScaffoldMessenger.of(context);
+    setState(() => _busy = true);
+    try {
+      final path = await _fetchPdf();
+      if (path == null) return;
+      // The OS sheet is also where "save to Files" lives, so this covers
+      // sending it on and keeping a copy both.
+      await SharePlus.instance.share(
+        ShareParams(
+          files: [XFile(path, mimeType: 'application/pdf')],
+          subject: 'Prescription ${widget.rx.referenceNo ?? ''}'.trim(),
+        ),
+      );
+    } catch (_) {
+      messenger.showSnackBar(
+        const SnackBar(content: Text('Could not share the prescription')),
+      );
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  /// One prescribed medicine written the way it is printed.
+  String _medLine(PrescribedItem it) {
+    final parts = <String>[
+      it.name,
+      if ((it.strength ?? '').isNotEmpty) formatStrength(it.strength),
+    ];
+    final tail = <String>[
+      if ((it.frequency ?? '').isNotEmpty) it.frequency!.toUpperCase(),
+      if (it.relationToMeal != null && it.relationToMeal != 'any')
+        switch (it.relationToMeal) {
+          'before_meal' => 'before food',
+          'with_meal' => 'with food',
+          'after_meal' => 'after food',
+          _ => '',
+        },
+      if (it.durationDays != null) '${it.durationDays} days',
+    ].where((t) => t.isNotEmpty);
+    return tail.isEmpty
+        ? parts.join(' ')
+        : '${parts.join(' ')} — ${tail.join(' · ')}';
   }
 
   @override
@@ -249,25 +308,105 @@ class _PrescriptionCardState extends ConsumerState<_PrescriptionCard> {
               'Follow-up ${DateFormat('d MMM yyyy').format(rx.followUpOn!)}',
             ),
           ],
-          const SizedBox(height: AppSpacing.md),
-          Align(
-            alignment: Alignment.centerRight,
-            child: OutlinedButton.icon(
-              onPressed: _busy || rx.pdfUrl == null ? null : _download,
-              icon:
-                  _busy
-                      ? const SizedBox(
-                        width: 16,
-                        height: 16,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                      : const Icon(Icons.download_rounded, size: 18),
-              label: Text(_busy ? 'Preparing…' : 'Download PDF'),
-              style: OutlinedButton.styleFrom(
-                foregroundColor: AppColors.primary,
+          // The prescription itself, in the app. Checking what was given
+          // otherwise meant downloading a PDF and leaving for another app —
+          // a long way round for a question asked mid-consultation.
+          if (_expanded) ...[
+            const SizedBox(height: AppSpacing.md),
+            Divider(
+              height: 1,
+              color: scheme.outlineVariant.withValues(alpha: 0.5),
+            ),
+            const SizedBox(height: AppSpacing.sm),
+            if ((rx.complaint ?? '').isNotEmpty)
+              _detail(context, 'Complaint', rx.complaint!),
+            if (rx.items.isNotEmpty)
+              _detail(
+                context,
+                'Medicines',
+                [for (final it in rx.items) _medLine(it)].join('\n'),
+              )
+            else if (rx.medicines.isNotEmpty)
+              _detail(context, 'Medicines', rx.medicines.join('\n'))
+            else
+              _detail(context, 'Medicines', 'None prescribed at this visit'),
+            if (rx.labTestsAdvised.isNotEmpty)
+              _detail(context, 'Tests advised', rx.labTestsAdvised.join(', ')),
+            if ((rx.generalAdvice ?? '').isNotEmpty)
+              _detail(context, 'Advice', rx.generalAdvice!),
+            if (rx.doctorName != null)
+              _detail(context, 'Issued by', rx.doctorName!),
+          ],
+          const SizedBox(height: AppSpacing.sm),
+          Row(
+            children: [
+              TextButton.icon(
+                onPressed: () => setState(() => _expanded = !_expanded),
+                icon: Icon(
+                  _expanded
+                      ? Icons.expand_less_rounded
+                      : Icons.expand_more_rounded,
+                  size: 18,
+                ),
+                label: Text(_expanded ? 'Hide details' : 'View details'),
+                style: TextButton.styleFrom(
+                  foregroundColor: scheme.onSurfaceVariant,
+                ),
               ),
+              const Spacer(),
+              if (rx.pdfUrl != null) ...[
+                IconButton(
+                  onPressed: _busy ? null : _share,
+                  icon: const Icon(Icons.ios_share_rounded, size: 20),
+                  tooltip: 'Share PDF',
+                  color: scheme.onSurfaceVariant,
+                ),
+                const SizedBox(width: 2),
+              ],
+              OutlinedButton.icon(
+                onPressed: _busy || rx.pdfUrl == null ? null : _open,
+                icon:
+                    _busy
+                        ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                        // "Open", not "Download": the file goes straight to the
+                        // phone's PDF viewer, and a button that promised a
+                        // download and then launched another app was describing
+                        // its mechanism rather than its effect.
+                        : const Icon(Icons.picture_as_pdf_rounded, size: 18),
+                label: Text(_busy ? 'Preparing…' : 'Open PDF'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: AppColors.primary,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _detail(BuildContext context, String label, String value) {
+    final scheme = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: AppSpacing.sm),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label.toUpperCase(),
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 0.6,
+              color: scheme.onSurfaceVariant,
             ),
           ),
+          const SizedBox(height: 2),
+          Text(value, style: const TextStyle(fontSize: 14, height: 1.4)),
         ],
       ),
     );

@@ -188,27 +188,89 @@ class _PatientsScreenState extends ConsumerState<PatientsScreen>
                               items.where((p) => p.unreadCount > 0).toList();
 
                         if (items.isEmpty) {
+                          // Three different nothings, and they mean opposite
+                          // things. A search with no match is a typo; nothing
+                          // unread is the clinic being on top of its messages;
+                          // an empty roll is a clinic with no patients yet.
+                          // One shrug for all three left the doctor unable to
+                          // tell "you are done" from "this is broken".
+                          final searching = _search.isNotEmpty;
+                          final (icon, title, body, action) = switch ((
+                            searching,
+                            _unreadOnly,
+                          )) {
+                            (true, _) => (
+                              Icons.search_off_rounded,
+                              'No patient matches “$_search”',
+                              'Check the spelling, or clear the search to see '
+                                  'everyone.',
+                              'Clear search',
+                            ),
+                            (false, true) => (
+                              Icons.mark_email_read_outlined,
+                              'Nothing unread',
+                              'Every patient message has been read. New ones '
+                                  'appear here as they arrive.',
+                              'Show all conversations',
+                            ),
+                            (false, false) => (
+                              Icons.forum_outlined,
+                              'No conversations yet',
+                              'When a patient writes in, their message opens a '
+                                  'thread here.',
+                              null,
+                            ),
+                          };
+
                           return Padding(
-                            padding: const EdgeInsets.symmetric(vertical: 40),
+                            padding: const EdgeInsets.fromLTRB(
+                              AppSpacing.lg,
+                              40,
+                              AppSpacing.lg,
+                              40,
+                            ),
                             child: Column(
                               children: [
                                 Icon(
-                                  _unreadOnly
-                                      ? Icons.mark_email_read_outlined
-                                      : Icons.forum_outlined,
+                                  icon,
                                   size: 52,
                                   color: scheme.outlineVariant,
                                 ),
                                 const SizedBox(height: AppSpacing.md),
                                 Text(
-                                  _unreadOnly
-                                      ? 'Nothing unread'
-                                      : 'No conversations yet',
+                                  title,
+                                  textAlign: TextAlign.center,
                                   style: const TextStyle(
                                     fontSize: 16,
                                     fontWeight: FontWeight.w600,
                                   ),
                                 ),
+                                const SizedBox(height: AppSpacing.xs),
+                                Text(
+                                  body,
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(
+                                    fontSize: 13.5,
+                                    height: 1.4,
+                                    color: scheme.onSurfaceVariant,
+                                  ),
+                                ),
+                                if (action != null) ...[
+                                  const SizedBox(height: AppSpacing.md),
+                                  OutlinedButton(
+                                    onPressed: () {
+                                      setState(() {
+                                        if (searching) {
+                                          _searchController.clear();
+                                          _search = '';
+                                        } else {
+                                          _unreadOnly = false;
+                                        }
+                                      });
+                                    },
+                                    child: Text(action),
+                                  ),
+                                ],
                               ],
                             ),
                           );

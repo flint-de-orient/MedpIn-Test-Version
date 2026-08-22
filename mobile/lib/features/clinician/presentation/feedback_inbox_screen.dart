@@ -388,6 +388,8 @@ class _FeedbackCard extends StatelessWidget {
                             children: [
                               Text(
                                 entry.patientName ?? 'Patient',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
                                 style: const TextStyle(
                                   fontSize: 14,
                                   fontWeight: FontWeight.w700,
@@ -398,6 +400,7 @@ class _FeedbackCard extends StatelessWidget {
                                     (entry.createdAt != null
                                         ? '  ·  ${DateFormat('d MMM yyyy, h:mm a').format(entry.createdAt!.toLocal())}'
                                         : ''),
+                                maxLines: 2,
                                 style: TextStyle(
                                   fontSize: 12,
                                   color: scheme.onSurfaceVariant,
@@ -406,7 +409,16 @@ class _FeedbackCard extends StatelessWidget {
                             ],
                           ),
                         ),
-                        const SizedBox(width: AppSpacing.sm),
+                      ],
+                    ),
+                    // The action on its own line, right-aligned. Beside the
+                    // name it took a third of the row, so a patient with a
+                    // long name and a subject-plus-timestamp underneath had
+                    // both squeezed into an ellipsis by the button.
+                    const SizedBox(height: AppSpacing.sm),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
                         if (unread)
                           Material(
                             color: AppColors.infoBgOn(context),

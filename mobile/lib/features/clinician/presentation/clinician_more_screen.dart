@@ -495,39 +495,53 @@ class _ClinicianMoreScreenState extends ConsumerState<ClinicianMoreScreen> {
           // ---- Appearance ----------------------------------------------
           // Hidden while kDarkThemeEnabled is false: a control that
           // changes nothing is worse than no control.
-          if (kDarkThemeEnabled) ...[
-            _label(l10n.profileAppearance, scheme),
-            const ThemeSelector(),
-          ],
-          const SizedBox(height: AppSpacing.lg),
+          if (kDarkThemeEnabled)
+            ProfileSection(
+              label: l10n.profileAppearance,
+              children: const [
+                Padding(
+                  padding: EdgeInsets.all(AppSpacing.md),
+                  child: ThemeSelector(),
+                ),
+              ],
+            ),
 
           // ---- Language ------------------------------------------------
-          _label(l10n.profileLanguage, scheme),
-          Wrap(
-            spacing: AppSpacing.sm,
-            runSpacing: AppSpacing.sm,
+          // In a card, like every other group on this screen. Loose chips
+          // floating on the background read as a strip of content that had
+          // escaped its section rather than as a setting.
+          ProfileSection(
+            label: l10n.profileLanguage,
             children: [
-              _LangChip(
-                label: l10n.languageEnglish,
-                selected: currentLocale?.languageCode == 'en',
-                accent: accent,
-                onTap: () => _changeLanguage('en'),
-              ),
-              _LangChip(
-                label: l10n.languageBengali,
-                selected: currentLocale?.languageCode == 'bn',
-                accent: accent,
-                onTap: () => _changeLanguage('bn'),
-              ),
-              _LangChip(
-                label: l10n.languageHindi,
-                selected: currentLocale?.languageCode == 'hi',
-                accent: accent,
-                onTap: () => _changeLanguage('hi'),
+              Padding(
+                padding: const EdgeInsets.all(AppSpacing.md),
+                child: Wrap(
+                  spacing: AppSpacing.sm,
+                  runSpacing: AppSpacing.sm,
+                  children: [
+                    _LangChip(
+                      label: l10n.languageEnglish,
+                      selected: currentLocale?.languageCode == 'en',
+                      accent: accent,
+                      onTap: () => _changeLanguage('en'),
+                    ),
+                    _LangChip(
+                      label: l10n.languageBengali,
+                      selected: currentLocale?.languageCode == 'bn',
+                      accent: accent,
+                      onTap: () => _changeLanguage('bn'),
+                    ),
+                    _LangChip(
+                      label: l10n.languageHindi,
+                      selected: currentLocale?.languageCode == 'hi',
+                      accent: accent,
+                      onTap: () => _changeLanguage('hi'),
+                    ),
+                  ],
+                ),
               ),
             ],
           ),
-          const SizedBox(height: AppSpacing.lg),
 
           // ---- Clinic tools --------------------------------------------
           ProfileSection(
@@ -536,9 +550,14 @@ class _ClinicianMoreScreenState extends ConsumerState<ClinicianMoreScreen> {
               // Messages deliberately absent: it is the first tab. A duplicate
               // here pointed at the retired DirectMessage inbox, so the same
               // word opened different data depending on where you tapped it.
+              // Every row carries a subtitle or none of them do. Three
+              // explained and three bare made the bare ones look like
+              // afterthoughts, and left the reader guessing which of "Chat
+              // review" and "Patient feedback" held the thing they wanted.
               ProfileRow(
                 icon: Icons.notification_important_outlined,
                 title: 'Clinical alerts',
+                subtitle: 'Readings and symptoms that need a look',
                 onTap: () => context.push('/clinician/alerts'),
               ),
               ProfileRow(
@@ -550,24 +569,25 @@ class _ClinicianMoreScreenState extends ConsumerState<ClinicianMoreScreen> {
               ProfileRow(
                 icon: Icons.ios_share_rounded,
                 title: 'Export data',
-                subtitle:
-                    'Download your patients, alerts and figures as CSV or JSON',
+                subtitle: 'Patients, alerts and figures as CSV or JSON',
                 onTap: () => context.push('/clinician/export'),
               ),
               ProfileRow(
                 icon: Icons.reviews_outlined,
                 title: 'Chat review',
+                subtitle: 'What the assistant has been telling patients',
                 onTap: () => context.push('/clinician/chat-review'),
               ),
               ProfileRow(
                 icon: Icons.menu_book_outlined,
                 title: 'Knowledge base',
+                subtitle: 'Clinic answers the assistant draws on',
                 onTap: () => context.push('/clinician/knowledge'),
               ),
               ProfileRow(
                 icon: Icons.rate_review_outlined,
                 title: 'Patient feedback',
-                subtitle: 'What patients say about the clinic and the app',
+                subtitle: 'Ratings and comments patients have sent',
                 showDivider: false,
                 onTap: () => context.push('/clinician/feedback'),
               ),
@@ -582,10 +602,17 @@ class _ClinicianMoreScreenState extends ConsumerState<ClinicianMoreScreen> {
                 ProfileRow(
                   icon: Icons.badge_outlined,
                   title: 'Professional details',
-                  subtitle:
+                  // Always says what the row is for; what is currently set
+                  // goes in `value`, on the right, where every other row on
+                  // this screen puts its current state. Putting the saved
+                  // qualifications in the subtitle slot meant the row
+                  // described itself on an empty profile and stopped
+                  // describing itself the moment it was filled in.
+                  subtitle: 'Qualifications, specialty & registration no.',
+                  value:
                       (user?.qualifications?.isNotEmpty ?? false)
-                          ? user!.qualifications!
-                          : 'Qualifications, specialty & registration no.',
+                          ? 'Set'
+                          : 'Not set',
                   onTap: _editProfessionalDetails,
                 ),
                 ProfileRow(
@@ -736,6 +763,16 @@ class _ClinicianMoreScreenState extends ConsumerState<ClinicianMoreScreen> {
           ),
 
           // ---- Logout --------------------------------------------------
+          // Set apart from the settings above it. Sitting flush under the last
+          // card, "Log out" read as one more row of the App group — and it is
+          // the only control on this screen that ends the session.
+          Padding(
+            padding: const EdgeInsets.only(bottom: AppSpacing.lg),
+            child: Divider(
+              height: 1,
+              color: scheme.outlineVariant.withValues(alpha: 0.7),
+            ),
+          ),
           SizedBox(
             width: double.infinity,
             height: AppSpacing.minTapTarget + 8,

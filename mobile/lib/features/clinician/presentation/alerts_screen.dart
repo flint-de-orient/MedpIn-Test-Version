@@ -24,6 +24,8 @@ class AlertsScreen extends ConsumerStatefulWidget {
 
 class _AlertsScreenState extends ConsumerState<AlertsScreen> {
   String? _status = 'open';
+  String? _severity;
+  String _search = '';
 
   static const _statuses = [
     ('open', 'Open'),
@@ -32,7 +34,32 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
     (null, 'All'),
   ];
 
-  AlertsQuery get _query => (status: _status, severity: null);
+  /// Severity, worst first. `info` is folded into the unfiltered view rather
+  /// than given a chip of its own — nobody comes to this screen looking for
+  /// the least important thing on it.
+  static const _severities = [
+    (null, 'Any severity'),
+    ('emergency', 'Emergency'),
+    ('urgent', 'Urgent'),
+    ('warning', 'Warning'),
+  ];
+
+  AlertsQuery get _query => (status: _status, severity: _severity);
+
+  /// Name match, in memory. The page is already loaded and a clinic's open
+  /// alerts are few; a round trip per keystroke would be slower than the
+  /// scroll it saves.
+  List<ClinicalAlert> _filter(List<ClinicalAlert> items) {
+    final q = _search.trim().toLowerCase();
+    if (q.isEmpty) return items;
+    return items
+        .where(
+          (a) =>
+              (a.patientName ?? '').toLowerCase().contains(q) ||
+              a.title.toLowerCase().contains(q),
+        )
+        .toList();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -43,27 +70,111 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
       appBar: AppBar(
         title: const Text('Clinical alerts'),
         bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(52),
-          child: Padding(
-            padding: const EdgeInsets.only(bottom: AppSpacing.sm),
-            child: SizedBox(
-              height: 40,
-              child: ListView.separated(
-                scrollDirection: Axis.horizontal,
-                padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
-                itemCount: _statuses.length,
-                separatorBuilder:
-                    (_, _) => const SizedBox(width: AppSpacing.sm),
-                itemBuilder: (context, i) {
-                  final (value, label) = _statuses[i];
-                  return ChoiceChip(
-                    label: Text(label),
-                    selected: _status == value,
-                    onSelected: (_) => setState(() => _status = value),
-                  );
-                },
+          preferredSize: const Size.fromHeight(150),
+          child: Column(
+            children: [
+              SizedBox(
+                height: 40,
+                child: ListView.separated(
+                  scrollDirection: Axis.horizontal,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: AppSpacing.md,
+                  ),
+                  itemCount: _statuses.length,
+                  separatorBuilder:
+                      (_, _) => const SizedBox(width: AppSpacing.sm),
+                  itemBuilder: (context, i) {
+                    final (value, label) = _statuses[i];
+                    return ChoiceChip(
+                      label: Text(label),
+                      selected: _status == value,
+                      onSelected: (_) => setState(() => _status = value),
+                    );
+                  },
+                ),
               ),
-            ),
+              const SizedBox(height: AppSpacing.sm),
+              // Severity, alongside status. "Open" is a queue; "open and an
+              // emergency" is the thing the doctor actually opened this screen
+              // for, and until now the only way to it was reading the rails.
+              SizedBox(
+                height: 36,
+                child: ListView.separated(
+                  scrollDirection: Axis.horizontal,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: AppSpacing.md,
+                  ),
+                  itemCount: _severities.length,
+                  separatorBuilder:
+                      (_, _) => const SizedBox(width: AppSpacing.sm),
+                  itemBuilder: (context, i) {
+                    final (value, label) = _severities[i];
+                    final on = _severity == value;
+                    return ChoiceChip(
+                      label: Text(label),
+                      selected: on,
+                      visualDensity: VisualDensity.compact,
+                      avatar:
+                          value == null || on
+                              ? null
+                              : Container(
+                                width: 10,
+                                height: 10,
+                                decoration: BoxDecoration(
+                                  color: alertSeverityColor(value),
+                                  shape: BoxShape.circle,
+                                ),
+                              ),
+                      onSelected: (_) => setState(() => _severity = value),
+                    );
+                  },
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(
+                  AppSpacing.md,
+                  AppSpacing.sm,
+                  AppSpacing.md,
+                  AppSpacing.sm,
+                ),
+                child: TextField(
+                  onChanged: (v) => setState(() => _search = v),
+                  style: const TextStyle(fontSize: 15.5),
+                  decoration: InputDecoration(
+                    hintText: 'Search patient or alert…',
+                    prefixIcon: Icon(
+                      Icons.search_rounded,
+                      color: scheme.onSurfaceVariant,
+                    ),
+                    suffixIcon:
+                        _search.isEmpty
+                            ? null
+                            : IconButton(
+                              icon: const Icon(Icons.close_rounded),
+                              onPressed: () => setState(() => _search = ''),
+                            ),
+                    filled: true,
+                    fillColor: scheme.surfaceContainerHigh.withValues(
+                      alpha: 0.55,
+                    ),
+                    isDense: true,
+                    contentPadding: const EdgeInsets.symmetric(vertical: 10),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(28),
+                      borderSide: BorderSide.none,
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(28),
+                      borderSide: BorderSide.none,
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(28),
+                      borderSide: BorderSide.none,
+                    ),
+                  ),
+                ),
+              ),
+            ],
           ),
         ),
       ),
@@ -88,36 +199,53 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
                   ),
                 ),
             data: (paged) {
-              if (paged.items.isEmpty) {
+              final shown = _filter(paged.items);
+              if (shown.isEmpty) {
+                final filtered = _search.isNotEmpty || _severity != null;
                 return ListView(
                   children: [
                     SizedBox(height: MediaQuery.of(context).size.height * 0.2),
                     Icon(
-                      Icons.verified_outlined,
+                      filtered
+                          ? Icons.search_off_rounded
+                          : Icons.verified_outlined,
                       size: 56,
                       color: scheme.outlineVariant,
                     ),
                     const SizedBox(height: AppSpacing.md),
-                    const Center(
+                    Center(
                       child: Text(
-                        'Nothing here',
-                        style: TextStyle(
+                        filtered ? 'No alerts match' : 'Nothing here',
+                        style: const TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.w600,
                         ),
                       ),
                     ),
+                    if (filtered) ...[
+                      const SizedBox(height: AppSpacing.md),
+                      Center(
+                        child: OutlinedButton(
+                          onPressed:
+                              () => setState(() {
+                                _search = '';
+                                _severity = null;
+                              }),
+                          child: const Text('Clear filters'),
+                        ),
+                      ),
+                    ],
                   ],
                 );
               }
               return ListView.separated(
                 padding: const EdgeInsets.all(AppSpacing.md),
-                itemCount: paged.items.length,
+                itemCount: shown.length,
                 separatorBuilder:
                     (_, _) => const SizedBox(height: AppSpacing.sm),
                 itemBuilder:
                     (context, i) => _AlertCard(
-                      alert: paged.items[i],
+                      alert: shown[i],
                       onAcknowledge: () => _acknowledge(paged.items[i]),
                       onResolve: () => _resolve(paged.items[i]),
                     ),

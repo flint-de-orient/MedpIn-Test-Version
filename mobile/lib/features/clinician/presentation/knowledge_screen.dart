@@ -216,10 +216,16 @@ class _ChunkRow extends StatelessWidget {
               runSpacing: 4,
               children: [
                 _tag(c.category.replaceAll('_', ' '), scheme),
-                _tag(c.language.toUpperCase(), scheme),
-                _tag('v${c.version}', scheme),
+                // Written out. "EN", "BN", "HI" and "v3" are how the record
+                // stores itself, not how a doctor reads it — and "HI" beside a
+                // clinical note reads as a greeting before it reads as Hindi.
+                _tag(_languageName(c.language), scheme),
+                _tag('Version ${c.version}', scheme),
+                // States the consequence rather than the mechanism: an entry
+                // with no embedding is one the assistant cannot find, which is
+                // the only part of it the doctor can act on.
                 if (!c.hasEmbedding && c.isApproved)
-                  _tag('no embedding', scheme),
+                  _tag('not searchable yet', scheme),
               ],
             ),
           ],
@@ -227,6 +233,15 @@ class _ChunkRow extends StatelessWidget {
       ),
     );
   }
+
+  /// Language code to the language's own name, since that is what the person
+  /// choosing it picked from.
+  String _languageName(String code) => switch (code.toLowerCase()) {
+    'en' => 'English',
+    'bn' => 'বাংলা',
+    'hi' => 'हिन्दी',
+    _ => code.toUpperCase(),
+  };
 
   Widget _tag(String label, ColorScheme scheme) => Container(
     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 0),

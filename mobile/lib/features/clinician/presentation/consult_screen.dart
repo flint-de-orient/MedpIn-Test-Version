@@ -871,36 +871,35 @@ class _ConsultScreenState extends ConsumerState<ConsultScreen> {
         const SizedBox(height: AppSpacing.md),
         const _StepTitle('Lab tests advised', 'Ordered with the prescription'),
         const SizedBox(height: AppSpacing.sm),
-        for (final entry in labGroups.entries) ...[
-          Padding(
-            padding: const EdgeInsets.only(top: 4, bottom: 4),
-            child: Text(
-              entry.key,
-              style: TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w700,
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
-              ),
-            ),
-          ),
+        // What has been ordered so far, gathered at the top. Spread across six
+        // folded categories, the answer to "what am I actually ordering?" was
+        // otherwise only obtainable by opening every one of them.
+        if (_labs.isNotEmpty) ...[
           Wrap(
             spacing: 8,
             runSpacing: 8,
             children: [
-              for (final p in entry.value)
-                _SelectChip(
-                  label: p.name,
-                  selected: _labs.contains(p.name),
-                  onTap:
-                      () => setState(() {
-                        _labs.contains(p.name)
-                            ? _labs.remove(p.name)
-                            : _labs.add(p.name);
-                      }),
+              for (final t in _labs)
+                InputChip(
+                  label: Text(t),
+                  onDeleted: () => setState(() => _labs.remove(t)),
+                  deleteIcon: const Icon(Icons.close_rounded, size: 16),
                 ),
             ],
           ),
+          const SizedBox(height: AppSpacing.sm),
         ],
+        for (final entry in labGroups.entries)
+          _ChipGroup(
+            category: entry.key,
+            labels: [for (final p in entry.value) p.name],
+            chosenWord: 'ordered',
+            isSelected: _labs.contains,
+            onToggle:
+                (name) => setState(() {
+                  _labs.contains(name) ? _labs.remove(name) : _labs.add(name);
+                }),
+          ),
         if (lastRx != null && lastRx.labTestsAdvised.isNotEmpty) ...[
           _reuseLabel(),
           Wrap(
@@ -958,70 +957,107 @@ class _ConsultScreenState extends ConsumerState<ConsultScreen> {
           ),
           const SizedBox(height: AppSpacing.sm),
         ],
-        // Common advice the doctor writes repeatedly — tap to add to the text.
-        for (final entry in adviceByCategory().entries) ...[
-          Padding(
-            padding: const EdgeInsets.only(top: 4, bottom: 4),
-            child: Text(
-              entry.key,
-              style: TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w700,
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
-              ),
-            ),
+        // Common advice the doctor writes repeatedly — tap to add to the
+        // text. Folded one category at a time: laid flat, five categories of
+        // full-sentence chips ran on for two screens of scrolling before the
+        // Advice box itself came into view, which is the field the doctor
+        // actually came here to fill.
+        for (final entry in adviceByCategory().entries)
+          _ChipGroup(
+            category: entry.key,
+            labels: [for (final a in entry.value) a.text],
+            isSelected: _adviceHas,
+            onToggle: _toggleAdvice,
           ),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              for (final a in entry.value)
-                _SelectChip(
-                  label: a.text,
-                  selected: _adviceHas(a.text),
-                  onTap: () => _toggleAdvice(a.text),
-                ),
-            ],
-          ),
-          const SizedBox(height: 4),
-        ],
         const SizedBox(height: AppSpacing.sm),
         TextField(
           controller: _advice,
           textCapitalization: TextCapitalization.sentences,
           minLines: 3,
           maxLines: 8,
+          onChanged: (_) => setState(() {}),
           decoration: const InputDecoration(
             labelText: 'Advice',
             alignLabelWithHint: true,
             hintText: 'e.g. reduce refined sugar, walk 30 min daily',
           ),
         ),
+        // Type-ahead over the same catalogue as the chips above. A doctor who
+        // starts typing "walk" should not have to go back up and hunt for the
+        // chip that says it — three letters in, the sentence is one tap away.
+        if (_adviceSuggestions.isNotEmpty) ...[
+          const SizedBox(height: AppSpacing.sm),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              for (final a in _adviceSuggestions)
+                ActionChip(
+                  avatar: const Icon(Icons.add_rounded, size: 16),
+                  label: Text(a.text),
+                  onPressed: () => _completeAdvice(a.text),
+                ),
+            ],
+          ),
+        ],
 
-        const SizedBox(height: AppSpacing.md),
+        const SizedBox(height: AppSpacing.lg),
+        const _StepTitle('Follow-up', 'When they should be seen again'),
+        const SizedBox(height: AppSpacing.sm),
+        // Almost every follow-up is a round number of weeks away. Offering
+        // those directly turns the commonest case into one tap, and leaves the
+        // calendar for the visit that genuinely needs a particular day.
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            for (final (days, label) in const [
+              (7, '1 week'),
+              (15, '2 weeks'),
+              (30, '1 month'),
+              (90, '3 months'),
+            ])
+              _SelectChip(
+                label: label,
+                selected: _followUpIsIn(days),
+                onTap: () => _setFollowUpIn(days),
+              ),
+          ],
+        ),
+        const SizedBox(height: AppSpacing.sm),
         InkWell(
           onTap: _pickFollowUp,
           borderRadius: BorderRadius.circular(AppSpacing.buttonRadius),
           child: InputDecorator(
-            decoration: const InputDecoration(
+            decoration: InputDecoration(
               labelText: 'Follow-up date',
-              prefixIcon: Icon(Icons.event_outlined),
+              prefixIcon: const Icon(Icons.event_outlined),
+              // A trailing chevron, because a decorated box with text in it
+              // reads as a field somebody forgot to make editable. This one
+              // opens a calendar, and nothing about it said so.
+              suffixIcon:
+                  _followUp == null
+                      ? const Icon(Icons.expand_more_rounded)
+                      : IconButton(
+                        icon: const Icon(Icons.close_rounded, size: 20),
+                        tooltip: 'Clear follow-up date',
+                        onPressed: () => setState(() => _followUp = null),
+                      ),
             ),
             child: Text(
               _followUp == null
-                  ? 'Not set'
-                  : DateFormat('d MMM yyyy').format(_followUp!),
+                  ? 'Tap to choose a date'
+                  : DateFormat('EEE, d MMM yyyy').format(_followUp!),
+              style: TextStyle(
+                color:
+                    _followUp == null
+                        ? Theme.of(context).colorScheme.onSurfaceVariant
+                        : null,
+                fontWeight: _followUp == null ? null : FontWeight.w600,
+              ),
             ),
           ),
         ),
-        if (_followUp != null)
-          Align(
-            alignment: Alignment.centerRight,
-            child: TextButton(
-              onPressed: () => setState(() => _followUp = null),
-              child: const Text('Clear'),
-            ),
-          ),
 
         const SizedBox(height: AppSpacing.lg),
         const _StepTitle(
@@ -1067,6 +1103,50 @@ class _ConsultScreenState extends ConsumerState<ConsultScreen> {
     setState(() {
       _labs.add(v);
       _customTest.clear();
+    });
+  }
+
+  /// Whether the follow-up is set to exactly this many days out, so the quick
+  /// chip that produced it shows as chosen. Compared by date, not by instant —
+  /// a consult that spans midnight should not un-select the chip.
+  bool _followUpIsIn(int days) {
+    if (_followUp == null) return false;
+    final target = DateUtils.dateOnly(DateTime.now().add(Duration(days: days)));
+    return DateUtils.isSameDay(_followUp, target);
+  }
+
+  void _setFollowUpIn(int days) {
+    final target = DateUtils.dateOnly(DateTime.now().add(Duration(days: days)));
+    // Tapping the chosen chip again clears it, the way the advice chips work.
+    setState(() => _followUp = _followUpIsIn(days) ? null : target);
+  }
+
+  /// Catalogue advice matching the line the doctor is part-way through typing.
+  ///
+  /// Only the last line is considered — earlier lines are advice already
+  /// written, and suggesting completions for them would be noise. Nothing is
+  /// offered until three letters are in, or the list would simply be the whole
+  /// catalogue repeated below the field.
+  List<AdviceSnippet> get _adviceSuggestions {
+    final current = _advice.text.split('\n').last.trim().toLowerCase();
+    if (current.length < 3) return const [];
+    final out = <AdviceSnippet>[];
+    for (final a in kAdviceCatalog) {
+      if (out.length == 3) break;
+      final t = a.text.toLowerCase();
+      if (t == current || _adviceHas(a.text)) continue;
+      if (t.contains(current)) out.add(a);
+    }
+    return out;
+  }
+
+  /// Replace the part-typed line with the full catalogue sentence.
+  void _completeAdvice(String text) {
+    final lines = _advice.text.split('\n');
+    lines[lines.length - 1] = text;
+    setState(() {
+      _advice.text = '${lines.join('\n')}\n';
+      _advice.selection = TextSelection.collapsed(offset: _advice.text.length);
     });
   }
 
@@ -1805,6 +1885,109 @@ class _BrandField extends ConsumerWidget {
           ),
         );
       },
+    );
+  }
+}
+
+/// One category of pick-from chips, folded until wanted.
+///
+/// Opens on its own when it already contains something the doctor has chosen —
+/// a selection hidden behind a closed header is a selection they cannot see
+/// they made.
+class _ChipGroup extends StatefulWidget {
+  const _ChipGroup({
+    required this.category,
+    required this.labels,
+    required this.isSelected,
+    required this.onToggle,
+    this.chosenWord = 'added',
+  });
+
+  final String category;
+  final List<String> labels;
+  final bool Function(String) isSelected;
+  final void Function(String) onToggle;
+
+  /// What the header says next to the count — "3 added", "3 ordered".
+  final String chosenWord;
+
+  @override
+  State<_ChipGroup> createState() => _ChipGroupState();
+}
+
+class _ChipGroupState extends State<_ChipGroup> {
+  bool? _open;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final chosen = widget.labels.where(widget.isSelected).length;
+    final open = _open ?? chosen > 0;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: () => setState(() => _open = !open),
+            borderRadius: BorderRadius.circular(8),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      widget.category,
+                      style: TextStyle(
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w700,
+                        color: scheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ),
+                  if (chosen > 0) ...[
+                    Text(
+                      '$chosen ${widget.chosenWord}',
+                      style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.primary,
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                  ],
+                  AnimatedRotation(
+                    turns: open ? 0.5 : 0,
+                    duration: const Duration(milliseconds: 160),
+                    child: Icon(
+                      Icons.expand_more_rounded,
+                      size: 20,
+                      color: scheme.onSurfaceVariant,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+        if (open)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final label in widget.labels)
+                  _SelectChip(
+                    label: label,
+                    selected: widget.isSelected(label),
+                    onTap: () => widget.onToggle(label),
+                  ),
+              ],
+            ),
+          ),
+      ],
     );
   }
 }
