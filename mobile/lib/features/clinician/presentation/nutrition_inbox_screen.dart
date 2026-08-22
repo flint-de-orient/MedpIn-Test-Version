@@ -199,6 +199,26 @@ class _NutritionInboxScreenState extends ConsumerState<NutritionInboxScreen>
                                     fontWeight: FontWeight.w600,
                                   ),
                                 ),
+                                if (_unreadOnly && _search.isEmpty) ...[
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    'Every conversation has been read.',
+                                    style: TextStyle(
+                                      fontSize: 14,
+                                      color: scheme.onSurfaceVariant,
+                                    ),
+                                  ),
+                                  const SizedBox(height: AppSpacing.md),
+                                  FilledButton.tonalIcon(
+                                    onPressed:
+                                        () => setState(() => _unreadOnly = false),
+                                    icon: const Icon(
+                                      Icons.forum_outlined,
+                                      size: 18,
+                                    ),
+                                    label: const Text('Show all conversations'),
+                                  ),
+                                ],
                                 if (_search.isEmpty && !_unreadOnly) ...[
                                   const SizedBox(height: 4),
                                   Text(
@@ -472,25 +492,19 @@ class _Seg extends StatelessWidget {
         duration: const Duration(milliseconds: 150),
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         decoration: BoxDecoration(
-          color: selected ? scheme.surfaceContainerLowest : Colors.transparent,
+          // Filled, not merely lifted. The selected pill used to be
+          // surfaceContainerLowest on surfaceContainerHigh — two neighbouring
+          // greys, which is a difference the reader has to look for rather than
+          // one they see.
+          color: selected ? AppColors.accentOn(context) : Colors.transparent,
           borderRadius: BorderRadius.circular(20),
-          boxShadow:
-              selected
-                  ? [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.06),
-                      blurRadius: 6,
-                      offset: const Offset(0, 1),
-                    ),
-                  ]
-                  : null,
         ),
         child: Text(
           label,
           style: TextStyle(
             fontSize: 14,
             fontWeight: FontWeight.w700,
-            color: selected ? scheme.onSurface : scheme.onSurfaceVariant,
+            color: selected ? Colors.white : scheme.onSurfaceVariant,
           ),
         ),
       ),

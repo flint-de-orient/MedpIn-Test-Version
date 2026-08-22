@@ -33,7 +33,11 @@ class ChatBackground extends StatelessWidget {
           // The artwork is near-white. Left as-is on a dark surface it glares
           // and swamps the bubbles, so dark mode inverts it to near-black and
           // drops it to a fraction of the light-mode strength.
-          opacity: isDark ? 0.08 : 0.30,
+          //
+          // Light mode came down from 0.30. That reads as texture behind a
+          // one-line bubble and as noise behind a twenty-line diet plan, and
+          // the diet plan is the message that most needs reading.
+          opacity: isDark ? 0.06 : 0.16,
           colorFilter: isDark
               ? const ColorFilter.mode(Colors.white, BlendMode.difference)
               : null,

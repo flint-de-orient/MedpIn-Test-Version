@@ -681,6 +681,26 @@ class _Bubble extends StatelessWidget {
                         ),
                       ),
                     ),
+                    // A mark, not just a name. Written out, an assistant's turn
+                    // and a dietician's differ only by the words in them —
+                    // which is exactly the distinction a reader should not have
+                    // to read for.
+                    if (message.role == 'assistant') ...[
+                      const SizedBox(width: 6),
+                      const _SenderBadge(
+                        label: 'AI',
+                        icon: Icons.auto_awesome_rounded,
+                        tone: Color(0xFF7C3AED),
+                      ),
+                    ] else if (message.role == 'dietician' ||
+                        message.role == 'clinician') ...[
+                      const SizedBox(width: 6),
+                      _SenderBadge(
+                        label: message.role == 'clinician' ? 'Doctor' : 'Dietician',
+                        icon: Icons.verified_rounded,
+                        tone: AppColors.accentOn(context),
+                      ),
+                    ],
                   ],
                 ),
               ),
@@ -877,6 +897,51 @@ class _DietReplyBar extends StatelessWidget {
             tooltip: 'Cancel reply',
             icon: const Icon(Icons.close_rounded, size: 20),
             onPressed: onCancel,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Who wrote this turn, as a mark rather than a sentence.
+///
+/// Purple for the assistant and the brand blue with a verified tick for a
+/// person: two different kinds of authority, and a dietician acting on a
+/// dosing suggestion should be able to tell them apart at a glance rather than
+/// by reading a byline.
+class _SenderBadge extends StatelessWidget {
+  const _SenderBadge({
+    required this.label,
+    required this.icon,
+    required this.tone,
+  });
+
+  final String label;
+  final IconData icon;
+  final Color tone;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: BoxDecoration(
+        color: tone.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 11, color: tone),
+          const SizedBox(width: 3),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 10.5,
+              fontWeight: FontWeight.w800,
+              letterSpacing: 0.3,
+              color: tone,
+            ),
           ),
         ],
       ),
