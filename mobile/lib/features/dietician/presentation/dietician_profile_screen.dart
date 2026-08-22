@@ -17,6 +17,7 @@ import '../../auth/presentation/auth_controller.dart';
 import '../../profile/presentation/widgets/profile_section.dart';
 import '../../profile/presentation/widgets/theme_selector.dart';
 import '../../../shared/providers/theme_provider.dart';
+import 'widgets/dietician_bell.dart';
 
 /// The dietician's profile — the counterpart of the doctor's, minus the clinic
 /// tools they have no business in (alerts, knowledge base, patient feedback).
@@ -168,6 +169,12 @@ class _DieticianProfileScreenState
           style: TextStyle(color: accent, fontWeight: FontWeight.w700),
         ),
         automaticallyImplyLeading: false,
+        actions: const [
+          // Present here too, so the count does not vanish the moment the
+          // dietician opens their own settings.
+          DieticianBell(),
+          SizedBox(width: 4),
+        ],
       ),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(

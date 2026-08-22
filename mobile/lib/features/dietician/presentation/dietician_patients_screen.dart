@@ -9,6 +9,7 @@ import '../../../shared/widgets/user_avatar.dart';
 import '../../auth/presentation/auth_controller.dart';
 import '../domain/diet_models.dart';
 import 'dietician_providers.dart';
+import 'widgets/dietician_bell.dart';
 
 Color dietRiskColor(String band) => switch (band) {
   'critical' => AppColors.danger,
@@ -109,6 +110,9 @@ class _DieticianPatientsScreenState
           ],
         ),
         actions: [
+          // The same counted bell as Home. A message arriving while the
+          // dietician works down this list was invisible before.
+          const DieticianBell(),
           // `go`, not `push`: Profile is one of this shell's own tabs, so
           // pushing it would stack a second copy over the Patients tab with a
           // back arrow instead of simply switching to it.

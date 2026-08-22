@@ -11,7 +11,7 @@ import '../../../shared/widgets/user_avatar.dart';
 import '../../auth/presentation/auth_controller.dart';
 import '../domain/diet_models.dart';
 import 'dietician_providers.dart';
-import 'widgets/notification_sheet.dart';
+import 'widgets/dietician_bell.dart';
 
 /// The dietician's day in one screen.
 ///
@@ -50,11 +50,7 @@ class DieticianDashboardScreen extends ConsumerWidget {
           bottom: false,
           child: Column(
             children: [
-              _BrandHeader(
-                name: user?.name ?? '',
-                avatarUrl: user?.avatarUrl,
-                unread: async.valueOrNull?.unreadMessages ?? 0,
-              ),
+              _BrandHeader(name: user?.name ?? '', avatarUrl: user?.avatarUrl),
               Expanded(
                 child: RefreshIndicator(
                   onRefresh: () async => ref.invalidate(dietDashboardProvider),
@@ -245,13 +241,10 @@ class DieticianDashboardScreen extends ConsumerWidget {
 // ---- Header ---------------------------------------------------------------
 
 class _BrandHeader extends StatelessWidget {
-  const _BrandHeader({required this.name, this.avatarUrl, this.unread = 0});
+  const _BrandHeader({required this.name, this.avatarUrl});
 
   final String name;
   final String? avatarUrl;
-
-  /// Patient messages nobody has read. Drives the badge on the bell.
-  final int unread;
 
   @override
   Widget build(BuildContext context) {
@@ -295,7 +288,7 @@ class _BrandHeader extends StatelessWidget {
             ),
           ),
           const Spacer(),
-          _NotificationBell(count: unread),
+          const DieticianBell(),
           const SizedBox(width: 0),
           GestureDetector(
             onTap: () => context.go('/dietician/profile'),
@@ -309,60 +302,6 @@ class _BrandHeader extends StatelessWidget {
           const SizedBox(width: 4),
         ],
       ),
-    );
-  }
-}
-
-/// Unread patient messages, on the bell.
-///
-/// Blue rather than red: these are questions waiting, not emergencies, and a
-/// red badge that appears every time somebody says thank you teaches the
-/// dietician to ignore red.
-class _NotificationBell extends StatelessWidget {
-  const _NotificationBell({required this.count});
-
-  final int count;
-
-  @override
-  Widget build(BuildContext context) {
-    final accent = AppColors.accentOn(context);
-    return Stack(
-      clipBehavior: Clip.none,
-      children: [
-        IconButton(
-          onPressed: () => showDieticianNotifications(context),
-          icon: const Icon(Icons.notifications_none_rounded),
-          color: Theme.of(context).colorScheme.onSurface,
-          tooltip: count == 0 ? 'No new messages' : '$count unread',
-        ),
-        if (count > 0)
-          Positioned(
-            right: 4,
-            top: 4,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 0),
-              constraints: const BoxConstraints(minWidth: 18),
-              decoration: BoxDecoration(
-                color: accent,
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(
-                  color: Theme.of(context).colorScheme.surface,
-                  width: 1.5,
-                ),
-              ),
-              child: Text(
-                count > 99 ? '99+' : '$count',
-                textAlign: TextAlign.center,
-                style: const TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w800,
-                  color: Colors.white,
-                  height: 1.25,
-                ),
-              ),
-            ),
-          ),
-      ],
     );
   }
 }
