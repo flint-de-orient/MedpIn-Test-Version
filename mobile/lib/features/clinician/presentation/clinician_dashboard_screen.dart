@@ -11,10 +11,11 @@ import '../../auth/presentation/auth_controller.dart';
 import '../../../shared/widgets/user_avatar.dart';
 import '../domain/clinician_models.dart';
 import 'clinician_providers.dart';
-import '../../../shared/widgets/hero_band.dart';
 import 'widgets/panel_ui.dart';
-import 'widgets/clinic_analytics.dart';
 import 'widgets/clinician_notification_sheet.dart';
+import '../../../core/theme/tokens.dart';
+import 'widgets/dashboard_sections.dart';
+import 'widgets/triage_queue.dart';
 
 /// The doctor's home: the clinic at a glance — headline counts, what is on
 /// today, the alerts that need attention, the live triage queue, and the
@@ -35,6 +36,10 @@ class _ClinicianDashboardScreenState
     extends ConsumerState<ClinicianDashboardScreen>
     with WidgetsBindingObserver {
   Timer? _poll;
+
+  /// When the data on screen was last pulled. The triage queue says this out
+  /// loud — a queue calling itself live owes the reader the time it was true.
+  DateTime _lastRefreshed = DateTime.now();
 
   AlertsQuery get _alertsQuery => (status: 'open', severity: null);
 
@@ -60,6 +65,7 @@ class _ClinicianDashboardScreenState
   }
 
   void _refresh() {
+    if (mounted) setState(() => _lastRefreshed = DateTime.now());
     ref.invalidate(overviewProvider);
     ref.invalidate(clinicAnalyticsProvider);
     ref.invalidate(attentionPatientsProvider);
@@ -107,47 +113,61 @@ class _ClinicianDashboardScreenState
                         // SliverPersistentHeader with its own layout, not
                         // FlexibleSpaceBar.
                         child: ListView(
+                          padding: const EdgeInsets.fromLTRB(
+                            T.s4,
+                            T.s3,
+                            T.s4,
+                            T.s12,
+                          ),
                           children: [
-                            if (analytics != null)
-                              _ControlHero(analytics: analytics),
-                            Padding(
-                              padding: const EdgeInsets.fromLTRB(
-                                AppSpacing.md,
-                                AppSpacing.md,
-                                AppSpacing.md,
-                                AppSpacing.xl,
-                              ),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.stretch,
-                                children: [
-                                  if (overview != null) ...[
-                                    const SizedBox(height: AppSpacing.md),
-                                    _HeadlineRow(overview: overview),
-                                    const SizedBox(height: AppSpacing.md),
-                                    // "Active today" is gone. It counted appointments
-                                    // booked through the app, and this clinic does not
-                                    // book that way — so it read 0 every day and cost a
-                                    // card's worth of the screen saying nothing.
-                                    _AlertStrip(overview: overview),
-                                    if (analytics != null) ...[
-                                      const SizedBox(height: AppSpacing.sm),
-                                      _MonitoringStrip(analytics: analytics),
-                                    ],
-                                    const SizedBox(height: AppSpacing.lg),
-                                  ],
-                                  if (attention.isNotEmpty) ...[
-                                    AttentionListCard(patients: attention),
-                                    const SizedBox(height: AppSpacing.lg),
-                                  ],
-                                  _TriageQueue(alerts: alerts),
-                                  if (overview != null &&
-                                      overview.nutritionReviews.isNotEmpty) ...[
-                                    const SizedBox(height: AppSpacing.lg),
-                                    _NutritionReviews(overview: overview),
-                                  ],
-                                ],
-                              ),
+                            // Ordered by what the doctor opens the app to find
+                            // out. The clinic's own numbers are read once and
+                            // then ignored, so they sit at the top as context —
+                            // everything below them is work, clinical first and
+                            // operational second.
+                            //
+                            // The previous order put four metric cards, an alert
+                            // strip and a monitoring strip above the patients,
+                            // which answered "how is the clinic doing" before
+                            // "who needs me now". A doctor does not open this to
+                            // learn they have seven patients.
+                            if (analytics != null) ...[
+                              ClinicSnapshot(analytics: analytics),
+                              const SizedBox(height: T.s6),
+                            ],
+
+                            // 1. Clinical: who needs a doctor.
+                            TriageQueue(
+                              patients: attention,
+                              updatedAt: _lastRefreshed,
                             ),
+
+                            // 2. Operational: what is queued up.
+                            if (overview != null && analytics != null) ...[
+                              const SizedBox(height: T.s6),
+                              ActionQueue(
+                                overview: overview,
+                                analytics: analytics,
+                              ),
+                            ],
+
+                            // 3. The nutrition queue, as a queue rather than a
+                            // count of "messages" — the work is a review.
+                            if (overview != null &&
+                                overview.nutritionReviews.isNotEmpty) ...[
+                              const SizedBox(height: T.s6),
+                              NutritionReviewQueue(
+                                reviews: overview.nutritionReviews,
+                              ),
+                            ],
+
+                            // 4. Alerts that have already been raised, last:
+                            // they are a record of what the queue above has
+                            // already surfaced.
+                            if (alerts.isNotEmpty) ...[
+                              const SizedBox(height: T.s6),
+                              _TriageQueue(alerts: alerts),
+                            ],
                           ],
                         ),
                       ),
@@ -223,448 +243,6 @@ class _DashboardHeader extends ConsumerWidget {
         ],
       ),
     );
-  }
-}
-
-// ---- Headline counts ------------------------------------------------------
-
-class _HeadlineRow extends StatelessWidget {
-  const _HeadlineRow({required this.overview});
-
-  final ClinicOverview overview;
-
-  @override
-  Widget build(BuildContext context) {
-    // IntrinsicHeight, not a bare stretch: inside a ListView the cross-axis is
-    // unbounded, so stretching makes both cards infinitely tall and everything
-    // below them unreachable. This sizes them to the taller of the two.
-    return IntrinsicHeight(
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Expanded(
-            child: _HeadlineCard(
-              label: 'TOTAL PATIENTS',
-              value: '${overview.patientCount}',
-              // Only shown when someone actually registered today; "+0 today"
-              // is noise dressed up as news.
-              suffix:
-                  overview.newPatientsToday > 0
-                      ? '+${overview.newPatientsToday} today'
-                      : null,
-              suffixColor: AppColors.accentOn(context),
-              onTap: () => context.go('/clinician/patients'),
-            ),
-          ),
-          const SizedBox(width: AppSpacing.sm),
-          Expanded(
-            // Named for what it counts, and tappable. "Pending summaries" was
-            // borrowed from the reference design and described nothing in this
-            // app: the number is flagged conversations, and there was no way to
-            // reach them from the figure telling you they existed.
-            child: _HeadlineCard(
-              label: 'FLAGGED CHATS',
-              value: '${overview.pendingReviews}',
-              suffix: 'to review',
-              onTap: () => context.push('/clinician/chat-review'),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _HeadlineCard extends StatelessWidget {
-  const _HeadlineCard({
-    required this.label,
-    required this.value,
-    this.suffix,
-    this.suffixColor,
-    this.onTap,
-  });
-
-  final String label;
-  final String value;
-  final String? suffix;
-  final Color? suffixColor;
-
-  /// Where the number leads. A count with nowhere to go is a number the doctor
-  /// has to go and find by hand.
-  final VoidCallback? onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    final card = Container(
-      padding: const EdgeInsets.all(AppSpacing.md),
-      decoration: BoxDecoration(
-        color: scheme.surfaceContainerLowest,
-        borderRadius: BorderRadius.circular(AppSpacing.cardRadius),
-        border: Border.all(color: scheme.outlineVariant.withValues(alpha: 0.7)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            label,
-            style: TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w700,
-              letterSpacing: 0.7,
-              color: scheme.onSurfaceVariant,
-            ),
-          ),
-          const SizedBox(height: AppSpacing.md),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.baseline,
-            textBaseline: TextBaseline.alphabetic,
-            children: [
-              Text(
-                value,
-                style: TextStyle(
-                  fontSize: 32,
-                  fontWeight: FontWeight.w800,
-                  color: scheme.onSurface,
-                ),
-              ),
-              if (suffix != null) ...[
-                const SizedBox(width: 4),
-                Flexible(
-                  child: Text(
-                    suffix!,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                      color: suffixColor ?? scheme.onSurfaceVariant,
-                    ),
-                  ),
-                ),
-              ],
-            ],
-          ),
-        ],
-      ),
-    );
-
-    if (onTap == null) return card;
-    return Material(
-      color: Colors.transparent,
-      borderRadius: BorderRadius.circular(AppSpacing.cardRadius),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(AppSpacing.cardRadius),
-        onTap: onTap,
-        child: card,
-      ),
-    );
-  }
-}
-
-// ---- Alert strip ----------------------------------------------------------
-
-/// The four counters, as a 2x2 grid of tiles.
-///
-/// Stacked full-width rows before this: four of them pushed the triage queue —
-/// the part of the screen with a patient's name on it — below the fold. A grid
-/// says the same in half the height, and the pairing reads as "what is wrong"
-/// on the left, "what is waiting" on the right.
-class _AlertStrip extends StatelessWidget {
-  const _AlertStrip({required this.overview});
-
-  final ClinicOverview overview;
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    final careUnread = overview.unreadMessages - overview.unreadNutrition;
-
-    final tiles = <Widget>[
-      _StatTile(
-        icon: Icons.monitor_heart_outlined,
-        value: '${overview.riskCritical}',
-        label:
-            overview.riskCritical == 1 ? 'Critical Vital' : 'Critical Vitals',
-        // The only tile that carries colour. A red panel among neutral ones is
-        // read before anything else on the screen, which is the point — every
-        // tile tinted would mean none of them stands out.
-        tone: AppColors.dangerOn(context),
-        background: AppColors.dangerBgOn(context),
-        onTap: () => context.go('/clinician/patients'),
-      ),
-      _StatTile(
-        icon: Icons.error_outline_rounded,
-        value: '${overview.highPriorityAlerts}',
-        label:
-            overview.highPriorityAlerts == 1 ? 'Action Item' : 'Action Items',
-        tone: scheme.onSurface,
-        background: scheme.surfaceContainerLow,
-        onTap: () => context.push('/clinician/alerts'),
-      ),
-      _StatTile(
-        icon: Icons.forum_outlined,
-        value: '$careUnread',
-        label: 'Unread Msgs',
-        tone: AppColors.accentOn(context),
-        background: AppColors.infoBgOn(context),
-        onTap: () => context.go('/clinician/patients'),
-      ),
-      _StatTile(
-        icon: Icons.restaurant_outlined,
-        value: '${overview.unreadNutrition}',
-        label: 'Nutrition Msgs',
-        tone: scheme.onSurface,
-        background: scheme.surfaceContainerLow,
-        onTap: () => context.go('/clinician/nutrition'),
-      ),
-    ];
-
-    return Column(
-      children: [
-        Row(
-          children: [
-            Expanded(child: tiles[0]),
-            const SizedBox(width: AppSpacing.sm),
-            Expanded(child: tiles[1]),
-          ],
-        ),
-        const SizedBox(height: AppSpacing.sm),
-        Row(
-          children: [
-            Expanded(child: tiles[2]),
-            const SizedBox(width: AppSpacing.sm),
-            Expanded(child: tiles[3]),
-          ],
-        ),
-      ],
-    );
-  }
-}
-
-/// One counter: an icon, the figure, and what it counts.
-class _StatTile extends StatelessWidget {
-  const _StatTile({
-    required this.icon,
-    required this.value,
-    required this.label,
-    required this.tone,
-    required this.background,
-    required this.onTap,
-  });
-
-  final IconData icon;
-  final String value;
-  final String label;
-
-  /// Colours the icon, the figure and the caption together, so a tile reads as
-  /// one object rather than three.
-  final Color tone;
-  final Color background;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return Material(
-      color: background,
-      borderRadius: BorderRadius.circular(AppSpacing.cardRadius),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(AppSpacing.cardRadius),
-        onTap: onTap,
-        child: Container(
-          padding: const EdgeInsets.all(AppSpacing.md),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(AppSpacing.cardRadius),
-            border: Border.all(
-              color: scheme.outlineVariant.withValues(alpha: 0.55),
-            ),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(icon, size: 20, color: tone),
-              const SizedBox(height: 8),
-              Text(
-                value,
-                style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                  fontSize: 32,
-                  fontWeight: FontWeight.w800,
-                  color: tone,
-                  height: 1,
-                ),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                label,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  color: scheme.onSurfaceVariant,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _AlertRow extends StatelessWidget {
-  const _AlertRow({
-    required this.icon,
-    required this.iconBg,
-    required this.bg,
-    required this.label,
-    required this.detail,
-    required this.onTap,
-    this.labelColor,
-  });
-
-  final IconData icon;
-  final Color iconBg;
-  final Color bg;
-  final String label;
-  final String detail;
-  final Color? labelColor;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return Container(
-      decoration: BoxDecoration(
-        color: bg,
-        borderRadius: BorderRadius.circular(AppSpacing.cardRadius),
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: onTap,
-          child: IntrinsicHeight(
-            child: Row(
-              children: [
-                Expanded(
-                  child: Padding(
-                    padding: const EdgeInsets.all(AppSpacing.md),
-                    child: Row(
-                      children: [
-                        Container(
-                          width: 30,
-                          height: 30,
-                          decoration: BoxDecoration(
-                            color: iconBg,
-                            shape: BoxShape.circle,
-                          ),
-                          child: Icon(icon, size: 18, color: Colors.white),
-                        ),
-                        const SizedBox(width: AppSpacing.md),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                label,
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w800,
-                                  letterSpacing: 0.5,
-                                  color: labelColor ?? scheme.onSurface,
-                                ),
-                              ),
-                              const SizedBox(height: 0),
-                              Text(
-                                detail,
-                                style: TextStyle(
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w600,
-                                  color: scheme.onSurface,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-// ---- Continuous-monitoring roll-up ----------------------------------------
-
-/// The dashboard answer to "I have 100+ patients, I can't watch 100 graphs":
-/// two counts that surface who needs a look — patients who have gone quiet past
-/// their check-in cadence, and patients whose control is drifting out of range.
-/// Both drill into the patient list, where each row carries its own sparkline.
-class _MonitoringStrip extends StatelessWidget {
-  const _MonitoringStrip({required this.analytics});
-
-  final ClinicAnalytics analytics;
-
-  @override
-  Widget build(BuildContext context) {
-    final rows = <Widget>[];
-
-    if (analytics.overdueCheckIns > 0) {
-      rows.add(
-        _AlertRow(
-          icon: Icons.schedule_rounded,
-          iconBg: AppColors.warning,
-          bg: AppColors.warningBgOn(context),
-          label: 'CHECK-INS OVERDUE',
-          labelColor: AppColors.warningOn(context),
-          detail:
-              '${analytics.overdueCheckIns} ${analytics.overdueCheckIns == 1 ? 'patient has' : 'patients have'} gone quiet',
-          onTap: () => context.go('/clinician/patients'),
-        ),
-      );
-    }
-
-    if (analytics.trendingWorse > 0) {
-      if (rows.isNotEmpty) rows.add(const SizedBox(height: AppSpacing.sm));
-      rows.add(
-        _AlertRow(
-          icon: Icons.trending_up_rounded,
-          iconBg: AppColors.danger,
-          bg: AppColors.dangerBgOn(context),
-          label: 'TRENDING WORSE',
-          labelColor: AppColors.danger,
-          detail:
-              '${analytics.trendingWorse} ${analytics.trendingWorse == 1 ? 'patient' : 'patients'} drifting out of range',
-          onTap: () => context.go('/clinician/patients'),
-        ),
-      );
-    }
-
-    // Nothing needs attention — a quiet, reassuring confirmation rather than a
-    // blank gap, so the doctor knows monitoring is actually running.
-    if (rows.isEmpty) {
-      if (analytics.activePatients == 0) return const SizedBox.shrink();
-      rows.add(
-        _AlertRow(
-          icon: Icons.check_circle_outline_rounded,
-          iconBg: AppColors.accent,
-          bg: AppColors.successBgOn(context),
-          label: 'MONITORING',
-          detail: 'All patients up to date on check-ins',
-          onTap: () => context.go('/clinician/patients'),
-        ),
-      );
-    }
-
-    return Column(children: rows);
   }
 }
 
@@ -919,235 +497,3 @@ class _TriageCard extends StatelessWidget {
   }
 }
 
-// ---- Nutrition reviews ----------------------------------------------------
-
-/// The doctor's task list — the nutrition reviews that are due (or coming up),
-/// each an actionable row opening that patient. Due first; the rest are shown as
-/// "coming up" context, and anything past the first few defers to the Nutrition
-/// tab so Home never turns into a long list.
-/// Nutrition reviews, drawn as progress through each patient's review cycle.
-///
-/// A row per patient with a bar showing how far into the cycle they are. The
-/// bar is the point: "Day 7/7" and "Day 2/7" are the same sentence until you
-/// see one bar full and the other barely started, and the doctor is scanning
-/// for the full ones.
-class _NutritionReviews extends StatelessWidget {
-  const _NutritionReviews({required this.overview});
-
-  final ClinicOverview overview;
-
-  @override
-  Widget build(BuildContext context) {
-    // Due first, then most-overdue within — the top row is the one to do.
-    final reviews = [...overview.nutritionReviews]..sort((a, b) {
-      final byDue = (b.isDue ? 1 : 0).compareTo(a.isDue ? 1 : 0);
-      if (byDue != 0) return byDue;
-      return b.day.compareTo(a.day);
-    });
-    final shown = reviews.take(4).toList();
-    final due = reviews.where((r) => r.isDue).length;
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        PanelSectionHeader(
-          title: 'Nutrition Reviews Due',
-          trailing:
-              due == 0
-                  ? null
-                  : PanelPill(
-                    label: '$due Due',
-                    color: AppColors.warningOn(context),
-                  ),
-        ),
-        for (final r in shown)
-          Padding(
-            padding: const EdgeInsets.only(bottom: AppSpacing.sm),
-            child: _ReviewProgressCard(review: r),
-          ),
-        if (reviews.length > shown.length)
-          Align(
-            alignment: Alignment.centerLeft,
-            child: TextButton(
-              style: TextButton.styleFrom(
-                padding: const EdgeInsets.symmetric(horizontal: 8),
-                foregroundColor: AppColors.accentOn(context),
-              ),
-              onPressed: () => context.go('/clinician/nutrition'),
-              child: Text(
-                'View all ${reviews.length}',
-                style: const TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ),
-          ),
-      ],
-    );
-  }
-}
-
-/// One patient's position in their review cycle.
-class _ReviewProgressCard extends StatelessWidget {
-  const _ReviewProgressCard({required this.review});
-
-  final NutritionReview review;
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    final r = review;
-    final total = r.intervalDays <= 0 ? 1 : r.intervalDays;
-    final progress = (r.day / total).clamp(0.0, 1.0);
-
-    // Brand blue throughout. On a daily cadence every bar is either empty or
-    // full, so red on the full ones turned the whole section red every morning
-    // — an alarm that fires daily stops being an alarm. Being due is said by
-    // the "Day 7/7" label and the count in the heading instead.
-    final tone = AppColors.accentOn(context);
-
-    return PanelCard(
-      // Straight into the conversation, because reviewing a food log means
-      // reading what was logged and replying to it. The record is still a tap
-      // away from the thread header. Falls back to the record when the patient
-      // has no nutrition thread yet.
-      onTap:
-          () => context.push(
-            r.nutritionSessionId != null
-                ? '/clinician/chat-review/${r.nutritionSessionId}'
-                : '/clinician/patients/${r.patientId}',
-          ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  r.name,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ),
-              const SizedBox(width: AppSpacing.sm),
-              Text(
-                'Day ${r.day}/$total',
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w800,
-                  color: r.isDue ? tone : scheme.onSurfaceVariant,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 4),
-          Text(
-            // What the doctor can actually act on: whether the patient has been
-            // logging. An empty week is why a review matters, and it is the one
-            // thing the cycle number alone never says.
-            r.mealsThisWeek == 0
-                ? 'No meals logged this week'
-                : '${r.mealsThisWeek} meals logged this week',
-            style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant),
-          ),
-          const SizedBox(height: 8),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(12),
-            child: LinearProgressIndicator(
-              value: progress,
-              minHeight: 6,
-              backgroundColor: scheme.surfaceContainerHigh,
-              valueColor: AlwaysStoppedAnimation<Color>(tone),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-/// The clinic in one figure: how much of everything logged landed in range.
-///
-/// The dashboard used to open on "Operational Overview" and a line explaining
-/// what a dashboard is, followed by four counters of equal weight — so the
-/// doctor had to read all four to work out which mattered. This is the number
-/// that answers "how is my clinic doing" before anything else is read, and it
-/// was already in the payload: controlTrend carries low/inRange/high per day
-/// and nothing was reading it.
-class _ControlHero extends ConsumerWidget {
-  const _ControlHero({required this.analytics});
-
-  final ClinicAnalytics analytics;
-
-  static (int pct, int? delta) _control(List<ControlPoint> t) {
-    if (t.isEmpty) return (0, null);
-    var inRange = 0, total = 0;
-    for (final p in t) {
-      inRange += p.inRange;
-      total += p.total;
-    }
-    if (total == 0) return (0, null);
-    final pct = (inRange / total * 100).round();
-
-    // Back half against front half. Anything shorter than four days cannot
-    // show a trend worth printing.
-    if (t.length < 4) return (pct, null);
-    int share(Iterable<ControlPoint> xs) {
-      var i = 0, n = 0;
-      for (final p in xs) {
-        i += p.inRange;
-        n += p.total;
-      }
-      return n == 0 ? 0 : (i / n * 100).round();
-    }
-
-    final before = share(t.take(t.length ~/ 2));
-    if (before == 0) return (pct, null);
-    return (pct, share(t.skip(t.length ~/ 2)) - before);
-  }
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final (pct, delta) = _control(analytics.controlTrend);
-    if (pct == 0) return const SizedBox.shrink();
-
-    final rising = (delta ?? 0) >= 0;
-    final pts =
-        analytics.controlTrend
-            .where((p) => p.total > 0)
-            .map((p) => p.inRange / p.total * 100)
-            .toList();
-
-    return HeroBand(
-      eyebrow: DateFormat('EEEE, d MMMM').format(DateTime.now()),
-      title: 'Your clinic',
-
-      // The face answers "does my clinic need me right now" before the number
-      // has been read. Driven by open alerts and monitoring, never by scroll.
-      // No avatar here. The doctor's photo is already in the header a few
-      // pixels above, and ringing it by the clinic's state put a red circle
-      // around their own face — which reads as something being wrong with
-      // them, not with the ward. The alert counts in the tiles below say it
-      // properly, attached to the thing they are actually about.
-      figure: HeroFigure(
-        value: '$pct%',
-        // The delta alone. "this fortnight" reads better in the caption than
-        // in a pill sitting beside the figure, where its width comes straight
-        // out of the number's.
-        statusLabel:
-            delta == null || delta == 0 ? null : '${rising ? '+' : ''}$delta%',
-        statusColor: rising ? AppColors.success : AppColors.warning,
-        caption:
-            delta == null || delta == 0
-                ? 'Readings in range, clinic-wide'
-                : 'Readings in range, clinic-wide  •  vs. the fortnight before',
-      ),
-      footer: pts.length > 2 ? HeroSpark(values: pts) : null,
-    );
-  }
-}
