@@ -842,7 +842,8 @@ class AppLocalizationsBn extends AppLocalizations {
   String get profileAppLock => 'অ্যাপ লক';
 
   @override
-  String get profileAppLockSub => 'অ্যাপ খুলতে আনলক করা প্রয়োজন';
+  String get profileAppLockSub =>
+      'অ্যাপ খুলতে আঙুলের ছাপ, মুখ বা ডিভাইসের পিন লাগবে';
 
   @override
   String get notifMedicationReminders => 'ওষুধের অনুস্মারক';

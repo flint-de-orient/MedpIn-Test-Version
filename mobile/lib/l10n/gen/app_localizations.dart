@@ -1705,7 +1705,7 @@ abstract class AppLocalizations {
   /// No description provided for @profileAppLockSub.
   ///
   /// In en, this message translates to:
-  /// **'Require unlock to open the app'**
+  /// **'Require your fingerprint, face or device PIN to open the app'**
   String get profileAppLockSub;
 
   /// No description provided for @notifMedicationReminders.

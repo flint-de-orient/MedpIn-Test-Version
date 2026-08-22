@@ -267,7 +267,7 @@
   "profileHealthDetails": "स्वास्थ्य विवरण",
   "profileGlucoseUnit": "ग्लूकोज़ की इकाई",
   "profileAppLock": "ऐप लॉक",
-  "profileAppLockSub": "ऐप खोलने के लिए अनलॉक ज़रूरी",
+  "profileAppLockSub": "ऐप खोलने के लिए फ़िंगरप्रिंट, चेहरा या डिवाइस पिन ज़रूरी",
   "notifMedicationReminders": "दवा अनुस्मारक",
   "notifMedicationRemindersSub": "खुराक का समय होने पर याद दिलाएँ",
   "notifAppointmentAlerts": "अपॉइंटमेंट अनुस्मारक",

@@ -1,3 +1,4 @@
+import 'dart:ui' show FontFeature;
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -21,6 +22,7 @@ import '../domain/patient_summary.dart';
 import 'clinician_providers.dart';
 import 'widgets/clinician_visuals.dart';
 import 'widgets/sparkline.dart';
+import '../../../core/theme/tokens.dart';
 
 /// The read side of a patient: health score, adherence, glucose control, HbA1c
 /// history, test reports, recent alerts, the dietician's review cadence, and
@@ -258,6 +260,23 @@ class _ConsultationTile extends StatelessWidget {
   }
 }
 
+/// The colour an HbA1c should be shown in.
+///
+/// These two tiles sat side by side in fixed purple and cyan, so a last HbA1c
+/// of 5.6% and an estimated one of 9.8% read as equally unremarkable — which is
+/// the one pairing on this screen a clinician must not skim past. Colour now
+/// follows the value: at or above 8% it is red, 7–8% amber, below 7% green.
+///
+/// Thresholds are the ordinary adult targets, matching the ones the patient's
+/// own screens already colour against, so the same number is never green for
+/// one reader and red for another.
+Color _hba1cTone(num? value) {
+  if (value == null) return T.inkFaint;
+  if (value >= 8) return T.danger;
+  if (value >= 7) return T.warning;
+  return T.success;
+}
+
 class _MetricsGrid extends StatelessWidget {
   const _MetricsGrid({required this.summary});
   final PatientSummary summary;
@@ -302,7 +321,7 @@ class _MetricsGrid extends StatelessWidget {
         label: 'Last HbA1c',
         value: p.lastHba1c != null ? p.lastHba1c!.toStringAsFixed(1) : '—',
         unit: p.lastHba1c != null ? '%' : null,
-        color: const Color(0xFF7C3AED),
+        color: _hba1cTone(p.lastHba1c),
         icon: Icons.science_rounded,
       ),
       _Metric(
@@ -312,7 +331,7 @@ class _MetricsGrid extends StatelessWidget {
                 ? p.estimatedHba1c!.toStringAsFixed(1)
                 : '—',
         unit: p.estimatedHba1c != null ? '%' : null,
-        color: const Color(0xFF0EA5E9),
+        color: _hba1cTone(p.estimatedHba1c),
         icon: Icons.auto_graph_rounded,
       ),
     ];
@@ -883,9 +902,22 @@ class _AdherenceRow extends StatelessWidget {
                   ),
                 ),
               ),
-              Text(
-                '${med.taken}/${med.expected}${pct != null ? '  ·  $pct%' : ''}',
-                style: TextStyle(fontSize: 14, color: scheme.onSurfaceVariant),
+              // Right-aligned in a fixed box, with tabular figures. Ragged
+              // against the medicine name, "9/17" and "6/11" refuse to line up
+              // and the column cannot be read down — which is the only way
+              // anyone reads a list of fractions.
+              SizedBox(
+                width: 104,
+                child: Text(
+                  '${med.taken}/${med.expected}${pct != null ? '  ·  $pct%' : ''}',
+                  textAlign: TextAlign.right,
+                  maxLines: 1,
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: scheme.onSurfaceVariant,
+                    fontFeatures: const [FontFeature.tabularFigures()],
+                  ),
+                ),
               ),
             ],
           ),
@@ -1934,7 +1966,11 @@ class _AlertMini extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final color = alertSeverityColor(severity);
+    // The same rule as the alerts screen: severity says how bad it was, status
+    // says whether it still needs anyone. A closed emergency in emergency red
+    // spends the loudest colour in the app on something already dealt with.
+    final settled = status == 'resolved' || status == 'dismissed';
+    final color = settled ? scheme.outline : alertSeverityColor(severity);
     return Container(
       padding: const EdgeInsets.all(AppSpacing.md),
       decoration: BoxDecoration(

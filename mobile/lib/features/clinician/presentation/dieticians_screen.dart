@@ -910,6 +910,14 @@ class _AddDieticianSheetState extends ConsumerState<_AddDieticianSheet> {
                 labelText: 'Password',
                 prefixIcon: const Icon(Icons.lock_outline_rounded),
                 counterText: '',
+                // The rule stated before it is broken. It was only ever shown
+                // as a validation error after a short password had been typed
+                // and submitted, which teaches the requirement by failing the
+                // person rather than by telling them.
+                helperText:
+                    'At least ${AuthValidators.minPasswordLength} characters. '
+                    'They can change it after signing in.',
+                helperMaxLines: 2,
                 suffixIcon: IconButton(
                   onPressed: () => setState(() => _obscure = !_obscure),
                   icon: Icon(

@@ -40,6 +40,20 @@ class _ChatReviewScreenState extends ConsumerState<ChatReviewScreen> {
     kind: 'care',
   );
 
+  /// What the doctor has typed into the search box.
+  String _search = '';
+
+  /// Name match, case-insensitive. A doctor looking for one conversation among
+  /// a clinic's worth of them was scrolling for it — the flagged list is short,
+  /// but "All chats" is every patient who has ever written.
+  List<ChatReviewSession> _filter(List<ChatReviewSession> items) {
+    final q = _search.trim().toLowerCase();
+    if (q.isEmpty) return items;
+    return items
+        .where((s) => (s.patientName ?? '').toLowerCase().contains(q))
+        .toList();
+  }
+
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
@@ -49,23 +63,68 @@ class _ChatReviewScreenState extends ConsumerState<ChatReviewScreen> {
       appBar: AppBar(
         title: const Text('Chat review'),
         bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(52),
+          preferredSize: const Size.fromHeight(108),
           child: Padding(
-            padding: const EdgeInsets.only(bottom: AppSpacing.sm),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
+            padding: const EdgeInsets.fromLTRB(
+              AppSpacing.md,
+              0,
+              AppSpacing.md,
+              AppSpacing.sm,
+            ),
+            child: Column(
               children: [
-                for (final (tab, label) in const [
-                  (_ReviewTab.flagged, 'Flagged'),
-                  (_ReviewTab.all, 'All chats'),
-                ]) ...[
-                  ChoiceChip(
-                    label: Text(label),
-                    selected: _tab == tab,
-                    onSelected: (_) => setState(() => _tab = tab),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    for (final (tab, label) in const [
+                      (_ReviewTab.flagged, 'Flagged'),
+                      (_ReviewTab.all, 'All chats'),
+                    ]) ...[
+                      ChoiceChip(
+                        label: Text(label),
+                        selected: _tab == tab,
+                        onSelected: (_) => setState(() => _tab = tab),
+                      ),
+                      const SizedBox(width: AppSpacing.sm),
+                    ],
+                  ],
+                ),
+                const SizedBox(height: AppSpacing.sm),
+                TextField(
+                  onChanged: (v) => setState(() => _search = v),
+                  style: const TextStyle(fontSize: 15.5),
+                  decoration: InputDecoration(
+                    hintText: 'Search by patient name…',
+                    prefixIcon: Icon(
+                      Icons.search_rounded,
+                      color: scheme.onSurfaceVariant,
+                    ),
+                    suffixIcon:
+                        _search.isEmpty
+                            ? null
+                            : IconButton(
+                              icon: const Icon(Icons.close_rounded),
+                              onPressed: () => setState(() => _search = ''),
+                            ),
+                    filled: true,
+                    fillColor: scheme.surfaceContainerHigh.withValues(
+                      alpha: 0.55,
+                    ),
+                    contentPadding: const EdgeInsets.symmetric(vertical: 12),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(28),
+                      borderSide: BorderSide.none,
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(28),
+                      borderSide: BorderSide.none,
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(28),
+                      borderSide: BorderSide.none,
+                    ),
                   ),
-                  const SizedBox(width: AppSpacing.sm),
-                ],
+                ),
               ],
             ),
           ),
@@ -96,7 +155,8 @@ class _ChatReviewScreenState extends ConsumerState<ChatReviewScreen> {
                   ),
                 ),
             data: (paged) {
-              if (paged.items.isEmpty) {
+              final shown = _filter(paged.items);
+              if (shown.isEmpty) {
                 return ListView(
                   children: [
                     SizedBox(height: MediaQuery.of(context).size.height * 0.2),
@@ -108,10 +168,16 @@ class _ChatReviewScreenState extends ConsumerState<ChatReviewScreen> {
                     const SizedBox(height: AppSpacing.md),
                     Center(
                       child: Text(
-                        switch (_tab) {
-                          _ReviewTab.flagged => 'No flagged conversations',
-                          _ReviewTab.all => 'No conversations',
-                        },
+                        // Says which of the two produced nothing — an empty
+                        // list after typing is a search result, not an empty
+                        // clinic, and confusing the two sends the reader
+                        // looking for a bug.
+                        _search.trim().isNotEmpty
+                            ? 'No patient matches “${_search.trim()}”'
+                            : switch (_tab) {
+                              _ReviewTab.flagged => 'No flagged conversations',
+                              _ReviewTab.all => 'No conversations',
+                            },
                         style: const TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.w600,
@@ -123,7 +189,7 @@ class _ChatReviewScreenState extends ConsumerState<ChatReviewScreen> {
               }
               return ListView.separated(
                 padding: EdgeInsets.zero,
-                itemCount: paged.items.length,
+                itemCount: shown.length,
                 separatorBuilder:
                     (_, _) => Divider(
                       height: 1,
@@ -132,10 +198,10 @@ class _ChatReviewScreenState extends ConsumerState<ChatReviewScreen> {
                     ),
                 itemBuilder:
                     (context, i) => _SessionRow(
-                      session: paged.items[i],
+                      session: shown[i],
                       onTap:
                           () => context.push(
-                            '/clinician/chat-review/${paged.items[i].id}',
+                            '/clinician/chat-review/${shown[i].id}',
                           ),
                       onCleared:
                           () => ref.invalidate(chatReviewProvider(_query)),

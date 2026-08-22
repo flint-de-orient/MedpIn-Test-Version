@@ -38,7 +38,21 @@ class _ExportScreenState extends ConsumerState<ExportScreen> {
     ExportDataset.summary,
   };
   ExportFormat _format = ExportFormat.csv;
+
+  /// How far back the time-series data goes. Null means everything.
+  ///
+  /// Applies to alerts, which is the only dataset here with a time dimension —
+  /// the patient list is the current roll, and trimming it by date would hand
+  /// somebody a "patient export" quietly missing patients.
+  int? _sinceDays = 90;
   bool _busy = false;
+
+  static const _ranges = <(int?, String)>[
+    (30, 'Last 30 days'),
+    (90, 'Last 90 days'),
+    (365, 'Last year'),
+    (null, 'Everything'),
+  ];
 
   Future<void> _export() async {
     if (_selected.isEmpty || _busy) return;
@@ -55,9 +69,19 @@ class _ExportScreenState extends ConsumerState<ExportScreen> {
           _selected.contains(ExportDataset.patients)
               ? await _allPatients(repo)
               : const <PatientListItem>[];
+      final since =
+          _sinceDays == null
+              ? null
+              : DateTime.now().subtract(Duration(days: _sinceDays!));
       final alerts =
           _selected.contains(ExportDataset.alerts)
               ? (await repo.alerts(status: 'open', limit: 200)).items
+                  .where(
+                    (a) =>
+                        since == null ||
+                        (a.createdAt ?? DateTime.now()).isAfter(since),
+                  )
+                  .toList()
               : const <ClinicalAlert>[];
       final overview =
           _selected.contains(ExportDataset.summary)
@@ -161,6 +185,22 @@ class _ExportScreenState extends ConsumerState<ExportScreen> {
                 ],
 
                 const SizedBox(height: AppSpacing.md),
+                // Before Format, because it changes what is in the file
+                // rather than how the file is written.
+                const _Label('Alerts from'),
+                Wrap(
+                  spacing: AppSpacing.sm,
+                  runSpacing: AppSpacing.sm,
+                  children: [
+                    for (final (days, label) in _ranges)
+                      ChoiceChip(
+                        label: Text(label),
+                        selected: _sinceDays == days,
+                        onSelected: (_) => setState(() => _sinceDays = days),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: AppSpacing.lg),
                 const _Label('Format'),
                 const SizedBox(height: AppSpacing.sm),
                 Row(

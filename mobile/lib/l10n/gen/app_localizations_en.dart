@@ -849,7 +849,8 @@ class AppLocalizationsEn extends AppLocalizations {
   String get profileAppLock => 'App lock';
 
   @override
-  String get profileAppLockSub => 'Require unlock to open the app';
+  String get profileAppLockSub =>
+      'Require your fingerprint, face or device PIN to open the app';
 
   @override
   String get notifMedicationReminders => 'Medication reminders';

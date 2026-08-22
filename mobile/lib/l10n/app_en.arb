@@ -323,7 +323,7 @@
   "profileHealthDetails": "Health details",
   "profileGlucoseUnit": "Glucose unit",
   "profileAppLock": "App lock",
-  "profileAppLockSub": "Require unlock to open the app",
+  "profileAppLockSub": "Require your fingerprint, face or device PIN to open the app",
   "notifMedicationReminders": "Medication reminders",
   "notifMedicationRemindersSub": "Nudge me when a dose is due",
   "notifAppointmentAlerts": "Appointment reminders",

@@ -850,7 +850,8 @@ class AppLocalizationsHi extends AppLocalizations {
   String get profileAppLock => 'ऐप लॉक';
 
   @override
-  String get profileAppLockSub => 'ऐप खोलने के लिए अनलॉक ज़रूरी';
+  String get profileAppLockSub =>
+      'ऐप खोलने के लिए फ़िंगरप्रिंट, चेहरा या डिवाइस पिन ज़रूरी';
 
   @override
   String get notifMedicationReminders => 'दवा अनुस्मारक';
