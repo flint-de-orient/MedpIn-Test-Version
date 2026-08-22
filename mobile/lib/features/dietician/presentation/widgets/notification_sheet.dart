@@ -38,13 +38,23 @@ class _NotificationSheet extends ConsumerStatefulWidget {
 class _NotificationSheetState extends ConsumerState<_NotificationSheet> {
   bool _marked = false;
 
-  /// Captured while the sheet is alive, because the mark happens as it closes
-  /// and `ref` is not usable once this State has been disposed.
-  late final DieticianRepository _repo = ref.read(dieticianRepositoryProvider);
-  late final ProviderContainer _container = ProviderScope.containerOf(
-    context,
-    listen: false,
-  );
+  /// Captured in initState, not lazily.
+  ///
+  /// The mark happens as the sheet closes, and both of these have to already
+  /// exist by then: `late final` would have run its initialiser inside
+  /// dispose() on the ordinary path — open the sheet, read it, swipe it away
+  /// without tapping anything — and reading a provider or walking to the
+  /// ProviderScope through a context that is being unmounted is exactly what
+  /// Flutter asserts against. The badge would have quietly stopped clearing.
+  late final DieticianRepository _repo;
+  late final ProviderContainer _container;
+
+  @override
+  void initState() {
+    super.initState();
+    _repo = ref.read(dieticianRepositoryProvider);
+    _container = ProviderScope.containerOf(context, listen: false);
+  }
 
   @override
   void dispose() {
