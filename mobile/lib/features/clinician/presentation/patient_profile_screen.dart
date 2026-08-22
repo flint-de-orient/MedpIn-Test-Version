@@ -1692,13 +1692,26 @@ class _CurrentMedicines extends ConsumerWidget {
 }
 
 /// What has already been ordered for this patient, and what has come back.
-class _TestHistory extends StatelessWidget {
+class _TestHistory extends StatefulWidget {
   const _TestHistory({required this.summary});
 
   final PatientSummary summary;
 
   @override
+  State<_TestHistory> createState() => _TestHistoryState();
+}
+
+class _TestHistoryState extends State<_TestHistory> {
+  /// Four each, like the HbA1c history on the record screen. Eleven ordered
+  /// tests above ten uploaded reports filled the card several times over, and
+  /// everything under it — the advice, the follow-up — went below the fold.
+  static const _cap = 4;
+  bool _allOrdered = false;
+  bool _allUploaded = false;
+
+  @override
   Widget build(BuildContext context) {
+    final summary = widget.summary;
     final scheme = Theme.of(context).colorScheme;
     final advised = summary.advisedTests;
     final reports = summary.labResults;
@@ -1732,18 +1745,63 @@ class _TestHistory extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           if (advised.isNotEmpty) ...[
-            _MicroHeading('TESTS ORDERED', count: advised.length),
+            Row(
+              children: [
+                Expanded(
+                  child: _MicroHeading('TESTS ORDERED', count: advised.length),
+                ),
+                if (advised.length > _cap)
+                  TextButton(
+                    onPressed: () => setState(() => _allOrdered = !_allOrdered),
+                    style: TextButton.styleFrom(
+                      visualDensity: VisualDensity.compact,
+                      padding: const EdgeInsets.symmetric(horizontal: 6),
+                    ),
+                    child: Text(
+                      _allOrdered
+                          ? 'Show less'
+                          : 'View all (${advised.length})',
+                      style: const TextStyle(fontSize: 13),
+                    ),
+                  ),
+              ],
+            ),
             const SizedBox(height: AppSpacing.sm),
-            for (final t in advised) _LabTestRow(test: t, report: reportFor(t)),
+            for (final t in (_allOrdered ? advised : advised.take(_cap)))
+              _LabTestRow(test: t, report: reportFor(t)),
             const SizedBox(height: AppSpacing.sm),
           ],
           if (unmatched.isNotEmpty) ...[
             // Reports the patient uploaded against nothing the clinic ordered.
             // Worth surfacing on their own — an outside test the doctor never
             // asked for is exactly the sort of thing that goes unread.
-            _MicroHeading('ALSO UPLOADED', count: unmatched.length),
+            Row(
+              children: [
+                Expanded(
+                  child: _MicroHeading(
+                    'ALSO UPLOADED',
+                    count: unmatched.length,
+                  ),
+                ),
+                if (unmatched.length > _cap)
+                  TextButton(
+                    onPressed:
+                        () => setState(() => _allUploaded = !_allUploaded),
+                    style: TextButton.styleFrom(
+                      visualDensity: VisualDensity.compact,
+                      padding: const EdgeInsets.symmetric(horizontal: 6),
+                    ),
+                    child: Text(
+                      _allUploaded
+                          ? 'Show less'
+                          : 'View all (${unmatched.length})',
+                      style: const TextStyle(fontSize: 13),
+                    ),
+                  ),
+              ],
+            ),
             const SizedBox(height: AppSpacing.sm),
-            for (final r in unmatched.take(8))
+            for (final r in (_allUploaded ? unmatched : unmatched.take(_cap)))
               _LabTestRow(test: r.testName, report: r),
             const SizedBox(height: AppSpacing.sm),
           ],

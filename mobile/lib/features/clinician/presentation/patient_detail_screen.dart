@@ -70,13 +70,28 @@ class PatientRecordSections extends ConsumerWidget {
         ],
         if (p.labResults.isNotEmpty) ...[
           const SizedBox(height: AppSpacing.lg),
-          const _SectionTitle('Test reports'),
+          Row(
+            children: [
+              const Expanded(child: _SectionTitle('Test reports')),
+              if (p.labResults.length > 4)
+                TextButton(
+                  onPressed: () => _showAllReports(context, p.labResults),
+                  child: Text('View all (${p.labResults.length})'),
+                ),
+            ],
+          ),
           const SizedBox(height: AppSpacing.sm),
-          for (final r in p.labResults.take(12))
+          // Latest four, like the HbA1c history above it. Ten reports each
+          // carrying a summary and a row of analyte chips ran to several
+          // screens, and pushed the alerts and the consultation history below
+          // them out of sight entirely.
+          for (final r in p.labResults.take(4))
             Padding(
               padding: const EdgeInsets.only(bottom: AppSpacing.sm),
               child: _LabReportRow(report: r),
             ),
+          // Trends read every report, not just the four on show: a trend drawn
+          // from a quarter of the data would be a different trend.
           _AnalyteTrends(reports: p.labResults),
         ],
         if (p.alerts.isNotEmpty) ...[
@@ -100,6 +115,40 @@ class PatientRecordSections extends ConsumerWidget {
           _AiContextCard(text: p.aiContext!),
         ],
       ],
+    );
+  }
+
+  /// Every uploaded report, in the same sheet the HbA1c history uses.
+  void _showAllReports(BuildContext context, List<LabReport> reports) {
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder:
+          (ctx) => DraggableScrollableSheet(
+            expand: false,
+            initialChildSize: 0.7,
+            maxChildSize: 0.95,
+            builder:
+                (ctx, controller) => ListView(
+                  controller: controller,
+                  padding: const EdgeInsets.fromLTRB(
+                    AppSpacing.md,
+                    0,
+                    AppSpacing.md,
+                    AppSpacing.lg,
+                  ),
+                  children: [
+                    const _SectionTitle('Test reports'),
+                    const SizedBox(height: AppSpacing.md),
+                    for (final r in reports)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: AppSpacing.sm),
+                        child: _LabReportRow(report: r),
+                      ),
+                  ],
+                ),
+          ),
     );
   }
 
