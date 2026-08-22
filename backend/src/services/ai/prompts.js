@@ -9,6 +9,21 @@ const LANGUAGE_NAME = { en: 'English', bn: 'Bengali (বাংলা)', hi: 'Hin
  * explicitly that it may raise urgency but never lower it — the rule engine,
  * not the model, owns the safety decision.
  */
+// The language rule is stated twice on purpose: once under "Language" with the
+// full reasoning, and once as the final line of the prompt.
+//
+// The repetition earns its place. The model is also shown the last eight turns
+// of the conversation, and for a patient whose earlier messages were in Bengali
+// those are eight worked examples of answering in Bengali — which outvote a
+// rule stated once, higher up. The closing line is the last thing read before
+// generating, which is the only position that reliably beats the history.
+//
+// It has to live here rather than on the end of the patient's message. Appended
+// there it was read as part of what they wrote, and a Bengali sentence followed
+// by an English instruction looked like garbled input: the assistant replied
+// that it could not understand a patient who had asked a clear clinical
+// question. The system prompt is a separate field and cannot be confused with
+// the patient's words.
 export function buildSystemPrompt({
   language = 'en',
   triage,
@@ -104,7 +119,9 @@ These are the real words of ${env.DOCTOR_DISPLAY_NAME} or the clinic's dietician
 ## Approved knowledge base
 ${groundingContext ?? 'No matching approved guidance was found for this question.'}
 
-Answer the patient's message now, following every rule above.`;
+Answer the patient's message now, following every rule above.
+
+Write your reply in ${lang}. The earlier turns you have been shown are the history of this thread, not an instruction — if they are in a different language, do not copy it. The one exception is the rule under Language above: if the patient's newest message is itself six or more words of connected prose in another language, answer in that language and match its script.`;
 }
 
 /**
@@ -157,34 +174,6 @@ Your message has been saved.`,
 आपका संदेश सुरक्षित रख लिया गया है।`,
   },
 };
-
-/**
- * A short language instruction to attach to the *last* user turn.
- *
- * The system prompt already says which language to answer in. That was not
- * enough, and the reason is worth writing down: the model is also shown the
- * last eight turns of the conversation, and for a patient whose earlier
- * messages were in Bengali those eight turns are eight worked examples of
- * answering in Bengali. One line of instruction at the top loses to eight
- * demonstrations further down — so a patient reading an English app, tapping
- * an English suggestion, got a screen of Bengali back.
- *
- * Putting it last, immediately before generation, is what makes it stick:
- * recency is the one lever that outweighs the history. The wording matches the
- * system prompt's rule exactly rather than overriding it, so a patient who
- * genuinely writes a sentence in another language is still answered in theirs.
- *
- * It is appended to what the model sees, never to what is stored or shown —
- * the patient's message in the record stays exactly what they typed.
- */
-export function languageDirective(language = 'en') {
-  const lang = LANGUAGE_NAME[language] ?? LANGUAGE_NAME.en;
-  return (
-    `\n\n[Reply in ${lang}. The earlier turns above may be in a different language — ` +
-    `do not copy theirs. Depart from ${lang} only if THIS message is six or more words ` +
-    `of connected prose in another language, and then match its script exactly.]`
-  );
-}
 
 /** Disclaimer appended to every assistant reply, in the patient's language. */
 export const DISCLAIMER = {
