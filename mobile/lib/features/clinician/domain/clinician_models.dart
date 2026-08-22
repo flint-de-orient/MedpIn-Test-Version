@@ -11,6 +11,7 @@ class ClinicOverview {
     required this.pendingReviews,
     required this.unreadMessages,
     this.unreadNutrition = 0,
+    this.urgentUnread = 0,
     required this.emergencyAlerts,
     required this.urgentAlerts,
     required this.warningAlerts,
@@ -44,6 +45,12 @@ class ClinicOverview {
   /// How many of [unreadMessages] are in a nutrition thread — which the doctor
   /// reaches through Chat review, not the Patients tab.
   final int unreadNutrition;
+
+  /// How many unread messages the patient marked urgent or an emergency.
+  ///
+  /// Defaults to zero, so a server that predates the field simply shows no
+  /// urgency note rather than an incorrect one.
+  final int urgentUnread;
 
   final int emergencyAlerts;
   final int urgentAlerts;
@@ -92,6 +99,7 @@ class ClinicOverview {
       pendingReviews: n(j['pendingReviews']),
       unreadMessages: n(j['unreadMessages']),
       unreadNutrition: n(j['unreadNutrition']),
+      urgentUnread: n(j['urgentUnread']),
       emergencyAlerts: n(alerts['emergency']),
       urgentAlerts: n(alerts['urgent']),
       warningAlerts: n(alerts['warning']),
@@ -367,6 +375,8 @@ class NutritionReview {
     required this.intervalDays,
     required this.mealsThisWeek,
     this.lastLogAt,
+    this.avatarUrl,
+    this.lastLogPhotoUrl,
     this.nutritionSessionId,
   });
 
@@ -381,6 +391,13 @@ class NutritionReview {
   final int intervalDays;
   final int mealsThisWeek;
   final DateTime? lastLogAt;
+
+  /// The patient's face, and the last meal they photographed.
+  ///
+  /// Both null on a server that predates them, and the card falls back to an
+  /// initial and a plain icon — never to a broken image.
+  final String? avatarUrl;
+  final String? lastLogPhotoUrl;
 
   bool get isDue => intervalDays > 0 && day >= intervalDays;
 

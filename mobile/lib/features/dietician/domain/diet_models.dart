@@ -617,15 +617,19 @@ class DietDashboard {
   final List<DietPatientBrief> plansMissingList;
   final List<DietRecentLog> recentLogs;
 
-  /// The most recent meal from each patient, newest first.
+  /// The meals to show on the home grid: as many different patients as
+  /// possible, then topped up to [want] with whatever is next-newest.
   ///
-  /// The raw feed is chronological, so a patient who photographed breakfast,
-  /// lunch and a snack filled the whole grid on their own — four plates that
-  /// looked like a cross-section of the caseload but were one person's
-  /// Tuesday. One per patient makes "latest meals" mean what it says.
-  List<DietRecentLog> get recentLogsByPatient {
-    final seen = <String>{};
-    final out = <DietRecentLog>[];
+  /// Two failures to avoid, and they pull in opposite directions. Straight
+  /// chronological, a patient who photographed breakfast, lunch and a snack
+  /// filled the whole grid on their own — four plates that looked like a
+  /// cross-section of the caseload but were one person's Tuesday. Strictly one
+  /// per patient, a clinic where only one person logs showed a single tile
+  /// beside a wide empty space.
+  ///
+  /// So: one pass for breadth, a second to fill. A busy caseload gets four
+  /// different patients; a quiet one still gets a full grid.
+  List<DietRecentLog> recentLogsForGrid([int want = 4]) {
     final sorted = [...recentLogs]..sort((a, b) {
       final at = a.createdAt, bt = b.createdAt;
       if (at == null && bt == null) return 0;
@@ -633,8 +637,19 @@ class DietDashboard {
       if (bt == null) return -1;
       return bt.compareTo(at);
     });
+
+    final seen = <String>{};
+    final out = <DietRecentLog>[];
     for (final log in sorted) {
+      if (out.length == want) break;
       if (seen.add(log.patientId)) out.add(log);
+    }
+    if (out.length < want) {
+      final taken = out.map((l) => l.id).toSet();
+      for (final log in sorted) {
+        if (out.length == want) break;
+        if (taken.add(log.id)) out.add(log);
+      }
     }
     return out;
   }

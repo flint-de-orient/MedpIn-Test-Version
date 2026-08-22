@@ -74,7 +74,10 @@ enum Triage {
   }
 
   if (a1c != null && a1c >= 7) {
-    return (text: 'HbA1c ${a1c.toStringAsFixed(1)}% — above target', urgent: false);
+    return (
+      text: 'HbA1c ${a1c.toStringAsFixed(1)}% — above target',
+      urgent: false,
+    );
   }
   if (delta != null && delta < 0) {
     return (text: 'Average down ${-delta} mg/dL', urgent: false);
@@ -98,7 +101,11 @@ String lastSeenLabel(DateTime? at) {
 
 /// The clinical queue: who needs the doctor, worst first.
 class TriageQueue extends StatelessWidget {
-  const TriageQueue({super.key, required this.patients, required this.updatedAt});
+  const TriageQueue({
+    super.key,
+    required this.patients,
+    required this.updatedAt,
+  });
 
   final List<PatientListItem> patients;
 
@@ -114,7 +121,9 @@ class TriageQueue extends StatelessWidget {
     // reads top-down and stops when they run out of time, so the order has to
     // survive that.
     final sorted = [...patients]..sort((a, b) {
-      final byBand = Triage.of(a.riskBand).index.compareTo(Triage.of(b.riskBand).index);
+      final byBand = Triage.of(
+        a.riskBand,
+      ).index.compareTo(Triage.of(b.riskBand).index);
       if (byBand != 0) return byBand;
       final byAlerts = b.openAlertCount.compareTo(a.openAlertCount);
       if (byAlerts != 0) return byAlerts;
@@ -125,7 +134,8 @@ class TriageQueue extends StatelessWidget {
       for (final t in Triage.values)
         t: patients.where((p) => Triage.of(p.riskBand) == t).length,
     };
-    final needing = (counts[Triage.critical] ?? 0) +
+    final needing =
+        (counts[Triage.critical] ?? 0) +
         (counts[Triage.high] ?? 0) +
         (counts[Triage.moderate] ?? 0);
 
@@ -144,40 +154,40 @@ class TriageQueue extends StatelessWidget {
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                // The mark for the section, in the severity red it is about.
+                // A bare 8px dot beside the title read as a bullet point.
+                Container(
+                  width: 38,
+                  height: 38,
+                  decoration: BoxDecoration(
+                    color: T.danger,
+                    borderRadius: BorderRadius.circular(11),
+                  ),
+                  child: const Icon(
+                    Icons.monitor_heart_rounded,
+                    size: 21,
+                    color: Colors.white,
+                  ),
+                ),
+                const SizedBox(width: T.s3),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Row(
-                        children: [
-                          Container(
-                            width: 8,
-                            height: 8,
-                            decoration: const BoxDecoration(
-                              color: T.danger,
-                              shape: BoxShape.circle,
-                            ),
-                          ),
-                          const SizedBox(width: T.s2),
-                          Text('Live Triage', style: T.title.copyWith(color: T.ink)),
-                          const SizedBox(width: T.s2),
-                          // Freshness, said plainly. A queue claiming to be live
-                          // owes the reader the time it was last true.
-                          Flexible(
-                            child: Text(
-                              '· ${_freshness(updatedAt)}',
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: T.small.copyWith(color: T.inkFaint),
-                            ),
-                          ),
-                        ],
+                      Text(
+                        'Live Triage',
+                        style: T.title.copyWith(color: T.ink),
                       ),
-                      const SizedBox(height: 2),
+                      const SizedBox(height: 1),
+                      // What the section is for, not a count — the counts are
+                      // the strip directly underneath, and saying "3 patients
+                      // require attention" immediately above "1 Critical 2
+                      // High" was the same fact twice in two shapes.
                       Text(
                         needing == 0
                             ? 'Nobody needs immediate attention'
-                            : '$needing ${needing == 1 ? 'patient requires' : 'patients require'} attention',
+                            : 'Patients requiring immediate attention',
+                        maxLines: 2,
                         style: T.small.copyWith(color: T.inkMuted),
                       ),
                     ],
@@ -189,7 +199,14 @@ class TriageQueue extends StatelessWidget {
                     foregroundColor: T.primary,
                     visualDensity: VisualDensity.compact,
                   ),
-                  child: const Text('View all'),
+                  child: const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text('View all'),
+                      SizedBox(width: 4),
+                      Icon(Icons.arrow_forward_rounded, size: 15),
+                    ],
+                  ),
                 ),
               ],
             ),
@@ -206,14 +223,31 @@ class TriageQueue extends StatelessWidget {
                 borderRadius: BorderRadius.circular(12),
                 border: Border.all(color: T.line),
               ),
-              child: Row(
-                children: [
-                  for (final t in [Triage.critical, Triage.high, Triage.moderate]) ...[
-                    if (t != Triage.critical)
-                      Container(width: 1, height: 30, color: T.line),
-                    Expanded(child: _SeverityCount(level: t, count: counts[t] ?? 0)),
+              child: IntrinsicHeight(
+                child: Row(
+                  children: [
+                    for (final t in [
+                      Triage.critical,
+                      Triage.high,
+                      Triage.moderate,
+                    ]) ...[
+                      if (t != Triage.critical)
+                        Container(width: 1, height: 30, color: T.line),
+                      Expanded(
+                        child: _SeverityCount(level: t, count: counts[t] ?? 0),
+                      ),
+                    ],
+                    Container(width: 1, height: 30, color: T.line),
+                    // The roll, so the three severities above are read as a
+                    // breakdown of something rather than as three loose counts.
+                    Expanded(
+                      child: _SeverityCount(
+                        level: null,
+                        count: patients.length,
+                      ),
+                    ),
                   ],
-                ],
+                ),
               ),
             ),
           ),
@@ -252,58 +286,56 @@ class TriageQueue extends StatelessWidget {
       ),
     );
   }
-
-  static String _freshness(DateTime at) {
-    final d = DateTime.now().difference(at);
-    if (d.inSeconds < 45) return 'Updated just now';
-    if (d.inMinutes < 60) return 'Updated ${d.inMinutes}m ago';
-    return 'Updated ${d.inHours}h ago';
-  }
 }
 
 class _SeverityCount extends StatelessWidget {
   const _SeverityCount({required this.level, required this.count});
 
-  final Triage level;
+  /// The severity this cell counts, or null for the roll-up total.
+  final Triage? level;
   final int count;
 
   @override
   Widget build(BuildContext context) {
-    // Greyed at zero. A red badge showing "0 critical" is a false alarm every
-    // time the doctor glances at it.
-    final on = count == 0 ? T.inkFaint : level.tone;
+    final lvl = level;
+    // The number carries the colour and the label stays quiet underneath.
+    // Side by side in a disc, four cells could not fit on a phone without the
+    // labels ellipsising to "Crit…" — and the number is what is being read.
+    //
+    // Greyed at zero: a red "0 critical" is a false alarm every time the
+    // doctor glances at it. The total is navy whatever it says, because it is
+    // a count of patients rather than a severity.
+    final on =
+        lvl == null
+            ? T.ink
+            : count == 0
+            ? T.inkFaint
+            : lvl.tone;
+
     return Tooltip(
-      message: '${level.label}: ${level.meaning}',
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Container(
-            width: 30,
-            height: 30,
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-              color: count == 0 ? T.surfaceRaised : on,
-              shape: BoxShape.circle,
-              border: count == 0 ? Border.all(color: T.line) : null,
-            ),
-            child: Text(
+      message:
+          lvl == null
+              ? 'Everyone on the triage list'
+              : '${lvl.label}: ${lvl.meaning}',
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 2),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
               '$count',
-              style: T.label.copyWith(
-                color: count == 0 ? T.inkFaint : Colors.white,
-                fontSize: 13,
-              ),
+              style: T.display.copyWith(fontSize: 22, color: on, height: 1.1),
             ),
-          ),
-          const SizedBox(width: T.s2),
-          Flexible(
-            child: Text(
-              level.label,
+            const SizedBox(height: 1),
+            Text(
+              lvl?.label ?? 'Total',
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: T.small.copyWith(color: T.inkMuted),
+              textAlign: TextAlign.center,
+              style: T.small.copyWith(color: T.inkMuted, fontSize: 12),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -319,7 +351,10 @@ class _TriageRow extends StatelessWidget {
     final p = patient;
     final level = Triage.of(p.riskBand);
     final reason = triageReason(p);
-    final act = level == Triage.critical || level == Triage.high || p.openAlertCount > 0;
+    final act =
+        level == Triage.critical ||
+        level == Triage.high ||
+        p.openAlertCount > 0;
 
     return InkWell(
       onTap: () => context.push('/clinician/patients/${p.id}', extra: p.name),
@@ -330,7 +365,12 @@ class _TriageRow extends StatelessWidget {
             Stack(
               clipBehavior: Clip.none,
               children: [
-                UserAvatar(name: p.name, avatarUrl: p.avatarUrl, accent: T.primary, size: 40),
+                UserAvatar(
+                  name: p.name,
+                  avatarUrl: p.avatarUrl,
+                  accent: T.primary,
+                  size: 40,
+                ),
                 // The severity dot rides on the face, so a scan down the column
                 // reads the levels without reading the words.
                 Positioned(
@@ -379,7 +419,8 @@ class _TriageRow extends StatelessWidget {
                     overflow: TextOverflow.ellipsis,
                     style: T.small.copyWith(
                       color: reason.urgent ? T.danger : T.inkMuted,
-                      fontWeight: reason.urgent ? FontWeight.w600 : FontWeight.w400,
+                      fontWeight:
+                          reason.urgent ? FontWeight.w600 : FontWeight.w400,
                     ),
                   ),
                 ],
@@ -420,7 +461,11 @@ class _TriageRow extends StatelessWidget {
 }
 
 class _RowAction extends StatelessWidget {
-  const _RowAction({required this.act, required this.patientId, required this.name});
+  const _RowAction({
+    required this.act,
+    required this.patientId,
+    required this.name,
+  });
 
   final bool act;
   final String patientId;
@@ -432,7 +477,8 @@ class _RowAction extends StatelessWidget {
     // rows that need work say Review, the rest say View. Two filled buttons of
     // equal weight on every row is the same as none.
     return TextButton(
-      onPressed: () => context.push('/clinician/patients/$patientId', extra: name),
+      onPressed:
+          () => context.push('/clinician/patients/$patientId', extra: name),
       style: TextButton.styleFrom(
         backgroundColor: act ? T.dangerTint : T.primaryTint,
         foregroundColor: act ? T.danger : T.primary,
@@ -440,7 +486,10 @@ class _RowAction extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: T.s3, vertical: T.s2),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
       ),
-      child: Text(act ? 'Review' : 'View', style: T.label.copyWith(fontSize: 12.5)),
+      child: Text(
+        act ? 'Review' : 'View',
+        style: T.label.copyWith(fontSize: 12.5),
+      ),
     );
   }
 }
@@ -503,10 +552,24 @@ class _SparkPainter extends CustomPainter {
     );
 
     // The newest value, marked. Which end is "now" is otherwise a guess.
-    final lastY = size.height - 3 - ((values.last - lo) / span) * (size.height - 6);
+    final lastY =
+        size.height - 3 - ((values.last - lo) / span) * (size.height - 6);
     canvas.drawCircle(Offset(size.width, lastY), 2.4, Paint()..color = color);
   }
 
   @override
-  bool shouldRepaint(_SparkPainter old) => old.values != values || old.color != color;
+  bool shouldRepaint(_SparkPainter old) =>
+      old.values != values || old.color != color;
+}
+
+/// How current the screen is, in words.
+///
+/// Shared by the dashboard header and anything else that has to say when its
+/// figures were last true — a queue that calls itself live owes the reader
+/// that, and two places computing it separately is two places to drift.
+String freshnessLabel(DateTime at) {
+  final d = DateTime.now().difference(at);
+  if (d.inSeconds < 45) return 'Updated just now';
+  if (d.inMinutes < 60) return 'Updated ${d.inMinutes}m ago';
+  return 'Updated ${d.inHours}h ago';
 }

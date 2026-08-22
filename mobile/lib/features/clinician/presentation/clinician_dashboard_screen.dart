@@ -41,6 +41,10 @@ class _ClinicianDashboardScreenState
   /// loud — a queue calling itself live owes the reader the time it was true.
   DateTime _lastRefreshed = DateTime.now();
 
+  /// The snapshot's window, in days. Fourteen by default: long enough for a
+  /// trend to mean something, short enough that a change last week still shows.
+  int _days = 14;
+
   AlertsQuery get _alertsQuery => (status: 'open', severity: null);
 
   @override
@@ -67,7 +71,7 @@ class _ClinicianDashboardScreenState
   void _refresh() {
     if (mounted) setState(() => _lastRefreshed = DateTime.now());
     ref.invalidate(overviewProvider);
-    ref.invalidate(clinicAnalyticsProvider);
+    ref.invalidate(clinicAnalyticsProvider(_days));
     ref.invalidate(attentionPatientsProvider);
     ref.invalidate(alertsProvider(_alertsQuery));
   }
@@ -78,7 +82,7 @@ class _ClinicianDashboardScreenState
     // loading, and reading the last value keeps the screen from flashing a
     // spinner every twenty seconds.
     final overview = ref.watch(overviewProvider).valueOrNull;
-    final analytics = ref.watch(clinicAnalyticsProvider).valueOrNull;
+    final analytics = ref.watch(clinicAnalyticsProvider(_days)).valueOrNull;
     final attention =
         ref.watch(attentionPatientsProvider).valueOrNull ??
         const <PatientListItem>[];
@@ -95,7 +99,7 @@ class _ClinicianDashboardScreenState
         bottom: false,
         child: Column(
           children: [
-            const _DashboardHeader(),
+            _DashboardHeader(updatedAt: _lastRefreshed),
             Expanded(
               child:
                   loading
@@ -132,7 +136,11 @@ class _ClinicianDashboardScreenState
                             // "who needs me now". A doctor does not open this to
                             // learn they have seven patients.
                             if (analytics != null) ...[
-                              ClinicSnapshot(analytics: analytics),
+                              ClinicSnapshot(
+                                analytics: analytics,
+                                days: _days,
+                                onDaysChanged: (d) => setState(() => _days = d),
+                              ),
                               const SizedBox(height: T.s6),
                             ],
 
@@ -142,32 +150,89 @@ class _ClinicianDashboardScreenState
                               updatedAt: _lastRefreshed,
                             ),
 
-                            // 2. Operational: what is queued up.
-                            if (overview != null && analytics != null) ...[
+                            // 2 and 3. What is queued up, and the nutrition
+                            // reviews. Side by side on a tablet, stacked on a
+                            // phone: the design pairs them across one row, and
+                            // a 2x2 tile grid next to a list of patients does
+                            // not survive 360dp of width.
+                            //
+                            // The nutrition card is shown whenever the overview
+                            // loaded, empty list or not: it says "Nothing due
+                            // for review" on its own, and the isNotEmpty guard
+                            // that used to be here meant that line could never
+                            // be read.
+                            if (overview != null) ...[
                               const SizedBox(height: T.s6),
-                              ActionQueue(
-                                overview: overview,
-                                analytics: analytics,
-                              ),
-                            ],
-
-                            // 3. The nutrition queue, as a queue rather than a
-                            // count of "messages" — the work is a review.
-                            if (overview != null &&
-                                overview.nutritionReviews.isNotEmpty) ...[
-                              const SizedBox(height: T.s6),
-                              NutritionReviewQueue(
-                                reviews: overview.nutritionReviews,
+                              LayoutBuilder(
+                                builder: (context, c) {
+                                  final queue =
+                                      analytics == null
+                                          ? null
+                                          : ActionQueue(
+                                            overview: overview,
+                                            analytics: analytics,
+                                          );
+                                  final nutrition = NutritionReviewQueue(
+                                    reviews: overview.nutritionReviews,
+                                  );
+                                  if (c.maxWidth >= 620 && queue != null) {
+                                    return IntrinsicHeight(
+                                      child: Row(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.stretch,
+                                        children: [
+                                          Expanded(child: queue),
+                                          const SizedBox(width: T.s4),
+                                          Expanded(child: nutrition),
+                                        ],
+                                      ),
+                                    );
+                                  }
+                                  return Column(
+                                    children: [
+                                      if (queue != null) ...[
+                                        queue,
+                                        const SizedBox(height: T.s6),
+                                      ],
+                                      nutrition,
+                                    ],
+                                  );
+                                },
                               ),
                             ],
 
                             // 4. Alerts that have already been raised, last:
                             // they are a record of what the queue above has
                             // already surfaced.
-                            if (alerts.isNotEmpty) ...[
-                              const SizedBox(height: T.s6),
-                              _TriageQueue(alerts: alerts),
-                            ],
+                            //
+                            // Rendered whether or not there are any. It has an
+                            // "all clear" state built into it, and the
+                            // `alerts.isNotEmpty` guard that used to be here
+                            // meant that state could never appear — the
+                            // section simply vanished, which reads as a screen
+                            // that failed to finish rather than as a clinic
+                            // with nothing outstanding.
+                            const SizedBox(height: T.s6),
+                            _TriageQueue(alerts: alerts),
+
+                            // 5. What the clinic has been doing. Context rather
+                            // than work, so it sits under everything that needs
+                            // doing and never competes with the triage queue.
+                            Builder(
+                              builder: (context) {
+                                final events = LiveActivity.from(
+                                  patients: attention,
+                                  reviews:
+                                      overview?.nutritionReviews ?? const [],
+                                );
+                                if (events.isEmpty)
+                                  return const SizedBox.shrink();
+                                return Padding(
+                                  padding: const EdgeInsets.only(top: T.s6),
+                                  child: LiveActivity(events: events),
+                                );
+                              },
+                            ),
                           ],
                         ),
                       ),
@@ -182,63 +247,168 @@ class _ClinicianDashboardScreenState
 // ---- Header ---------------------------------------------------------------
 
 class _DashboardHeader extends ConsumerWidget {
-  const _DashboardHeader();
+  const _DashboardHeader({required this.updatedAt});
+
+  /// When the figures below were last refreshed. It belongs here rather than
+  /// inside the triage card: it is true of the whole screen, and stating it
+  /// once at the top stops each section having to claim its own freshness.
+  final DateTime updatedAt;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final scheme = Theme.of(context).colorScheme;
     final user = ref.watch(authControllerProvider).user;
+
+    // Qualifications under the name, where a clinician's identity normally
+    // sits. Falls back to the role when the profile has none, so the line is
+    // never blank.
+    final creds =
+        (user?.qualifications?.trim().isNotEmpty ?? false)
+            ? user!.qualifications!.trim()
+            : (user?.role == 'doctor' ? 'Doctor' : 'Clinic staff');
+
     return Container(
-      padding: const EdgeInsets.fromLTRB(
-        AppSpacing.md,
-        AppSpacing.sm,
-        AppSpacing.md,
-        AppSpacing.md,
+      padding: const EdgeInsets.fromLTRB(T.s4, T.s2, T.s4, T.s3),
+      decoration: const BoxDecoration(
+        border: Border(bottom: BorderSide(color: T.line)),
       ),
-      decoration: BoxDecoration(
-        border: Border(
-          bottom: BorderSide(
-            color: scheme.outlineVariant.withValues(alpha: 0.5),
-          ),
-        ),
-      ),
-      child: Row(
+      child: Column(
         children: [
-          Image.asset(
-            'assets/brand/medpin_emblem.png',
-            height: 30,
-            errorBuilder:
-                (_, _, _) => Icon(
-                  Icons.forum_rounded,
-                  size: 26,
-                  color: AppColors.accentOn(context),
+          Row(
+            children: [
+              Image.asset(
+                'assets/brand/medpin_emblem.png',
+                height: 34,
+                errorBuilder:
+                    (_, _, _) => const Icon(
+                      Icons.forum_rounded,
+                      size: 28,
+                      color: T.primary,
+                    ),
+              ),
+              const SizedBox(width: T.s2),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    'MedPin',
+                    style: T.display.copyWith(
+                      fontSize: 21,
+                      letterSpacing: -0.5,
+                      color: T.primary,
+                    ),
+                  ),
+                  Text(
+                    'Doctor Panel',
+                    style: T.small.copyWith(color: T.inkMuted),
+                  ),
+                ],
+              ),
+              const Spacer(),
+              PanelNotificationBell(
+                onTap: () => showClinicianNotifications(context),
+              ),
+              const SizedBox(width: T.s1),
+              // The whole identity block is the tap target, not just the face —
+              // a 38px circle is a small thing to hit, and the name beside it
+              // pointed at the same place while looking inert.
+              InkWell(
+                borderRadius: BorderRadius.circular(12),
+                // `go`, not `push`: Profile is one of this shell's own tabs, so
+                // pushing it stacked a copy while the bar kept the old tab lit.
+                onTap: () => context.go('/clinician/more'),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 4,
+                    vertical: 4,
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      UserAvatar(
+                        name: user?.name ?? '',
+                        avatarUrl: user?.avatarUrl,
+                        accent: T.primary,
+                        size: 38,
+                      ),
+                      // The name only where there is room for it. On a narrow
+                      // phone it would push the bell off the row, so below
+                      // 380dp the face stands for the doctor on its own.
+                      if (MediaQuery.sizeOf(context).width >= 380) ...[
+                        const SizedBox(width: T.s2),
+                        ConstrainedBox(
+                          constraints: const BoxConstraints(maxWidth: 132),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                user?.name ?? '',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: T.bodyStrong.copyWith(color: T.ink),
+                              ),
+                              Text(
+                                creds,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: T.small.copyWith(color: T.inkMuted),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const Icon(
+                          Icons.expand_more_rounded,
+                          size: 18,
+                          color: T.inkFaint,
+                        ),
+                      ],
+                    ],
+                  ),
                 ),
+              ),
+            ],
           ),
-          const SizedBox(width: 8),
-          Text(
-            'MedPin',
-            style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-              fontSize: 20,
-              fontWeight: FontWeight.w800,
-              letterSpacing: -0.5,
-              color: AppColors.accentOn(context),
-            ),
-          ),
-          const Spacer(),
-          PanelNotificationBell(
-            onTap: () => showClinicianNotifications(context),
-          ),
-          const SizedBox(width: 4),
-          GestureDetector(
-            // `go`, not `push`: Profile is one of this shell's own tabs, so
-            // pushing it stacked a copy while the bar kept the old tab lit.
-            onTap: () => context.go('/clinician/more'),
-            child: UserAvatar(
-              name: user?.name ?? '',
-              avatarUrl: user?.avatarUrl,
-              accent: AppColors.accentOn(context),
-              size: 38,
-            ),
+          const SizedBox(height: T.s2),
+          // Today's date, and how current the screen is. Both are context for
+          // everything below, and neither is worth a line of its own.
+          Row(
+            children: [
+              const Icon(
+                Icons.calendar_today_rounded,
+                size: 14,
+                color: T.inkMuted,
+              ),
+              const SizedBox(width: 6),
+              Text(
+                DateFormat('EEE, d MMMM').format(DateTime.now()),
+                style: T.small.copyWith(color: T.inkMuted),
+              ),
+              const Spacer(),
+              Flexible(
+                child: Text(
+                  freshnessLabel(updatedAt),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.right,
+                  style: T.small.copyWith(color: T.inkMuted),
+                ),
+              ),
+              const SizedBox(width: 6),
+              // Green only while the screen is genuinely current. A dot that is
+              // always green is a light that is not wired to anything.
+              Container(
+                width: 8,
+                height: 8,
+                decoration: BoxDecoration(
+                  color:
+                      DateTime.now().difference(updatedAt).inMinutes < 2
+                          ? T.success
+                          : T.inkFaint,
+                  shape: BoxShape.circle,
+                ),
+              ),
+            ],
           ),
         ],
       ),
@@ -272,8 +442,13 @@ class _TriageQueue extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        // Named for what it holds. This sat under "Live Triage Queue"
+        // directly below a section titled "Live Triage" — two headings a word
+        // apart, over different data from different endpoints. Asked where
+        // the sections after Live Triage had gone, nobody could answer,
+        // because the answer depended on which of the two you were looking at.
         const Text(
-          'Live Triage Queue',
+          'Raised Alerts',
           style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
         ),
         const SizedBox(height: AppSpacing.sm),
@@ -496,4 +671,3 @@ class _TriageCard extends StatelessWidget {
     );
   }
 }
-

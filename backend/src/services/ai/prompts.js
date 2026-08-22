@@ -158,6 +158,34 @@ Your message has been saved.`,
   },
 };
 
+/**
+ * A short language instruction to attach to the *last* user turn.
+ *
+ * The system prompt already says which language to answer in. That was not
+ * enough, and the reason is worth writing down: the model is also shown the
+ * last eight turns of the conversation, and for a patient whose earlier
+ * messages were in Bengali those eight turns are eight worked examples of
+ * answering in Bengali. One line of instruction at the top loses to eight
+ * demonstrations further down — so a patient reading an English app, tapping
+ * an English suggestion, got a screen of Bengali back.
+ *
+ * Putting it last, immediately before generation, is what makes it stick:
+ * recency is the one lever that outweighs the history. The wording matches the
+ * system prompt's rule exactly rather than overriding it, so a patient who
+ * genuinely writes a sentence in another language is still answered in theirs.
+ *
+ * It is appended to what the model sees, never to what is stored or shown —
+ * the patient's message in the record stays exactly what they typed.
+ */
+export function languageDirective(language = 'en') {
+  const lang = LANGUAGE_NAME[language] ?? LANGUAGE_NAME.en;
+  return (
+    `\n\n[Reply in ${lang}. The earlier turns above may be in a different language — ` +
+    `do not copy theirs. Depart from ${lang} only if THIS message is six or more words ` +
+    `of connected prose in another language, and then match its script exactly.]`
+  );
+}
+
 /** Disclaimer appended to every assistant reply, in the patient's language. */
 export const DISCLAIMER = {
   en: 'This is AI-assisted guidance, not a medical diagnosis. Always follow your doctor’s advice.',

@@ -5,6 +5,7 @@ import { retrieve, formatContext } from './rag.js';
 import { buildPatientContext } from '../patientContext.js';
 import { env } from '../../config/env.js';
 import { logger } from '../../config/logger.js';
+import { languageDirective } from './prompts.js';
 
 const HISTORY_TURNS = 6;
 
@@ -148,7 +149,10 @@ export async function nutritionReply({ patientId, sessionId, text, language = 'e
         role: m.role === 'assistant' ? 'model' : 'user',
         parts: [{ text: m.content }],
       })),
-    { role: 'user', parts: [{ text }] },
+    // Same directive as the care assistant, and for the same reason: eight
+    // turns of history in one language outweigh one line of system prompt in
+    // another. See languageDirective.
+    { role: 'user', parts: [{ text: `${text}${languageDirective(language)}` }] },
   ];
 
   try {

@@ -275,12 +275,7 @@ class DieticianDashboardScreen extends ConsumerWidget {
 
                                   if (d.recentLogs.isNotEmpty) ...[
                                     const SizedBox(height: AppSpacing.lg),
-                                    _MealsCard(
-                                      logs:
-                                          d.recentLogsByPatient
-                                              .take(4)
-                                              .toList(),
-                                    ),
+                                    _MealsCard(logs: d.recentLogsForGrid(4)),
                                   ],
                                 ],
                               ),

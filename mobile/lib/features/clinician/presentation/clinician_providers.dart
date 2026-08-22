@@ -17,11 +17,14 @@ final overviewProvider = FutureProvider.autoDispose<ClinicOverview>((ref) {
 
 /// Clinic-wide population analytics for the dashboard charts. Cached server-side
 /// (~2 min TTL), so the dashboard's poll re-fetches it cheaply.
-final clinicAnalyticsProvider = FutureProvider.autoDispose<ClinicAnalytics>((
-  ref,
-) {
-  return ref.watch(clinicianRepositoryProvider).analytics();
-});
+///
+/// Keyed by the window in days, so the snapshot's range control is a real
+/// query rather than a label over a fixed month of data — picking "Last 7
+/// days" has to change the figure, or it is decoration.
+final clinicAnalyticsProvider = FutureProvider.autoDispose
+    .family<ClinicAnalytics, int>((ref, days) {
+      return ref.watch(clinicianRepositoryProvider).analytics(days: days);
+    });
 
 /// The Patients tab: counts, the action queue, and the latest meals logged.
 final worklistProvider = FutureProvider.autoDispose<DoctorWorklist>((ref) {

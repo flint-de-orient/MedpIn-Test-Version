@@ -4,7 +4,7 @@ import { triageMessage } from '../triage/engine.js';
 import { buildPatientContext } from '../patientContext.js';
 import { retrieve, formatContext } from './rag.js';
 import { generate, generateStream, AiUnavailableError } from './gemini.js';
-import { buildSystemPrompt, fallbackReply } from './prompts.js';
+import { buildSystemPrompt, fallbackReply, languageDirective } from './prompts.js';
 import { raiseAlert } from '../alerts.js';
 import { loadAssetsForAi } from '../../routes/uploads.js';
 import { resolveVoiceText } from '../voiceText.js';
@@ -171,7 +171,12 @@ export async function handlePatientMessage({ patientId, sessionId, text, languag
   // reply is "I can't tell without knowing what you ate" â€” which reads as the
   // photo being ignored.
   const images = attachments.length ? await loadAssetsForAi(attachments).catch(() => []) : [];
-  const userParts = [{ text }, ...images.map((img) => ({ inlineData: { mimeType: img.mimeType, data: img.base64 } }))];
+  // The directive rides on the final turn, where recency beats the eight
+  // history turns above it. See languageDirective.
+  const userParts = [
+    { text: `${text}${languageDirective(language)}` },
+    ...images.map((img) => ({ inlineData: { mimeType: img.mimeType, data: img.base64 } })),
+  ];
 
   const contents = [
     ...history
@@ -344,7 +349,12 @@ export async function* streamPatientMessage({ patientId, sessionId, text, langua
   ]);
 
   const images = attachments.length ? await loadAssetsForAi(attachments).catch(() => []) : [];
-  const userParts = [{ text }, ...images.map((img) => ({ inlineData: { mimeType: img.mimeType, data: img.base64 } }))];
+  // The directive rides on the final turn, where recency beats the eight
+  // history turns above it. See languageDirective.
+  const userParts = [
+    { text: `${text}${languageDirective(language)}` },
+    ...images.map((img) => ({ inlineData: { mimeType: img.mimeType, data: img.base64 } })),
+  ];
   const contents = [
     ...history
       .reverse()

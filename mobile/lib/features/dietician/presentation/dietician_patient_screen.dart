@@ -1292,8 +1292,15 @@ class _SlotTile extends StatelessWidget {
                   child: Row(
                     children: [
                       if (e.createdAt != null) ...[
+                        // "Logged", because that is what this time is: the
+                        // moment the photograph was uploaded, not the moment
+                        // the meal was eaten. Without the word, a dinner
+                        // uploaded at 4:43am and a breakfast at 4:44am read as
+                        // a patient eating dinner before breakfast, when what
+                        // actually happened is somebody catching up on their
+                        // diary in one sitting.
                         Text(
-                          DateFormat('h:mm a').format(e.createdAt!),
+                          'Logged ${DateFormat('h:mm a').format(e.createdAt!)}',
                           style: const TextStyle(
                             fontSize: 12,
                             color: Colors.white,
@@ -1424,7 +1431,7 @@ class _FoodEntry extends StatelessWidget {
                     const Spacer(),
                     if (entry.createdAt != null)
                       Text(
-                        DateFormat('h:mm a').format(entry.createdAt!),
+                        'Logged ${DateFormat('h:mm a').format(entry.createdAt!)}',
                         style: TextStyle(
                           fontSize: 12,
                           color: scheme.onSurfaceVariant,
@@ -1450,15 +1457,35 @@ class _FoodEntry extends StatelessWidget {
 /// The pending ones matter as much as the returned: a plan written while an
 /// HbA1c is still outstanding is a plan resting on a number nobody has, and the
 /// dietician should be able to see that before they write it.
-class _LabTests extends StatelessWidget {
+class _LabTests extends StatefulWidget {
   const _LabTests({required this.overview});
 
   final DietPatientOverview overview;
 
   @override
+  State<_LabTests> createState() => _LabTestsState();
+}
+
+class _LabTestsState extends State<_LabTests> {
+  /// Eleven ordered tests filled the screen before the lab reports underneath
+  /// them came into view at all. Four is enough to see what the doctor is
+  /// waiting on; the rest are one tap away.
+  static const _cap = 4;
+  bool _showAll = false;
+
+  @override
   Widget build(BuildContext context) {
+    final overview = widget.overview;
     final scheme = Theme.of(context).colorScheme;
     final hba1c = overview.latestHba1c;
+    // Awaiting first: those are the ones still outstanding, and a cap that
+    // hides them behind results already in would hide the only actionable half.
+    final ordered = [
+      ...overview.advisedTests.where((t) => !t.reported),
+      ...overview.advisedTests.where((t) => t.reported),
+    ];
+    final shown = _showAll ? ordered : ordered.take(_cap).toList();
+    final hidden = ordered.length - shown.length;
 
     return Container(
       padding: const EdgeInsets.all(AppSpacing.md),
@@ -1500,7 +1527,7 @@ class _LabTests extends StatelessWidget {
             if (overview.advisedTests.isNotEmpty)
               const Divider(height: AppSpacing.lg),
           ],
-          for (final test in overview.advisedTests)
+          for (final test in shown)
             Padding(
               padding: const EdgeInsets.only(bottom: 4),
               child: Row(
@@ -1521,7 +1548,10 @@ class _LabTests extends StatelessWidget {
                     ),
                   ),
                   Text(
-                    test.reported ? 'Result in' : 'Awaiting result',
+                    // "Result in" read as "result in three days" — the
+                    // opposite of what it meant, on the one row where the
+                    // difference is whether anyone still has to chase it.
+                    test.reported ? 'Result received' : 'Awaiting result',
                     style: TextStyle(
                       fontSize: 12,
                       fontWeight: FontWeight.w600,
@@ -1530,6 +1560,25 @@ class _LabTests extends StatelessWidget {
                     ),
                   ),
                 ],
+              ),
+            ),
+          if (hidden > 0 || _showAll)
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton(
+                onPressed: () => setState(() => _showAll = !_showAll),
+                style: TextButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 4),
+                  visualDensity: VisualDensity.compact,
+                  foregroundColor: AppColors.accentOn(context),
+                ),
+                child: Text(
+                  _showAll ? 'Show less' : 'View all ${ordered.length} tests',
+                  style: const TextStyle(
+                    fontSize: 13.5,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
               ),
             ),
         ],
@@ -1891,19 +1940,59 @@ class _AdviceTile extends StatelessWidget {
 
 /// The reports the patient actually uploaded, each with its transcribed values,
 /// a red at-a-glance line for anything out of range, and the file to open.
-class _LabReportsSection extends StatelessWidget {
+class _LabReportsSection extends StatefulWidget {
   const _LabReportsSection({required this.reports});
 
   final List<LabReport> reports;
 
   @override
+  State<_LabReportsSection> createState() => _LabReportsSectionState();
+}
+
+class _LabReportsSectionState extends State<_LabReportsSection> {
+  /// Ten reports, each with a paragraph of summary, ran to several screens and
+  /// pushed the food log — the thing a dietician came for — off the bottom.
+  static const _cap = 4;
+  bool _showAll = false;
+
+  @override
   Widget build(BuildContext context) {
+    // Newest first, so the four on show are the four that just arrived.
+    final sorted = [...widget.reports]..sort((a, b) {
+      final at = a.createdAt, bt = b.createdAt;
+      if (at == null && bt == null) return 0;
+      if (at == null) return 1;
+      if (bt == null) return -1;
+      return bt.compareTo(at);
+    });
+    final shown = _showAll ? sorted : sorted.take(_cap).toList();
+    final hidden = sorted.length - shown.length;
+
     return Column(
       children: [
-        for (final r in reports)
+        for (final r in shown)
           Padding(
             padding: const EdgeInsets.only(bottom: AppSpacing.sm),
             child: _DietLabReportRow(report: r),
+          ),
+        if (hidden > 0 || _showAll)
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton(
+              onPressed: () => setState(() => _showAll = !_showAll),
+              style: TextButton.styleFrom(
+                padding: const EdgeInsets.symmetric(horizontal: 4),
+                visualDensity: VisualDensity.compact,
+                foregroundColor: AppColors.accentOn(context),
+              ),
+              child: Text(
+                _showAll ? 'Show less' : 'View all ${sorted.length} reports',
+                style: const TextStyle(
+                  fontSize: 13.5,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
           ),
       ],
     );

@@ -196,6 +196,7 @@ router.get(
       pendingReviews,
       unreadMessages,
       unreadNutrition,
+      urgentUnread,
       riskGroups,
     ] = await Promise.all([
       User.countDocuments({ role: ROLES.PATIENT, isActive: true }),
@@ -222,6 +223,17 @@ router.get(
       // Nutrition filter. Without the split, the headline counted messages the
       // doctor then could not find anywhere on the screen it was shown.
       unreadNutritionCount(),
+      // How many unread messages the patient themselves marked urgent.
+      //
+      // The dashboard used to put the open *alert* count under "Unread
+      // messages" as "2 urgent", which is a different fact about different
+      // records — a clinic with two raised alerts and no urgent messages read
+      // as two people waiting. This counts the messages.
+      ChatMessage.countDocuments({
+        role: 'user',
+        seenByClinicAt: null,
+        urgency: { $in: ['urgent', 'emergency'] },
+      }),
       // Only profiles belonging to an ACTIVE patient. A deactivated or removed
       // patient can leave a lingering profile behind, and counting those inflated
       // the risk donut past the real headcount (the "9 vs 7" on the dashboard).
@@ -258,6 +270,7 @@ router.get(
       pendingReviews,
       unreadMessages,
       unreadNutrition,
+      urgentUnread,
       riskDistribution: {
         low: byRisk.low ?? 0,
         moderate: byRisk.moderate ?? 0,
@@ -332,7 +345,9 @@ async function nutritionReviews(limit = 4) {
   const { dietReviewIntervalDays: intervalDays } = await getClinicSettings();
 
   const profiles = await PatientProfile.find({})
-    .populate('user', 'name isActive')
+    // The face too: the card names a patient, and a coloured initial where a
+    // photograph exists is a worse card for no reason.
+    .populate('user', 'name isActive avatarAssetId')
     .lean();
 
   const weekAgo = dayjs().subtract(7, 'day').toDate();
@@ -344,7 +359,13 @@ async function nutritionReviews(limit = 4) {
         const day = Math.min(dayjs().diff(dayjs(since), 'day'), intervalDays);
         const [mealsThisWeek, lastLog, session] = await Promise.all([
           FoodLog.countDocuments({ patient: p.user._id, createdAt: { $gte: weekAgo } }),
-          FoodLog.findOne({ patient: p.user._id }).sort({ createdAt: -1 }).select('createdAt').lean(),
+          // The photograph as well as the time. A food-log review is a
+          // judgement about a meal, and the meal is the one thing the card
+          // could not show.
+          FoodLog.findOne({ patient: p.user._id })
+            .sort({ createdAt: -1 })
+            .select('createdAt photo')
+            .lean(),
           // The thread the review is actually done in, so the card can open the
           // conversation rather than the record. Reviewing a food log means
           // reading what they logged and replying to it.
@@ -358,10 +379,12 @@ async function nutritionReviews(limit = 4) {
           patientId: String(p.user._id),
           nutritionSessionId: session ? String(session._id) : null,
           name: p.user.name,
+          avatarUrl: p.user.avatarAssetId ? `/api/v1/uploads/${p.user.avatarAssetId}/raw` : null,
           day,
           intervalDays,
           mealsThisWeek,
           lastLogAt: lastLog?.createdAt ?? null,
+          lastLogPhotoUrl: lastLog?.photo ? `/api/v1/uploads/${lastLog.photo}/raw` : null,
         };
       }),
   );
