@@ -77,9 +77,22 @@ class NotificationListSheet extends StatelessWidget {
   /// Where a row leads. The sheet closes itself first.
   final void Function(PanelNotification item) onOpen;
 
-  /// Clear the unread mark now, without closing. Shown only when something is
-  /// unread; omit it and no such action appears.
+  /// Clear the unread mark now, without closing. Omit it and no such action
+  /// appears.
   final VoidCallback? onMarkAllRead;
+
+  /// The rows a "seen" call actually clears: patient messages.
+  ///
+  /// The doctor's list also carries open alerts, and those arrive flagged
+  /// unread because they are genuinely waiting — but nothing clears an alert
+  /// except resolving it. Offering "Mark all read" over a list of five alerts
+  /// and no messages gave the doctor a button that visibly did nothing: every
+  /// row stayed tinted and the badge did not move. It is offered only when
+  /// there is something it can honestly clear.
+  static const _clearableKinds = {'message', 'nutrition'};
+
+  Iterable<PanelNotification> get _clearable =>
+      items.where((i) => i.unread && _clearableKinds.contains(i.kind));
 
   final String emptyTitle;
   final String emptyBody;
@@ -145,7 +158,7 @@ class NotificationListSheet extends StatelessWidget {
                     // Clearing the badge without having to leave. It clears on
                     // close either way; this is for the reader who has looked and
                     // wants to see it go while they are still here.
-                    if (unread > 0 && onMarkAllRead != null)
+                    if (onMarkAllRead != null && _clearable.isNotEmpty)
                       TextButton(
                         onPressed: onMarkAllRead,
                         style: TextButton.styleFrom(
@@ -153,9 +166,17 @@ class NotificationListSheet extends StatelessWidget {
                           padding: const EdgeInsets.symmetric(horizontal: 8),
                           visualDensity: VisualDensity.compact,
                         ),
-                        child: const Text(
-                          'Mark all read',
-                          style: TextStyle(
+                        // Named for what it will leave behind. On the
+                        // dietician's list every unread row is a message, so
+                        // it clears the lot; on the doctor's, the alerts stay,
+                        // and a button saying "all" would have been claiming
+                        // otherwise.
+                        child: Text(
+                          _clearable.length ==
+                                  items.where((i) => i.unread).length
+                              ? 'Mark all read'
+                              : 'Mark messages read',
+                          style: const TextStyle(
                             fontSize: 13.5,
                             fontWeight: FontWeight.w700,
                           ),
