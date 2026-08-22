@@ -205,7 +205,15 @@ class _AlertCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final a = alert;
-    final color = alertSeverityColor(a.severity);
+    // Severity says how bad it was; status says whether it still needs anyone.
+    // Painting a resolved emergency in emergency red spends the loudest colour
+    // in the app on something already dealt with — and a doctor who learns that
+    // red can mean "handled" stops reading red as urgent.
+    final settled = a.status == 'resolved' || a.status == 'dismissed';
+    final color =
+        settled
+            ? scheme.outline
+            : alertSeverityColor(a.severity);
 
     return Container(
       decoration: BoxDecoration(

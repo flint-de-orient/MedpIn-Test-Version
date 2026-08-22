@@ -142,6 +142,36 @@ class AppTheme {
 
     return base.copyWith(
       textTheme: textTheme,
+
+      // Selection you can see across the room.
+      //
+      // Material's default selected chip is a faint secondaryContainer tint,
+      // which on a busy form is a change a hurried reader misses — and nine
+      // screens here use a bare ChoiceChip, so every one of them inherited it.
+      // Filled accent with white text instead, set once so a chip added
+      // tomorrow is right without anyone remembering to style it.
+      chipTheme: ChipThemeData(
+        backgroundColor: colorScheme.surfaceContainerHighest.withValues(
+          alpha: 0.5,
+        ),
+        selectedColor: colorScheme.primary,
+        checkmarkColor: Colors.white,
+        labelStyle: TextStyle(
+          fontSize: 14,
+          fontWeight: FontWeight.w600,
+          color: colorScheme.onSurface,
+        ),
+        secondaryLabelStyle: const TextStyle(
+          fontSize: 14,
+          fontWeight: FontWeight.w700,
+          color: Colors.white,
+        ),
+        side: BorderSide(
+          color: colorScheme.outlineVariant.withValues(alpha: 0.6),
+        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
+      ),
       appBarTheme: AppBarTheme(
         backgroundColor:
             isDark ? AppColors.surfaceDark : AppColors.surfaceLight,

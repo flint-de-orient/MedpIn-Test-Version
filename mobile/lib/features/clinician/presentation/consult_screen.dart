@@ -240,14 +240,24 @@ class _ConsultScreenState extends ConsumerState<ConsultScreen> {
                 'You are about to generate a prescription without any medicine. '
                 'Please confirm to continue.',
               ),
+              // The weight goes on the ordinary answer, not the override. A
+              // filled "Confirm" beside a quiet "Go back" invites a reflexive
+              // tap on the one action that skips medication entry — and in a
+              // clinic the common case is a doctor who has not added the drug
+              // yet, not one who means to prescribe nothing.
               actions: [
                 TextButton(
-                  onPressed: () => Navigator.pop(ctx, false),
-                  child: const Text('Go back'),
+                  onPressed: () => Navigator.pop(ctx, true),
+                  style: TextButton.styleFrom(
+                    foregroundColor: Theme.of(ctx).colorScheme.onSurfaceVariant,
+                  ),
+                  // Named for its consequence. "Confirm" does not say what is
+                  // being confirmed, which is the whole risk in a hurried tap.
+                  child: const Text('Generate without medicines'),
                 ),
                 FilledButton(
-                  onPressed: () => Navigator.pop(ctx, true),
-                  child: const Text('Confirm'),
+                  onPressed: () => Navigator.pop(ctx, false),
+                  child: const Text('Add a medicine'),
                 ),
               ],
             ),
