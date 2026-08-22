@@ -33,7 +33,8 @@ class PanelNotification {
   final DateTime? at;
   final bool unread;
 
-  factory PanelNotification.fromJson(Map<String, dynamic> j) => PanelNotification(
+  factory PanelNotification.fromJson(Map<String, dynamic> j) =>
+      PanelNotification(
         id: j['id']?.toString() ?? '',
         kind: j['kind']?.toString() ?? 'message',
         patientId: j['patientId']?.toString() ?? '',
@@ -62,6 +63,7 @@ class NotificationListSheet extends StatelessWidget {
     required this.failed,
     required this.onRefresh,
     required this.onOpen,
+    this.onMarkAllRead,
     this.emptyTitle = 'Nothing waiting',
     this.emptyBody = 'No unread messages and nothing flagged.',
   });
@@ -75,6 +77,10 @@ class NotificationListSheet extends StatelessWidget {
   /// Where a row leads. The sheet closes itself first.
   final void Function(PanelNotification item) onOpen;
 
+  /// Clear the unread mark now, without closing. Shown only when something is
+  /// unread; omit it and no such action appears.
+  final VoidCallback? onMarkAllRead;
+
   final String emptyTitle;
   final String emptyBody;
 
@@ -82,79 +88,124 @@ class NotificationListSheet extends StatelessWidget {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
 
+    // Sized to what is in it. A fixed 62% of the screen meant one open alert
+    // sat above half a screen of empty sheet, and a dozen items opened already
+    // needing a scroll. Roughly one row per 88 logical pixels, plus the header,
+    // clamped so it is never a sliver and never the whole screen.
+    final rows = items.isEmpty ? 3 : items.length;
+    final screen = MediaQuery.of(context).size.height;
+    final initial = ((rows * 88 + 140) / screen).clamp(0.35, 0.92);
+
     return DraggableScrollableSheet(
       expand: false,
-      initialChildSize: 0.62,
+      initialChildSize: initial,
       minChildSize: 0.35,
       maxChildSize: 0.92,
-      builder: (context, controller) => Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(AppSpacing.lg, 0, AppSpacing.md, AppSpacing.sm),
-            child: Row(
-              children: [
-                const Text(
-                  'Notifications',
-                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
-                ),
-                const SizedBox(width: 8),
-                if (unread > 0)
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: AppColors.accentOn(context),
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: Text(
-                      unread > 99 ? '99+' : '$unread',
-                      style: const TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w800,
-                        color: Colors.white,
-                      ),
-                    ),
-                  ),
-                const Spacer(),
-                IconButton(
-                  onPressed: onRefresh,
-                  icon: const Icon(Icons.refresh_rounded),
-                  tooltip: 'Refresh',
-                  color: scheme.onSurfaceVariant,
-                ),
-              ],
-            ),
-          ),
-          Divider(height: 1, color: scheme.outlineVariant.withValues(alpha: 0.5)),
-          Expanded(
-            child: switch ((loading, failed, items.isEmpty)) {
-              (true, _, true) => const Center(child: CircularProgressIndicator()),
-              (_, true, _) => _Empty(
-                icon: Icons.cloud_off_rounded,
-                title: 'Could not load notifications',
-                body: 'Check your connection and try again.',
-              ),
-              (_, _, true) => _Empty(
-                icon: Icons.done_all_rounded,
-                title: emptyTitle,
-                body: emptyBody,
-              ),
-              _ => ListView.separated(
-                controller: controller,
+      builder:
+          (context, controller) => Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Padding(
                 padding: const EdgeInsets.fromLTRB(
+                  AppSpacing.lg,
+                  0,
                   AppSpacing.md,
                   AppSpacing.sm,
-                  AppSpacing.md,
-                  AppSpacing.xl,
                 ),
-                itemCount: items.length,
-                separatorBuilder: (_, _) => const SizedBox(height: 4),
-                itemBuilder: (context, i) => _Row(item: items[i], onOpen: onOpen),
+                child: Row(
+                  children: [
+                    const Text(
+                      'Notifications',
+                      style: TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    if (unread > 0)
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 4,
+                        ),
+                        decoration: BoxDecoration(
+                          color: AppColors.accentOn(context),
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: Text(
+                          unread > 99 ? '99+' : '$unread',
+                          style: const TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w800,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ),
+                    const Spacer(),
+                    // Clearing the badge without having to leave. It clears on
+                    // close either way; this is for the reader who has looked and
+                    // wants to see it go while they are still here.
+                    if (unread > 0 && onMarkAllRead != null)
+                      TextButton(
+                        onPressed: onMarkAllRead,
+                        style: TextButton.styleFrom(
+                          foregroundColor: AppColors.accentOn(context),
+                          padding: const EdgeInsets.symmetric(horizontal: 8),
+                          visualDensity: VisualDensity.compact,
+                        ),
+                        child: const Text(
+                          'Mark all read',
+                          style: TextStyle(
+                            fontSize: 13.5,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                    IconButton(
+                      onPressed: onRefresh,
+                      icon: const Icon(Icons.refresh_rounded),
+                      tooltip: 'Refresh',
+                      color: scheme.onSurfaceVariant,
+                    ),
+                  ],
+                ),
               ),
-            },
+              Divider(
+                height: 1,
+                color: scheme.outlineVariant.withValues(alpha: 0.5),
+              ),
+              Expanded(
+                child: switch ((loading, failed, items.isEmpty)) {
+                  (true, _, true) => const Center(
+                    child: CircularProgressIndicator(),
+                  ),
+                  (_, true, _) => _Empty(
+                    icon: Icons.cloud_off_rounded,
+                    title: 'Could not load notifications',
+                    body: 'Check your connection and try again.',
+                  ),
+                  (_, _, true) => _Empty(
+                    icon: Icons.done_all_rounded,
+                    title: emptyTitle,
+                    body: emptyBody,
+                  ),
+                  _ => ListView.separated(
+                    controller: controller,
+                    padding: const EdgeInsets.fromLTRB(
+                      AppSpacing.md,
+                      AppSpacing.sm,
+                      AppSpacing.md,
+                      AppSpacing.xl,
+                    ),
+                    itemCount: items.length,
+                    separatorBuilder: (_, _) => const SizedBox(height: 4),
+                    itemBuilder:
+                        (context, i) => _Row(item: items[i], onOpen: onOpen),
+                  ),
+                },
+              ),
+            ],
           ),
-        ],
-      ),
     );
   }
 }
@@ -194,11 +245,12 @@ class _Row extends StatelessWidget {
     final urgent = item.kind == 'urgent';
 
     return Material(
-      color: urgent
-          ? AppColors.dangerOn(context).withValues(alpha: 0.06)
-          : item.unread
-          ? accent.withValues(alpha: 0.06)
-          : scheme.surfaceContainerLowest,
+      color:
+          urgent
+              ? AppColors.dangerOn(context).withValues(alpha: 0.06)
+              : item.unread
+              ? accent.withValues(alpha: 0.06)
+              : scheme.surfaceContainerLowest,
       borderRadius: BorderRadius.circular(16),
       child: InkWell(
         borderRadius: BorderRadius.circular(16),
@@ -208,11 +260,12 @@ class _Row extends StatelessWidget {
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(16),
             border: Border.all(
-              color: urgent
-                  ? AppColors.dangerOn(context).withValues(alpha: 0.35)
-                  : item.unread
-                  ? accent.withValues(alpha: 0.25)
-                  : scheme.outlineVariant.withValues(alpha: 0.55),
+              color:
+                  urgent
+                      ? AppColors.dangerOn(context).withValues(alpha: 0.35)
+                      : item.unread
+                      ? accent.withValues(alpha: 0.25)
+                      : scheme.outlineVariant.withValues(alpha: 0.55),
             ),
           ),
           child: Row(
@@ -257,14 +310,20 @@ class _Row extends StatelessWidget {
                             overflow: TextOverflow.ellipsis,
                             style: TextStyle(
                               fontSize: 14,
-                              fontWeight: item.unread ? FontWeight.w800 : FontWeight.w700,
+                              fontWeight:
+                                  item.unread
+                                      ? FontWeight.w800
+                                      : FontWeight.w700,
                             ),
                           ),
                         ),
                         const SizedBox(width: 8),
                         Text(
                           _ago(item.at),
-                          style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant),
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: scheme.onSurfaceVariant,
+                          ),
                         ),
                       ],
                     ),
@@ -276,11 +335,12 @@ class _Row extends StatelessWidget {
                       style: TextStyle(
                         fontSize: 14,
                         height: 1.35,
-                        color: urgent
-                            ? AppColors.dangerOn(context)
-                            : item.unread
-                            ? scheme.onSurface
-                            : scheme.onSurfaceVariant,
+                        color:
+                            urgent
+                                ? AppColors.dangerOn(context)
+                                : item.unread
+                                ? scheme.onSurface
+                                : scheme.onSurfaceVariant,
                       ),
                     ),
                   ],
@@ -312,12 +372,19 @@ class _Empty extends StatelessWidget {
           children: [
             Icon(icon, size: 42, color: scheme.outlineVariant),
             const SizedBox(height: AppSpacing.md),
-            Text(title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
+            Text(
+              title,
+              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
+            ),
             const SizedBox(height: 4),
             Text(
               body,
               textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 14, height: 1.4, color: scheme.onSurfaceVariant),
+              style: TextStyle(
+                fontSize: 14,
+                height: 1.4,
+                color: scheme.onSurfaceVariant,
+              ),
             ),
           ],
         ),

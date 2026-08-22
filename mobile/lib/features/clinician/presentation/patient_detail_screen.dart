@@ -1919,11 +1919,16 @@ class _AnalyteTrendRow extends StatelessWidget {
                   ),
                 ),
                 if (latest.rangeText.isNotEmpty)
+                  // The reference range is what makes the number beside it
+                  // mean anything, so it stops being the faintest text on the
+                  // row. Lower-case "target" at the theme's muted grey read as
+                  // a caption on a screen full of captions.
                   Text(
-                    'target ${latest.rangeText}${latest.unit != null ? ' ${latest.unit}' : ''}',
+                    'Target ${latest.rangeText}${latest.unit != null ? ' ${latest.unit}' : ''}',
                     style: TextStyle(
-                      fontSize: 12,
-                      color: scheme.onSurfaceVariant,
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w600,
+                      color: scheme.onSurface.withValues(alpha: 0.72),
                     ),
                   ),
               ],
@@ -1937,11 +1942,25 @@ class _AnalyteTrendRow extends StatelessWidget {
             showBand: false,
           ),
           const SizedBox(width: 8),
-          Text(
-            fmt(latest.value),
+          Text.rich(
+            TextSpan(
+              children: [
+                TextSpan(text: fmt(latest.value)),
+                if (latest.unit != null)
+                  TextSpan(
+                    text: ' ${latest.unit}',
+                    style: const TextStyle(
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+              ],
+            ),
             style: TextStyle(
               fontSize: 14,
               fontWeight: FontWeight.w800,
+              // A bare 126 beside "Target 70–100 mg/dL" is a number the reader
+              // has to assume shares the range's unit.
               color: abnormal ? color : scheme.onSurface,
             ),
           ),

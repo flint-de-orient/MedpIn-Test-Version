@@ -247,23 +247,35 @@ class _DieticianProfileScreenState
                               ),
                             ),
                           ),
+                        // A 30px badge is under the 48px minimum, and this one
+                        // sits at the very corner of the avatar where a thumb
+                        // lands least accurately. The disc still looks the
+                        // same size; the padding around it is what the finger
+                        // gets, which is the point.
                         Positioned(
-                          right: 0,
-                          bottom: 0,
-                          child: Container(
-                            padding: const EdgeInsets.all(8),
-                            decoration: BoxDecoration(
-                              color: accent,
-                              shape: BoxShape.circle,
-                              border: Border.all(
-                                color: scheme.surfaceContainerLowest,
-                                width: 2.5,
+                          right: -9,
+                          bottom: -9,
+                          child: IgnorePointer(
+                            child: Container(
+                              width: 48,
+                              height: 48,
+                              alignment: Alignment.center,
+                              child: Container(
+                                padding: const EdgeInsets.all(8),
+                                decoration: BoxDecoration(
+                                  color: accent,
+                                  shape: BoxShape.circle,
+                                  border: Border.all(
+                                    color: scheme.surfaceContainerLowest,
+                                    width: 2.5,
+                                  ),
+                                ),
+                                child: const Icon(
+                                  Icons.edit_rounded,
+                                  size: 14,
+                                  color: Colors.white,
+                                ),
                               ),
-                            ),
-                            child: const Icon(
-                              Icons.edit_rounded,
-                              size: 14,
-                              color: Colors.white,
                             ),
                           ),
                         ),
@@ -353,40 +365,55 @@ class _DieticianProfileScreenState
 
           // Hidden while kDarkThemeEnabled is false: a control that
           // changes nothing is worse than no control.
-          if (kDarkThemeEnabled) ...[
-            _label(l10n.profileAppearance, scheme),
-            const ThemeSelector(),
-          ],
-          const SizedBox(height: AppSpacing.lg),
+          if (kDarkThemeEnabled)
+            ProfileSection(
+              label: l10n.profileAppearance,
+              children: const [
+                Padding(
+                  padding: EdgeInsets.all(AppSpacing.md),
+                  child: ThemeSelector(),
+                ),
+              ],
+            ),
 
-          _label(l10n.profileLanguage, scheme),
-          Wrap(
-            spacing: AppSpacing.sm,
-            runSpacing: AppSpacing.sm,
+          // In a card, like every other group here. Loose chips on the
+          // background read as content that had escaped its section rather
+          // than as a setting.
+          ProfileSection(
+            label: l10n.profileLanguage,
             children: [
-              // Each option renders in its own script, so a Bengali speaker can
-              // find "বাংলা" while the app is still in English.
-              _LangChip(
-                label: l10n.languageEnglish,
-                selected: currentLocale?.languageCode == 'en',
-                accent: accent,
-                onTap: () => _changeLanguage('en'),
-              ),
-              _LangChip(
-                label: l10n.languageBengali,
-                selected: currentLocale?.languageCode == 'bn',
-                accent: accent,
-                onTap: () => _changeLanguage('bn'),
-              ),
-              _LangChip(
-                label: l10n.languageHindi,
-                selected: currentLocale?.languageCode == 'hi',
-                accent: accent,
-                onTap: () => _changeLanguage('hi'),
+              Padding(
+                padding: const EdgeInsets.all(AppSpacing.md),
+                child: Wrap(
+                  spacing: AppSpacing.sm,
+                  runSpacing: AppSpacing.sm,
+                  children: [
+                    // Each option renders in its own script, so a Bengali
+                    // speaker can find "বাংলা" while the app is still in
+                    // English.
+                    _LangChip(
+                      label: l10n.languageEnglish,
+                      selected: currentLocale?.languageCode == 'en',
+                      accent: accent,
+                      onTap: () => _changeLanguage('en'),
+                    ),
+                    _LangChip(
+                      label: l10n.languageBengali,
+                      selected: currentLocale?.languageCode == 'bn',
+                      accent: accent,
+                      onTap: () => _changeLanguage('bn'),
+                    ),
+                    _LangChip(
+                      label: l10n.languageHindi,
+                      selected: currentLocale?.languageCode == 'hi',
+                      accent: accent,
+                      onTap: () => _changeLanguage('hi'),
+                    ),
+                  ],
+                ),
               ),
             ],
           ),
-          const SizedBox(height: AppSpacing.lg),
 
           ProfileSection(
             label: l10n.profileAccount,
@@ -417,13 +444,24 @@ class _DieticianProfileScreenState
                 l10n.profileAppLock,
                 style: const TextStyle(fontSize: 16),
               ),
-              subtitle: Text(
-                l10n.profileAppLockSub,
-                style: const TextStyle(fontSize: 14),
+              // Two lines of helper text at 14 against a 16 title, with a
+              // switch and an icon on the same row, left roughly nothing for
+              // the words. Smaller, muted and given some line height, it reads
+              // as the explanation it is rather than as a second title.
+              subtitle: Padding(
+                padding: const EdgeInsets.only(top: 2),
+                child: Text(
+                  l10n.profileAppLockSub,
+                  style: TextStyle(
+                    fontSize: 13,
+                    height: 1.35,
+                    color: scheme.onSurfaceVariant,
+                  ),
+                ),
               ),
               contentPadding: const EdgeInsets.symmetric(
                 horizontal: AppSpacing.md,
-                vertical: 4,
+                vertical: 8,
               ),
             ),
           ),
@@ -447,6 +485,16 @@ class _DieticianProfileScreenState
             ],
           ),
 
+          // Set apart from the settings above it. Flush under the last card,
+          // "Log out" read as one more row of the App group — and it is the
+          // only control here that ends the session.
+          Padding(
+            padding: const EdgeInsets.only(bottom: AppSpacing.lg),
+            child: Divider(
+              height: 1,
+              color: scheme.outlineVariant.withValues(alpha: 0.7),
+            ),
+          ),
           SizedBox(
             width: double.infinity,
             height: AppSpacing.minTapTarget + 8,

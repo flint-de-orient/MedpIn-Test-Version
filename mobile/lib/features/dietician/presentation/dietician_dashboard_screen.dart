@@ -12,6 +12,7 @@ import '../../auth/presentation/auth_controller.dart';
 import '../domain/diet_models.dart';
 import 'dietician_providers.dart';
 import 'widgets/dietician_bell.dart';
+import 'widgets/notification_sheet.dart';
 
 /// The dietician's day in one screen.
 ///
@@ -109,43 +110,107 @@ class DieticianDashboardScreen extends ConsumerWidget {
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.stretch,
                                 children: [
-                                  _StatCard(
-                                    label: 'My Patients',
-                                    value: '${d.patients}',
-                                    icon: Icons.groups_outlined,
-                                    onTap:
-                                        () => context.go('/dietician/patients'),
+                                  // Two by two, and no card repeats the band
+                                  // above it. Reviews Due was the hero's whole
+                                  // figure and a card of its own directly
+                                  // underneath — the same number twice in the
+                                  // first screenful, which makes a reader
+                                  // check whether they mean different things.
+                                  // The hero keeps it; the grid takes the four
+                                  // counts it does not say.
+                                  //
+                                  // Rows of Expanded rather than a GridView
+                                  // with an aspect ratio: at a large text
+                                  // scale a fixed ratio crops the number off
+                                  // the bottom of the card.
+                                  IntrinsicHeight(
+                                    child: Row(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.stretch,
+                                      children: [
+                                        Expanded(
+                                          child: _StatCard(
+                                            label: 'My Patients',
+                                            value: '${d.patients}',
+                                            icon: Icons.groups_outlined,
+                                            onTap:
+                                                () => context.go(
+                                                  '/dietician/patients',
+                                                ),
+                                          ),
+                                        ),
+                                        const SizedBox(width: AppSpacing.sm),
+                                        Expanded(
+                                          child: _StatCard(
+                                            label: 'Plans to Send',
+                                            value: '${d.plansMissing}',
+                                            accent:
+                                                d.plansMissing > 0
+                                                    ? AppColors.accentOn(
+                                                      context,
+                                                    )
+                                                    : null,
+                                            icon: Icons.send_rounded,
+                                            // Straight to that worklist,
+                                            // already filtered. A count that
+                                            // sends you to an unfiltered list
+                                            // makes you find the patients it
+                                            // was talking about yourself.
+                                            onTap:
+                                                () => context.go(
+                                                  '/dietician/patients?filter=noplan',
+                                                ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
                                   ),
                                   const SizedBox(height: AppSpacing.sm),
-                                  _StatCard(
-                                    label: 'Reviews Due',
-                                    value: '${d.reviewsDue}',
-                                    accent:
-                                        d.reviewsDue > 0
-                                            ? AppColors.danger
-                                            : null,
-                                    icon: Icons.error_outline_rounded,
-                                    // Straight to that worklist, already filtered. A count
-                                    // that sends you to an unfiltered list makes you find
-                                    // the three patients it was talking about yourself.
-                                    onTap:
-                                        () => context.go(
-                                          '/dietician/patients?filter=review',
+                                  IntrinsicHeight(
+                                    child: Row(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.stretch,
+                                      children: [
+                                        Expanded(
+                                          child: _StatCard(
+                                            label: 'Unread',
+                                            value: '${d.unreadMessages}',
+                                            accent:
+                                                d.unreadMessages > 0
+                                                    ? AppColors.accentOn(
+                                                      context,
+                                                    )
+                                                    : null,
+                                            icon:
+                                                Icons
+                                                    .chat_bubble_outline_rounded,
+                                            // The sheet, not a patient
+                                            // filter: the list endpoint
+                                            // carries no per-patient unread
+                                            // count, and these messages are
+                                            // exactly what the sheet holds.
+                                            onTap:
+                                                () =>
+                                                    showDieticianNotifications(
+                                                      context,
+                                                    ),
+                                          ),
                                         ),
-                                  ),
-                                  const SizedBox(height: AppSpacing.sm),
-                                  _StatCard(
-                                    label: 'Plans to Send',
-                                    value: '${d.plansMissing}',
-                                    accent:
-                                        d.plansMissing > 0
-                                            ? AppColors.accentOn(context)
-                                            : null,
-                                    icon: Icons.send_rounded,
-                                    onTap:
-                                        () => context.go(
-                                          '/dietician/patients?filter=noplan',
+                                        const SizedBox(width: AppSpacing.sm),
+                                        Expanded(
+                                          child: _StatCard(
+                                            label: 'New This Week',
+                                            value: '${d.newThisWeek}',
+                                            icon:
+                                                Icons.person_add_alt_1_outlined,
+                                            onTap:
+                                                () => context.go(
+                                                  '/dietician/patients',
+                                                ),
+                                          ),
                                         ),
+                                      ],
+                                    ),
                                   ),
 
                                   if (d.reviewsSorted.isNotEmpty) ...[
@@ -211,7 +276,10 @@ class DieticianDashboardScreen extends ConsumerWidget {
                                   if (d.recentLogs.isNotEmpty) ...[
                                     const SizedBox(height: AppSpacing.lg),
                                     _MealsCard(
-                                      logs: d.recentLogs.take(4).toList(),
+                                      logs:
+                                          d.recentLogsByPatient
+                                              .take(4)
+                                              .toList(),
                                     ),
                                   ],
                                 ],
@@ -376,17 +444,23 @@ class _StatCard extends StatelessWidget {
                             Expanded(
                               child: Text(
                                 label.toUpperCase(),
+                                // Two lines rather than an ellipsis: in half a
+                                // phone "NEW THIS WEEK" does not fit on one,
+                                // and "NEW THIS W…" is not a label.
+                                maxLines: 2,
                                 style: TextStyle(
-                                  fontSize: 12,
+                                  fontSize: 11.5,
                                   fontWeight: FontWeight.w700,
-                                  letterSpacing: 0.9,
+                                  letterSpacing: 0.8,
+                                  height: 1.2,
                                   color: accent ?? scheme.onSurfaceVariant,
                                 ),
                               ),
                             ),
+                            const SizedBox(width: 6),
                             Icon(
                               icon,
-                              size: 21,
+                              size: 19,
                               color: accent ?? scheme.onSurfaceVariant,
                             ),
                           ],
@@ -682,14 +756,22 @@ class _PlanTile extends StatelessWidget {
                           Icon(
                             Icons.schedule_rounded,
                             size: 13,
-                            color: scheme.onSurfaceVariant,
+                            color: _waitTone(context, patient.sinceDays).fg,
                           ),
                           const SizedBox(width: 4),
+                          // "Waiting 27 days" set in the same grey as
+                          // "Waiting 2 days" is the one number on this tile
+                          // that should have stopped somebody, printed as
+                          // though it were a caption.
                           Text(
                             waiting,
                             style: TextStyle(
                               fontSize: 12,
-                              color: scheme.onSurfaceVariant,
+                              fontWeight:
+                                  patient.sinceDays >= 7
+                                      ? FontWeight.w700
+                                      : FontWeight.w400,
+                              color: _waitTone(context, patient.sinceDays).fg,
                             ),
                           ),
                         ],
@@ -724,6 +806,27 @@ class _PlanTile extends StatelessWidget {
   }
 }
 
+/// How loud a wait should be.
+///
+/// Everything on these worklists was red before, from "today" to "27 days ago",
+/// which is the same as nothing being red: a dietician scanning the column had
+/// no way to tell the patient they saw yesterday from the one nobody has
+/// answered in a month. A fortnight is the point at which a nutrition review
+/// has genuinely lapsed rather than merely slipped.
+({Color fg, Color bg}) _waitTone(BuildContext context, int days) {
+  if (days >= 14) {
+    return (fg: AppColors.dangerOn(context), bg: AppColors.dangerBgOn(context));
+  }
+  if (days >= 7) {
+    return (
+      fg: AppColors.warningOn(context),
+      bg: AppColors.warningBgOn(context),
+    );
+  }
+  final scheme = Theme.of(context).colorScheme;
+  return (fg: scheme.onSurfaceVariant, bg: scheme.surfaceContainerHighest);
+}
+
 class _AgePill extends StatelessWidget {
   const _AgePill({required this.days});
 
@@ -731,13 +834,14 @@ class _AgePill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final tone = _waitTone(context, days);
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
           decoration: BoxDecoration(
-            color: AppColors.dangerBgOn(context),
+            color: tone.bg,
             borderRadius: BorderRadius.circular(20),
           ),
           child: Text(
@@ -745,7 +849,7 @@ class _AgePill extends StatelessWidget {
             style: TextStyle(
               fontSize: 12,
               fontWeight: FontWeight.w700,
-              color: AppColors.dangerOn(context),
+              color: tone.fg,
             ),
           ),
         ),

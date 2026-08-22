@@ -27,7 +27,7 @@ import '../../medications/domain/strength.dart';
 /// What the dietician needs to recommend food safely: the patient's medical
 /// status and the doctor's current medicine list. Food advice is given in the
 /// care chat (the "Message" button), informed by the food log.
-class DieticianPatientScreen extends ConsumerWidget {
+class DieticianPatientScreen extends ConsumerStatefulWidget {
   const DieticianPatientScreen({
     super.key,
     required this.patientId,
@@ -38,7 +38,37 @@ class DieticianPatientScreen extends ConsumerWidget {
   final String? patientName;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<DieticianPatientScreen> createState() =>
+      _DieticianPatientScreenState();
+}
+
+class _DieticianPatientScreenState
+    extends ConsumerState<DieticianPatientScreen> {
+  /// One anchor per section, so the bar above the record can jump to it.
+  ///
+  /// The record runs to eight sections — plan, vitals, medicines, advice,
+  /// tests, reports, food log — and a dietician who opens it to check what the
+  /// doctor prescribed was scrolling past all of it to find out. The bar
+  /// stays put while the record scrolls under it.
+  final _anchors = <String, GlobalKey>{};
+
+  GlobalKey _anchor(String id) => _anchors.putIfAbsent(id, GlobalKey.new);
+
+  Future<void> _jumpTo(String id) async {
+    final ctx = _anchors[id]?.currentContext;
+    if (ctx == null) return;
+    await Scrollable.ensureVisible(
+      ctx,
+      duration: const Duration(milliseconds: 320),
+      curve: Curves.easeOutCubic,
+      alignment: 0.02,
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final patientId = widget.patientId;
+    final patientName = widget.patientName;
     final scheme = Theme.of(context).colorScheme;
     final async = ref.watch(dietOverviewProvider(patientId));
 
@@ -72,97 +102,175 @@ class DieticianPatientScreen extends ConsumerWidget {
                   ],
                 ),
               ),
-          data:
-              (o) => RefreshIndicator(
-                onRefresh:
-                    () async => ref.invalidate(dietOverviewProvider(patientId)),
-                child: ListView(
-                  padding: const EdgeInsets.fromLTRB(
-                    AppSpacing.md,
-                    AppSpacing.md,
-                    AppSpacing.md,
-                    110,
+          data: (o) {
+            // Only the sections this patient actually has. A jump bar offering
+            // "Lab reports" on a record with none is a promise it cannot keep.
+            final sections = <(String, String)>[
+              ('plan', 'Diet plan'),
+              if (o.vitals?.hasAny ?? false) ('vitals', 'Vitals'),
+              if (o.medications.isNotEmpty) ('meds', 'Medicines'),
+              if (o.advice.isNotEmpty) ('advice', 'Advice'),
+              if (o.advisedTests.isNotEmpty || o.latestHba1c != null)
+                ('tests', 'Tests'),
+              if (o.labReports.isNotEmpty) ('reports', 'Reports'),
+              ('food', 'Food log'),
+            ];
+            return Column(
+              children: [
+                if (sections.length > 2)
+                  Container(
+                    height: 44,
+                    width: double.infinity,
+                    decoration: BoxDecoration(
+                      color: scheme.surface,
+                      border: Border(
+                        bottom: BorderSide(
+                          color: scheme.outlineVariant.withValues(alpha: 0.5),
+                        ),
+                      ),
+                    ),
+                    child: ListView.separated(
+                      scrollDirection: Axis.horizontal,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: AppSpacing.md,
+                        vertical: 6,
+                      ),
+                      itemCount: sections.length,
+                      separatorBuilder: (_, _) => const SizedBox(width: 8),
+                      itemBuilder: (context, i) {
+                        final (id, label) = sections[i];
+                        return ActionChip(
+                          label: Text(label),
+                          visualDensity: VisualDensity.compact,
+                          onPressed: () => _jumpTo(id),
+                        );
+                      },
+                    ),
                   ),
-                  children: [
-                    _MedicalCard(overview: o),
-                    const SizedBox(height: AppSpacing.lg),
-                    // Above the medicines and the log on purpose: the plan is what the
-                    // dietician is here to produce; everything below it is input.
-                    _SectionTitle('Diet plan'),
-                    const SizedBox(height: AppSpacing.sm),
-                    _DietPlanSection(
-                      patientId: patientId,
-                      patientName: patientName ?? o.name,
-                    ),
-                    if (o.vitals?.hasAny ?? false) ...[
-                      const SizedBox(height: AppSpacing.lg),
+                Expanded(
+                  child: RefreshIndicator(
+                    onRefresh:
+                        () async =>
+                            ref.invalidate(dietOverviewProvider(patientId)),
+                    child: ListView(
+                      padding: const EdgeInsets.fromLTRB(
+                        AppSpacing.md,
+                        AppSpacing.md,
+                        AppSpacing.md,
+                        110,
+                      ),
+                      children: [
+                        _MedicalCard(overview: o),
+                        const SizedBox(height: AppSpacing.lg),
+                        // Above the medicines and the log on purpose: the plan is what the
+                        // dietician is here to produce; everything below it is input.
+                        KeyedSubtree(
+                          key: _anchor('plan'),
+                          child: _SectionTitle('Diet plan'),
+                        ),
+                        const SizedBox(height: AppSpacing.sm),
+                        _DietPlanSection(
+                          patientId: patientId,
+                          patientName: patientName ?? o.name,
+                        ),
+                        if (o.vitals?.hasAny ?? false) ...[
+                          const SizedBox(height: AppSpacing.lg),
 
-                      const SizedBox(height: AppSpacing.sm),
-                      _VitalsSection(vitals: o.vitals!),
-                    ],
-                    const SizedBox(height: AppSpacing.lg),
-                    _SectionTitle(
-                      'Current medicines',
-                      trailing: '${o.medications.length}',
-                    ),
-                    const SizedBox(height: AppSpacing.sm),
-                    if (o.medications.isEmpty)
-                      _emptyNote(
-                        scheme,
-                        'No medicines on record from the doctor yet.',
-                      )
-                    else
-                      Container(
-                        decoration: BoxDecoration(
-                          color: scheme.surfaceContainerLowest,
-                          borderRadius: BorderRadius.circular(16),
-                          border: Border.all(
-                            color: scheme.outlineVariant.withValues(alpha: 0.6),
+                          const SizedBox(height: AppSpacing.sm),
+                          KeyedSubtree(
+                            key: _anchor('vitals'),
+                            child: _VitalsSection(vitals: o.vitals!),
+                          ),
+                        ],
+                        const SizedBox(height: AppSpacing.lg),
+                        KeyedSubtree(
+                          key: _anchor('meds'),
+                          child: _SectionTitle(
+                            'Current medicines',
+                            trailing: '${o.medications.length}',
                           ),
                         ),
-                        clipBehavior: Clip.antiAlias,
-                        child: Column(
-                          children: [
-                            for (var i = 0; i < o.medications.length; i++) ...[
-                              if (i > 0)
-                                Divider(
-                                  height: 1,
-                                  indent: 56,
-                                  color: scheme.outlineVariant.withValues(
-                                    alpha: 0.4,
-                                  ),
+                        const SizedBox(height: AppSpacing.sm),
+                        if (o.medications.isEmpty)
+                          _emptyNote(
+                            scheme,
+                            'No medicines on record from the doctor yet.',
+                          )
+                        else
+                          Container(
+                            decoration: BoxDecoration(
+                              color: scheme.surfaceContainerLowest,
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(
+                                color: scheme.outlineVariant.withValues(
+                                  alpha: 0.6,
                                 ),
-                              _MedRow(med: o.medications[i]),
-                            ],
-                          ],
+                              ),
+                            ),
+                            clipBehavior: Clip.antiAlias,
+                            child: Column(
+                              children: [
+                                for (
+                                  var i = 0;
+                                  i < o.medications.length;
+                                  i++
+                                ) ...[
+                                  if (i > 0)
+                                    Divider(
+                                      height: 1,
+                                      indent: 56,
+                                      color: scheme.outlineVariant.withValues(
+                                        alpha: 0.4,
+                                      ),
+                                    ),
+                                  _MedRow(med: o.medications[i]),
+                                ],
+                              ],
+                            ),
+                          ),
+                        if (o.advice.isNotEmpty) ...[
+                          const SizedBox(height: AppSpacing.lg),
+                          KeyedSubtree(
+                            key: _anchor('advice'),
+                            child: _SectionTitle('Doctor’s advice'),
+                          ),
+                          const SizedBox(height: AppSpacing.sm),
+                          _AdviceSection(advice: o.advice),
+                        ],
+                        if (o.advisedTests.isNotEmpty ||
+                            o.latestHba1c != null) ...[
+                          const SizedBox(height: AppSpacing.lg),
+                          KeyedSubtree(
+                            key: _anchor('tests'),
+                            child: _SectionTitle('Tests ordered by the doctor'),
+                          ),
+                          const SizedBox(height: AppSpacing.sm),
+                          _LabTests(overview: o),
+                        ],
+                        if (o.labReports.isNotEmpty) ...[
+                          const SizedBox(height: AppSpacing.lg),
+                          KeyedSubtree(
+                            key: _anchor('reports'),
+                            child: _SectionTitle(
+                              'Lab reports',
+                              trailing: '${o.labReports.length}',
+                            ),
+                          ),
+                          const SizedBox(height: AppSpacing.sm),
+                          _LabReportsSection(reports: o.labReports),
+                        ],
+                        const SizedBox(height: AppSpacing.lg),
+                        KeyedSubtree(
+                          key: _anchor('food'),
+                          child: _FoodLogSection(patientId: patientId),
                         ),
-                      ),
-                    if (o.advice.isNotEmpty) ...[
-                      const SizedBox(height: AppSpacing.lg),
-                      _SectionTitle('Doctor’s advice'),
-                      const SizedBox(height: AppSpacing.sm),
-                      _AdviceSection(advice: o.advice),
-                    ],
-                    if (o.advisedTests.isNotEmpty || o.latestHba1c != null) ...[
-                      const SizedBox(height: AppSpacing.lg),
-                      _SectionTitle('Tests ordered by the doctor'),
-                      const SizedBox(height: AppSpacing.sm),
-                      _LabTests(overview: o),
-                    ],
-                    if (o.labReports.isNotEmpty) ...[
-                      const SizedBox(height: AppSpacing.lg),
-                      _SectionTitle(
-                        'Lab reports',
-                        trailing: '${o.labReports.length}',
-                      ),
-                      const SizedBox(height: AppSpacing.sm),
-                      _LabReportsSection(reports: o.labReports),
-                    ],
-                    const SizedBox(height: AppSpacing.lg),
-                    _FoodLogSection(patientId: patientId),
-                  ],
+                      ],
+                    ),
+                  ),
                 ),
-              ),
+              ],
+            );
+          },
         ),
       ),
       bottomNavigationBar: SafeArea(
@@ -616,8 +724,14 @@ class _DietPlanSection extends ConsumerWidget {
                     spacing: AppSpacing.sm,
                     runSpacing: 4,
                     children: [
-                      for (final meal in plan.meals.take(5))
+                      // Four, not five, and each one capped. A pill reading
+                      // "Mid-morning snack · 11:00 AM" took a whole row on its
+                      // own, so five of them wrapped into a ragged block three
+                      // lines deep — and the card still did not say whether
+                      // there were more meals than it was showing.
+                      for (final meal in plan.meals.take(4))
                         Container(
+                          constraints: const BoxConstraints(maxWidth: 168),
                           padding: const EdgeInsets.symmetric(
                             horizontal: 8,
                             vertical: 4,
@@ -630,10 +744,31 @@ class _DietPlanSection extends ConsumerWidget {
                             meal.time.isNotEmpty
                                 ? '${meal.name} · ${meal.time}'
                                 : meal.name,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                             style: TextStyle(
                               fontSize: 12,
                               fontWeight: FontWeight.w700,
                               color: AppColors.accentOn(context),
+                            ),
+                          ),
+                        ),
+                      if (plan.meals.length > 4)
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 4,
+                          ),
+                          decoration: BoxDecoration(
+                            color: scheme.surfaceContainerHighest,
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          child: Text(
+                            '+${plan.meals.length - 4} more',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                              color: scheme.onSurfaceVariant,
                             ),
                           ),
                         ),
@@ -874,6 +1009,44 @@ class _FoodLogSection extends ConsumerWidget {
         for (final e in recent) {
           final key = _slots.contains(e.mealType) ? e.mealType : 'snack';
           bySlot.putIfAbsent(key, () => e);
+        }
+
+        // Nothing at all, ever. Four dotted slots and a header spend most of a
+        // screen saying "no", and the answer a dietician wants from an empty
+        // food log — has this patient started logging? — fits on one line.
+        // The grid earns its space by showing which meal is missing; with
+        // nothing logged there is no missing meal to point at.
+        if (entries.isEmpty) {
+          return Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(AppSpacing.md),
+            decoration: BoxDecoration(
+              color: scheme.surfaceContainerLowest,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                color: scheme.outlineVariant.withValues(alpha: 0.55),
+              ),
+            ),
+            child: Row(
+              children: [
+                Icon(
+                  Icons.photo_camera_outlined,
+                  size: 19,
+                  color: scheme.onSurfaceVariant,
+                ),
+                const SizedBox(width: AppSpacing.sm),
+                Expanded(
+                  child: Text(
+                    'No meals logged yet — nothing to review.',
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: scheme.onSurfaceVariant,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          );
         }
 
         return Column(
@@ -1751,6 +1924,33 @@ class _DietLabReportRow extends ConsumerStatefulWidget {
 }
 
 class _DietLabReportRowState extends ConsumerState<_DietLabReportRow> {
+  bool _expanded = false;
+
+  /// The summary with any name in it taken out.
+  ///
+  /// These are read off the uploaded document, and the name on the document is
+  /// whatever the lab printed — a spelling, an initial, sometimes a relative
+  /// who collected the sample. Shown inside the record of a patient it does not
+  /// match, it reads as the wrong person's results, which is the one thing a
+  /// clinical record must never suggest. The patient is already named at the
+  /// top of this screen; the summary only needs to say what the test found.
+  String _summary(String raw) {
+    var out = raw;
+    for (final re in [
+      RegExp(
+        r'^\s*(?:patient|name)\s*[:\-]\s*[^\n.]{1,60}[.\n]?\s*',
+        caseSensitive: false,
+      ),
+      RegExp(
+        r"^\s*(?:report|results?)\s+for\s+[^\n.]{1,60}[.\n]?\s*",
+        caseSensitive: false,
+      ),
+    ]) {
+      out = out.replaceFirst(re, '');
+    }
+    return out.trim();
+  }
+
   bool _busy = false;
 
   LabReport get report => widget.report;
@@ -1878,9 +2078,30 @@ class _DietLabReportRowState extends ConsumerState<_DietLabReportRow> {
                     report.analysisSummary!.isNotEmpty) ...[
                   const SizedBox(height: 4),
                   Text(
-                    report.analysisSummary!,
+                    _summary(report.analysisSummary!),
+                    // Three lines, then Read more. These summaries run to a
+                    // paragraph, and eight of them turned a list of reports
+                    // into a page of prose nobody scrolls to the end of.
+                    maxLines: _expanded ? null : 3,
+                    overflow:
+                        _expanded ? TextOverflow.clip : TextOverflow.ellipsis,
                     style: const TextStyle(fontSize: 14, height: 1.3),
                   ),
+                  if (_summary(report.analysisSummary!).length > 150)
+                    GestureDetector(
+                      onTap: () => setState(() => _expanded = !_expanded),
+                      child: Padding(
+                        padding: const EdgeInsets.only(top: 2),
+                        child: Text(
+                          _expanded ? 'Show less' : 'Read more',
+                          style: TextStyle(
+                            fontSize: 12.5,
+                            fontWeight: FontWeight.w700,
+                            color: AppColors.accentOn(context),
+                          ),
+                        ),
+                      ),
+                    ),
                 ] else if (report.note.isNotEmpty) ...[
                   const SizedBox(height: 4),
                   Text(report.note, style: const TextStyle(fontSize: 14)),

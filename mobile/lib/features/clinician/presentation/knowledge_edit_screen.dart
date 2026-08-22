@@ -346,34 +346,56 @@ class _KnowledgeEditScreenState extends ConsumerState<KnowledgeEditScreen> {
           color: scheme.surface,
           border: Border(top: BorderSide(color: scheme.outlineVariant)),
         ),
-        child: Row(
-          children: [
-            Expanded(
-              child: SizedBox(
-                height: 50,
-                child: OutlinedButton(
-                  onPressed: _saving ? null : _save,
-                  child: Text(_editing ? 'Save' : 'Create'),
-                ),
-              ),
-            ),
-            if (_editing && _status != 'approved') ...[
-              const SizedBox(width: AppSpacing.sm),
-              Expanded(
-                child: SizedBox(
-                  height: 50,
-                  child: FilledButton.icon(
-                    style: FilledButton.styleFrom(
-                      backgroundColor: AppColors.primary,
-                    ),
-                    onPressed: _saving ? null : _approve,
-                    icon: const Icon(Icons.verified_rounded, size: 18),
-                    label: const Text('Approve'),
+        // Whichever action finishes the job carries the weight. Approving is
+        // the finish when there is something to approve; otherwise saving is,
+        // and a lone outlined "Create" left the only button on the screen
+        // looking like the one you were meant to skip.
+        child: Builder(
+          builder: (context) {
+            final canApprove = _editing && _status != 'approved';
+            return Row(
+              children: [
+                Expanded(
+                  child: SizedBox(
+                    height: 50,
+                    child:
+                        canApprove
+                            ? OutlinedButton(
+                              onPressed: _saving ? null : _save,
+                              // Says what it leaves behind: an entry saved
+                              // but not approved is a draft the assistant
+                              // will not draw on, and "Save" alone does not
+                              // tell the doctor that.
+                              child: const Text('Save as draft'),
+                            )
+                            : FilledButton(
+                              style: FilledButton.styleFrom(
+                                backgroundColor: AppColors.primary,
+                              ),
+                              onPressed: _saving ? null : _save,
+                              child: Text(_editing ? 'Save' : 'Create'),
+                            ),
                   ),
                 ),
-              ),
-            ],
-          ],
+                if (canApprove) ...[
+                  const SizedBox(width: AppSpacing.sm),
+                  Expanded(
+                    child: SizedBox(
+                      height: 50,
+                      child: FilledButton.icon(
+                        style: FilledButton.styleFrom(
+                          backgroundColor: AppColors.primary,
+                        ),
+                        onPressed: _saving ? null : _approve,
+                        icon: const Icon(Icons.verified_rounded, size: 18),
+                        label: const Text('Approve'),
+                      ),
+                    ),
+                  ),
+                ],
+              ],
+            );
+          },
         ),
       ),
     );

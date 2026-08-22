@@ -206,6 +206,20 @@ final Provider<GoRouter> appRouterProvider = Provider<GoRouter>((ref) {
         builder: (context, state) => PatientProfileScreen(patientId: state.pathParameters['id']!),
       ),
 
+      // Editing your own details is a form, not a place. Nested inside a shell
+      // branch it kept the tab bar on screen, so a half-finished form could be
+      // abandoned with one tap on a tab and no warning — and the bar sat under
+      // the Save button, taking the space the keyboard needed. Pushed on top of
+      // whichever tab you came from, Back returns you to it.
+      GoRoute(
+        path: '/dietician/profile/edit',
+        builder: (context, state) => const EditProfileScreen(),
+      ),
+      GoRoute(
+        path: '/clinician/more/edit',
+        builder: (context, state) => const EditProfileScreen(),
+      ),
+
       // ---- Dietician app ------------------------------------------------
       // A patient, their diet plan and the nutrition chat sit outside the shell:
       // they are pushed on top of whichever tab you came from, so going back
@@ -260,9 +274,6 @@ final Provider<GoRouter> appRouterProvider = Provider<GoRouter>((ref) {
               GoRoute(
                 path: '/dietician/profile',
                 builder: (context, state) => const DieticianProfileScreen(),
-                routes: [
-                  GoRoute(path: 'edit', builder: (context, state) => const EditProfileScreen()),
-                ],
               ),
             ],
           ),
@@ -364,9 +375,6 @@ final Provider<GoRouter> appRouterProvider = Provider<GoRouter>((ref) {
               GoRoute(
                 path: '/clinician/more',
                 builder: (context, state) => const ClinicianMoreScreen(),
-                routes: [
-                  GoRoute(path: 'edit', builder: (context, state) => const EditProfileScreen()),
-                ],
               ),
             ],
           ),

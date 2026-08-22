@@ -617,6 +617,28 @@ class DietDashboard {
   final List<DietPatientBrief> plansMissingList;
   final List<DietRecentLog> recentLogs;
 
+  /// The most recent meal from each patient, newest first.
+  ///
+  /// The raw feed is chronological, so a patient who photographed breakfast,
+  /// lunch and a snack filled the whole grid on their own — four plates that
+  /// looked like a cross-section of the caseload but were one person's
+  /// Tuesday. One per patient makes "latest meals" mean what it says.
+  List<DietRecentLog> get recentLogsByPatient {
+    final seen = <String>{};
+    final out = <DietRecentLog>[];
+    final sorted = [...recentLogs]..sort((a, b) {
+      final at = a.createdAt, bt = b.createdAt;
+      if (at == null && bt == null) return 0;
+      if (at == null) return 1;
+      if (bt == null) return -1;
+      return bt.compareTo(at);
+    });
+    for (final log in sorted) {
+      if (seen.add(log.patientId)) out.add(log);
+    }
+    return out;
+  }
+
   /// Reviews due, longest-waiting first, with anyone who has no plan at all
   /// left out — they belong under "waiting for a plan", not under "overdue for
   /// review", and a patient in both lists twice reads as twice the work.

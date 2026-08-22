@@ -214,6 +214,10 @@ class _DieticianPatientsScreenState
                           return _FilterChip(
                             label: '$label ($count)',
                             selected: selected,
+                            // An empty worklist is still worth tapping — it
+                            // tells you there is nothing there — but it should
+                            // not compete with the ones that hold work.
+                            empty: count == 0,
                             onTap: () => setState(() => _filterKey = key),
                           );
                         },
@@ -294,13 +298,26 @@ class _DieticianPatientsScreenState
                     const SizedBox(height: AppSpacing.md),
                     Center(
                       child: Text(
-                        'No patient matches “${_query.trim()}”',
+                        _query.trim().isEmpty
+                            ? 'Nothing in this list'
+                            : 'No patient matches “${_query.trim()}”',
                         style: const TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.w600,
                         ),
                       ),
                     ),
+                    // Reachable by tapping an empty filter, where quoting a
+                    // search the dietician never typed was simply wrong.
+                    if (_filterKey != 'all') ...[
+                      const SizedBox(height: AppSpacing.md),
+                      Center(
+                        child: OutlinedButton(
+                          onPressed: () => setState(() => _filterKey = 'all'),
+                          child: const Text('Show all patients'),
+                        ),
+                      ),
+                    ],
                   ],
                 );
               }
@@ -338,10 +355,14 @@ class _PatientCard extends StatelessWidget {
   /// When the next review falls, said the way a person would say it.
   static (String, bool) _reviewText(DietPatient p) {
     final days = p.daysUntilReview;
-    if (days == null) return (p.reviewDue ? 'REVIEW DUE' : '', p.reviewDue);
+    // The pill on the left of this row already says "Review Due". Repeating
+    // those two words on the right of the same row told the dietician nothing
+    // the pill had not, and made the card look like it was insisting. The
+    // right-hand text is for *when* — it stays quiet when it has no date.
+    if (days == null) return ('', p.reviewDue);
     if (days < 0) {
       final n = -days;
-      return ('OVERDUE $n ${n == 1 ? 'DAY' : 'DAYS'}', true);
+      return ('$n ${n == 1 ? 'DAY' : 'DAYS'} OVERDUE', true);
     }
     if (days == 0) return ('TODAY', false);
     return ('IN $days ${days == 1 ? 'DAY' : 'DAYS'}', false);
@@ -484,7 +505,7 @@ class _PatientCard extends StatelessWidget {
                             ),
                           ],
                         ),
-                        if (status.isNotEmpty) ...[
+                        if (status.isNotEmpty || p.reviewDue) ...[
                           const SizedBox(height: 12),
                           Divider(
                             height: 1,
@@ -599,16 +620,23 @@ class _FilterChip extends StatelessWidget {
     required this.label,
     required this.selected,
     required this.onTap,
+    this.empty = false,
   });
 
   final String label;
   final bool selected;
   final VoidCallback onTap;
 
+  /// Nothing in this worklist. Drawn back so the eye goes to the filters that
+  /// hold work — five chips at equal weight over four empty lists is five
+  /// invitations to a dead end.
+  final bool empty;
+
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final accent = AppColors.accentOn(context);
+    final dim = empty && !selected;
 
     return Material(
       color: selected ? accent : scheme.surfaceContainerLowest,
@@ -625,15 +653,22 @@ class _FilterChip extends StatelessWidget {
               color:
                   selected
                       ? accent
-                      : scheme.outlineVariant.withValues(alpha: 0.8),
+                      : scheme.outlineVariant.withValues(
+                        alpha: dim ? 0.4 : 0.8,
+                      ),
             ),
           ),
           child: Text(
             label,
             style: TextStyle(
               fontSize: 14,
-              fontWeight: FontWeight.w700,
-              color: selected ? Colors.white : scheme.onSurface,
+              fontWeight: dim ? FontWeight.w500 : FontWeight.w700,
+              color:
+                  selected
+                      ? Colors.white
+                      : dim
+                      ? scheme.onSurfaceVariant.withValues(alpha: 0.65)
+                      : scheme.onSurface,
             ),
           ),
         ),

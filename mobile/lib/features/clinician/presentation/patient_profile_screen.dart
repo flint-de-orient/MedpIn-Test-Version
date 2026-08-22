@@ -557,37 +557,46 @@ class _PatientProfileScreenState extends ConsumerState<PatientProfileScreen> {
                                     ),
                                 ],
                               ),
-                            // Sub-tests under each selected panel.
+                            // Sub-tests under each selected panel, as pills of
+                            // the same shape the rest of this card uses. Run
+                            // together as "A · B · C" behind a name and a
+                            // colon, they read as one long test name rather
+                            // than as the six things the panel measures.
                             for (final t in _selectedTests)
                               if ((labPanelFor(t)?.analytes ?? const [])
                                   .isNotEmpty)
                                 Padding(
-                                  padding: const EdgeInsets.only(top: 4),
-                                  child: Row(
+                                  padding: const EdgeInsets.only(top: 6),
+                                  child: Column(
                                     crossAxisAlignment:
                                         CrossAxisAlignment.start,
                                     children: [
-                                      Icon(
-                                        Icons.subdirectory_arrow_right_rounded,
-                                        size: 15,
-                                        color:
-                                            Theme.of(
-                                              context,
-                                            ).colorScheme.onSurfaceVariant,
-                                      ),
-                                      const SizedBox(width: 4),
-                                      Expanded(
-                                        child: Text(
-                                          '$t: ${labPanelFor(t)!.analytes.join(' · ')}',
-                                          style: TextStyle(
-                                            fontSize: 12,
-                                            height: 1.3,
-                                            color:
-                                                Theme.of(
-                                                  context,
-                                                ).colorScheme.onSurfaceVariant,
-                                          ),
+                                      Text(
+                                        '$t includes',
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w700,
+                                          color:
+                                              Theme.of(
+                                                context,
+                                              ).colorScheme.onSurfaceVariant,
                                         ),
+                                      ),
+                                      const SizedBox(height: 4),
+                                      Wrap(
+                                        spacing: 6,
+                                        runSpacing: 4,
+                                        children: [
+                                          for (final a
+                                              in labPanelFor(t)!.analytes)
+                                            _StatusPill(
+                                              label: a,
+                                              color:
+                                                  Theme.of(context)
+                                                      .colorScheme
+                                                      .onSurfaceVariant,
+                                            ),
+                                        ],
                                       ),
                                     ],
                                   ),
@@ -1697,9 +1706,25 @@ class _TestHistory extends StatelessWidget {
 
     // A test counts as back when a report carries its name. Matched loosely,
     // because the patient types the name when they upload against "Other".
-    bool hasReport(String test) => reports.any(
-      (r) => r.testName.trim().toLowerCase() == test.trim().toLowerCase(),
-    );
+    bool sameTest(String a, String b) =>
+        a.trim().toLowerCase() == b.trim().toLowerCase();
+    LabReport? reportFor(String test) {
+      for (final r in reports) {
+        if (sameTest(r.testName, test)) return r;
+      }
+      return null;
+    }
+
+    // Ordered and received, in one list rather than two.
+    //
+    // Split apart, the doctor had to read a name in the first block, find the
+    // same name in the second, and work out for themselves whether the report
+    // that came back was the test they asked for. Each ordered test now
+    // carries its own state, and its report where it has one.
+    final unmatched =
+        reports
+            .where((r) => !advised.any((t) => sameTest(t, r.testName)))
+            .toList();
 
     return Padding(
       padding: const EdgeInsets.only(bottom: AppSpacing.md),
@@ -1707,104 +1732,19 @@ class _TestHistory extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           if (advised.isNotEmpty) ...[
-            _MicroHeading('ALREADY ORDERED', count: advised.length),
+            _MicroHeading('TESTS ORDERED', count: advised.length),
             const SizedBox(height: AppSpacing.sm),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                for (final t in advised)
-                  Chip(
-                    avatar: Icon(
-                      hasReport(t)
-                          ? Icons.check_circle_rounded
-                          : Icons.hourglass_empty_rounded,
-                      size: 16,
-                      color:
-                          hasReport(t)
-                              ? AppColors.successOn(context)
-                              : AppColors.warningOn(context),
-                    ),
-                    label: Text(
-                      t,
-                      style: const TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    backgroundColor: scheme.surfaceContainerLow,
-                    side: BorderSide(
-                      color: scheme.outlineVariant.withValues(alpha: 0.7),
-                    ),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                  ),
-              ],
-            ),
-            const SizedBox(height: AppSpacing.md),
+            for (final t in advised) _LabTestRow(test: t, report: reportFor(t)),
+            const SizedBox(height: AppSpacing.sm),
           ],
-          if (reports.isNotEmpty) ...[
-            _MicroHeading('REPORTS RECEIVED', count: reports.length),
+          if (unmatched.isNotEmpty) ...[
+            // Reports the patient uploaded against nothing the clinic ordered.
+            // Worth surfacing on their own — an outside test the doctor never
+            // asked for is exactly the sort of thing that goes unread.
+            _MicroHeading('ALSO UPLOADED', count: unmatched.length),
             const SizedBox(height: AppSpacing.sm),
-            for (final r in reports.take(8))
-              Padding(
-                padding: const EdgeInsets.only(bottom: 4),
-                child: Row(
-                  children: [
-                    // Only a picture gets a thumbnail; a PDF drawn through the
-                    // image loader is the broken box the patient's screen had.
-                    if (r.hasFile && r.isImage)
-                      Padding(
-                        padding: const EdgeInsets.only(right: AppSpacing.sm),
-                        child: AuthedImage(
-                          path: r.photoUrl!,
-                          width: 44,
-                          height: 44,
-                          radius: 8,
-                        ),
-                      )
-                    else
-                      Container(
-                        width: 44,
-                        height: 44,
-                        margin: const EdgeInsets.only(right: AppSpacing.sm),
-                        decoration: BoxDecoration(
-                          color: scheme.surfaceContainerHigh,
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: Icon(
-                          Icons.description_outlined,
-                          size: 21,
-                          color: scheme.onSurfaceVariant,
-                        ),
-                      ),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            r.testName,
-                            style: const TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                          Text(
-                            r.createdAt == null
-                                ? (r.originalName ?? '')
-                                : DateFormat('d MMM yyyy').format(r.createdAt!),
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: scheme.onSurfaceVariant,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
+            for (final r in unmatched.take(8))
+              _LabTestRow(test: r.testName, report: r),
             const SizedBox(height: AppSpacing.sm),
           ],
           Divider(
@@ -1812,6 +1752,147 @@ class _TestHistory extends StatelessWidget {
             color: scheme.outlineVariant.withValues(alpha: 0.5),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// One ordered test and whatever has come back for it.
+///
+/// Awaiting or received is the whole question the doctor is asking of this
+/// card, so it is a pill on the row rather than something to be inferred from
+/// which of two lists the name appears in.
+class _LabTestRow extends StatelessWidget {
+  const _LabTestRow({required this.test, required this.report});
+
+  final String test;
+  final LabReport? report;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final r = report;
+    final back = r != null;
+    final analytes = labPanelFor(test)?.analytes ?? const <String>[];
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: AppSpacing.sm),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (back && r.hasFile && r.isImage)
+            Padding(
+              padding: const EdgeInsets.only(right: AppSpacing.sm),
+              child: AuthedImage(
+                path: r.photoUrl!,
+                width: 40,
+                height: 40,
+                radius: 8,
+              ),
+            )
+          else
+            Container(
+              width: 40,
+              height: 40,
+              margin: const EdgeInsets.only(right: AppSpacing.sm),
+              decoration: BoxDecoration(
+                color: scheme.surfaceContainerHigh,
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Icon(
+                back
+                    ? Icons.description_outlined
+                    : Icons.hourglass_empty_rounded,
+                size: 19,
+                color:
+                    back
+                        ? scheme.onSurfaceVariant
+                        : AppColors.warningOn(context),
+              ),
+            ),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: Text(
+                        test,
+                        style: const TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: AppSpacing.sm),
+                    _StatusPill(
+                      label: back ? 'Received' : 'Awaiting',
+                      color:
+                          back
+                              ? AppColors.successOn(context)
+                              : AppColors.warningOn(context),
+                    ),
+                  ],
+                ),
+                if (back && r.createdAt != null)
+                  Text(
+                    DateFormat('d MMM yyyy').format(r.createdAt!),
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: scheme.onSurfaceVariant,
+                    ),
+                  )
+                else if (analytes.isNotEmpty)
+                  // What the report will include, in the same pill shape the
+                  // catalogue above uses. Run together as "A · B · C" the
+                  // sub-tests read as one long name for the panel.
+                  Padding(
+                    padding: const EdgeInsets.only(top: 4),
+                    child: Wrap(
+                      spacing: 6,
+                      runSpacing: 4,
+                      children: [
+                        for (final a in analytes)
+                          _StatusPill(label: a, color: scheme.onSurfaceVariant),
+                      ],
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// A small outlined pill. One shape for every sub-metric and status on this
+/// card, so nothing on it has to be read twice to work out what kind of thing
+/// it is.
+class _StatusPill extends StatelessWidget {
+  const _StatusPill({required this.label, required this.color});
+
+  final String label;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: color.withValues(alpha: 0.35)),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          fontSize: 11.5,
+          fontWeight: FontWeight.w700,
+          color: color,
+        ),
       ),
     );
   }
