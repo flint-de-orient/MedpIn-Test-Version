@@ -74,7 +74,8 @@ class _PatientsScreenState extends ConsumerState<PatientsScreen>
   }
 
   void _refresh() {
-    if (mounted) ref.invalidate(patientsProvider(_query));
+    if (!mounted) return;
+    ref.invalidate(patientsProvider(_query));
   }
 
   void _onSearchChanged(String v) {
@@ -144,7 +145,11 @@ class _PatientsScreenState extends ConsumerState<PatientsScreen>
                     AppSpacing.md,
                     AppSpacing.md,
                     AppSpacing.md,
-                    AppSpacing.xl,
+                    // Clear of the "Add patient" button. AppSpacing.xl is 32,
+                    // and an extended FAB plus its margin is nearer 90 — so the
+                    // last patient in the list sat underneath it, which is the
+                    // one place a list must stay readable to the end.
+                    96,
                   ),
                   children: [
                     _SectionBar(

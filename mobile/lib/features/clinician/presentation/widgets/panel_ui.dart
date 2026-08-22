@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -268,13 +269,58 @@ class PanelPill extends StatelessWidget {
 ///
 /// Counts OPEN alerts, not every alert ever raised: the badge should empty as
 /// the doctor works through them, otherwise it only ever grows.
-class PanelNotificationBell extends ConsumerWidget {
+class PanelNotificationBell extends ConsumerStatefulWidget {
   const PanelNotificationBell({super.key, required this.onTap});
 
   final VoidCallback onTap;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<PanelNotificationBell> createState() =>
+      _PanelNotificationBellState();
+}
+
+class _PanelNotificationBellState extends ConsumerState<PanelNotificationBell>
+    with WidgetsBindingObserver {
+  Timer? _poll;
+
+  /// The badge refreshes itself rather than relying on whichever screen it is
+  /// mounted in.
+  ///
+  /// It hangs in four headers. Only the dashboard was refreshing the overview
+  /// behind it, so on Patients, Nutrition and Profile the number froze at
+  /// whatever it said when the tab was opened — and a count that silently
+  /// stops being live is worse than no count, because it is still believed.
+  ///
+  /// Owning it here also means the next screen to add a bell gets a working
+  /// one, instead of inheriting the same bug by omission.
+  static const _interval = Duration(seconds: 30);
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _poll = Timer.periodic(_interval, (_) => _tick());
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // Coming back from the background is when the count is most likely stale.
+    if (state == AppLifecycleState.resumed) _tick();
+  }
+
+  void _tick() {
+    if (mounted) ref.invalidate(overviewProvider);
+  }
+
+  @override
+  void dispose() {
+    _poll?.cancel();
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final count = ref.watch(overviewProvider).valueOrNull?.waitingTotal ?? 0;
 
@@ -283,7 +329,7 @@ class PanelNotificationBell extends ConsumerWidget {
       children: [
         IconButton(
           tooltip: count == 0 ? 'Notifications' : '$count waiting',
-          onPressed: onTap,
+          onPressed: widget.onTap,
           icon: Icon(
             Icons.notifications_none_rounded,
             size: 24,

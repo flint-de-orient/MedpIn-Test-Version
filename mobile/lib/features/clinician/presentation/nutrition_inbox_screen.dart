@@ -71,7 +71,8 @@ class _NutritionInboxScreenState extends ConsumerState<NutritionInboxScreen>
   }
 
   void _refresh() {
-    if (mounted) ref.invalidate(chatReviewProvider(_query));
+    if (!mounted) return;
+    ref.invalidate(chatReviewProvider(_query));
   }
 
   void _onSearchChanged(String v) {

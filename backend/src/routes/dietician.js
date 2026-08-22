@@ -206,8 +206,15 @@ router.get(
     // that has been outstanding for days and will keep.
     const byNewest = (a, b) => new Date(b.at ?? 0) - new Date(a.at ?? 0);
 
+    // Counted, not measured off the rendered list. `messages` is capped at 30
+    // above, so past that the sheet under-reported while the dashboard badge —
+    // which uses a real count — kept saying the true figure. Two numbers for
+    // one fact, disagreeing on the same screen.
+    const unread = await unreadNutritionCount(ids);
+
     res.json({
-      unread: messages.length,
+      unread,
+      counts: { messages: unread, reviews: reviews.length, plans: plans.length },
       items: [...messages.sort(byNewest), ...reviews.sort(byNewest), ...plans.sort(byNewest)].slice(0, 50),
     });
   }),

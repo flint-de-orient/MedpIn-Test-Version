@@ -135,7 +135,30 @@ router.get(
       })),
     ];
 
-    res.json({ unread: items.filter((i) => i.unread).length, items: items.slice(0, 60) });
+    // Counted, not measured off the rendered list.
+    //
+    // `unread` was items.filter(...).length, which is the length of arrays this
+    // route deliberately caps at 30 alerts and 40 messages — so past those
+    // limits the sheet under-reported. It also excluded flagged reviews, which
+    // the header badge includes, so the two numbers disagreed with each other
+    // on the same screen.
+    //
+    // These are the same three quantities the badge sums, queried directly, so
+    // the bell and the sheet it opens can never say different things.
+    const [alertTotal, unreadTotal, flaggedTotal] = await Promise.all([
+      ClinicalAlert.countDocuments({ status: 'open' }),
+      ChatMessage.countDocuments({ role: 'user', seenByClinicAt: null }),
+      ChatSession.countDocuments({ flaggedForReview: true, isArchived: false }),
+    ]);
+
+    res.json({
+      unread: alertTotal + unreadTotal + flaggedTotal,
+      // What the list itself holds, so the client can say "showing 60 of 84"
+      // rather than silently truncating.
+      shown: Math.min(items.length, 60),
+      counts: { alerts: alertTotal, messages: unreadTotal, flagged: flaggedTotal },
+      items: items.slice(0, 60),
+    });
   }),
 );
 
