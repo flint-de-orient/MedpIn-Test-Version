@@ -5,6 +5,7 @@ import { retrieve, formatContext } from './rag.js';
 import { buildPatientContext } from '../patientContext.js';
 import { env } from '../../config/env.js';
 import { logger } from '../../config/logger.js';
+import { languagePrimer } from './prompts.js';
 
 const HISTORY_TURNS = 6;
 
@@ -148,6 +149,8 @@ export async function nutritionReply({ patientId, sessionId, text, language = 'e
         role: m.role === 'assistant' ? 'model' : 'user',
         parts: [{ text: m.content }],
       })),
+    // Same primer as the care assistant. See languagePrimer.
+    ...languagePrimer(language),
     { role: 'user', parts: [{ text }] },
   ];
 

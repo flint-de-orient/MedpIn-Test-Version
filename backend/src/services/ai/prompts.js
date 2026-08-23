@@ -175,6 +175,60 @@ Your message has been saved.`,
   },
 };
 
+/**
+ * A one-exchange primer that fixes the reply language, inserted just before the
+ * patient's real message.
+ *
+ * Three things were tried before this one, and the two failures are the reason
+ * it looks like this.
+ *
+ * Stating the rule in the system prompt is not enough on its own. The model is
+ * also shown the last eight turns, and for a patient whose thread has been in
+ * Bengali those are eight worked examples of answering in Bengali. Eight
+ * demonstrations beat one instruction, every time — measured, not guessed: with
+ * the rule in the system prompt only, a Bengali-app request came back in
+ * English and a Hindi one came back in Bengali, each matching the turn before
+ * it rather than the language asked for.
+ *
+ * Appending the rule to the patient's own message did beat the history, but the
+ * model then read it as part of what they had written: a Bengali sentence
+ * followed by an English instruction looked like garbled input, and a patient
+ * asking about morning dizziness was told the assistant could not understand
+ * them. Refusing a clear clinical question is worse than answering it in the
+ * wrong language.
+ *
+ * So the instruction becomes its own turn. It has the recency that beats the
+ * history, and the patient's message is left exactly as they typed it. Neither
+ * turn is stored or shown; they exist only in what is sent to the model.
+ */
+export function languagePrimer(language = 'en') {
+  const lang = LANGUAGE_NAME[language] ?? LANGUAGE_NAME.en;
+  return [
+    {
+      role: 'user',
+      parts: [
+        {
+          text:
+            `Before my next message: reply to it in ${lang}, whatever language the earlier ` +
+            `messages in this thread were written in. The one exception is if my next message ` +
+            `is itself six or more words of connected prose in a different language — then use ` +
+            `that language and match its script.`,
+        },
+      ],
+    },
+    {
+      role: 'model',
+      parts: [
+        {
+          text:
+            `Understood. I will reply in ${lang}, unless your next message is written at length ` +
+            `in another language, in which case I will use that one.`,
+        },
+      ],
+    },
+  ];
+}
+
 /** Disclaimer appended to every assistant reply, in the patient's language. */
 export const DISCLAIMER = {
   en: 'This is AI-assisted guidance, not a medical diagnosis. Always follow your doctor’s advice.',

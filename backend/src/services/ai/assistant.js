@@ -4,7 +4,7 @@ import { triageMessage } from '../triage/engine.js';
 import { buildPatientContext } from '../patientContext.js';
 import { retrieve, formatContext } from './rag.js';
 import { generate, generateStream, AiUnavailableError } from './gemini.js';
-import { buildSystemPrompt, fallbackReply } from './prompts.js';
+import { buildSystemPrompt, fallbackReply, languagePrimer } from './prompts.js';
 import { raiseAlert } from '../alerts.js';
 import { loadAssetsForAi } from '../../routes/uploads.js';
 import { resolveVoiceText } from '../voiceText.js';
@@ -189,6 +189,9 @@ export async function handlePatientMessage({ patientId, sessionId, text, languag
       // without being able to speak as the doctor. See loadCareTeamNotes.
       .filter((m) => (m.role === 'user' || m.role === 'assistant') && !m.isFallback)
       .map((m) => ({ role: m.role === 'assistant' ? 'model' : 'user', parts: [{ text: m.content }] })),
+    // The language primer sits between the history and the real message, so
+    // its instruction is the most recent thing read. See languagePrimer.
+    ...languagePrimer(language),
     { role: 'user', parts: userParts },
   ];
 
@@ -366,6 +369,9 @@ export async function* streamPatientMessage({ patientId, sessionId, text, langua
       // system prompt instead. See loadCareTeamNotes.
       .filter((m) => (m.role === 'user' || m.role === 'assistant') && !m.isFallback)
       .map((m) => ({ role: m.role === 'assistant' ? 'model' : 'user', parts: [{ text: m.content }] })),
+    // The language primer sits between the history and the real message, so
+    // its instruction is the most recent thing read. See languagePrimer.
+    ...languagePrimer(language),
     { role: 'user', parts: userParts },
   ];
   const system = buildSystemPrompt({
