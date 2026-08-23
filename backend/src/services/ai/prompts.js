@@ -229,6 +229,21 @@ export function languagePrimer(language = 'en') {
   ];
 }
 
+/**
+ * The blunt instrument, appended to the system prompt on a regeneration.
+ *
+ * Only ever reached after a reply has already come back in the wrong language,
+ * so it drops the nuance the normal rule carries and states one thing.
+ */
+export function forceLanguageInstruction(language = 'en') {
+  const lang = LANGUAGE_NAME[language] ?? LANGUAGE_NAME.en;
+  return (
+    `CRITICAL: your previous attempt was written in the wrong language. Write this reply ` +
+    `entirely in ${lang}, in that language's own script. Do not use any other language, ` +
+    `whatever the earlier turns of this conversation were written in.`
+  );
+}
+
 /** Disclaimer appended to every assistant reply, in the patient's language. */
 export const DISCLAIMER = {
   en: 'This is AI-assisted guidance, not a medical diagnosis. Always follow your doctor’s advice.',

@@ -4,7 +4,8 @@ import { triageMessage } from '../triage/engine.js';
 import { buildPatientContext } from '../patientContext.js';
 import { retrieve, formatContext } from './rag.js';
 import { generate, generateStream, AiUnavailableError } from './gemini.js';
-import { buildSystemPrompt, fallbackReply, languagePrimer } from './prompts.js';
+import { replyIsWrongLanguage } from './languageGuard.js';
+import { buildSystemPrompt, fallbackReply, languagePrimer, forceLanguageInstruction } from './prompts.js';
 import { raiseAlert } from '../alerts.js';
 import { loadAssetsForAi } from '../../routes/uploads.js';
 import { resolveVoiceText } from '../voiceText.js';
@@ -224,6 +225,35 @@ export async function handlePatientMessage({ patientId, sessionId, text, languag
     modelVersion = result.modelVersion;
     latencyMs = result.latencyMs;
     usage = result.usage;
+
+    // One retry when the reply came back in the wrong language.
+    //
+    // The prompt and the primer both ask; this checks. The model has ignored
+    // both in every arrangement tried so far, and a patient reading an English
+    // app should not be the one who discovers it. Once only: a second failure
+    // means the model has made a considered choice, and an answer in the wrong
+    // language still beats a spinner.
+    if (replyIsWrongLanguage({ reply: replyText, language, patientText: text })) {
+      logger.warn({ language }, 'reply came back in the wrong language; regenerating once');
+      const retry = await generate({
+        system: `${system}
+
+${forceLanguageInstruction(language)}`,
+        contents,
+        temperature: 0.1,
+        maxOutputTokens: 600,
+        model: images.length ? env.GEMINI_VISION_MODEL : undefined,
+      });
+      const retried = stripTrailingDisclaimer(retry.text.trim());
+      // Kept only if it is actually better. A retry that comes back wrong as
+      // well should not overwrite a first answer that at least addressed the
+      // question.
+      if (!replyIsWrongLanguage({ reply: retried, language, patientText: text })) {
+        replyText = retried;
+        modelVersion = retry.modelVersion;
+        latencyMs = (latencyMs ?? 0) + (retry.latencyMs ?? 0);
+      }
+    }
   } catch (err) {
     if (!(err instanceof AiUnavailableError)) throw err;
     logger.error({ err: err.cause?.message }, 'assistant generation failed; using scripted fallback');
@@ -414,6 +444,28 @@ export async function* streamPatientMessage({ patientId, sessionId, text, langua
     }
     replyText = stripTrailingDisclaimer(replyText.trim());
     if (!replyText) throw new AiUnavailableError(new Error('empty stream'));
+
+    // The stream has already been shown by now, so a wrong-language reply is
+    // corrected by replacing it — the same mechanism the scripted fallback
+    // uses. Better a visible correction than leaving a patient with a screen
+    // they cannot read.
+    if (replyIsWrongLanguage({ reply: replyText, language, patientText: text })) {
+      logger.warn({ language }, 'streamed reply was in the wrong language; regenerating once');
+      const retry = await generate({
+        system: `${system}
+
+${forceLanguageInstruction(language)}`,
+        contents,
+        temperature: 0.1,
+        maxOutputTokens: 600,
+        model: images.length ? env.GEMINI_VISION_MODEL : undefined,
+      });
+      const retried = stripTrailingDisclaimer(retry.text.trim());
+      if (retried && !replyIsWrongLanguage({ reply: retried, language, patientText: text })) {
+        replyText = retried;
+        yield { type: 'replace', data: replyText };
+      }
+    }
   } catch (err) {
     logger.error({ err: err?.cause?.message ?? err?.message }, 'stream generation failed; scripted fallback');
     replyText = fallbackReply(triage.urgency === 'emergency' ? 'emergency' : 'unavailable', language);
