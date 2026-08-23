@@ -380,19 +380,26 @@ class _DashboardHeader extends ConsumerWidget {
                 color: T.inkMuted,
               ),
               const SizedBox(width: 6),
-              Text(
-                DateFormat('EEE, d MMMM').format(DateTime.now()),
-                style: T.small.copyWith(color: T.inkMuted),
-              ),
-              const Spacer(),
               Flexible(
                 child: Text(
-                  freshnessLabel(updatedAt),
+                  DateFormat('EEE, d MMMM').format(DateTime.now()),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  textAlign: TextAlign.right,
                   style: T.small.copyWith(color: T.inkMuted),
                 ),
+              ),
+              const Spacer(),
+              // Never ellipsised. "Updated just n…" tells the reader nothing —
+              // the whole value of the line is the word at the end, and it was
+              // the word being cut. If the row is too narrow for both, the
+              // date gives way first: it is on the phone's status bar anyway,
+              // and how current the screen is, is not.
+              Text(
+                freshnessLabel(updatedAt),
+                maxLines: 1,
+                softWrap: false,
+                textAlign: TextAlign.right,
+                style: T.small.copyWith(color: T.inkMuted),
               ),
               const SizedBox(width: 6),
               // Green only while the screen is genuinely current. A dot that is

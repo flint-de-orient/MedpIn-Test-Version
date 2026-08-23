@@ -390,74 +390,122 @@ class _TriageRow extends StatelessWidget {
             ),
             const SizedBox(width: T.s3),
             Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    p.name,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: T.bodyStrong.copyWith(color: T.ink),
-                  ),
-                  const SizedBox(height: 1),
-                  Text(
-                    [
-                      '${level.label} risk',
-                      if (p.openAlertCount > 0)
-                        '${p.openAlertCount} alert${p.openAlertCount == 1 ? '' : 's'}',
-                      lastSeenLabel(p.lastReadingAt),
-                    ].join(' · '),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: T.small.copyWith(color: T.inkMuted),
-                  ),
-                  const SizedBox(height: 1),
-                  // Why this patient is here at all.
-                  Text(
-                    reason.text,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: T.small.copyWith(
-                      color: reason.urgent ? T.danger : T.inkMuted,
-                      fontWeight:
-                          reason.urgent ? FontWeight.w600 : FontWeight.w400,
-                    ),
-                  ),
-                ],
+              child: LayoutBuilder(
+                builder: (context, c) {
+                  // The reading and the sparkline sit beside the text only when
+                  // there is room. On a 360dp phone the avatar, three lines of
+                  // text, a percentage, a chart and a button do not fit on one
+                  // line, so everything that could ellipsise did: the row read
+                  // "High risk · 1 alert · …" over "Average u…". Every one of
+                  // those truncations removed the reason the patient is in the
+                  // queue, which is the row's whole job.
+                  //
+                  // Below the threshold they move to their own line underneath,
+                  // read in the same glance with nothing cut. Measured on the
+                  // text column rather than the screen, so it holds on a
+                  // tablet, in split screen and at any text scale.
+                  final inline = c.maxWidth >= 210;
+                  final metrics = _rowMetrics(patient: p, compact: !inline);
+
+                  final text = Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        p.name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: T.bodyStrong.copyWith(color: T.ink),
+                      ),
+                      const SizedBox(height: 1),
+                      Text(
+                        [
+                          '${level.label} risk',
+                          if (p.openAlertCount > 0)
+                            '${p.openAlertCount} alert${p.openAlertCount == 1 ? '' : 's'}',
+                          lastSeenLabel(p.lastReadingAt),
+                        ].join(' · '),
+                        // Two lines, not one. That string is three facts, and
+                        // the one that fell off the end was always the last
+                        // time anybody heard from the patient.
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: T.small.copyWith(color: T.inkMuted),
+                      ),
+                      const SizedBox(height: 1),
+                      // Why this patient is here at all.
+                      Text(
+                        reason.text,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: T.small.copyWith(
+                          color: reason.urgent ? T.danger : T.inkMuted,
+                          fontWeight:
+                              reason.urgent ? FontWeight.w600 : FontWeight.w400,
+                        ),
+                      ),
+                      if (!inline && metrics != null) ...[
+                        const SizedBox(height: 4),
+                        metrics,
+                      ],
+                    ],
+                  );
+
+                  if (inline && metrics != null) {
+                    return Row(
+                      children: [
+                        Expanded(child: text),
+                        const SizedBox(width: T.s2),
+                        metrics,
+                      ],
+                    );
+                  }
+                  return text;
+                },
               ),
             ),
             const SizedBox(width: T.s2),
-            if (p.hba1c != null)
-              Padding(
-                padding: const EdgeInsets.only(right: T.s2),
-                child: Text(
-                  '${p.hba1c!.toStringAsFixed(1)}%',
-                  style: T.bodyStrong.copyWith(
-                    color: p.hba1c! >= 7 ? T.danger : T.success,
-                  ),
-                ),
-              ),
-            if (p.spark.length > 1)
-              Padding(
-                padding: const EdgeInsets.only(right: T.s2),
-                child: Sparkline(
-                  values: p.spark,
-                  // The line is coloured by where control is going, not by the
-                  // risk band — two different facts, and conflating them hides
-                  // a high-risk patient who is improving.
-                  color: switch (p.trend) {
-                    'up' => T.danger,
-                    'down' => T.success,
-                    _ => T.inkMuted,
-                  },
-                ),
-              ),
             _RowAction(act: act, patientId: p.id, name: p.name),
           ],
         ),
       ),
     );
   }
+}
+
+/// The latest HbA1c and the direction of travel, as one unit.
+///
+/// Null when the patient has neither, so the row reserves no space for a
+/// reading that does not exist.
+Widget? _rowMetrics({required PatientListItem patient, required bool compact}) {
+  final p = patient;
+  if (p.hba1c == null && p.spark.length < 2) return null;
+  return Row(
+    mainAxisSize: MainAxisSize.min,
+    children: [
+      if (p.hba1c != null) ...[
+        Text(
+          '${p.hba1c!.toStringAsFixed(1)}%',
+          style: T.bodyStrong.copyWith(
+            color: p.hba1c! >= 7 ? T.danger : T.success,
+          ),
+        ),
+        const SizedBox(width: T.s2),
+      ],
+      if (p.spark.length > 1)
+        Sparkline(
+          values: p.spark,
+          // Coloured by where control is going, not by the risk band — two
+          // different facts, and conflating them hides a high-risk patient who
+          // is improving.
+          color: switch (p.trend) {
+            'up' => T.danger,
+            'down' => T.success,
+            _ => T.inkMuted,
+          },
+          width: compact ? 60 : 48,
+        ),
+    ],
+  );
 }
 
 class _RowAction extends StatelessWidget {

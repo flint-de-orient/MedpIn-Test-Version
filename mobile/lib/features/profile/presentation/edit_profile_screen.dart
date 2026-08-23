@@ -87,10 +87,10 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
                         '${_dateOfBirth!.month.toString().padLeft(2, '0')}-'
                         '${_dateOfBirth!.day.toString().padLeft(2, '0')}',
             gender: _gender,
-            address:
-                _addressController.text.trim().isEmpty
-                    ? null
-                    : _addressController.text.trim(),
+            // Always sent, including empty. Omitted when blank, the field
+            // could be set but never cleared: a patient who moved could add a
+            // new address and never remove the old one.
+            address: _addressController.text.trim(),
           );
       ref.read(authControllerProvider.notifier).replaceUser(user);
       messenger.showSnackBar(SnackBar(content: Text(l10n.profileSaved)));

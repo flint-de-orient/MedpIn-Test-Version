@@ -131,6 +131,10 @@ class _PatientProfileScreenState extends ConsumerState<PatientProfileScreen> {
                 },
               )
               .toList(),
+      // The diagnosis was missing from here while the form collected it, so
+      // "Save draft" quietly kept everything except the one line the doctor
+      // had actually reasoned their way to.
+      'diagnosis': _diagnosis.text.trim(),
       'advice': _advice.text.trim(),
       'tests': _selectedTests.toList(),
       'customTests': _customTests,
@@ -155,7 +159,19 @@ class _PatientProfileScreenState extends ConsumerState<PatientProfileScreen> {
       final meds =
           (d['meds'] as List?)?.whereType<Map<String, dynamic>>().toList() ??
           const [];
-      if (meds.isEmpty && (d['advice'] as String?)?.isEmpty != false) return;
+      // Anything at all, not just medicines or advice. The old guard threw
+      // away a draft consisting of a diagnosis, three ordered tests and a
+      // follow-up date, because neither of the two fields it happened to check
+      // was filled in — and it did so silently, on open, so the doctor met an
+      // empty form and no explanation.
+      final hasAnything =
+          meds.isNotEmpty ||
+          (d['diagnosis']?.toString().trim().isNotEmpty ?? false) ||
+          (d['advice']?.toString().trim().isNotEmpty ?? false) ||
+          ((d['tests'] as List?)?.isNotEmpty ?? false) ||
+          ((d['customTests'] as List?)?.isNotEmpty ?? false) ||
+          (d['followUp']?.toString().isNotEmpty ?? false);
+      if (!hasAnything) return;
 
       setState(() {
         if (meds.isNotEmpty) {
@@ -181,6 +197,7 @@ class _PatientProfileScreenState extends ConsumerState<PatientProfileScreen> {
               }),
             );
         }
+        _diagnosis.text = d['diagnosis']?.toString() ?? '';
         _advice.text = d['advice']?.toString() ?? '';
         _selectedTests
           ..clear()

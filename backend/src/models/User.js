@@ -36,6 +36,17 @@ const userSchema = new mongoose.Schema(
     dateOfBirth: Date,
     gender: { type: String, enum: ['male', 'female', 'other', 'undisclosed'], default: 'undisclosed' },
 
+    // Home address.
+    //
+    // This was missing from the schema while `toPublic()` returned it and both
+    // registration and PATCH /auth/me accepted it. Mongoose drops assignments
+    // to paths it does not know about, so the value was written to the
+    // in-memory document, echoed back in the response — which is why the app
+    // said "saved" and showed the new address — and then silently discarded on
+    // save(). Reading the record afterwards returned null. Every address any
+    // patient, doctor or dietician has ever typed was lost this way.
+    address: { type: String, trim: true, maxlength: 300 },
+
     // Push delivery targets for reminders and escalations.
     deviceTokens: [{ type: String }],
 
@@ -81,7 +92,9 @@ userSchema.methods.toPublic = function toPublic() {
     language: this.language,
     dateOfBirth: this.dateOfBirth ?? null,
     gender: this.gender,
-    address: this.address ?? null,
+    // `||`, not `??`: a cleared address is stored as an empty string, and
+    // the app should read that as "none set" rather than as a blank line.
+    address: this.address || null,
     avatarUrl: this.avatarAssetId ? `/api/v1/uploads/${this.avatarAssetId}/raw` : null,
     // Doctor letterhead fields; null for patients/staff who never set them.
     qualifications: this.qualifications ?? null,

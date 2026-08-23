@@ -96,11 +96,19 @@ class ClinicSnapshot extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.center,
-                      children: [
-                        Flexible(
-                          child: Text(
+                    // Scaled down rather than clipped. A 44pt number beside a
+                    // delta pill is the widest thing on this card, and in the
+                    // left four-ninths of a 360dp phone it does not fit — at a
+                    // larger text scale it misses by more. FittedBox shrinks
+                    // the pair to whatever room there is instead of painting
+                    // past the edge.
+                    FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: Alignment.centerLeft,
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.center,
+                        children: [
+                          Text(
                             '$pct%',
                             maxLines: 1,
                             style: T.display.copyWith(
@@ -108,44 +116,44 @@ class ClinicSnapshot extends StatelessWidget {
                               fontSize: 44,
                             ),
                           ),
-                        ),
-                        if (delta != null && delta != 0) ...[
-                          const SizedBox(width: T.s2),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 8,
-                              vertical: 3,
-                            ),
-                            decoration: BoxDecoration(
-                              color:
-                                  rising
-                                      ? const Color(0xFFE8F5EE)
-                                      : T.dangerTint,
-                              borderRadius: BorderRadius.circular(20),
-                            ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(
-                                  rising
-                                      ? Icons.arrow_upward_rounded
-                                      : Icons.arrow_downward_rounded,
-                                  size: 12,
-                                  color: rising ? T.success : T.danger,
-                                ),
-                                const SizedBox(width: 2),
-                                Text(
-                                  '${delta.abs()}%',
-                                  style: T.label.copyWith(
-                                    fontSize: 12,
+                          if (delta != null && delta != 0) ...[
+                            const SizedBox(width: T.s2),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 3,
+                              ),
+                              decoration: BoxDecoration(
+                                color:
+                                    rising
+                                        ? const Color(0xFFE8F5EE)
+                                        : T.dangerTint,
+                                borderRadius: BorderRadius.circular(20),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(
+                                    rising
+                                        ? Icons.arrow_upward_rounded
+                                        : Icons.arrow_downward_rounded,
+                                    size: 12,
                                     color: rising ? T.success : T.danger,
                                   ),
-                                ),
-                              ],
+                                  const SizedBox(width: 2),
+                                  Text(
+                                    '${delta.abs()}%',
+                                    style: T.label.copyWith(
+                                      fontSize: 12,
+                                      color: rising ? T.success : T.danger,
+                                    ),
+                                  ),
+                                ],
+                              ),
                             ),
-                          ),
+                          ],
                         ],
-                      ],
+                      ),
                     ),
                     const SizedBox(height: 2),
                     Text(
@@ -279,13 +287,24 @@ class _TrendChart extends StatelessWidget {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text(
-                    DateFormat('d MMM').format(points.first.date),
-                    style: T.small.copyWith(color: T.inkFaint, fontSize: 10),
+                  // Flexible: the chart column is barely 120dp on a phone, and
+                  // two dates set at whatever the reader's text scale is will
+                  // not always fit inside it.
+                  Flexible(
+                    child: Text(
+                      DateFormat('d MMM').format(points.first.date),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: T.small.copyWith(color: T.inkFaint, fontSize: 10),
+                    ),
                   ),
-                  Text(
-                    DateFormat('d MMM').format(points.last.date),
-                    style: T.small.copyWith(color: T.inkFaint, fontSize: 10),
+                  Flexible(
+                    child: Text(
+                      DateFormat('d MMM').format(points.last.date),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: T.small.copyWith(color: T.inkFaint, fontSize: 10),
+                    ),
                   ),
                 ],
               ),
@@ -440,80 +459,94 @@ class ActionQueue extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: T.s4),
             child: Column(
               children: [
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Expanded(
-                      child: _ActionTile(
-                        icon: Icons.chat_bubble_rounded,
-                        tone: T.primary,
-                        count: careUnread,
-                        label: 'Unread messages',
-                        // The split matters: a backlog of thank-yous is not
-                        // the same workload as two people waiting on an
-                        // answer. Counted off the messages themselves — this
-                        // used to show the open *alert* count, so a clinic
-                        // with two raised alerts and no urgent messages read
-                        // as two people waiting.
-                        note:
-                            overview.urgentUnread > 0
-                                ? '${overview.urgentUnread} urgent'
-                                : null,
-                        noteTone: T.danger,
-                        onTap: () => context.go('/clinician/patients'),
+                // Same reason as the row above it.
+                IntrinsicHeight(
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Expanded(
+                        child: _ActionTile(
+                          icon: Icons.chat_bubble_rounded,
+                          tone: T.primary,
+                          count: careUnread,
+                          label: 'Unread messages',
+                          // The split matters: a backlog of thank-yous is not
+                          // the same workload as two people waiting on an
+                          // answer. Counted off the messages themselves — this
+                          // used to show the open *alert* count, so a clinic
+                          // with two raised alerts and no urgent messages read
+                          // as two people waiting.
+                          note:
+                              overview.urgentUnread > 0
+                                  ? '${overview.urgentUnread} urgent'
+                                  : null,
+                          noteTone: T.danger,
+                          onTap: () => context.go('/clinician/patients'),
+                        ),
                       ),
-                    ),
-                    const SizedBox(width: T.s3),
-                    Expanded(
-                      child: _ActionTile(
-                        icon: Icons.schedule_rounded,
-                        tone: T.warning,
-                        count: analytics.overdueCheckIns,
-                        label: 'Check-ins overdue',
-                        note: analytics.overdueCheckIns > 0 ? '7+ days' : null,
-                        noteTone: T.warning,
-                        onTap: () => context.go('/clinician/patients'),
+                      const SizedBox(width: T.s3),
+                      Expanded(
+                        child: _ActionTile(
+                          icon: Icons.schedule_rounded,
+                          tone: T.warning,
+                          count: analytics.overdueCheckIns,
+                          label: 'Check-ins overdue',
+                          note:
+                              analytics.overdueCheckIns > 0 ? '7+ days' : null,
+                          noteTone: T.warning,
+                          onTap: () => context.go('/clinician/patients'),
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
                 const SizedBox(height: T.s3),
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Expanded(
-                      child: _ActionTile(
-                        icon: Icons.flag_rounded,
-                        tone: const Color(0xFF7C3AED),
-                        count: overview.pendingReviews,
-                        label:
-                            overview.pendingReviews == 1
-                                ? 'Action item'
-                                : 'Action items',
-                        note:
-                            overview.pendingReviews > 0
-                                ? 'Pending review'
-                                : null,
-                        noteTone: const Color(0xFF7C3AED),
-                        onTap: () => context.push('/clinician/chat-review'),
+                // IntrinsicHeight, not a bare stretch. `stretch` on a Row's
+                // cross axis means "be as tall as the space allows", and
+                // the space inside a scrolling list is unbounded — which
+                // is the "BoxConstraints forces an infinite height" that
+                // took this card, and everything below it, off the
+                // doctor's home screen without a word of explanation.
+                // IntrinsicHeight measures the taller tile and gives both
+                // that height, which is what the stretch was reaching for.
+                IntrinsicHeight(
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Expanded(
+                        child: _ActionTile(
+                          icon: Icons.flag_rounded,
+                          tone: const Color(0xFF7C3AED),
+                          count: overview.pendingReviews,
+                          label:
+                              overview.pendingReviews == 1
+                                  ? 'Action item'
+                                  : 'Action items',
+                          note:
+                              overview.pendingReviews > 0
+                                  ? 'Pending review'
+                                  : null,
+                          noteTone: const Color(0xFF7C3AED),
+                          onTap: () => context.push('/clinician/chat-review'),
+                        ),
                       ),
-                    ),
-                    const SizedBox(width: T.s3),
-                    Expanded(
-                      child: _ActionTile(
-                        icon: Icons.restaurant_rounded,
-                        tone: T.success,
-                        count: overview.nutritionReviews.length,
-                        label: 'Nutrition reviews',
-                        note:
-                            overview.nutritionReviews.isEmpty
-                                ? null
-                                : 'Due for review',
-                        noteTone: T.success,
-                        onTap: () => context.go('/clinician/nutrition'),
+                      const SizedBox(width: T.s3),
+                      Expanded(
+                        child: _ActionTile(
+                          icon: Icons.restaurant_rounded,
+                          tone: T.success,
+                          count: overview.nutritionReviews.length,
+                          label: 'Nutrition reviews',
+                          note:
+                              overview.nutritionReviews.isEmpty
+                                  ? null
+                                  : 'Due for review',
+                          noteTone: T.success,
+                          onTap: () => context.go('/clinician/nutrition'),
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
                 const SizedBox(height: T.s3),
               ],
@@ -677,10 +710,19 @@ class NutritionReviewQueue extends StatelessWidget {
               child: TextButton(
                 onPressed: () => context.go('/clinician/nutrition'),
                 style: TextButton.styleFrom(foregroundColor: T.primary),
+                // Flexible, so a long label at a large text scale ellipsises
+                // instead of pushing the arrow off the button.
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.center,
+                  mainAxisSize: MainAxisSize.min,
                   children: [
-                    const Text('Go to nutrition center'),
+                    const Flexible(
+                      child: Text(
+                        'Go to nutrition center',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
                     const SizedBox(width: T.s2),
                     const Icon(Icons.arrow_forward_rounded, size: 16),
                   ],
