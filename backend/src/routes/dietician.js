@@ -412,6 +412,27 @@ router.post(
   }),
 );
 
+/**
+ * The in-target share on its own, over an arbitrary window.
+ *
+ * Separate from /dashboard so changing the period costs one small query
+ * instead of recomputing the attention list, the plan status and the activity
+ * feed — none of which the period affects.
+ */
+router.get(
+  '/nutrition-overview',
+  validate({ query: z.object({ days: z.coerce.number().int().min(7).max(180).default(14) }) }),
+  asyncHandler(async (req, res) => {
+    const profiles = await PatientProfile.find(await scopeFilter(req))
+      .populate('user', 'isActive')
+      .lean();
+    const ids = profiles
+      .filter((p) => p.user && p.user.isActive !== false)
+      .map((p) => p.user._id);
+    res.json(await nutritionOverview(ids, req.query.days));
+  }),
+);
+
 router.get(
   '/dashboard',
   asyncHandler(async (req, res) => {

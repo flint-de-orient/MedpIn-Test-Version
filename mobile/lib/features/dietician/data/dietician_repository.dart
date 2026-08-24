@@ -18,6 +18,16 @@ class DieticianRepository {
     );
   }
 
+  /// The in-target share over [days]. Its own call, so changing the window
+  /// does not refetch the whole dashboard.
+  Future<NutritionOverview> nutritionOverview(int days) async {
+    final json = await _client.getJson(
+      '/dietician/nutrition-overview',
+      query: {'days': days},
+    );
+    return NutritionOverview.fromJson(json);
+  }
+
   Future<DietPlan?> dietPlan(String patientId) async {
     final json = await _client.getJson('/dietician/patients/$patientId/diet');
     final plan = json['plan'];

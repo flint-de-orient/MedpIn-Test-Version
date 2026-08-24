@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import '../../../shared/widgets/edge_fade.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/theme/app_colors.dart';
@@ -33,6 +35,9 @@ class DieticianPatientsScreen extends ConsumerStatefulWidget {
 
 class _DieticianPatientsScreenState
     extends ConsumerState<DieticianPatientsScreen> {
+  /// Owned here so the fade can read the rail's position.
+  final ScrollController _filterRail = ScrollController();
+
   final _search = TextEditingController();
   String _query = '';
 
@@ -49,6 +54,7 @@ class _DieticianPatientsScreenState
 
   @override
   void dispose() {
+    _filterRail.dispose();
     _search.dispose();
     super.dispose();
   }
@@ -216,13 +222,34 @@ class _DieticianPatientsScreenState
                     // the edge — "High Risk (1" — and a filter you cannot see is a
                     // filter you do not use. Five is a known, small set, so all five
                     // fit on screen and the count beside each one stays readable.
-                    return Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      children: [
-                        for (final (key, label, count) in chips)
-                          _filterChipFor(key, label, count),
-                      ],
+                    // A single scrolling row, with the ends faded.
+                    //
+                    // Wrapping them fixed the slicing but cost three rows of
+                    // vertical space above a worklist, which is the content.
+                    // The rail is back — what makes it read as deliberate
+                    // rather than broken is that it never hard-cuts: the fade
+                    // appears on whichever side has more behind it, and the
+                    // padding lets the first and last chips clear the screen
+                    // edge instead of being flush against it.
+                    //
+                    // Height comes from the text scaler, so the row grows with
+                    // the system font rather than clipping the labels.
+                    return SizedBox(
+                      height: MediaQuery.textScalerOf(context).scale(38),
+                      child: EdgeFade(
+                        controller: _filterRail,
+                        child: ListView.separated(
+                          controller: _filterRail,
+                          scrollDirection: Axis.horizontal,
+                          padding: const EdgeInsets.symmetric(horizontal: 2),
+                          itemCount: chips.length,
+                          separatorBuilder: (_, _) => const SizedBox(width: 8),
+                          itemBuilder: (context, i) {
+                            final (key, label, count) = chips[i];
+                            return _filterChipFor(key, label, count);
+                          },
+                        ),
+                      ),
                     );
                   },
                 ),

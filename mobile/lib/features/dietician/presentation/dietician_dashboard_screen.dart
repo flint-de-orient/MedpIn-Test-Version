@@ -404,15 +404,23 @@ class _WorkSummary extends StatelessWidget {
   }
 }
 
-class _OverviewTile extends StatelessWidget {
+class _OverviewTile extends ConsumerWidget {
   const _OverviewTile({required this.overview});
 
+  /// The 14-day block that came with the dashboard. Used until a different
+  /// window has actually loaded, so switching does not blank the tile.
   final NutritionOverview overview;
 
   @override
-  Widget build(BuildContext context) {
-    final delta = overview.deltaPercent;
-    if (!overview.hasData) return const _OverviewEmpty();
+  Widget build(BuildContext context, WidgetRef ref) {
+    final window = ref.watch(overviewWindowProvider);
+    final live =
+        window == OverviewWindow.d14
+            ? overview
+            : ref.watch(overviewForWindowProvider(window)).valueOrNull ??
+                overview;
+    final delta = live.deltaPercent;
+    if (!live.hasData) return const _OverviewEmpty();
     return InnerTile(
       padding: const EdgeInsets.all(T.s3),
       child: Column(
@@ -422,7 +430,7 @@ class _OverviewTile extends StatelessWidget {
             children: [
               Expanded(
                 child: Text(
-                  'Nutrition overview (14 days)',
+                  window.title,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: T.label.copyWith(
@@ -450,7 +458,7 @@ class _OverviewTile extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
               MetricValue(
-                value: '${overview.inTargetPercent}%',
+                value: '${live.inTargetPercent}%',
                 size: 28,
                 color: T.primary,
               ),
@@ -503,11 +511,72 @@ class _OverviewTile extends StatelessWidget {
           const SizedBox(height: T.s2),
           // The painter draws its own axis now: two layouts cannot agree
           // about where a gridline sits, and these two did not.
-          NutritionSparkline(series: overview.series),
+          NutritionSparkline(series: live.series),
+          const SizedBox(height: T.s2),
+          Row(
+            children: [
+              for (final w in OverviewWindow.values) ...[
+                if (w != OverviewWindow.values.first)
+                  const SizedBox(width: T.s1),
+                Expanded(
+                  child: _WindowChip(
+                    label: w.label,
+                    selected: w == window,
+                    onTap:
+                        () =>
+                            ref.read(overviewWindowProvider.notifier).state = w,
+                  ),
+                ),
+              ],
+            ],
+          ),
         ],
       ),
     );
   }
+}
+
+/// One period option under the overview chart.
+class _WindowChip extends StatelessWidget {
+  const _WindowChip({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) => Semantics(
+    button: true,
+    selected: selected,
+    child: GestureDetector(
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: Container(
+        // Padding, not a height: the row sits under a chart and a fixed
+        // height here would clip the label at a large text scale.
+        padding: const EdgeInsets.symmetric(vertical: 7),
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: selected ? T.primary : Colors.white,
+          borderRadius: BorderRadius.circular(T.rControl),
+          border: Border.all(color: selected ? T.primary : T.line),
+        ),
+        child: Text(
+          label,
+          maxLines: 1,
+          style: T.label.copyWith(
+            letterSpacing: 0,
+            fontWeight: FontWeight.w700,
+            color: selected ? Colors.white : T.inkMuted,
+          ),
+        ),
+      ),
+    ),
+  );
 }
 
 // ---------------------------------------------------------- quick stats

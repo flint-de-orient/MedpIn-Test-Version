@@ -6,6 +6,39 @@ import '../domain/diet_models.dart';
 
 /// The dietician's day at a glance: counts, reviews due, plans not yet sent,
 /// and the latest meals their patients logged.
+/// The windows the overview offers. Days rather than calendar months: the
+/// endpoint takes a day count, and a fortnight is what the clinic reviews on.
+enum OverviewWindow {
+  d7(7, '7D'),
+  d14(14, '14D'),
+  d30(30, '30D'),
+  d90(90, '3M');
+
+  const OverviewWindow(this.days, this.label);
+
+  final int days;
+  final String label;
+
+  String get title => switch (this) {
+    OverviewWindow.d7 => 'Nutrition overview (7 days)',
+    OverviewWindow.d14 => 'Nutrition overview (14 days)',
+    OverviewWindow.d30 => 'Nutrition overview (30 days)',
+    OverviewWindow.d90 => 'Nutrition overview (3 months)',
+  };
+}
+
+/// Which window the dietician is looking at. Survives a dashboard refresh —
+/// the screen reloads itself every thirty seconds, and snapping back to the
+/// default each time would make the control unusable.
+final overviewWindowProvider = StateProvider<OverviewWindow>(
+  (ref) => OverviewWindow.d14,
+);
+
+final overviewForWindowProvider = FutureProvider.autoDispose.family<
+  NutritionOverview,
+  OverviewWindow
+>((ref, w) => ref.watch(dieticianRepositoryProvider).nutritionOverview(w.days));
+
 final dietDashboardProvider = FutureProvider.autoDispose<DietDashboard>(
   (ref) => ref.watch(dieticianRepositoryProvider).dashboard(),
 );
