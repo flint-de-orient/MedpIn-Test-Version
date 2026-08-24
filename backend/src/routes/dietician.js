@@ -46,6 +46,155 @@ function reviewDue(p, defaultDays) {
 }
 
 /**
+ * Whole days, oldest first, as `YYYY-MM-DD` keys. Used by both fourteen-day
+ * series so the buckets line up.
+ */
+function dayKeys(count, endExclusive = dayjs().add(1, 'day').startOf('day')) {
+  const out = [];
+  for (let i = count; i >= 1; i -= 1) out.push(endExclusive.subtract(i, 'day').format('YYYY-MM-DD'));
+  return out;
+}
+
+/**
+ * Share of the caseload's glucose readings that landed in range, per day, over
+ * [days] — plus the same figure for the [days] before it, so the header can say
+ * whether nutrition is going the right way rather than only where it stands.
+ *
+ * Derived from `flag`, which the server already stamps on every reading against
+ * the clinic's own bands. Recomputing "in range" here would be a second copy of
+ * a clinical threshold, and the copy that goes stale when the bands change.
+ *
+ * A day with no readings is a hole, not a zero: nobody testing is not the same
+ * as everybody testing badly, and plotting it as 0% would draw a cliff into the
+ * chart every Sunday.
+ */
+async function nutritionOverview(ids, days = 14) {
+  if (ids.length === 0) return { inTargetPercent: null, deltaPercent: null, series: [] };
+
+  const from = dayjs().startOf('day').subtract(days * 2 - 1, 'day').toDate();
+  const readings = await GlucoseReading.find({
+    patient: { $in: ids },
+    measuredAt: { $gte: from },
+  })
+    .select('measuredAt flag')
+    .lean();
+
+  const bucket = new Map();
+  for (const r of readings) {
+    const key = dayjs(r.measuredAt).format('YYYY-MM-DD');
+    const cell = bucket.get(key) ?? { total: 0, inRange: 0 };
+    cell.total += 1;
+    if (r.flag === 'in_range') cell.inRange += 1;
+    bucket.set(key, cell);
+  }
+
+  const pct = (cell) => (cell && cell.total > 0 ? Math.round((cell.inRange / cell.total) * 100) : null);
+  const windowPct = (keys) => {
+    let total = 0;
+    let inRange = 0;
+    for (const k of keys) {
+      const cell = bucket.get(k);
+      if (!cell) continue;
+      total += cell.total;
+      inRange += cell.inRange;
+    }
+    return total > 0 ? Math.round((inRange / total) * 100) : null;
+  };
+
+  const all = dayKeys(days * 2);
+  const previous = all.slice(0, days);
+  const current = all.slice(days);
+
+  const now = windowPct(current);
+  const before = windowPct(previous);
+
+  return {
+    inTargetPercent: now,
+    // Only a comparison against a period that actually had readings means
+    // anything. "+86%" against an empty fortnight would be an artefact.
+    deltaPercent: now !== null && before !== null ? now - before : null,
+    series: current.map((key) => ({ day: key, percent: pct(bucket.get(key)) })),
+  };
+}
+
+/**
+ * The patients whose nutrition needs a look, worst first.
+ *
+ * Three reasons, in the order a dietician would triage them: a log came in
+ * after the last review and nobody has read it; the patient has largely stopped
+ * logging; their next review falls inside three days. One entry per patient —
+ * the most pressing reason wins, because the same face three times reads as
+ * three patients.
+ */
+function buildAttention({ assigned, defaultDays, logsByPatient, planBy }) {
+  const today = dayjs().startOf('day');
+  const out = [];
+
+  for (const p of assigned) {
+    const id = String(p.user._id);
+    const logs = logsByPatient.get(id) ?? [];
+    const lastReview = p.lastDietReviewAt ? dayjs(p.lastDietReviewAt) : null;
+
+    // Seven days of "did they log anything at all", oldest first. A count per
+    // day would spike on the patient who photographs four snacks; presence is
+    // the behaviour being measured.
+    const spark = [];
+    for (let i = 6; i >= 0; i -= 1) {
+      const key = today.subtract(i, 'day').format('YYYY-MM-DD');
+      spark.push(logs.some((l) => dayjs(l.createdAt).format('YYYY-MM-DD') === key) ? 1 : 0);
+    }
+    const loggedDays = spark.reduce((a, b) => a + b, 0);
+    const missed = 7 - loggedDays;
+
+    const unreviewed = logs.filter((l) => !lastReview || dayjs(l.createdAt).isAfter(lastReview));
+
+    const interval = p.dietReviewIntervalDays ?? defaultDays;
+    const nextReviewIn =
+      interval && p.lastDietReviewAt
+        ? interval - dayjs().diff(dayjs(p.lastDietReviewAt), 'day')
+        : null;
+
+    let kind = null;
+    let label = null;
+    let detail = null;
+
+    if (unreviewed.length > 0) {
+      kind = 'log_review';
+      label = 'Food log needs review';
+      const newest = unreviewed.reduce((a, b) => (dayjs(a.createdAt).isAfter(b.createdAt) ? a : b));
+      detail = `New log submitted ${dayjs(newest.createdAt).fromNow()}`;
+    } else if (missed >= 3) {
+      kind = 'adherence';
+      label = 'Low adherence';
+      const last = logs[0];
+      detail = last
+        ? `Last log: ${dayjs(last.createdAt).fromNow()}`
+        : 'No meals logged in the last week';
+    } else if (nextReviewIn !== null && nextReviewIn >= 0 && nextReviewIn <= 3) {
+      kind = 'review_soon';
+      label = 'Review due soon';
+      detail = nextReviewIn === 0 ? 'Review due today' : `Review due in ${nextReviewIn}d`;
+    } else {
+      continue;
+    }
+
+    out.push({
+      patientId: id,
+      name: p.user.name,
+      avatarUrl: p.user.avatarAssetId ? `/api/v1/uploads/${p.user.avatarAssetId}/raw` : null,
+      kind,
+      label,
+      detail,
+      missedLogs: missed,
+      spark,
+    });
+  }
+
+  const rank = { log_review: 0, adherence: 1, review_soon: 2 };
+  return out.sort((a, b) => rank[a.kind] - rank[b.kind] || b.missedLogs - a.missedLogs);
+}
+
+/**
  * The patients this dietician may see.
  *
  * A clinic has one or two dieticians and hundreds of patients, so requiring an
@@ -89,6 +238,20 @@ async function requireAssigned(req) {
  * For a caseload with one dietician on it those are the same thing; a badge
  * that quietly meant something narrower would be worse than this.
  */
+async function urgentNutritionCount(patientIds) {
+  if (patientIds.length === 0) return 0;
+  const sessions = await ChatSession.find({ kind: 'nutrition', patient: { $in: patientIds } })
+    .select('_id')
+    .lean();
+  if (sessions.length === 0) return 0;
+  return ChatMessage.countDocuments({
+    role: 'user',
+    seenByClinicAt: null,
+    urgency: { $in: ['urgent', 'emergency'] },
+    session: { $in: sessions.map((s) => s._id) },
+  });
+}
+
 async function unreadNutritionCount(patientIds) {
   if (patientIds.length === 0) return 0;
   const sessions = await ChatSession.find({ kind: 'nutrition', patient: { $in: patientIds } })
@@ -257,17 +420,41 @@ router.get(
     const assigned = profiles.filter((p) => p.user && p.user.isActive !== false);
     const ids = assigned.map((p) => p.user._id);
 
-    const [plans, recentLogs, unreadMessages] = await Promise.all([
-      DietPlan.find({ patient: { $in: ids } }).select('patient updatedAt sharedAt').lean(),
-      FoodLog.find({ patient: { $in: ids } })
-        .sort({ createdAt: -1 })
-        .limit(12)
-        .populate('patient', 'name')
-        .populate('photo', 'mimeType')
-        .lean(),
-      unreadNutritionCount(ids),
-    ]);
+    const [plans, recentLogs, unreadMessages, urgentMessages, weekLogs, overview] =
+      await Promise.all([
+        DietPlan.find({ patient: { $in: ids } }).select('patient updatedAt sharedAt').lean(),
+        FoodLog.find({ patient: { $in: ids } })
+          .sort({ createdAt: -1 })
+          .limit(12)
+          .populate('patient', 'name')
+          .populate('photo', 'mimeType')
+          .lean(),
+        unreadNutritionCount(ids),
+        urgentNutritionCount(ids),
+        // A week of logs across the caseload, for the adherence read. Only the
+        // two fields the calculation needs — this is every meal every patient
+        // photographed, and pulling notes and photo refs for it would be the
+        // heaviest query on the screen for no gain.
+        ids.length > 0
+          ? FoodLog.find({
+              patient: { $in: ids },
+              createdAt: { $gte: dayjs().startOf('day').subtract(6, 'day').toDate() },
+            })
+              .select('patient createdAt')
+              .sort({ createdAt: -1 })
+              .lean()
+          : [],
+        nutritionOverview(ids),
+      ]);
     const planBy = new Map(plans.map((p) => [String(p.patient), p]));
+
+    const logsByPatient = new Map();
+    for (const l of weekLogs) {
+      const key = String(l.patient);
+      const list = logsByPatient.get(key);
+      if (list) list.push(l);
+      else logsByPatient.set(key, [l]);
+    }
 
     const brief = (p) => ({
       id: String(p.user._id),
@@ -304,21 +491,48 @@ router.get(
         // opened yet, scoped to this dietician's own caseload — a badge
         // counting somebody else's patients is a badge they cannot clear.
         unreadMessages,
+        // Of those unread, the ones the triage marked as needing a person
+        // sooner. A single number for "messages" hides the one that matters.
+        urgentMessages,
       },
       reviewsDue: due.map(brief),
       plansMissing: noPlan.map(brief),
+      // Where every plan stands, which was previously only inferable by
+      // counting what was *missing*. Active means sent; draft means written and
+      // not sent — the patient cannot follow a plan still sitting here.
+      planStatus: {
+        active: plans.filter((p) => p.sharedAt).length,
+        draft: plans.filter((p) => !p.sharedAt).length,
+        // Not an expiry — a plan does not expire, its review falls due. Three
+        // days is the window in which it is still worth planning around.
+        reviewDueSoon: assigned.filter((p) => {
+          const interval = p.dietReviewIntervalDays ?? defaultDays;
+          if (!interval || !p.lastDietReviewAt) return false;
+          const left = interval - dayjs().diff(dayjs(p.lastDietReviewAt), 'day');
+          return left >= 0 && left <= 3;
+        }).length,
+      },
+      nutritionOverview: overview,
+      attention: buildAttention({ assigned, defaultDays, logsByPatient, planBy }),
       recentLogs: recentLogs
         // Skip bogus logs whose "photo" is not an image (a mis-filed voice note).
         .filter((f) => f.patient && (!f.photo || (f.photo.mimeType ?? '').startsWith('image/')))
-        .map((f) => ({
-          id: String(f._id),
-          patientId: String(f.patient._id),
-          patientName: f.patient.name,
-          mealType: f.mealType,
-          note: f.note ?? '',
-          photoUrl: f.photo ? `/api/v1/uploads/${f.photo._id}/raw` : null,
-          createdAt: f.createdAt,
-        })),
+        .map((f) => {
+          const profile = assigned.find((p) => String(p.user._id) === String(f.patient._id));
+          const lastReview = profile?.lastDietReviewAt;
+          return {
+            id: String(f._id),
+            patientId: String(f.patient._id),
+            patientName: f.patient.name,
+            mealType: f.mealType,
+            note: f.note ?? '',
+            photoUrl: f.photo ? `/api/v1/uploads/${f.photo._id}/raw` : null,
+            createdAt: f.createdAt,
+            // A photograph alone does not say what to do with it. Anything
+            // logged since the last review is still waiting to be read.
+            needsReview: !lastReview || dayjs(f.createdAt).isAfter(dayjs(lastReview)),
+          };
+        }),
     });
   }),
 );

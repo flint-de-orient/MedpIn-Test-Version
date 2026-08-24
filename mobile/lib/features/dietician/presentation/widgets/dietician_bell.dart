@@ -57,7 +57,8 @@ class _DieticianBellState extends ConsumerState<DieticianBell>
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final accent = AppColors.accentOn(context);
-    final count = ref.watch(dietDashboardProvider).valueOrNull?.unreadMessages ?? 0;
+    final count =
+        ref.watch(dietDashboardProvider).valueOrNull?.unreadMessages ?? 0;
 
     return Stack(
       clipBehavior: Clip.none,
@@ -74,7 +75,10 @@ class _DieticianBellState extends ConsumerState<DieticianBell>
             top: 5,
             child: IgnorePointer(
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 5,
+                  vertical: 1.5,
+                ),
                 constraints: const BoxConstraints(minWidth: 18),
                 decoration: BoxDecoration(
                   // Blue, not red: these are questions waiting, not

@@ -696,7 +696,10 @@ class _Bubble extends StatelessWidget {
                         message.role == 'clinician') ...[
                       const SizedBox(width: 6),
                       _SenderBadge(
-                        label: message.role == 'clinician' ? 'Doctor' : 'Dietician',
+                        label:
+                            message.role == 'clinician'
+                                ? 'Doctor'
+                                : 'Dietician',
                         icon: Icons.verified_rounded,
                         tone: AppColors.accentOn(context),
                       ),

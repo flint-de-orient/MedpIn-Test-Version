@@ -568,6 +568,7 @@ class DietRecentLog {
     required this.note,
     this.photoUrl,
     this.createdAt,
+    this.needsReview = false,
   });
 
   final String id;
@@ -578,6 +579,10 @@ class DietRecentLog {
   final String? photoUrl;
   final DateTime? createdAt;
 
+  /// Logged since this patient's last review, so nobody has read it yet. A
+  /// photograph on its own does not tell a dietician whether it is work.
+  final bool needsReview;
+
   factory DietRecentLog.fromJson(Map<String, dynamic> j) => DietRecentLog(
     id: j['id']?.toString() ?? '',
     patientId: j['patientId']?.toString() ?? '',
@@ -586,11 +591,119 @@ class DietRecentLog {
     note: j['note']?.toString() ?? '',
     photoUrl: j['photoUrl']?.toString(),
     createdAt: DateTime.tryParse(j['createdAt']?.toString() ?? '')?.toLocal(),
+    needsReview: j['needsReview'] == true,
   );
 }
 
 /// Everything the dietician's dashboard shows, in one response — so the three
 /// counts always agree with the three lists below them.
+/// How much of the caseload's glucose has been landing in range, and which way
+/// it is moving.
+///
+/// Every figure is nullable and that is the point: a fortnight in which nobody
+/// tested has no percentage, and rendering it as 0% would say the opposite of
+/// what happened. The screen shows the block only when [inTargetPercent] is
+/// there, and the delta only when there was a previous fortnight to compare to.
+class NutritionOverview {
+  const NutritionOverview({
+    this.inTargetPercent,
+    this.deltaPercent,
+    this.series = const [],
+  });
+
+  final int? inTargetPercent;
+  final int? deltaPercent;
+
+  /// One entry per day, oldest first. A null percent is a day with no readings
+  /// — a gap in the line, not a zero.
+  final List<int?> series;
+
+  bool get hasData => inTargetPercent != null;
+
+  factory NutritionOverview.fromJson(Map<String, dynamic> j) =>
+      NutritionOverview(
+        inTargetPercent: (j['inTargetPercent'] as num?)?.toInt(),
+        deltaPercent: (j['deltaPercent'] as num?)?.toInt(),
+        series:
+            (j['series'] as List?)
+                ?.whereType<Map<String, dynamic>>()
+                .map((e) => (e['percent'] as num?)?.toInt())
+                .toList() ??
+            const [],
+      );
+}
+
+/// Where the caseload's plans stand.
+class PlanStatus {
+  const PlanStatus({this.active = 0, this.draft = 0, this.reviewDueSoon = 0});
+
+  final int active;
+  final int draft;
+
+  /// Plans whose next review falls within three days. Named for what it is:
+  /// a plan has no expiry date, its review comes due.
+  final int reviewDueSoon;
+
+  bool get isEmpty => active == 0 && draft == 0 && reviewDueSoon == 0;
+
+  factory PlanStatus.fromJson(Map<String, dynamic> j) => PlanStatus(
+    active: (j['active'] as num?)?.toInt() ?? 0,
+    draft: (j['draft'] as num?)?.toInt() ?? 0,
+    reviewDueSoon: (j['reviewDueSoon'] as num?)?.toInt() ?? 0,
+  );
+}
+
+/// Why one patient's nutrition needs a look, and how loudly.
+class NutritionAttention {
+  const NutritionAttention({
+    required this.patientId,
+    required this.name,
+    required this.kind,
+    required this.label,
+    required this.detail,
+    this.avatarUrl,
+    this.missedLogs = 0,
+    this.spark = const [],
+  });
+
+  final String patientId;
+  final String name;
+  final String? avatarUrl;
+
+  /// log_review | adherence | review_soon — the server picks one reason per
+  /// patient, most pressing first, so the same face never appears twice.
+  final String kind;
+
+  final String label;
+  final String detail;
+  final int missedLogs;
+
+  /// Seven days of "did they log anything", oldest first. Presence, not count:
+  /// a patient who photographs four snacks has not been four times as adherent.
+  final List<int> spark;
+
+  /// The action this row offers. Reading a log and chasing a silent patient are
+  /// different jobs and the button should not pretend otherwise.
+  String get actionLabel =>
+      kind == 'log_review' ? 'Review log' : 'View patient';
+
+  factory NutritionAttention.fromJson(Map<String, dynamic> j) =>
+      NutritionAttention(
+        patientId: j['patientId']?.toString() ?? '',
+        name: j['name']?.toString() ?? '',
+        avatarUrl: j['avatarUrl']?.toString(),
+        kind: j['kind']?.toString() ?? 'adherence',
+        label: j['label']?.toString() ?? '',
+        detail: j['detail']?.toString() ?? '',
+        missedLogs: (j['missedLogs'] as num?)?.toInt() ?? 0,
+        spark:
+            (j['spark'] as List?)
+                ?.map((e) => (e as num?)?.toInt() ?? 0)
+                .toList() ??
+            const [],
+      );
+}
+
 class DietDashboard {
   const DietDashboard({
     required this.patients,
@@ -601,6 +714,10 @@ class DietDashboard {
     required this.reviewsDueList,
     required this.plansMissingList,
     required this.recentLogs,
+    this.urgentMessages = 0,
+    this.planStatus = const PlanStatus(),
+    this.overview = const NutritionOverview(),
+    this.attention = const [],
   });
 
   final int patients;
@@ -616,6 +733,20 @@ class DietDashboard {
   final List<DietPatientBrief> reviewsDueList;
   final List<DietPatientBrief> plansMissingList;
   final List<DietRecentLog> recentLogs;
+
+  /// Of [unreadMessages], the ones triage marked urgent or worse.
+  final int urgentMessages;
+
+  final PlanStatus planStatus;
+  final NutritionOverview overview;
+  final List<NutritionAttention> attention;
+
+  /// Everything waiting to be done today, as one number. The hero used to show
+  /// only lapsed reviews, so a dietician with three unsent plans and no lapsed
+  /// review was told they were all caught up.
+  int get workDue => reviewsDue + plansMissing;
+
+  bool get allCaughtUp => workDue == 0;
 
   /// The meals to show on the home grid: as many different patients as
   /// possible, then topped up to [want] with whatever is next-newest.
@@ -716,6 +847,19 @@ class DietDashboard {
           (j['recentLogs'] as List?)
               ?.whereType<Map<String, dynamic>>()
               .map(DietRecentLog.fromJson)
+              .toList() ??
+          const [],
+      urgentMessages: (counts['urgentMessages'] as num?)?.toInt() ?? 0,
+      planStatus: PlanStatus.fromJson(
+        j['planStatus'] as Map<String, dynamic>? ?? const {},
+      ),
+      overview: NutritionOverview.fromJson(
+        j['nutritionOverview'] as Map<String, dynamic>? ?? const {},
+      ),
+      attention:
+          (j['attention'] as List?)
+              ?.whereType<Map<String, dynamic>>()
+              .map(NutritionAttention.fromJson)
               .toList() ??
           const [],
     );

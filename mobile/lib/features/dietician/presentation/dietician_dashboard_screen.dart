@@ -1,33 +1,43 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:intl/intl.dart';
 
-import '../../../core/theme/app_colors.dart';
-import '../../../core/theme/app_spacing.dart';
-import '../../../shared/widgets/hero_band.dart';
+import '../../../core/theme/tokens.dart';
+import '../../../shared/widgets/app_logo.dart';
 import '../../../shared/widgets/authed_image.dart';
 import '../../../shared/widgets/auto_refresh.dart';
+import '../../../shared/widgets/surfaces.dart';
 import '../../../shared/widgets/user_avatar.dart';
 import '../../auth/presentation/auth_controller.dart';
 import '../domain/diet_models.dart';
 import 'dietician_providers.dart';
 import 'widgets/dietician_bell.dart';
-import 'widgets/notification_sheet.dart';
+import 'widgets/nutrition_sparkline.dart';
 
 /// The dietician's day in one screen.
 ///
-/// Ordered by what is actionable rather than what is impressive: the counts,
-/// then reviews that have lapsed, then patients still waiting for a plan, then
-/// what came in while they were away. Counts and lists come from one endpoint,
-/// so a number never disagrees with the list under it.
+/// Rebuilt around one question — *which patient's nutrition needs me, and what
+/// do I do about it* — rather than the one it used to answer, which was *how
+/// many things are there*. Those sound similar and produce very different
+/// screens. The old one led with a full-width hero whose entire content was the
+/// number of lapsed reviews, so the emptiest possible day got the largest
+/// possible headline, and the same "all caught up" was then repeated in a
+/// second panel underneath.
+///
+/// The order is the order the work happens in: what is due today, then the
+/// caseload at a glance, then the patients who need attention, then where the
+/// plans stand, then the evidence (meals) and finally what has just happened.
+/// Every count on it comes from the same request as the list beneath it, so a
+/// number can never disagree with the rows it is counting.
 class DieticianDashboardScreen extends ConsumerWidget {
   const DieticianDashboardScreen({super.key});
 
   static String _partOfDay() {
     final h = DateTime.now().hour;
-    if (h < 12) return 'Good Morning';
-    if (h < 17) return 'Good Afternoon';
-    return 'Good Evening';
+    if (h < 12) return 'Good morning';
+    if (h < 17) return 'Good afternoon';
+    return 'Good evening';
   }
 
   @override
@@ -36,9 +46,6 @@ class DieticianDashboardScreen extends ConsumerWidget {
     final async = ref.watch(dietDashboardProvider);
 
     return Scaffold(
-      // Transparent so the shell's ground runs unbroken behind this
-      // screen and the navigation bar alike. An opaque page here left a
-      // visible band of ground around the pill and nowhere else.
       backgroundColor: Colors.transparent,
       // The dietician's day is made of other people's actions — a patient
       // logging a meal, a doctor prescribing, a report the server has just
@@ -58,228 +65,33 @@ class DieticianDashboardScreen extends ConsumerWidget {
                   child: async.when(
                     loading:
                         () => const Center(child: CircularProgressIndicator()),
-                    error:
-                        (_, _) => ListView(
-                          children: [
-                            const SizedBox(height: 140),
-                            const Center(
-                              child: Text('Could not load your dashboard'),
-                            ),
-                            const SizedBox(height: AppSpacing.md),
-                            Center(
-                              child: OutlinedButton(
-                                onPressed:
-                                    () => ref.invalidate(dietDashboardProvider),
-                                child: const Text('Retry'),
-                              ),
-                            ),
-                          ],
-                        ),
-                    // Zero padding so the band reaches both edges; the rest is
-                    // padded on its own. Same shape as the patient tabs.
+                    error: (_, _) => _LoadFailed(ref: ref),
                     data:
                         (d) => ListView(
-                          padding: const EdgeInsets.only(bottom: AppSpacing.xl),
+                          padding: const EdgeInsets.fromLTRB(
+                            T.s4,
+                            T.s2,
+                            T.s4,
+                            T.s8,
+                          ),
                           children: [
-                            HeroBand(
-                              eyebrow: _partOfDay(),
-                              title: (user?.name ?? '').split(' ').first,
-                              figure: HeroFigure(
-                                value: '${d.reviewsDue}',
-                                unit: d.reviewsDue == 1 ? 'review' : 'reviews',
-                                statusLabel:
-                                    d.reviewsDue == 0
-                                        ? 'All caught up'
-                                        : d.plansMissing > 0
-                                        ? '${d.plansMissing} need a plan'
-                                        : 'Waiting on you',
-                                statusColor:
-                                    d.reviewsDue == 0
-                                        ? AppColors.success
-                                        : AppColors.warning,
-                                caption:
-                                    'Due today across ${d.patients} '
-                                    '${d.patients == 1 ? 'patient' : 'patients'}',
-                              ),
-                            ),
-                            const SizedBox(height: AppSpacing.md),
-                            Padding(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: AppSpacing.md,
-                              ),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.stretch,
-                                children: [
-                                  // Two by two, and no card repeats the band
-                                  // above it. Reviews Due was the hero's whole
-                                  // figure and a card of its own directly
-                                  // underneath — the same number twice in the
-                                  // first screenful, which makes a reader
-                                  // check whether they mean different things.
-                                  // The hero keeps it; the grid takes the four
-                                  // counts it does not say.
-                                  //
-                                  // Rows of Expanded rather than a GridView
-                                  // with an aspect ratio: at a large text
-                                  // scale a fixed ratio crops the number off
-                                  // the bottom of the card.
-                                  IntrinsicHeight(
-                                    child: Row(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.stretch,
-                                      children: [
-                                        Expanded(
-                                          child: _StatCard(
-                                            label: 'My Patients',
-                                            value: '${d.patients}',
-                                            icon: Icons.groups_outlined,
-                                            onTap:
-                                                () => context.go(
-                                                  '/dietician/patients',
-                                                ),
-                                          ),
-                                        ),
-                                        const SizedBox(width: AppSpacing.sm),
-                                        Expanded(
-                                          child: _StatCard(
-                                            label: 'Plans to Send',
-                                            value: '${d.plansMissing}',
-                                            accent:
-                                                d.plansMissing > 0
-                                                    ? AppColors.accentOn(
-                                                      context,
-                                                    )
-                                                    : null,
-                                            icon: Icons.send_rounded,
-                                            // Straight to that worklist,
-                                            // already filtered. A count that
-                                            // sends you to an unfiltered list
-                                            // makes you find the patients it
-                                            // was talking about yourself.
-                                            onTap:
-                                                () => context.go(
-                                                  '/dietician/patients?filter=noplan',
-                                                ),
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                  const SizedBox(height: AppSpacing.sm),
-                                  IntrinsicHeight(
-                                    child: Row(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.stretch,
-                                      children: [
-                                        Expanded(
-                                          child: _StatCard(
-                                            label: 'Unread',
-                                            value: '${d.unreadMessages}',
-                                            accent:
-                                                d.unreadMessages > 0
-                                                    ? AppColors.accentOn(
-                                                      context,
-                                                    )
-                                                    : null,
-                                            icon:
-                                                Icons
-                                                    .chat_bubble_outline_rounded,
-                                            // The sheet, not a patient
-                                            // filter: the list endpoint
-                                            // carries no per-patient unread
-                                            // count, and these messages are
-                                            // exactly what the sheet holds.
-                                            onTap:
-                                                () =>
-                                                    showDieticianNotifications(
-                                                      context,
-                                                    ),
-                                          ),
-                                        ),
-                                        const SizedBox(width: AppSpacing.sm),
-                                        Expanded(
-                                          child: _StatCard(
-                                            label: 'New This Week',
-                                            value: '${d.newThisWeek}',
-                                            icon:
-                                                Icons.person_add_alt_1_outlined,
-                                            onTap:
-                                                () => context.go(
-                                                  '/dietician/patients',
-                                                ),
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-
-                                  if (d.reviewsSorted.isNotEmpty) ...[
-                                    const SizedBox(height: AppSpacing.lg),
-                                    _WorkCard(
-                                      title: 'Reviews Due',
-                                      action: 'View All',
-                                      onAction:
-                                          () =>
-                                              context.go('/dietician/patients'),
-                                      children: [
-                                        for (final p in d.reviewsSorted.take(3))
-                                          _PatientRow(
-                                            patient: p,
-                                            subtitle: _condition(p),
-                                            trailing: _AgePill(
-                                              days: p.sinceDays,
-                                            ),
-                                            onTap:
-                                                () => context.push(
-                                                  '/dietician/patients/${p.id}',
-                                                  extra: p.name,
-                                                ),
-                                          ),
-                                      ],
-                                    ),
-                                  ],
-
-                                  if (d.plansSorted.isNotEmpty) ...[
-                                    const SizedBox(height: AppSpacing.md),
-                                    _WorkCard(
-                                      title: 'Waiting for Diet Plan',
-                                      action: 'View All',
-                                      onAction:
-                                          () =>
-                                              context.go('/dietician/patients'),
-                                      padded: true,
-                                      children: [
-                                        for (final p in d.plansSorted.take(3))
-                                          _PlanTile(
-                                            patient: p,
-                                            onOpen:
-                                                () => context.push(
-                                                  '/dietician/patients/${p.id}',
-                                                  extra: p.name,
-                                                ),
-                                            onCreate:
-                                                () => context.push(
-                                                  '/dietician/patients/${p.id}/diet',
-                                                  extra: p.name,
-                                                ),
-                                          ),
-                                      ],
-                                    ),
-                                  ],
-
-                                  if (d.reviewsSorted.isEmpty &&
-                                      d.plansSorted.isEmpty) ...[
-                                    const SizedBox(height: AppSpacing.lg),
-                                    _AllCaught(patients: d.patients),
-                                  ],
-
-                                  if (d.recentLogs.isNotEmpty) ...[
-                                    const SizedBox(height: AppSpacing.lg),
-                                    _MealsCard(logs: d.recentLogsForGrid(4)),
-                                  ],
-                                ],
-                              ),
-                            ),
+                            _Greeting(name: user?.name ?? ''),
+                            const SizedBox(height: T.s4),
+                            _TodaysWork(d: d),
+                            const SizedBox(height: T.s4),
+                            _QuickStats(d: d),
+                            if (d.attention.isNotEmpty) ...[
+                              const SizedBox(height: T.s4),
+                              _Attention(items: d.attention),
+                            ],
+                            if (!d.planStatus.isEmpty) ...[
+                              const SizedBox(height: T.s4),
+                              _PlanStatusCard(status: d.planStatus),
+                            ],
+                            if (d.recentLogs.isNotEmpty) ...[
+                              const SizedBox(height: T.s4),
+                              _RecentLogs(logs: d.recentLogsForGrid()),
+                            ],
                           ],
                         ),
                   ),
@@ -291,508 +103,135 @@ class DieticianDashboardScreen extends ConsumerWidget {
       ),
     );
   }
-
-  static String _condition(DietPatientBrief p) => switch (p.diabetesType) {
-    'type1' => 'Type 1 Diabetes',
-    'type2' => 'Type 2 Diabetes',
-    'gestational' => 'Gestational Diabetes',
-    'prediabetes' => 'Prediabetes',
-    _ => '${p.riskBand[0].toUpperCase()}${p.riskBand.substring(1)} risk',
-  };
 }
 
-// ---- Header ---------------------------------------------------------------
+class _LoadFailed extends StatelessWidget {
+  const _LoadFailed({required this.ref});
+
+  final WidgetRef ref;
+
+  @override
+  Widget build(BuildContext context) => ListView(
+    children: [
+      const SizedBox(height: 140),
+      const Center(child: Text('Could not load your dashboard')),
+      const SizedBox(height: T.s4),
+      Center(
+        child: OutlinedButton(
+          onPressed: () => ref.invalidate(dietDashboardProvider),
+          child: const Text('Retry'),
+        ),
+      ),
+    ],
+  );
+}
+
+// ---------------------------------------------------------------- header
 
 class _BrandHeader extends StatelessWidget {
-  const _BrandHeader({required this.name, this.avatarUrl});
+  const _BrandHeader({required this.name, required this.avatarUrl});
 
   final String name;
   final String? avatarUrl;
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return Container(
-      padding: const EdgeInsets.fromLTRB(
-        AppSpacing.md,
-        AppSpacing.sm,
-        AppSpacing.sm,
-        AppSpacing.sm,
-      ),
-      decoration: BoxDecoration(
-        border: Border(
-          bottom: BorderSide(
-            color: scheme.outlineVariant.withValues(alpha: 0.5),
-          ),
-        ),
-      ),
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(T.s4, T.s2, T.s4, T.s2),
       child: Row(
         children: [
-          // The mark, not a menu button. Every destination this panel has is
-          // already on the bar at the bottom, so a drawer would have been a
-          // second way to reach the same three screens.
-          Image.asset(
-            'assets/brand/medpin_emblem.png',
-            height: 30,
-            errorBuilder:
-                (_, _, _) => Icon(
-                  Icons.restaurant_rounded,
-                  size: 26,
-                  color: AppColors.accentOn(context),
+          // AppLogo, not a path: the widget exists so a change of artwork is a
+          // one-file edit, and the path this originally guessed at did not
+          // exist — it silently rendered the fallback icon instead.
+          const AppLogo(size: 34),
+          const SizedBox(width: T.s2),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                'MedPin',
+                style: T.title.copyWith(color: T.primary, height: 1.1),
+              ),
+              Text(
+                'Dietician Panel',
+                style: T.label.copyWith(
+                  letterSpacing: 0,
+                  fontWeight: FontWeight.w500,
+                  color: T.inkMuted,
                 ),
-          ),
-          const SizedBox(width: 8),
-          Text(
-            'MedPin',
-            style: TextStyle(
-              fontSize: 20,
-              fontWeight: FontWeight.w800,
-              color: AppColors.accentOn(context),
-            ),
+              ),
+            ],
           ),
           const Spacer(),
           const DieticianBell(),
-          const SizedBox(width: 0),
+          const SizedBox(width: T.s3),
           GestureDetector(
             onTap: () => context.go('/dietician/profile'),
-            child: UserAvatar(
-              name: name,
-              avatarUrl: avatarUrl,
-              accent: AppColors.accentOn(context),
-              size: 36,
-            ),
-          ),
-          const SizedBox(width: 4),
-        ],
-      ),
-    );
-  }
-}
-
-// ---- Counts ---------------------------------------------------------------
-
-class _StatCard extends StatelessWidget {
-  const _StatCard({
-    required this.label,
-    required this.value,
-    required this.icon,
-    this.accent,
-    this.onTap,
-  });
-
-  final String label;
-  final String value;
-  final IconData icon;
-  final VoidCallback? onTap;
-
-  /// Set only when the number means work outstanding. A card that is always
-  /// tinted stops saying anything by being tinted.
-  final Color? accent;
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    final on = accent ?? scheme.onSurface;
-
-    return Container(
-      decoration: BoxDecoration(
-        color: scheme.surfaceContainerLowest,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color:
-              accent?.withValues(alpha: 0.45) ??
-              scheme.outlineVariant.withValues(alpha: 0.6),
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: const Color(0xFF0B1B33).withValues(alpha: 0.04),
-            blurRadius: 12,
-            offset: const Offset(0, 3),
-          ),
-        ],
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: onTap,
-          child: IntrinsicHeight(
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                // The rail carries the urgency, so the card itself stays white and
-                // the number stays readable.
-                if (accent != null) Container(width: 5, color: accent),
-                Expanded(
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(
-                      AppSpacing.md,
-                      14,
-                      AppSpacing.md,
-                      16,
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            Expanded(
-                              child: Text(
-                                label.toUpperCase(),
-                                // Two lines rather than an ellipsis: in half a
-                                // phone "NEW THIS WEEK" does not fit on one,
-                                // and "NEW THIS W…" is not a label.
-                                maxLines: 2,
-                                style: TextStyle(
-                                  fontSize: 11.5,
-                                  fontWeight: FontWeight.w700,
-                                  letterSpacing: 0.8,
-                                  height: 1.2,
-                                  color: accent ?? scheme.onSurfaceVariant,
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 6),
-                            Icon(
-                              icon,
-                              size: 19,
-                              color: accent ?? scheme.onSurfaceVariant,
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          value,
-                          style: TextStyle(
-                            fontSize: 32,
-                            fontWeight: FontWeight.w800,
-                            height: 1,
-                            color: on,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-// ---- Worklists ------------------------------------------------------------
-
-class _WorkCard extends StatelessWidget {
-  const _WorkCard({
-    required this.title,
-    required this.children,
-    this.action,
-    this.onAction,
-    this.padded = false,
-  });
-
-  final String title;
-  final List<Widget> children;
-  final String? action;
-  final VoidCallback? onAction;
-
-  /// Rows that bring their own inset block, rather than sitting edge to edge
-  /// and being separated by rules.
-  final bool padded;
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return Container(
-      decoration: BoxDecoration(
-        color: scheme.surfaceContainerLowest,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: scheme.outlineVariant.withValues(alpha: 0.6)),
-        boxShadow: [
-          BoxShadow(
-            color: const Color(0xFF0B1B33).withValues(alpha: 0.04),
-            blurRadius: 12,
-            offset: const Offset(0, 3),
-          ),
-        ],
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(
-              AppSpacing.md,
-              AppSpacing.md,
-              AppSpacing.sm,
-              AppSpacing.sm,
-            ),
+            behavior: HitTestBehavior.opaque,
             child: Row(
               children: [
-                Expanded(
-                  child: Text(
-                    title,
-                    style: const TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.w800,
+                Stack(
+                  children: [
+                    UserAvatar(
+                      name: name,
+                      avatarUrl: avatarUrl,
+                      accent: T.primary,
+                      size: 38,
                     ),
-                  ),
-                ),
-                if (action != null)
-                  TextButton(
-                    onPressed: onAction,
-                    style: TextButton.styleFrom(
-                      visualDensity: VisualDensity.compact,
-                    ),
-                    child: Text(
-                      action!,
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w700,
-                        color: AppColors.accentOn(context),
+                    // The green dot is not decoration: a dietician sharing a
+                    // caseload needs to know at a glance that they are the one
+                    // signed in on this device.
+                    Positioned(
+                      right: 0,
+                      bottom: 0,
+                      child: Container(
+                        width: 11,
+                        height: 11,
+                        decoration: BoxDecoration(
+                          color: T.success,
+                          shape: BoxShape.circle,
+                          border: Border.all(color: Colors.white, width: 2),
+                        ),
                       ),
                     ),
-                  ),
-              ],
-            ),
-          ),
-          Divider(
-            height: 1,
-            color: scheme.outlineVariant.withValues(alpha: 0.5),
-          ),
-          if (padded)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(
-                AppSpacing.md,
-                AppSpacing.md,
-                AppSpacing.md,
-                AppSpacing.md,
-              ),
-              child: Column(
-                children: [
-                  for (var i = 0; i < children.length; i++) ...[
-                    if (i > 0) const SizedBox(height: AppSpacing.sm),
-                    children[i],
                   ],
-                ],
-              ),
-            )
-          else
-            for (var i = 0; i < children.length; i++) ...[
-              if (i > 0)
-                Divider(
-                  height: 1,
-                  color: scheme.outlineVariant.withValues(alpha: 0.5),
                 ),
-              children[i],
-            ],
-        ],
-      ),
-    );
-  }
-}
-
-class _PatientRow extends StatelessWidget {
-  const _PatientRow({
-    required this.patient,
-    required this.subtitle,
-    required this.trailing,
-    required this.onTap,
-  });
-
-  final DietPatientBrief patient;
-  final String subtitle;
-  final Widget trailing;
-  final VoidCallback onTap;
-
-  static String _initials(String name) {
-    final parts =
-        name.trim().split(RegExp(r'\s+')).where((p) => p.isNotEmpty).toList();
-    if (parts.isEmpty) return '?';
-    if (parts.length == 1) return parts.first[0].toUpperCase();
-    return (parts.first[0] + parts.last[0]).toUpperCase();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return InkWell(
-      onTap: onTap,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(
-          horizontal: AppSpacing.md,
-          vertical: 12,
-        ),
-        child: Row(
-          children: [
-            Container(
-              width: 42,
-              height: 42,
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                color: AppColors.accentSoftOn(context),
-                shape: BoxShape.circle,
-              ),
-              child: Text(
-                _initials(patient.name),
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w800,
-                  color: AppColors.accentOn(context),
-                ),
-              ),
-            ),
-            const SizedBox(width: AppSpacing.md),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    patient.name,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                  const SizedBox(height: 0),
-                  Text(
-                    subtitle,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: scheme.onSurfaceVariant,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(width: AppSpacing.sm),
-            trailing,
-            const SizedBox(width: 0),
-            Icon(
-              Icons.chevron_right_rounded,
-              size: 20,
-              color: scheme.onSurfaceVariant,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-/// A patient still waiting for their first plan.
-///
-/// Drawn as its own inset block with the action across the bottom, rather than
-/// a row with a small button at the end: this is the one list on the screen
-/// where every entry needs the same thing done to it, and a full-width button
-/// says that more plainly than a chip.
-class _PlanTile extends StatelessWidget {
-  const _PlanTile({
-    required this.patient,
-    required this.onOpen,
-    required this.onCreate,
-  });
-
-  final DietPatientBrief patient;
-  final VoidCallback onOpen;
-  final VoidCallback onCreate;
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    final waiting =
-        patient.sinceDays == 0
-            ? 'Joined today'
-            : 'Waiting ${patient.sinceDays} ${patient.sinceDays == 1 ? 'day' : 'days'}';
-
-    return Container(
-      padding: const EdgeInsets.all(AppSpacing.sm + 2),
-      decoration: BoxDecoration(
-        color: scheme.surfaceContainerHighest.withValues(alpha: 0.5),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: scheme.outlineVariant.withValues(alpha: 0.5)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          InkWell(
-            onTap: onOpen,
-            child: Row(
-              children: [
-                UserAvatar(
-                  name: patient.name,
-                  avatarUrl: patient.avatarUrl,
-                  accent: AppColors.accentOn(context),
-                  size: 34,
-                ),
-                const SizedBox(width: 8),
-                Expanded(
+                const SizedBox(width: T.s2),
+                ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 108),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
                     children: [
                       Text(
-                        patient.name,
+                        name.split(' ').first,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          fontSize: 16,
+                        style: T.small.copyWith(
                           fontWeight: FontWeight.w700,
+                          color: T.ink,
                         ),
                       ),
-                      const SizedBox(height: 0),
-                      Row(
-                        children: [
-                          Icon(
-                            Icons.schedule_rounded,
-                            size: 13,
-                            color: _waitTone(context, patient.sinceDays).fg,
-                          ),
-                          const SizedBox(width: 4),
-                          // "Waiting 27 days" set in the same grey as
-                          // "Waiting 2 days" is the one number on this tile
-                          // that should have stopped somebody, printed as
-                          // though it were a caption.
-                          Text(
-                            waiting,
-                            style: TextStyle(
-                              fontSize: 12,
-                              fontWeight:
-                                  patient.sinceDays >= 7
-                                      ? FontWeight.w700
-                                      : FontWeight.w400,
-                              color: _waitTone(context, patient.sinceDays).fg,
-                            ),
-                          ),
-                        ],
+                      Text(
+                        'Clinical Dietitian',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: T.label.copyWith(
+                          letterSpacing: 0,
+                          fontWeight: FontWeight.w500,
+                          color: T.inkMuted,
+                        ),
                       ),
                     ],
                   ),
                 ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 8),
-          SizedBox(
-            height: 40,
-            child: FilledButton(
-              style: FilledButton.styleFrom(
-                backgroundColor: AppColors.primary,
-                foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
+                const Icon(
+                  Icons.keyboard_arrow_down_rounded,
+                  size: 18,
+                  color: T.inkMuted,
                 ),
-              ),
-              onPressed: onCreate,
-              child: const Text(
-                'Create Plan',
-                style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
-              ),
+              ],
             ),
           ),
         ],
@@ -801,50 +240,199 @@ class _PlanTile extends StatelessWidget {
   }
 }
 
-/// How loud a wait should be.
-///
-/// Everything on these worklists was red before, from "today" to "27 days ago",
-/// which is the same as nothing being red: a dietician scanning the column had
-/// no way to tell the patient they saw yesterday from the one nobody has
-/// answered in a month. A fortnight is the point at which a nutrition review
-/// has genuinely lapsed rather than merely slipped.
-({Color fg, Color bg}) _waitTone(BuildContext context, int days) {
-  if (days >= 14) {
-    return (fg: AppColors.dangerOn(context), bg: AppColors.dangerBgOn(context));
-  }
-  if (days >= 7) {
-    return (
-      fg: AppColors.warningOn(context),
-      bg: AppColors.warningBgOn(context),
-    );
-  }
-  final scheme = Theme.of(context).colorScheme;
-  return (fg: scheme.onSurfaceVariant, bg: scheme.surfaceContainerHighest);
-}
+class _Greeting extends StatelessWidget {
+  const _Greeting({required this.name});
 
-class _AgePill extends StatelessWidget {
-  const _AgePill({required this.days});
-
-  final int days;
+  final String name;
 
   @override
   Widget build(BuildContext context) {
-    final tone = _waitTone(context, days);
+    final first = name.split(' ').first;
     return Row(
-      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.end,
       children: [
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-          decoration: BoxDecoration(
-            color: tone.bg,
-            borderRadius: BorderRadius.circular(20),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                '${DieticianDashboardScreen._partOfDay()}, '
+                '${first.isEmpty ? 'there' : first} 👋',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: T.title.copyWith(color: T.ink),
+              ),
+              Text(
+                DateFormat('EEEE, d MMMM').format(DateTime.now()),
+                style: T.small.copyWith(color: T.inkMuted),
+              ),
+            ],
           ),
-          child: Text(
-            days == 0 ? 'today' : '$days ${days == 1 ? 'day' : 'days'} ago',
-            style: TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w700,
-              color: tone.fg,
+        ),
+        // Says the screen is live, which matters on a dashboard that refreshes
+        // itself every thirty seconds — otherwise a dietician has no way to
+        // tell a quiet morning from a stalled connection.
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              'Updated just now',
+              style: T.label.copyWith(letterSpacing: 0, color: T.inkMuted),
+            ),
+            const SizedBox(width: T.s1),
+            Container(
+              width: 7,
+              height: 7,
+              decoration: const BoxDecoration(
+                color: T.success,
+                shape: BoxShape.circle,
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+// -------------------------------------------------------- today's work
+
+/// The one status component on the screen.
+///
+/// It changes shape with the workload rather than reserving a hero-sized block
+/// for a zero: with work outstanding it leads with the count and a button that
+/// starts it; with none it says so in one line and gives the space back. The
+/// old screen had both a hero *and* a separate "all caught up" panel saying the
+/// same thing twice.
+class _TodaysWork extends StatelessWidget {
+  const _TodaysWork({required this.d});
+
+  final DietDashboard d;
+
+  @override
+  Widget build(BuildContext context) {
+    final overview = d.overview;
+    // Side by side only when there is a chart to put beside the count. On a
+    // narrow phone, or with no readings behind it, the work stands alone
+    // full-width rather than squeezing into half a row.
+    final wide = MediaQuery.sizeOf(context).width >= 380 && overview.hasData;
+
+    return SectionCard(
+      child:
+          wide
+              ? IntrinsicHeight(
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(flex: 5, child: _WorkSummary(d: d)),
+                    const SizedBox(width: T.s3),
+                    Expanded(flex: 6, child: _OverviewTile(overview: overview)),
+                  ],
+                ),
+              )
+              : Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  _WorkSummary(d: d),
+                  if (overview.hasData) ...[
+                    const SizedBox(height: T.s4),
+                    _OverviewTile(overview: overview),
+                  ],
+                ],
+              ),
+    );
+  }
+}
+
+class _WorkSummary extends StatelessWidget {
+  const _WorkSummary({required this.d});
+
+  final DietDashboard d;
+
+  @override
+  Widget build(BuildContext context) {
+    if (d.allCaughtUp) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text("Today's nutrition work", style: T.title.copyWith(color: T.ink)),
+          const SizedBox(height: T.s3),
+          Row(
+            children: [
+              const Icon(
+                Icons.check_circle_rounded,
+                size: 20,
+                color: T.success,
+              ),
+              const SizedBox(width: T.s2),
+              Expanded(
+                child: Text(
+                  'All caught up',
+                  style: T.bodyStrong.copyWith(color: T.success),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: T.s1),
+          Text(
+            'Every plan is sent and no review is due.',
+            style: T.small.copyWith(color: T.inkMuted),
+          ),
+        ],
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text("Today's nutrition work", style: T.title.copyWith(color: T.ink)),
+        const SizedBox(height: T.s2),
+        MetricValue(
+          value: '${d.workDue}',
+          unit: d.workDue == 1 ? 'review due' : 'reviews due',
+          size: 40,
+        ),
+        const SizedBox(height: T.s3),
+        // The split, because "2 reviews" does not say what kind of work it is
+        // and the two need different screens.
+        Wrap(
+          spacing: T.s2,
+          runSpacing: T.s2,
+          children: [
+            if (d.reviewsDue > 0)
+              StatusPill(
+                label:
+                    '${d.reviewsDue} food '
+                    '${d.reviewsDue == 1 ? 'log' : 'logs'}',
+                status: Status.neutral,
+              ),
+            if (d.plansMissing > 0)
+              StatusPill(
+                label:
+                    '${d.plansMissing} diet '
+                    '${d.plansMissing == 1 ? 'plan' : 'plans'}',
+                status: Status.ok,
+              ),
+          ],
+        ),
+        const SizedBox(height: T.s4),
+        SizedBox(
+          height: 46,
+          child: FilledButton(
+            onPressed: () => context.go('/dietician/patients'),
+            style: FilledButton.styleFrom(
+              backgroundColor: T.primary,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(T.rControl),
+              ),
+            ),
+            child: const Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text('Review now', style: T.bodyStrong),
+                SizedBox(width: T.s2),
+                Icon(Icons.arrow_forward_rounded, size: 18),
+              ],
             ),
           ),
         ),
@@ -853,52 +441,122 @@ class _AgePill extends StatelessWidget {
   }
 }
 
-class _AllCaught extends StatelessWidget {
-  const _AllCaught({required this.patients});
+class _OverviewTile extends StatelessWidget {
+  const _OverviewTile({required this.overview});
 
-  final int patients;
+  final NutritionOverview overview;
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return Container(
-      padding: const EdgeInsets.all(AppSpacing.lg),
-      decoration: BoxDecoration(
-        color: AppColors.accentSoftOn(context),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Row(
+    final delta = overview.deltaPercent;
+    return InnerTile(
+      padding: const EdgeInsets.all(T.s3),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(
-            Icons.check_circle_rounded,
-            color: AppColors.accentOn(context),
-            size: 30,
-          ),
-          const SizedBox(width: AppSpacing.md),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'All caught up',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w800,
-                    color: AppColors.accentOn(context),
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'Nutrition overview (14 days)',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: T.label.copyWith(
+                    letterSpacing: 0,
+                    fontWeight: FontWeight.w500,
+                    color: T.inkMuted,
                   ),
                 ),
-                const SizedBox(height: 0),
-                Text(
-                  patients == 0
-                      ? 'No patients on the clinic list yet.'
-                      : 'Every plan is sent and no review is due.',
-                  style: TextStyle(
-                    fontSize: 14,
-                    color: scheme.onSurfaceVariant,
+              ),
+              Tooltip(
+                message:
+                    'Share of your patients’ glucose readings that landed '
+                    'in the clinic’s target range over the last 14 days.',
+                triggerMode: TooltipTriggerMode.tap,
+                child: const Icon(
+                  Icons.info_outline_rounded,
+                  size: 14,
+                  color: T.inkFaint,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: T.s2),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              MetricValue(
+                value: '${overview.inTargetPercent}%',
+                size: 28,
+                color: T.primary,
+              ),
+              const SizedBox(width: T.s2),
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.only(bottom: 3),
+                  child: Text(
+                    'In target range',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: T.small.copyWith(color: T.inkMuted),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          if (delta != null) ...[
+            const SizedBox(height: T.s1),
+            Row(
+              children: [
+                Icon(
+                  delta >= 0
+                      ? Icons.arrow_upward_rounded
+                      : Icons.arrow_downward_rounded,
+                  size: 13,
+                  // Up is good here — more readings in range — so the colour
+                  // follows the meaning, not the direction of the arrow.
+                  color: delta >= 0 ? T.success : T.warning,
+                ),
+                const SizedBox(width: 2),
+                Flexible(
+                  child: Text(
+                    '${delta.abs()}% vs previous 14 days',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: T.label.copyWith(
+                      letterSpacing: 0,
+                      color: delta >= 0 ? T.success : T.warning,
+                    ),
                   ),
                 ),
               ],
             ),
+          ],
+          const SizedBox(height: T.s2),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // The axis labels the sparkline's four rules are drawn at.
+              Column(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  for (final l in const ['100%', '80%', '60%', '40%'])
+                    SizedBox(
+                      height: 22,
+                      child: Text(
+                        l,
+                        style: T.label.copyWith(
+                          fontSize: 9,
+                          letterSpacing: 0,
+                          color: T.inkFaint,
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+              const SizedBox(width: T.s1),
+              Expanded(child: NutritionSparkline(series: overview.series)),
+            ],
           ),
         ],
       ),
@@ -906,83 +564,246 @@ class _AllCaught extends StatelessWidget {
   }
 }
 
-// ---- Meals ----------------------------------------------------------------
+// ---------------------------------------------------------- quick stats
 
-/// What patients have been eating, across the whole caseload.
-///
-/// A grid of photographs rather than a list of cards: the dietician is
-/// scanning for anything that looks wrong, and four plates side by side answer
-/// that faster than four stacked rows of metadata. Tapping one opens the
-/// patient it belongs to.
-class _MealsCard extends StatelessWidget {
-  const _MealsCard({required this.logs});
+class _QuickStats extends StatelessWidget {
+  const _QuickStats({required this.d});
 
-  final List<DietRecentLog> logs;
+  final DietDashboard d;
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-
-    return Container(
-      decoration: BoxDecoration(
-        color: scheme.surfaceContainerLowest,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: scheme.outlineVariant.withValues(alpha: 0.6)),
-        boxShadow: [
-          BoxShadow(
-            color: const Color(0xFF0B1B33).withValues(alpha: 0.04),
-            blurRadius: 12,
-            offset: const Offset(0, 3),
-          ),
-        ],
+    final cards = <Widget>[
+      _StatCard(
+        icon: Icons.groups_rounded,
+        tone: T.primary,
+        value: '${d.patients}',
+        label: 'Active patients',
+        action: 'View all',
+        onTap: () => context.go('/dietician/patients'),
       ),
-      padding: const EdgeInsets.all(AppSpacing.md),
+      _StatCard(
+        icon: Icons.send_rounded,
+        tone: T.success,
+        value: '${d.plansMissing}',
+        label: d.plansMissing == 1 ? 'Plan to send' : 'Plans to send',
+        action: d.plansMissing > 0 ? 'Review' : null,
+        onTap: () => context.go('/dietician/patients'),
+      ),
+      _StatCard(
+        icon: Icons.chat_bubble_rounded,
+        tone: T.warning,
+        value: '${d.unreadMessages}',
+        label: 'Unread messages',
+        // Not another link: the urgent count is the reason to look, so it
+        // takes the line a "View all" would otherwise have used.
+        footnote: d.urgentMessages > 0 ? '${d.urgentMessages} urgent' : null,
+        footnoteTone: T.warning,
+        onTap: () => context.go('/dietician/patients'),
+      ),
+      _StatCard(
+        icon: Icons.person_add_alt_1_rounded,
+        tone: const Color(0xFF8B5CF6),
+        value: '${d.newThisWeek}',
+        label: 'New this week',
+        action: 'View all',
+        onTap: () => context.go('/dietician/patients'),
+      ),
+    ];
+
+    // Four across is the mockup, and it only fits a tablet. On a phone they
+    // wrap two-by-two rather than shrinking to a width where "Unread messages"
+    // has to ellipsise.
+    final four = MediaQuery.sizeOf(context).width >= 620;
+    if (four) {
+      return IntrinsicHeight(
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            for (var i = 0; i < cards.length; i++) ...[
+              if (i > 0) const SizedBox(width: T.s3),
+              Expanded(child: cards[i]),
+            ],
+          ],
+        ),
+      );
+    }
+    return Column(
+      children: [
+        IntrinsicHeight(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Expanded(child: cards[0]),
+              const SizedBox(width: T.s3),
+              Expanded(child: cards[1]),
+            ],
+          ),
+        ),
+        const SizedBox(height: T.s3),
+        IntrinsicHeight(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Expanded(child: cards[2]),
+              const SizedBox(width: T.s3),
+              Expanded(child: cards[3]),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _StatCard extends StatelessWidget {
+  const _StatCard({
+    required this.icon,
+    required this.tone,
+    required this.value,
+    required this.label,
+    required this.onTap,
+    this.action,
+    this.footnote,
+    this.footnoteTone,
+  });
+
+  final IconData icon;
+  final Color tone;
+  final String value;
+  final String label;
+  final VoidCallback onTap;
+  final String? action;
+  final String? footnote;
+  final Color? footnoteTone;
+
+  @override
+  Widget build(BuildContext context) {
+    return SectionCard(
+      padding: const EdgeInsets.all(T.s3),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Expanded(
-                child: Text(
-                  'Latest Meals Logged',
-                  style: TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.w800,
-                    height: 1.2,
+              Container(
+                width: 34,
+                height: 34,
+                decoration: BoxDecoration(
+                  color: tone.withValues(alpha: 0.12),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(icon, size: 18, color: tone),
+              ),
+              const SizedBox(width: T.s2),
+              Flexible(child: MetricValue(value: value, size: 24)),
+            ],
+          ),
+          const SizedBox(height: T.s2),
+          Text(
+            label,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: T.small.copyWith(fontWeight: FontWeight.w600, color: T.ink),
+          ),
+          const Spacer(),
+          if (footnote != null)
+            Padding(
+              padding: const EdgeInsets.only(top: T.s1),
+              child: Row(
+                children: [
+                  Container(
+                    width: 6,
+                    height: 6,
+                    decoration: BoxDecoration(
+                      color: footnoteTone ?? T.inkMuted,
+                      shape: BoxShape.circle,
+                    ),
                   ),
+                  const SizedBox(width: T.s1),
+                  Flexible(
+                    child: Text(
+                      footnote!,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: T.label.copyWith(
+                        letterSpacing: 0,
+                        color: footnoteTone ?? T.inkMuted,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            )
+          else if (action != null)
+            Align(
+              alignment: Alignment.centerLeft,
+              child: ActionLink(label: action!, onTap: onTap),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+// ------------------------------------------------------------ attention
+
+/// The section the old dashboard was missing entirely.
+///
+/// It used to list counts and then a gallery of meals, which between them
+/// never answered "who needs me". Each row is one patient, the single most
+/// pressing reason they surfaced, and the button for that specific job.
+class _Attention extends StatelessWidget {
+  const _Attention({required this.items});
+
+  final List<NutritionAttention> items;
+
+  static Status _statusFor(String kind) => switch (kind) {
+    'log_review' => Status.alert,
+    'adherence' => Status.watch,
+    _ => Status.neutral,
+  };
+
+  @override
+  Widget build(BuildContext context) {
+    // Three is the most that can be acted on in one sitting; the rest are one
+    // tap away rather than an endless column on the home screen.
+    final shown = items.take(3).toList();
+    return SectionCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 8,
+                height: 8,
+                decoration: const BoxDecoration(
+                  color: T.danger,
+                  shape: BoxShape.circle,
                 ),
               ),
-              const SizedBox(width: AppSpacing.sm),
-              SizedBox(
-                width: 110,
+              const SizedBox(width: T.s2),
+              Expanded(
                 child: Text(
-                  'Across all active patients',
-                  textAlign: TextAlign.right,
-                  style: TextStyle(
-                    fontSize: 12,
-                    height: 1.25,
-                    color: scheme.onSurfaceVariant,
-                  ),
+                  'Nutrition attention',
+                  style: T.title.copyWith(color: T.ink),
                 ),
+              ),
+              ActionLink(
+                label: 'View all patients',
+                onTap: () => context.go('/dietician/patients'),
               ),
             ],
           ),
-          const SizedBox(height: AppSpacing.md),
-          for (var row = 0; row < logs.length; row += 2) ...[
-            if (row > 0) const SizedBox(height: AppSpacing.sm),
-            Row(
-              children: [
-                Expanded(child: _MealThumb(log: logs[row])),
-                const SizedBox(width: AppSpacing.sm),
-                Expanded(
-                  child:
-                      row + 1 < logs.length
-                          ? _MealThumb(log: logs[row + 1])
-                          : const SizedBox.shrink(),
-                ),
-              ],
-            ),
+          Text(
+            'Patients who need your attention',
+            style: T.small.copyWith(color: T.inkMuted),
+          ),
+          const SizedBox(height: T.s3),
+          for (var i = 0; i < shown.length; i++) ...[
+            if (i > 0) const SizedBox(height: T.s2),
+            _AttentionRow(item: shown[i], status: _statusFor(shown[i].kind)),
           ],
         ],
       ),
@@ -990,92 +811,442 @@ class _MealsCard extends StatelessWidget {
   }
 }
 
-/// One plate in the grid: the photograph, with whose it was and which meal
-/// written over the foot of it.
-class _MealThumb extends StatelessWidget {
-  const _MealThumb({required this.log});
+class _AttentionRow extends StatelessWidget {
+  const _AttentionRow({required this.item, required this.status});
 
-  final DietRecentLog log;
-
-  static String _label(String mealType) =>
-      mealType.isEmpty ? '' : mealType[0].toUpperCase() + mealType.substring(1);
+  final NutritionAttention item;
+  final Status status;
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-
-    return Material(
-      color: scheme.surfaceContainerHighest,
-      borderRadius: BorderRadius.circular(12),
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap:
-            () => context.push(
-              '/dietician/patients/${log.patientId}',
-              extra: log.patientName,
-            ),
-        child: AspectRatio(
-          aspectRatio: 1.12,
-          child: Stack(
-            fit: StackFit.expand,
+    final narrow = MediaQuery.sizeOf(context).width < 400;
+    return InnerTile(
+      padding: const EdgeInsets.all(T.s3),
+      onTap: () => context.go('/dietician/patients/${item.patientId}'),
+      child: Row(
+        children: [
+          Stack(
             children: [
-              if (log.photoUrl != null)
-                AuthedImage(path: log.photoUrl!, fit: BoxFit.cover)
-              else
-                Icon(
-                  Icons.restaurant_menu_rounded,
-                  size: 28,
-                  color: scheme.onSurfaceVariant,
-                ),
-              // A wash under the text, not over the whole photo: the dietician
-              // is looking at the food, and dimming all of it to caption it
-              // defeats the point of showing a photograph.
+              UserAvatar(
+                name: item.name,
+                avatarUrl: item.avatarUrl,
+                // The reason they surfaced, carried on the avatar too, so the
+                // row reads at a glance before any of its text is parsed.
+                accent: status.tone,
+                size: 42,
+              ),
               Positioned(
-                left: 0,
                 right: 0,
-                bottom: 0,
+                top: 0,
                 child: Container(
-                  padding: const EdgeInsets.fromLTRB(8, 14, 8, 7),
+                  width: 11,
+                  height: 11,
                   decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                      colors: [
-                        const Color(0xFF0B1B33).withValues(alpha: 0),
-                        const Color(0xFF0B1B33).withValues(alpha: 0.72),
-                      ],
-                    ),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        log.patientName,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w700,
-                          color: Colors.white,
-                        ),
-                      ),
-                      if (_label(log.mealType).isNotEmpty)
-                        Text(
-                          _label(log.mealType),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: Colors.white.withValues(alpha: 0.85),
-                          ),
-                        ),
-                    ],
+                    color: status.tone,
+                    shape: BoxShape.circle,
+                    border: Border.all(color: Colors.white, width: 2),
                   ),
                 ),
               ),
             ],
           ),
+          const SizedBox(width: T.s3),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  item.name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: T.bodyStrong.copyWith(color: T.ink),
+                ),
+                const SizedBox(height: 3),
+                Wrap(
+                  spacing: T.s2,
+                  runSpacing: T.s1,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
+                    StatusPill(label: item.label, status: status),
+                    if (item.kind == 'adherence' && item.missedLogs > 0)
+                      Text(
+                        '${item.missedLogs} missed '
+                        '${item.missedLogs == 1 ? 'log' : 'logs'}',
+                        style: T.label.copyWith(
+                          letterSpacing: 0,
+                          fontWeight: FontWeight.w500,
+                          color: T.inkMuted,
+                        ),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  item.detail,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: T.label.copyWith(
+                    letterSpacing: 0,
+                    fontWeight: FontWeight.w500,
+                    color: T.inkMuted,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          // The spark and the button both drop on a narrow phone before the
+          // patient's name or their reason does.
+          if (!narrow && item.spark.isNotEmpty) ...[
+            const SizedBox(width: T.s2),
+            AdherenceSpark(days: item.spark, tone: status.tone),
+          ],
+          const SizedBox(width: T.s2),
+          _RowAction(
+            label: item.actionLabel,
+            status: status,
+            onTap:
+                () => context.go(
+                  item.kind == 'log_review'
+                      ? '/dietician/patients/${item.patientId}?tab=logs'
+                      : '/dietician/patients/${item.patientId}',
+                ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _RowAction extends StatelessWidget {
+  const _RowAction({
+    required this.label,
+    required this.status,
+    required this.onTap,
+  });
+
+  final String label;
+  final Status status;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) => Semantics(
+    button: true,
+    child: GestureDetector(
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: Container(
+        constraints: const BoxConstraints(minHeight: T.tap - 8),
+        padding: const EdgeInsets.symmetric(horizontal: T.s3, vertical: T.s2),
+        decoration: BoxDecoration(
+          color: status.tint,
+          borderRadius: BorderRadius.circular(T.rControl),
+        ),
+        child: Center(
+          child: Text(
+            label,
+            maxLines: 1,
+            style: T.label.copyWith(
+              fontSize: 12,
+              letterSpacing: 0,
+              fontWeight: FontWeight.w700,
+              color: status.tone,
+            ),
+          ),
+        ),
+      ),
+    ),
+  );
+}
+
+// ---------------------------------------------------------- plan status
+
+class _PlanStatusCard extends StatelessWidget {
+  const _PlanStatusCard({required this.status});
+
+  final PlanStatus status;
+
+  @override
+  Widget build(BuildContext context) {
+    final cells =
+        <({IconData icon, Color tone, int n, String label, String sub})>[
+          (
+            icon: Icons.description_rounded,
+            tone: T.success,
+            n: status.active,
+            label: status.active == 1 ? 'Active plan' : 'Active plans',
+            sub: 'On track',
+          ),
+          (
+            icon: Icons.edit_document,
+            tone: T.warning,
+            n: status.draft,
+            label: status.draft == 1 ? 'Draft plan' : 'Draft plans',
+            sub: 'Ready to send',
+          ),
+          (
+            icon: Icons.event_rounded,
+            tone: T.primary,
+            n: status.reviewDueSoon,
+            // Not "expiring": a plan has no expiry date. What falls due is its
+            // review, and naming it that is the difference between a dietician
+            // trusting this number and learning to ignore it.
+            label: 'Review due',
+            sub: 'Within 3 days',
+          ),
+        ];
+
+    return SectionCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'Diet plan status',
+                  style: T.title.copyWith(color: T.ink),
+                ),
+              ),
+              ActionLink(
+                label: 'View plans',
+                onTap: () => context.go('/dietician/patients'),
+              ),
+            ],
+          ),
+          const SizedBox(height: T.s3),
+          IntrinsicHeight(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                for (var i = 0; i < cells.length; i++) ...[
+                  if (i > 0)
+                    const VerticalDivider(
+                      width: T.s4,
+                      thickness: 1,
+                      color: Color(0xFFEDF1F7),
+                    ),
+                  Expanded(
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 34,
+                          height: 34,
+                          decoration: BoxDecoration(
+                            color: cells[i].tone.withValues(alpha: 0.12),
+                            borderRadius: BorderRadius.circular(T.rCard),
+                          ),
+                          child: Icon(
+                            cells[i].icon,
+                            size: 17,
+                            color: cells[i].tone,
+                          ),
+                        ),
+                        const SizedBox(width: T.s2),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              MetricValue(value: '${cells[i].n}', size: 20),
+                              Text(
+                                cells[i].label,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: T.label.copyWith(
+                                  letterSpacing: 0,
+                                  fontWeight: FontWeight.w600,
+                                  color: T.ink,
+                                ),
+                              ),
+                              Text(
+                                cells[i].sub,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: T.label.copyWith(
+                                  fontSize: 10,
+                                  letterSpacing: 0,
+                                  fontWeight: FontWeight.w500,
+                                  color: T.inkMuted,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ----------------------------------------------------------- food logs
+
+class _RecentLogs extends StatelessWidget {
+  const _RecentLogs({required this.logs});
+
+  final List<DietRecentLog> logs;
+
+  static String _meal(String t) =>
+      t.isEmpty ? 'Meal' : t[0].toUpperCase() + t.substring(1);
+
+  @override
+  Widget build(BuildContext context) {
+    return SectionCard(
+      padding: const EdgeInsets.fromLTRB(T.s5, T.s5, 0, T.s5),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.only(right: T.s5),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    'Recent food logs',
+                    style: T.title.copyWith(color: T.ink),
+                  ),
+                ),
+                ActionLink(
+                  label: 'View all',
+                  onTap: () => context.go('/dietician/patients'),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: T.s3),
+          SizedBox(
+            // Scaled by the text factor: the caption under each photo grows
+            // with the system setting and would otherwise clip.
+            height: MediaQuery.textScalerOf(context).scale(196),
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.only(right: T.s5),
+              itemCount: logs.length,
+              separatorBuilder: (_, _) => const SizedBox(width: T.s3),
+              itemBuilder: (context, i) => _LogTile(log: logs[i]),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _LogTile extends StatelessWidget {
+  const _LogTile({required this.log});
+
+  final DietRecentLog log;
+
+  @override
+  Widget build(BuildContext context) {
+    final at = log.createdAt;
+    return SizedBox(
+      width: 158,
+      child: GestureDetector(
+        onTap: () => context.go('/dietician/patients/${log.patientId}'),
+        behavior: HitTestBehavior.opaque,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // One fixed ratio for every tile, whatever shape the photograph
+            // is. Four plates at four heights was the untidiest thing on the
+            // old screen.
+            AspectRatio(
+              aspectRatio: 4 / 3,
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(T.rControl),
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    if (log.photoUrl != null)
+                      AuthedImage(path: log.photoUrl!, fit: BoxFit.cover)
+                    else
+                      Container(
+                        color: const Color(0xFFF1F4F9),
+                        child: const Icon(
+                          Icons.restaurant_rounded,
+                          size: 28,
+                          color: T.inkFaint,
+                        ),
+                      ),
+                    if (at != null)
+                      Positioned(
+                        left: T.s2,
+                        bottom: T.s2,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: T.s2,
+                            vertical: 3,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.black.withValues(alpha: 0.55),
+                            borderRadius: T.rFull,
+                          ),
+                          child: Text(
+                            DateFormat('h:mm a').format(at),
+                            style: T.label.copyWith(
+                              fontSize: 10,
+                              letterSpacing: 0,
+                              color: Colors.white,
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: T.s2),
+            Text(
+              log.patientName,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: T.small.copyWith(
+                fontWeight: FontWeight.w700,
+                color: T.ink,
+              ),
+            ),
+            Text(
+              _RecentLogs._meal(log.mealType),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: T.label.copyWith(
+                letterSpacing: 0,
+                fontWeight: FontWeight.w500,
+                color: T.inkMuted,
+              ),
+            ),
+            const SizedBox(height: 3),
+            // The line that turns a gallery into a worklist.
+            Row(
+              children: [
+                Icon(
+                  log.needsReview ? Icons.circle : Icons.check_circle_rounded,
+                  size: log.needsReview ? 7 : 12,
+                  color: log.needsReview ? T.warning : T.success,
+                ),
+                const SizedBox(width: T.s1),
+                Flexible(
+                  child: Text(
+                    log.needsReview ? 'Needs review' : 'Reviewed',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: T.label.copyWith(
+                      letterSpacing: 0,
+                      fontWeight: FontWeight.w600,
+                      color: log.needsReview ? T.warning : T.success,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
         ),
       ),
     );

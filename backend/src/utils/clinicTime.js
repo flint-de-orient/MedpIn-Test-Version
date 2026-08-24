@@ -2,11 +2,16 @@ import dayjs from 'dayjs';
 import utc from 'dayjs/plugin/utc.js';
 import timezone from 'dayjs/plugin/timezone.js';
 import customParseFormat from 'dayjs/plugin/customParseFormat.js';
+import relativeTime from 'dayjs/plugin/relativeTime.js';
 import { env } from '../config/env.js';
 
 dayjs.extend(utc);
 dayjs.extend(timezone);
 dayjs.extend(customParseFormat);
+// Needed by anything that renders "2 hours ago" rather than a timestamp — the
+// dietician's attention list and activity feed both do. Without it `fromNow`
+// is simply absent and the call throws at request time, not at import.
+dayjs.extend(relativeTime);
 
 /**
  * The clinic's wall-clock timezone. Every appointment slot is reasoned about in
