@@ -1,7 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-
-import '../../../shared/widgets/edge_fade.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/theme/app_colors.dart';
@@ -35,9 +33,6 @@ class DieticianPatientsScreen extends ConsumerStatefulWidget {
 
 class _DieticianPatientsScreenState
     extends ConsumerState<DieticianPatientsScreen> {
-  /// Owned here so the fade can read its position.
-  final ScrollController _filterRail = ScrollController();
-
   final _search = TextEditingController();
   String _query = '';
 
@@ -54,7 +49,6 @@ class _DieticianPatientsScreenState
 
   @override
   void dispose() {
-    _filterRail.dispose();
     _search.dispose();
     super.dispose();
   }
@@ -84,6 +78,20 @@ class _DieticianPatientsScreenState
     'noplan' => all.where((p) => p.lastReviewAt == null).toList(),
     _ => all,
   };
+
+  /// One filter chip. Extracted when the rail became a Wrap so the
+  /// selection logic stayed exactly as it was.
+  Widget _filterChipFor(String key, String label, int count) {
+    return _FilterChip(
+      label: '$label ($count)',
+      selected: _filterKey == key,
+      // An empty worklist is still worth tapping — it tells you there is
+      // nothing there — but it should not compete with the ones that hold
+      // work.
+      empty: count == 0,
+      onTap: () => setState(() => _filterKey = key),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -210,27 +218,17 @@ class _DieticianPatientsScreenState
                           _byBand(all, 'noplan').length,
                         ),
                       ];
-                      return EdgeFade(
-                        controller: _filterRail,
-                        child: ListView.separated(
-                          controller: _filterRail,
-                          scrollDirection: Axis.horizontal,
-                          itemCount: chips.length,
-                          separatorBuilder: (_, _) => const SizedBox(width: 8),
-                          itemBuilder: (context, i) {
-                            final (key, label, count) = chips[i];
-                            final selected = _filterKey == key;
-                            return _FilterChip(
-                              label: '$label ($count)',
-                              selected: selected,
-                              // An empty worklist is still worth tapping — it
-                              // tells you there is nothing there — but it should
-                              // not compete with the ones that hold work.
-                              empty: count == 0,
-                              onTap: () => setState(() => _filterKey = key),
-                            );
-                          },
-                        ),
+                      // Wrapped rather than scrolled: a rail cuts whatever lands at
+                      // the edge — "High Risk (1" — and a filter you cannot see is a
+                      // filter you do not use. Five is a known, small set, so all five
+                      // fit on screen and the count beside each one stays readable.
+                      return Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: [
+                          for (final (key, label, count) in chips)
+                            _filterChipFor(key, label, count),
+                        ],
                       );
                     },
                   ),

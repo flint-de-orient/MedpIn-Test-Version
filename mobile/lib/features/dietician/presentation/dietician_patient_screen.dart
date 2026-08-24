@@ -14,7 +14,6 @@ import '../../../core/theme/app_spacing.dart';
 import '../../../shared/providers/core_providers.dart';
 import '../../../shared/widgets/auto_refresh.dart';
 import '../../../shared/widgets/authed_image.dart';
-import '../../../shared/widgets/edge_fade.dart';
 import '../../../shared/widgets/fullscreen_photo.dart';
 import '../../clinician/domain/patient_summary.dart';
 import '../../foodlog/domain/food_log.dart';
@@ -45,14 +44,6 @@ class DieticianPatientScreen extends ConsumerStatefulWidget {
 
 class _DieticianPatientScreenState
     extends ConsumerState<DieticianPatientScreen> {
-  final ScrollController _sectionRail = ScrollController();
-
-  @override
-  void dispose() {
-    _sectionRail.dispose();
-    super.dispose();
-  }
-
   /// One anchor per section, so the bar above the record can jump to it.
   ///
   /// The record runs to eight sections — plan, vitals, medicines, advice,
@@ -138,25 +129,32 @@ class _DieticianPatientScreenState
                         ),
                       ),
                     ),
-                    child: EdgeFade(
-                      controller: _sectionRail,
-                      child: ListView.separated(
-                        controller: _sectionRail,
-                        scrollDirection: Axis.horizontal,
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: AppSpacing.md,
-                          vertical: 6,
-                        ),
-                        itemCount: sections.length,
-                        separatorBuilder: (_, _) => const SizedBox(width: 8),
-                        itemBuilder: (context, i) {
-                          final (id, label) = sections[i];
-                          return ActionChip(
-                            label: Text(label),
-                            visualDensity: VisualDensity.compact,
-                            onPressed: () => _jumpTo(id),
-                          );
-                        },
+                    // Wrapped, not scrolled.
+                    //
+                    // A horizontal rail always slices whatever falls at the
+                    // edge — "Advice · T" — and fading that edge only makes
+                    // the cut prettier; the section is still hidden, and a
+                    // jump-to control nobody can see is a jump-to control
+                    // nobody uses. There are six of these and they are known
+                    // at build time, so they can simply all be on screen. Two
+                    // lines of chrome buys every section one tap away, which
+                    // is the whole point of the bar.
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: AppSpacing.md,
+                        vertical: 6,
+                      ),
+                      child: Wrap(
+                        spacing: 8,
+                        runSpacing: 6,
+                        children: [
+                          for (final (id, label) in sections)
+                            ActionChip(
+                              label: Text(label),
+                              visualDensity: VisualDensity.compact,
+                              onPressed: () => _jumpTo(id),
+                            ),
+                        ],
                       ),
                     ),
                   ),

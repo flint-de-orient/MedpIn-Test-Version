@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 import '../../../core/theme/tokens.dart';
 import '../../../shared/widgets/app_logo.dart';
 import '../../../shared/widgets/authed_image.dart';
+import '../../../shared/widgets/edge_fade.dart';
 import '../../../shared/widgets/auto_refresh.dart';
 import '../../../shared/widgets/surfaces.dart';
 import '../../../shared/widgets/user_avatar.dart';
@@ -1031,10 +1032,25 @@ class _PlanStatusCard extends StatelessWidget {
 
 // ----------------------------------------------------------- food logs
 
-class _RecentLogs extends StatelessWidget {
+class _RecentLogs extends StatefulWidget {
   const _RecentLogs({required this.logs});
 
   final List<DietRecentLog> logs;
+
+  @override
+  State<_RecentLogs> createState() => _RecentLogsState();
+}
+
+class _RecentLogsState extends State<_RecentLogs> {
+  final ScrollController _rail = ScrollController();
+
+  List<DietRecentLog> get logs => widget.logs;
+
+  @override
+  void dispose() {
+    _rail.dispose();
+    super.dispose();
+  }
 
   static String _meal(String t) =>
       t.isEmpty ? 'Meal' : t[0].toUpperCase() + t.substring(1);
@@ -1068,12 +1084,21 @@ class _RecentLogs extends StatelessWidget {
             // Scaled by the text factor: the caption under each photo grows
             // with the system setting and would otherwise clip.
             height: MediaQuery.textScalerOf(context).scale(210),
-            child: ListView.separated(
-              scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.only(right: T.s5),
-              itemCount: logs.length,
-              separatorBuilder: (_, _) => const SizedBox(width: T.s3),
-              itemBuilder: (context, i) => _LogTile(log: logs[i]),
+            // This one genuinely scrolls — a caseload's meals are unbounded,
+            // so wrapping them the way the chip rails now do would push the
+            // rest of the dashboard off the screen. A fade is the right answer
+            // here instead: it says the row continues rather than that the
+            // last photograph is broken.
+            child: EdgeFade(
+              controller: _rail,
+              child: ListView.separated(
+                controller: _rail,
+                scrollDirection: Axis.horizontal,
+                padding: const EdgeInsets.only(right: T.s5),
+                itemCount: logs.length,
+                separatorBuilder: (_, _) => const SizedBox(width: T.s3),
+                itemBuilder: (context, i) => _LogTile(log: logs[i]),
+              ),
             ),
           ),
         ],
@@ -1160,7 +1185,7 @@ class _LogTile extends StatelessWidget {
               ),
             ),
             Text(
-              _RecentLogs._meal(log.mealType),
+              _RecentLogsState._meal(log.mealType),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: T.label.copyWith(

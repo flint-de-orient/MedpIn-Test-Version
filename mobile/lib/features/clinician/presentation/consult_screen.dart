@@ -1851,72 +1851,122 @@ class _BrandFieldState extends ConsumerState<_BrandField> {
   String get label => widget.label;
   ValueChanged<MedicineBrand> get onBrandPicked => widget.onBrandPicked;
 
+  /// What the last lookup did, so the field can say something when nothing
+  /// comes back.
+  ///
+  /// Silence was indistinguishable between three very different states: the
+  /// name is not in the clinic's list, the list is empty because nobody has
+  /// seeded it, and the lookup failed. A doctor typing into a dead-looking box
+  /// has no way to tell whether to keep typing or to go and find someone.
+  String? _hint;
+
+  void _setHint(String? h) {
+    if (h == _hint) return;
+    // After the frame: this runs inside optionsBuilder, which is called during
+    // the field's own build.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) setState(() => _hint = h);
+    });
+  }
+
+  @override
   @override
   Widget build(BuildContext context) {
-    return RawAutocomplete<MedicineBrand>(
-      textEditingController: controller,
-      focusNode: _focus,
-      optionsBuilder: (value) async {
-        final q = value.text.trim();
-        if (q.length < 2) return const Iterable<MedicineBrand>.empty();
-        try {
-          return await ref.read(medicineBrandRepositoryProvider).search(q);
-        } catch (_) {
-          // No suggestions is a fine outcome; a red error over a prescribing
-          // form because a lookup timed out is not.
-          return const Iterable<MedicineBrand>.empty();
-        }
-      },
-      displayStringForOption: (b) => b.name,
-      onSelected: onBrandPicked,
-      fieldViewBuilder:
-          (context, textController, focusNode, onSubmit) => TextField(
-            controller: textController,
-            focusNode: focusNode,
-            textCapitalization: TextCapitalization.words,
-            onSubmitted: (_) => onSubmit(),
-            decoration: InputDecoration(labelText: label, isDense: true),
-          ),
-      optionsViewBuilder: (context, onSelected, options) {
-        final scheme = Theme.of(context).colorScheme;
-        return Align(
-          alignment: Alignment.topLeft,
-          child: Material(
-            elevation: 3,
-            borderRadius: BorderRadius.circular(12),
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxHeight: 260, maxWidth: 420),
-              child: ListView.builder(
-                shrinkWrap: true,
-                padding: EdgeInsets.zero,
-                itemCount: options.length,
-                itemBuilder: (context, i) {
-                  final b = options.elementAt(i);
-                  return ListTile(
-                    dense: true,
-                    title: Text(
-                      b.name,
-                      style: const TextStyle(fontWeight: FontWeight.w600),
-                    ),
-                    // What is in it, so the right product is picked from a list
-                    // of brands that differ by one character.
-                    subtitle: Text(
-                      b.compositionLabel,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: scheme.onSurfaceVariant,
-                      ),
-                    ),
-                    onTap: () => onSelected(b),
-                  );
-                },
+    final scheme = Theme.of(context).colorScheme;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        RawAutocomplete<MedicineBrand>(
+          textEditingController: controller,
+          focusNode: _focus,
+          optionsBuilder: (value) async {
+            final q = value.text.trim();
+            if (q.length < 2) {
+              _setHint(null);
+              return const Iterable<MedicineBrand>.empty();
+            }
+            try {
+              final hits = await ref
+                  .read(medicineBrandRepositoryProvider)
+                  .search(q);
+              _setHint(
+                hits.isEmpty
+                    ? 'Not in the clinic’s medicine list — it will be saved as typed'
+                    : null,
+              );
+              return hits;
+            } catch (_) {
+              // A prescribing form must not go red because a lookup timed out —
+              // but it must not pretend the lookup happened either.
+              _setHint(
+                'Could not reach the medicine list — type the name in full',
+              );
+              return const Iterable<MedicineBrand>.empty();
+            }
+          },
+          displayStringForOption: (b) => b.name,
+          onSelected: onBrandPicked,
+          fieldViewBuilder:
+              (context, textController, focusNode, onSubmit) => TextField(
+                controller: textController,
+                focusNode: focusNode,
+                textCapitalization: TextCapitalization.words,
+                onSubmitted: (_) => onSubmit(),
+                decoration: InputDecoration(labelText: label, isDense: true),
               ),
+          optionsViewBuilder: (context, onSelected, options) {
+            final scheme = Theme.of(context).colorScheme;
+            return Align(
+              alignment: Alignment.topLeft,
+              child: Material(
+                elevation: 3,
+                borderRadius: BorderRadius.circular(12),
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(
+                    maxHeight: 260,
+                    maxWidth: 420,
+                  ),
+                  child: ListView.builder(
+                    shrinkWrap: true,
+                    padding: EdgeInsets.zero,
+                    itemCount: options.length,
+                    itemBuilder: (context, i) {
+                      final b = options.elementAt(i);
+                      return ListTile(
+                        dense: true,
+                        title: Text(
+                          b.name,
+                          style: const TextStyle(fontWeight: FontWeight.w600),
+                        ),
+                        // What is in it, so the right product is picked from a list
+                        // of brands that differ by one character.
+                        subtitle: Text(
+                          b.compositionLabel,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: scheme.onSurfaceVariant,
+                          ),
+                        ),
+                        onTap: () => onSelected(b),
+                      );
+                    },
+                  ),
+                ),
+              ),
+            );
+          },
+        ),
+        if (_hint != null)
+          Padding(
+            padding: const EdgeInsets.only(top: 4, left: 12),
+            child: Text(
+              _hint!,
+              style: TextStyle(fontSize: 11, color: scheme.onSurfaceVariant),
             ),
           ),
-        );
-      },
+      ],
     );
   }
 }
