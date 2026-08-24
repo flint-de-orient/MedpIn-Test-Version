@@ -1198,7 +1198,7 @@ class _FoodLogSection extends ConsumerWidget {
                       const SizedBox(height: AppSpacing.sm),
                       for (var i = 0; i < day.value.length; i++) ...[
                         if (i > 0) const SizedBox(height: AppSpacing.sm),
-                        _FoodEntry(entry: day.value[i]),
+                        _FoodEntry(patientId: patientId, entry: day.value[i]),
                       ],
                     ],
                   ],
@@ -1417,8 +1417,9 @@ class _DashPainter extends CustomPainter {
 }
 
 class _FoodEntry extends StatelessWidget {
-  const _FoodEntry({required this.entry});
+  const _FoodEntry({required this.patientId, required this.entry});
 
+  final String patientId;
   final FoodLogEntry entry;
 
   @override
@@ -1482,6 +1483,15 @@ class _FoodEntry extends StatelessWidget {
               ],
             ),
           ),
+          // Every meal is tickable, not just today's four.
+          //
+          // The tick started life only on the last-24h grid, which meant the
+          // header could say "7 to review" while just four of them could be
+          // ticked — and the grid keeps only the newest entry per slot, so a
+          // patient who logged lunch twice had one meal with no way to review
+          // it at all. Per-meal review that cannot reach every meal is not
+          // per-meal review.
+          _ReviewTick(patientId: patientId, entry: entry),
         ],
       ),
     );
