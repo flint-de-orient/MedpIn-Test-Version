@@ -382,12 +382,14 @@ class _DashboardHeader extends ConsumerWidget {
               const SizedBox(width: 6),
               Flexible(
                 child: Text(
-                  // The year too, and the weekday unabbreviated. A clinical
-                  // dashboard is read alongside dated records, and "Mon, 24
-                  // Aug" leaves the reader to supply the year — which is the
-                  // one part that matters when a prescription from last August
-                  // is open beside it.
-                  DateFormat('EEEE, d MMMM yyyy').format(DateTime.now()),
+                  // Abbreviated, but complete: "Mon, 24 Aug 2026".
+                  //
+                  // Spelling the weekday and month out in full made the line
+                  // longer than the space beside "Updated just now", so it
+                  // ellipsised to "Monday, 24 A…" — which lost the month and
+                  // the year, the two parts actually worth having. A short
+                  // form that fits says more than a long one that does not.
+                  DateFormat('EEE, d MMM yyyy').format(DateTime.now()),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: T.small.copyWith(color: T.inkMuted),

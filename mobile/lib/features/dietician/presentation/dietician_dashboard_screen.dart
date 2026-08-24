@@ -251,7 +251,10 @@ class _Greeting extends StatelessWidget {
           ],
         ),
         Text(
-          DateFormat('EEEE, d MMMM').format(DateTime.now()),
+          // Same form as the doctor's header and the rest of the clinician
+          // panel — "Mon, 24 Aug 2026". This was the one header still spelling
+          // the weekday out and omitting the year.
+          DateFormat('EEE, d MMM yyyy').format(DateTime.now()),
           style: T.small.copyWith(color: T.inkMuted),
         ),
       ],
