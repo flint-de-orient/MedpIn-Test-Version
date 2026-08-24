@@ -382,7 +382,12 @@ class _DashboardHeader extends ConsumerWidget {
               const SizedBox(width: 6),
               Flexible(
                 child: Text(
-                  DateFormat('EEE, d MMMM').format(DateTime.now()),
+                  // The year too, and the weekday unabbreviated. A clinical
+                  // dashboard is read alongside dated records, and "Mon, 24
+                  // Aug" leaves the reader to supply the year — which is the
+                  // one part that matters when a prescription from last August
+                  // is open beside it.
+                  DateFormat('EEEE, d MMMM yyyy').format(DateTime.now()),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: T.small.copyWith(color: T.inkMuted),

@@ -44,7 +44,9 @@ class _StrengthFieldState extends State<StrengthField> {
     // Split whatever is already stored, so editing an existing prescription
     // does not silently rewrite its unit.
     final raw = widget.controller.text.trim();
-    final match = RegExp(r'^([\d.]+(?:\s*/\s*[\d.]+)*)\s*(.*)$').firstMatch(raw);
+    final match = RegExp(
+      r'^([\d.]+(?:\s*/\s*[\d.]+)*)\s*(.*)$',
+    ).firstMatch(raw);
     final existingUnit = (match?.group(2) ?? '').trim();
     _amount = TextEditingController(text: (match?.group(1) ?? raw).trim());
     if (existingUnit.isNotEmpty) {
@@ -99,9 +101,23 @@ class _StrengthFieldState extends State<StrengthField> {
           child: DropdownButtonFormField<String>(
             initialValue: _unit,
             isDense: widget.isDense,
-            decoration: InputDecoration(labelText: 'Unit', isDense: widget.isDense),
+            // Without this the button sizes its child to the *widest* item —
+            // "mg/mL" — and where the parent is narrower than that, the child
+            // is clipped away entirely and the control renders as a chevron
+            // over an empty box. It looked correct on the consult form, which
+            // gives it more room, and blank on the patient profile, which does
+            // not. Expanded, it lays out inside whatever width it is given.
+            isExpanded: true,
+            decoration: InputDecoration(
+              labelText: 'Unit',
+              isDense: widget.isDense,
+            ),
             items: [
-              for (final u in options) DropdownMenuItem(value: u, child: Text(u)),
+              for (final u in options)
+                DropdownMenuItem(
+                  value: u,
+                  child: Text(u, maxLines: 1, overflow: TextOverflow.ellipsis),
+                ),
             ],
             onChanged: (v) {
               if (v == null) return;
