@@ -1,29 +1,38 @@
 import 'package:flutter/material.dart';
+// intl exports its own TextDirection, which shadows the dart:ui one that
+// TextPainter wants.
+import 'package:intl/intl.dart' hide TextDirection;
 
 import '../../../../core/theme/tokens.dart';
 
 /// The fourteen-day in-target line on the dietician's header card.
 ///
-/// Deliberately not fl_chart. This is 14 points in a 90px box with no axes, no
-/// touch and no legend — a chart engine here would cost a layout pass and a
-/// pile of configuration to draw four line segments.
+/// One painter owns the whole plot — gridlines, both axes, the line and the
+/// marks. The first version drew the gridlines here and the percentage labels
+/// as a separate Column beside it, spaced with `spaceBetween`; two independent
+/// layouts cannot agree about where a line sits, and visibly did not.
+/// Everything that has to line up is now computed from one number.
 ///
-/// A null entry is a day nobody tested. The line breaks across it rather than
-/// dropping to the floor: a gap says "no data", a zero says "nothing was in
-/// range", and those are opposite claims about a patient's week.
+/// Deliberately not fl_chart. This is fourteen points in a small box with no
+/// touch and no legend; a chart engine would cost a layout pass and a pile of
+/// configuration to draw a handful of segments.
 class NutritionSparkline extends StatelessWidget {
-  const NutritionSparkline({super.key, required this.series, this.height = 90});
+  const NutritionSparkline({
+    super.key,
+    required this.series,
+    this.height = 118,
+  });
 
+  /// One entry per day, oldest first. Null is a day nobody tested.
   final List<int?> series;
   final double height;
 
   @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      height: height,
-      child: CustomPaint(painter: _SparkPainter(series), size: Size.infinite),
-    );
-  }
+  Widget build(BuildContext context) => SizedBox(
+    height: height,
+    width: double.infinity,
+    child: CustomPaint(painter: _SparkPainter(series)),
+  );
 }
 
 class _SparkPainter extends CustomPainter {
@@ -31,73 +40,111 @@ class _SparkPainter extends CustomPainter {
 
   final List<int?> series;
 
-  /// The band the line is drawn against. Fixed rather than fitted to the data:
-  /// an auto-scaled axis makes 62% and 64% look like a cliff, and this figure
-  /// is read for its level, not its wiggle.
-  static const double _min = 30;
+  /// The scale runs the full nought to a hundred.
+  ///
+  /// It used to start at 30, and that was not a cosmetic choice — a day on
+  /// which nothing was in range clamped to 30 and was *drawn* at 30. The chart
+  /// showed a third of readings on target on a day when none were. An axis
+  /// that cannot reach zero has no business plotting a percentage.
+  static const double _min = 0;
   static const double _max = 100;
+
+  /// Room for the labels, and for a mark sitting exactly on 0 or 100 without
+  /// half of it clipped by the edge of the box.
+  static const double _gutter = 34;
+  static const double _padTop = 7;
+  static const double _padBottom = 18;
+
+  static const _rules = [0, 50, 100];
+
+  static const _axisStyle = TextStyle(
+    fontSize: 9,
+    height: 1,
+    fontWeight: FontWeight.w500,
+    color: T.inkFaint,
+  );
 
   @override
   void paint(Canvas canvas, Size size) {
-    if (series.isEmpty) return;
+    const plotLeft = _gutter;
+    final plotWidth = size.width - _gutter;
+    const plotTop = _padTop;
+    final plotHeight = size.height - _padTop - _padBottom;
+    if (plotWidth <= 0 || plotHeight <= 0 || series.isEmpty) return;
 
+    double yFor(num v) =>
+        plotTop +
+        plotHeight * (1 - (v.clamp(_min, _max) - _min) / (_max - _min));
+    double xFor(int i) =>
+        series.length > 1
+            ? plotLeft + plotWidth * (i / (series.length - 1))
+            : plotLeft + plotWidth / 2;
+
+    final label = TextPainter(textDirection: TextDirection.ltr);
+    void draw(String s, double x, double y, {bool rightAlign = false}) {
+      label.text = TextSpan(text: s, style: _axisStyle);
+      label.layout();
+      label.paint(canvas, Offset(rightAlign ? x - label.width : x, y));
+    }
+
+    // ---- gridlines and their labels, off the same number -------------------
     final grid =
         Paint()
           ..color = const Color(0xFFEDF1F7)
           ..strokeWidth = 1;
-    // Four rules at 40/60/80/100 — the labels the card prints beside them.
-    for (final pct in const [40, 60, 80, 100]) {
-      final y = size.height * (1 - (pct - _min) / (_max - _min));
-      canvas.drawLine(Offset(0, y), Offset(size.width, y), grid);
+    for (final pct in _rules) {
+      final y = yFor(pct);
+      canvas.drawLine(Offset(plotLeft, y), Offset(size.width, y), grid);
+      draw('$pct%', plotLeft - 6, y - 4.5, rightAlign: true);
     }
 
-    final step =
-        series.length > 1 ? size.width / (series.length - 1) : size.width;
-    Offset? at(int i) {
-      final v = series[i];
-      if (v == null) return null;
-      final clamped = v.toDouble().clamp(_min, _max);
-      return Offset(
-        i * step,
-        size.height * (1 - (clamped - _min) / (_max - _min)),
-      );
-    }
-
-    // Split into unbroken runs, so a missing day interrupts the line instead
-    // of being bridged by a segment that implies readings nobody took.
-    final runs = <List<Offset>>[];
-    var run = <Offset>[];
+    // ---- the points we actually have ---------------------------------------
+    final points = <int, Offset>{};
     for (var i = 0; i < series.length; i++) {
-      final p = at(i);
-      if (p == null) {
-        if (run.length > 1) runs.add(run);
-        run = <Offset>[];
-      } else {
-        run.add(p);
-      }
+      final v = series[i];
+      if (v != null) points[i] = Offset(xFor(i), yFor(v));
     }
-    if (run.length > 1) runs.add(run);
+    if (points.isEmpty) return;
+    final indices = points.keys.toList()..sort();
 
-    final line =
+    final solid =
         Paint()
           ..color = T.primary
           ..strokeWidth = 2
           ..strokeCap = StrokeCap.round
           ..strokeJoin = StrokeJoin.round
           ..style = PaintingStyle.stroke;
+    // A gap is bridged, but visibly. The previous version drew nothing across
+    // one, so a fortnight with readings on four scattered days came out as four
+    // unconnected dots and no trend at all. A faint dashed link says "nobody
+    // tested here" while still letting the eye follow the shape.
+    final bridge =
+        Paint()
+          ..color = T.primary.withValues(alpha: 0.32)
+          ..strokeWidth = 1.4
+          ..strokeCap = StrokeCap.round
+          ..style = PaintingStyle.stroke;
 
-    for (final r in runs) {
-      final path = Path()..moveTo(r.first.dx, r.first.dy);
-      for (final p in r.skip(1)) {
-        path.lineTo(p.dx, p.dy);
+    for (var k = 1; k < indices.length; k++) {
+      final a = points[indices[k - 1]]!;
+      final b = points[indices[k]]!;
+      if (indices[k] - indices[k - 1] == 1) {
+        canvas.drawLine(a, b, solid);
+      } else {
+        _dash(canvas, a, b, bridge);
       }
+    }
 
-      // The wash under each run, closed down to the baseline.
-      final fill =
-          Path.from(path)
-            ..lineTo(r.last.dx, size.height)
-            ..lineTo(r.first.dx, size.height)
-            ..close();
+    // ---- the wash beneath ---------------------------------------------------
+    if (indices.length > 1) {
+      final base = plotTop + plotHeight;
+      final fill = Path()..moveTo(points[indices.first]!.dx, base);
+      for (final i in indices) {
+        fill.lineTo(points[i]!.dx, points[i]!.dy);
+      }
+      fill
+        ..lineTo(points[indices.last]!.dx, base)
+        ..close();
       canvas.drawPath(
         fill,
         Paint()
@@ -105,18 +152,59 @@ class _SparkPainter extends CustomPainter {
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
             colors: [
-              T.primary.withValues(alpha: 0.16),
+              T.primary.withValues(alpha: 0.14),
               T.primary.withValues(alpha: 0),
             ],
-          ).createShader(Rect.fromLTWH(0, 0, size.width, size.height)),
+          ).createShader(
+            Rect.fromLTWH(plotLeft, plotTop, plotWidth, plotHeight),
+          ),
       );
-      canvas.drawPath(path, line);
     }
 
+    // ---- the marks ----------------------------------------------------------
     final dot = Paint()..color = T.primary;
-    for (var i = 0; i < series.length; i++) {
-      final p = at(i);
-      if (p != null) canvas.drawCircle(p, 2.5, dot);
+    final ring =
+        Paint()
+          ..color = Colors.white
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 1.5;
+    for (final i in indices) {
+      canvas.drawCircle(points[i]!, 3, dot);
+      canvas.drawCircle(points[i]!, 3, ring);
+    }
+
+    // ---- the dates, at the x the marks actually use -------------------------
+    final today = DateTime.now();
+    final n = series.length;
+    final slots = n >= 8 ? 4 : 2;
+    for (var k = 0; k < slots; k++) {
+      final i = ((n - 1) * k / (slots - 1)).round();
+      final day = today.subtract(Duration(days: n - 1 - i));
+      label.text = TextSpan(
+        text: DateFormat('d MMM').format(day),
+        style: _axisStyle,
+      );
+      label.layout();
+      // Nudged inward at the ends, so neither the first nor the last date
+      // half-hangs off the tile.
+      var dx = xFor(i) - label.width / 2;
+      if (dx < plotLeft) dx = plotLeft;
+      if (dx + label.width > size.width) dx = size.width - label.width;
+      label.paint(canvas, Offset(dx, size.height - _padBottom + 6));
+    }
+  }
+
+  static void _dash(Canvas canvas, Offset a, Offset b, Paint paint) {
+    const dash = 3.0;
+    const gap = 3.0;
+    final total = (b - a).distance;
+    if (total == 0) return;
+    final step = (b - a) / total;
+    var travelled = 0.0;
+    while (travelled < total) {
+      final end = (travelled + dash).clamp(0.0, total);
+      canvas.drawLine(a + step * travelled, a + step * end, paint);
+      travelled = end + gap;
     }
   }
 

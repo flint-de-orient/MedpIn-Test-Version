@@ -338,51 +338,80 @@ class _PrescriptionCardState extends ConsumerState<_PrescriptionCard> {
               _detail(context, 'Issued by', rx.doctorName!),
           ],
           const SizedBox(height: AppSpacing.sm),
+          // Two full-width halves, matching the patient panel exactly, rather
+          // than a Row of a text button, a Spacer and two more.
+          //
+          // That Row was clipped on a phone: inside a shrink-wrapping parent
+          // the Spacer collapsed to nothing, the children overflowed the
+          // card's rounded clip, and "Open PDF" was simply not drawn — no
+          // overflow stripe, no error, just a missing button. The doctor had
+          // no way to open a prescription at all.
           Row(
             children: [
-              TextButton.icon(
-                onPressed: () => setState(() => _expanded = !_expanded),
-                icon: Icon(
-                  _expanded
-                      ? Icons.expand_less_rounded
-                      : Icons.expand_more_rounded,
-                  size: 18,
-                ),
-                label: Text(_expanded ? 'Hide details' : 'View details'),
-                style: TextButton.styleFrom(
-                  foregroundColor: scheme.onSurfaceVariant,
+              Expanded(
+                child: FilledButton.icon(
+                  onPressed: _busy || rx.pdfUrl == null ? null : _open,
+                  style: FilledButton.styleFrom(
+                    minimumSize: const Size.fromHeight(46),
+                    backgroundColor: AppColors.primary,
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                  ),
+                  icon:
+                      _busy
+                          ? const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2.2,
+                              color: Colors.white,
+                            ),
+                          )
+                          // "Open", not "Download": the file goes to the
+                          // phone's PDF viewer, and a button promising a
+                          // download then launching another app describes its
+                          // mechanism rather than its effect.
+                          : const Icon(Icons.picture_as_pdf_rounded, size: 18),
+                  label: Text(_busy ? 'Preparing…' : 'Open PDF'),
                 ),
               ),
-              const Spacer(),
-              if (rx.pdfUrl != null) ...[
-                IconButton(
-                  onPressed: _busy ? null : _share,
-                  icon: const Icon(Icons.ios_share_rounded, size: 20),
-                  tooltip: 'Share PDF',
-                  color: scheme.onSurfaceVariant,
-                ),
-                const SizedBox(width: 2),
-              ],
-              OutlinedButton.icon(
-                onPressed: _busy || rx.pdfUrl == null ? null : _open,
-                icon:
-                    _busy
-                        ? const SizedBox(
-                          width: 16,
-                          height: 16,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                        // "Open", not "Download": the file goes straight to the
-                        // phone's PDF viewer, and a button that promised a
-                        // download and then launched another app was describing
-                        // its mechanism rather than its effect.
-                        : const Icon(Icons.picture_as_pdf_rounded, size: 18),
-                label: Text(_busy ? 'Preparing…' : 'Open PDF'),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: AppColors.primary,
+              const SizedBox(width: AppSpacing.sm),
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: _busy || rx.pdfUrl == null ? null : _share,
+                  style: OutlinedButton.styleFrom(
+                    minimumSize: const Size.fromHeight(46),
+                    foregroundColor: AppColors.primary,
+                    side: BorderSide(color: scheme.outlineVariant),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                  ),
+                  // One word, because the OS sheet is where saving is chosen —
+                  // "Share / Save" was two words for one action.
+                  icon: const Icon(Icons.ios_share_rounded, size: 18),
+                  label: const Text('Share'),
                 ),
               ),
             ],
+          ),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton.icon(
+              onPressed: () => setState(() => _expanded = !_expanded),
+              icon: Icon(
+                _expanded
+                    ? Icons.expand_less_rounded
+                    : Icons.expand_more_rounded,
+                size: 18,
+              ),
+              label: Text(_expanded ? 'Hide details' : 'View details'),
+              style: TextButton.styleFrom(
+                foregroundColor: scheme.onSurfaceVariant,
+              ),
+            ),
           ),
         ],
       ),

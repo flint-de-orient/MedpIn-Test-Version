@@ -483,7 +483,11 @@ class _OverviewTile extends StatelessWidget {
                 const SizedBox(width: 2),
                 Flexible(
                   child: Text(
-                    '${delta.abs()}% vs previous 14 days',
+                    // Points, not per cent. 29% against a previous 100% is a
+                    // fall of 71 percentage points; writing it as "71%" reads
+                    // as a 71% relative drop, which would be a different and
+                    // much smaller number.
+                    '${delta.abs()} pts vs previous 14 days',
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: T.label.copyWith(
@@ -496,42 +500,9 @@ class _OverviewTile extends StatelessWidget {
             ),
           ],
           const SizedBox(height: T.s2),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // The axis labels the sparkline's four rules are drawn at.
-              Column(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  for (final l in const ['100%', '80%', '60%', '40%'])
-                    SizedBox(
-                      height: 22,
-                      child: Text(
-                        l,
-                        style: T.label.copyWith(
-                          fontSize: 9,
-                          letterSpacing: 0,
-                          color: T.inkFaint,
-                        ),
-                      ),
-                    ),
-                ],
-              ),
-              const SizedBox(width: T.s1),
-              Expanded(
-                child: Column(
-                  children: [
-                    NutritionSparkline(series: overview.series),
-                    const SizedBox(height: T.s1),
-                    // The date axis. Without it the line was fourteen
-                    // anonymous points — a shape, with no way to tell which
-                    // end was this week.
-                    _SparkDates(count: overview.series.length),
-                  ],
-                ),
-              ),
-            ],
-          ),
+          // The painter draws its own axis now: two layouts cannot agree
+          // about where a gridline sits, and these two did not.
+          NutritionSparkline(series: overview.series),
         ],
       ),
     );
@@ -1382,46 +1353,6 @@ class _ActivityCell extends StatelessWidget {
   }
 }
 
-/// Four evenly spaced dates under the fourteen-day line.
-///
-/// Four, not fourteen: the labels are 9px and the box is a third of a phone
-/// wide, so one per point would overlap into a grey smear. Spaced along a Row
-/// rather than centred on their ticks, so the first and last sit inside the
-/// edges instead of half-overhanging them.
-class _SparkDates extends StatelessWidget {
-  const _SparkDates({required this.count});
-
-  final int count;
-
-  @override
-  Widget build(BuildContext context) {
-    if (count < 2) return const SizedBox.shrink();
-    final today = DateTime.now();
-    // The series ends yesterday-inclusive of today: index i is (count-1-i)
-    // days back from today.
-    DateTime dayAt(int i) => today.subtract(Duration(days: count - 1 - i));
-
-    const slots = 4;
-    final picks = [
-      for (var k = 0; k < slots; k++) ((count - 1) * k / (slots - 1)).round(),
-    ];
-
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        for (final i in picks)
-          Text(
-            DateFormat('d MMM').format(dayAt(i)),
-            style: T.label.copyWith(
-              fontSize: 9,
-              letterSpacing: 0,
-              color: T.inkFaint,
-            ),
-          ),
-      ],
-    );
-  }
-}
 
 /// The overview tile with nothing behind it yet.
 ///
