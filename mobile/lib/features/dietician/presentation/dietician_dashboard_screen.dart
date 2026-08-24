@@ -92,6 +92,10 @@ class DieticianDashboardScreen extends ConsumerWidget {
                               const SizedBox(height: T.s4),
                               _RecentLogs(logs: d.recentLogsForGrid()),
                             ],
+                            if (d.activity.isNotEmpty) ...[
+                              const SizedBox(height: T.s4),
+                              _RecentActivity(items: d.activity),
+                            ],
                           ],
                         ),
                   ),
@@ -555,7 +559,18 @@ class _OverviewTile extends StatelessWidget {
                 ],
               ),
               const SizedBox(width: T.s1),
-              Expanded(child: NutritionSparkline(series: overview.series)),
+              Expanded(
+                child: Column(
+                  children: [
+                    NutritionSparkline(series: overview.series),
+                    const SizedBox(height: T.s1),
+                    // The date axis. Without it the line was fourteen
+                    // anonymous points — a shape, with no way to tell which
+                    // end was this week.
+                    _SparkDates(count: overview.series.length),
+                  ],
+                ),
+              ),
             ],
           ),
         ],
@@ -1249,6 +1264,190 @@ class _LogTile extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+// ------------------------------------------------------------- activity
+
+/// What has just happened, as three short lines.
+///
+/// Sits last on purpose. It is the only block on the screen that asks for
+/// nothing — everything above it is work, and a feed placed among the work
+/// competes with it for the same glance.
+class _RecentActivity extends StatelessWidget {
+  const _RecentActivity({required this.items});
+
+  final List<DietActivity> items;
+
+  static ({IconData icon, Color tone}) _face(String kind) => switch (kind) {
+    'food_log' => (icon: Icons.water_drop_rounded, tone: T.success),
+    'plan' => (icon: Icons.event_note_rounded, tone: T.warning),
+    _ => (icon: Icons.chat_bubble_rounded, tone: T.primary),
+  };
+
+  /// "18 min ago" — the same shorthand the attention rows use, so two blocks
+  /// on one screen do not describe time two different ways.
+  static String _ago(DateTime? at) {
+    if (at == null) return '';
+    final d = DateTime.now().difference(at);
+    if (d.inMinutes < 1) return 'just now';
+    if (d.inMinutes < 60) return '${d.inMinutes} min ago';
+    if (d.inHours < 24) return '${d.inHours}h ago';
+    return '${d.inDays}d ago';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final shown = items.take(3).toList();
+    // Three across is the mockup and it needs the width; below that they
+    // stack, because "Ayesha Rahman submitted a food log" in a third of a
+    // 360dp screen is four truncated lines.
+    final row = MediaQuery.sizeOf(context).width >= 600;
+
+    final cells = [
+      for (final a in shown) _ActivityCell(item: a, face: _face(a.kind)),
+    ];
+
+    return SectionCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'Recent activity',
+                  style: T.title.copyWith(color: T.ink),
+                ),
+              ),
+              ActionLink(
+                label: 'View all',
+                onTap: () => context.go('/dietician/patients'),
+              ),
+            ],
+          ),
+          const SizedBox(height: T.s3),
+          if (row)
+            IntrinsicHeight(
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  for (var i = 0; i < cells.length; i++) ...[
+                    if (i > 0)
+                      const VerticalDivider(
+                        width: T.s4,
+                        thickness: 1,
+                        color: Color(0xFFEDF1F7),
+                      ),
+                    Expanded(child: cells[i]),
+                  ],
+                ],
+              ),
+            )
+          else
+            Column(
+              children: [
+                for (var i = 0; i < cells.length; i++) ...[
+                  if (i > 0) const SizedBox(height: T.s3),
+                  cells[i],
+                ],
+              ],
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ActivityCell extends StatelessWidget {
+  const _ActivityCell({required this.item, required this.face});
+
+  final DietActivity item;
+  final ({IconData icon, Color tone}) face;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          width: 34,
+          height: 34,
+          decoration: BoxDecoration(
+            color: face.tone.withValues(alpha: 0.12),
+            shape: BoxShape.circle,
+          ),
+          child: Icon(face.icon, size: 17, color: face.tone),
+        ),
+        const SizedBox(width: T.s2),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                '${item.patientName} ${item.text}',
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: T.small.copyWith(
+                  fontWeight: FontWeight.w600,
+                  color: T.ink,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                _RecentActivity._ago(item.at),
+                style: T.label.copyWith(
+                  letterSpacing: 0,
+                  fontWeight: FontWeight.w500,
+                  color: T.inkMuted,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Four evenly spaced dates under the fourteen-day line.
+///
+/// Four, not fourteen: the labels are 9px and the box is a third of a phone
+/// wide, so one per point would overlap into a grey smear. Spaced along a Row
+/// rather than centred on their ticks, so the first and last sit inside the
+/// edges instead of half-overhanging them.
+class _SparkDates extends StatelessWidget {
+  const _SparkDates({required this.count});
+
+  final int count;
+
+  @override
+  Widget build(BuildContext context) {
+    if (count < 2) return const SizedBox.shrink();
+    final today = DateTime.now();
+    // The series ends yesterday-inclusive of today: index i is (count-1-i)
+    // days back from today.
+    DateTime dayAt(int i) => today.subtract(Duration(days: count - 1 - i));
+
+    const slots = 4;
+    final picks = [
+      for (var k = 0; k < slots; k++) ((count - 1) * k / (slots - 1)).round(),
+    ];
+
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        for (final i in picks)
+          Text(
+            DateFormat('d MMM').format(dayAt(i)),
+            style: T.label.copyWith(
+              fontSize: 9,
+              letterSpacing: 0,
+              color: T.inkFaint,
+            ),
+          ),
+      ],
     );
   }
 }

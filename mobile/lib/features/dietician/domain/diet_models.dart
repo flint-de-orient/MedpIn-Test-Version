@@ -704,6 +704,37 @@ class NutritionAttention {
       );
 }
 
+/// One thing that has happened across the caseload in the last week.
+///
+/// Answers "what changed while I was away", which is not the same question as
+/// "what do I owe" — the worklist above already answers that, and a feed that
+/// restated it would be the third copy of the same numbers on one screen.
+class DietActivity {
+  const DietActivity({
+    required this.id,
+    required this.kind,
+    required this.patientName,
+    required this.text,
+    this.at,
+  });
+
+  final String id;
+
+  /// message | food_log | plan
+  final String kind;
+  final String patientName;
+  final String text;
+  final DateTime? at;
+
+  factory DietActivity.fromJson(Map<String, dynamic> j) => DietActivity(
+    id: j['id']?.toString() ?? '',
+    kind: j['kind']?.toString() ?? 'message',
+    patientName: j['patientName']?.toString() ?? '',
+    text: j['text']?.toString() ?? '',
+    at: DateTime.tryParse(j['at']?.toString() ?? '')?.toLocal(),
+  );
+}
+
 class DietDashboard {
   const DietDashboard({
     required this.patients,
@@ -718,6 +749,7 @@ class DietDashboard {
     this.planStatus = const PlanStatus(),
     this.overview = const NutritionOverview(),
     this.attention = const [],
+    this.activity = const [],
   });
 
   final int patients;
@@ -740,6 +772,7 @@ class DietDashboard {
   final PlanStatus planStatus;
   final NutritionOverview overview;
   final List<NutritionAttention> attention;
+  final List<DietActivity> activity;
 
   /// Everything waiting to be done today, as one number. The hero used to show
   /// only lapsed reviews, so a dietician with three unsent plans and no lapsed
@@ -860,6 +893,12 @@ class DietDashboard {
           (j['attention'] as List?)
               ?.whereType<Map<String, dynamic>>()
               .map(NutritionAttention.fromJson)
+              .toList() ??
+          const [],
+      activity:
+          (j['activity'] as List?)
+              ?.whereType<Map<String, dynamic>>()
+              .map(DietActivity.fromJson)
               .toList() ??
           const [],
     );
