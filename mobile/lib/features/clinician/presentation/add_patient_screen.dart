@@ -285,87 +285,86 @@ class _AddPatientScreenState extends ConsumerState<AddPatientScreen> {
                 subtitle: 'Height, weight, BP, pulse, SpO₂, blood sugar',
                 filled: _vitalsFilled,
                 children: [
-                    Row(
-                      children: [
-                        Expanded(
-                          child: _numField(
-                            _height,
-                            'Height',
-                            'cm',
-                            VitalsValidators.height,
-                          ),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _numField(
+                          _height,
+                          'Height',
+                          'cm',
+                          VitalsValidators.height,
                         ),
-                        const SizedBox(width: AppSpacing.md),
-                        Expanded(
-                          child: _numField(
-                            _weight,
-                            'Weight',
-                            'kg',
-                            VitalsValidators.weight,
-                          ),
+                      ),
+                      const SizedBox(width: AppSpacing.md),
+                      Expanded(
+                        child: _numField(
+                          _weight,
+                          'Weight',
+                          'kg',
+                          VitalsValidators.weight,
                         ),
-                      ],
-                    ),
-                    const SizedBox(height: AppSpacing.md),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: _numField(
-                            _systolic,
-                            'BP systolic',
-                            'mmHg',
-                            VitalsValidators.systolic,
-                            integer: true,
-                          ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: AppSpacing.md),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _numField(
+                          _systolic,
+                          'BP systolic',
+                          'mmHg',
+                          VitalsValidators.systolic,
+                          integer: true,
                         ),
-                        const SizedBox(width: AppSpacing.md),
-                        Expanded(
-                          child: _numField(
-                            _diastolic,
-                            'BP diastolic',
-                            'mmHg',
-                            (v) => VitalsValidators.diastolic(
-                              v,
-                              systolicText: _systolic.text,
-                            ),
-                            integer: true,
+                      ),
+                      const SizedBox(width: AppSpacing.md),
+                      Expanded(
+                        child: _numField(
+                          _diastolic,
+                          'BP diastolic',
+                          'mmHg',
+                          (v) => VitalsValidators.diastolic(
+                            v,
+                            systolicText: _systolic.text,
                           ),
+                          integer: true,
                         ),
-                      ],
-                    ),
-                    const SizedBox(height: AppSpacing.md),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: _numField(
-                            _pulse,
-                            'Heart rate',
-                            'bpm',
-                            VitalsValidators.pulse,
-                            integer: true,
-                          ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: AppSpacing.md),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _numField(
+                          _pulse,
+                          'Heart rate',
+                          'bpm',
+                          VitalsValidators.pulse,
+                          integer: true,
                         ),
-                        const SizedBox(width: AppSpacing.md),
-                        Expanded(
-                          child: _numField(
-                            _spo2,
-                            'SpO₂',
-                            '%',
-                            VitalsValidators.spo2,
-                            integer: true,
-                          ),
+                      ),
+                      const SizedBox(width: AppSpacing.md),
+                      Expanded(
+                        child: _numField(
+                          _spo2,
+                          'SpO₂',
+                          '%',
+                          VitalsValidators.spo2,
+                          integer: true,
                         ),
-                      ],
-                    ),
-                    const SizedBox(height: AppSpacing.md),
-                    _numField(
-                      _sugar,
-                      'Blood sugar',
-                      'mg/dL',
-                      VitalsValidators.sugar,
-                      integer: true,
-                    ),
-
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: AppSpacing.md),
+                  _numField(
+                    _sugar,
+                    'Blood sugar',
+                    'mg/dL',
+                    VitalsValidators.sugar,
+                    integer: true,
+                  ),
                 ],
               ),
               const SizedBox(height: AppSpacing.lg),
@@ -374,17 +373,17 @@ class _AddPatientScreenState extends ConsumerState<AddPatientScreen> {
                 subtitle: 'What brought them in today',
                 filled: _complaints.text.trim().isEmpty ? 0 : 1,
                 children: [
-                    TextFormField(
-                      controller: _complaints,
-                      textCapitalization: TextCapitalization.sentences,
-                      minLines: 2,
-                      maxLines: 4,
-                      decoration: const InputDecoration(
-                        labelText: 'Presenting complaint',
-                        alignLabelWithHint: true,
-                        hintText: 'e.g. increased thirst and fatigue for 2 weeks',
-                      ),
+                  TextFormField(
+                    controller: _complaints,
+                    textCapitalization: TextCapitalization.sentences,
+                    minLines: 2,
+                    maxLines: 4,
+                    decoration: const InputDecoration(
+                      labelText: 'Presenting complaint',
+                      alignLabelWithHint: true,
+                      hintText: 'e.g. increased thirst and fatigue for 2 weeks',
                     ),
+                  ),
                 ],
               ),
 

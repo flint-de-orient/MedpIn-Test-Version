@@ -50,6 +50,33 @@ class _PatientProfileScreenState extends ConsumerState<PatientProfileScreen> {
   final _labSearch = TextEditingController();
 
   final Set<String> _selectedTests = {};
+
+  /// Every panel in the catalog, plus anything typed in by hand.
+  void _selectAllTests() {
+    for (final panels in labCatalogByCategory().values) {
+      for (final p in panels) {
+        _selectedTests.add(p.name);
+      }
+    }
+    _selectedTests.addAll(_customTests);
+  }
+
+  bool _categoryFullySelected(List<dynamic> panels) =>
+      panels.isNotEmpty && panels.every((p) => _selectedTests.contains(p.name));
+
+  /// All of them, or none — whichever the category is not already.
+  void _toggleCategory(List<dynamic> panels) {
+    if (_categoryFullySelected(panels)) {
+      for (final p in panels) {
+        _selectedTests.remove(p.name);
+      }
+    } else {
+      for (final p in panels) {
+        _selectedTests.add(p.name);
+      }
+    }
+  }
+
   final List<String> _customTests = [];
 
   DateTime? _followUp;
@@ -511,7 +538,43 @@ class _PatientProfileScreenState extends ConsumerState<PatientProfileScreen> {
                                 ),
                               ],
                             ),
-                            const SizedBox(height: AppSpacing.md),
+                            const SizedBox(height: AppSpacing.sm),
+                            // Whole-catalog controls. Ordering every panel at
+                            // once is not usually good medicine, so "Select
+                            // all" is offered but never the default — what it
+                            // is really for is the annual review, where the
+                            // alternative is fourteen taps.
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: Text(
+                                    _selectedTests.isEmpty
+                                        ? 'No tests selected'
+                                        : '${_selectedTests.length} selected',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w600,
+                                      color:
+                                          Theme.of(
+                                            context,
+                                          ).colorScheme.onSurfaceVariant,
+                                    ),
+                                  ),
+                                ),
+                                _TestBulkAction(
+                                  label: 'Select all',
+                                  onTap: () => setState(_selectAllTests),
+                                ),
+                                if (_selectedTests.isNotEmpty) ...[
+                                  const SizedBox(width: AppSpacing.sm),
+                                  _TestBulkAction(
+                                    label: 'Clear',
+                                    onTap: () => setState(_selectedTests.clear),
+                                  ),
+                                ],
+                              ],
+                            ),
+                            const SizedBox(height: AppSpacing.sm),
                             // The diabetes lab catalog, grouped by category. The doctor
                             // orders at the PANEL level; each panel's sub-tests are shown
                             // beneath the selection so "what the report includes" is clear.
@@ -522,17 +585,37 @@ class _PatientProfileScreenState extends ConsumerState<PatientProfileScreen> {
                                   top: 0,
                                   bottom: 4,
                                 ),
-                                child: Text(
-                                  entry.key.toUpperCase(),
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w700,
-                                    letterSpacing: 0.5,
-                                    color:
-                                        Theme.of(
-                                          context,
-                                        ).colorScheme.onSurfaceVariant,
-                                  ),
+                                child: Row(
+                                  children: [
+                                    Expanded(
+                                      child: Text(
+                                        entry.key.toUpperCase(),
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w700,
+                                          letterSpacing: 0.5,
+                                          color:
+                                              Theme.of(
+                                                context,
+                                              ).colorScheme.onSurfaceVariant,
+                                        ),
+                                      ),
+                                    ),
+                                    // Per category, because this is the one
+                                    // that gets used: "all the lipids" is a
+                                    // real clinical thought, "everything in
+                                    // the catalog" mostly is not.
+                                    _TestBulkAction(
+                                      label:
+                                          _categoryFullySelected(entry.value)
+                                              ? 'Clear'
+                                              : 'Select all',
+                                      onTap:
+                                          () => setState(
+                                            () => _toggleCategory(entry.value),
+                                          ),
+                                    ),
+                                  ],
                                 ),
                               ),
                               Wrap(
@@ -974,9 +1057,13 @@ class _ProfileHeader extends StatelessWidget {
                     ),
               ),
               const SizedBox(width: AppSpacing.sm),
+              // "Prescriptions", not "History". The screen behind it shows
+              // every prescription in full — medicines, tests, advice — and
+              // offers the PDF, but nobody looking for "view the
+              // prescription" thinks to press a button marked History.
               _QuietAction(
-                icon: Icons.receipt_long_outlined,
-                label: 'History',
+                icon: Icons.description_outlined,
+                label: 'Prescriptions',
                 onTap:
                     () => context.push(
                       '/clinician/patients/${p.id}/prescriptions',
@@ -2434,6 +2521,41 @@ class _DateField extends StatelessWidget {
               color: scheme.onSurfaceVariant,
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+/// A small text action beside a group of test chips.
+///
+/// Text rather than another chip: it sits in a field of chips and has to be
+/// clearly not one of them, or a doctor in a hurry orders "Select all" as
+/// though it were a test.
+class _TestBulkAction extends StatelessWidget {
+  const _TestBulkAction({required this.label, required this.onTap});
+
+  final String label;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final accent = AppColors.accentOn(context);
+    return Semantics(
+      button: true,
+      child: GestureDetector(
+        onTap: onTap,
+        behavior: HitTestBehavior.opaque,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
+          child: Text(
+            label,
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+              color: accent,
+            ),
+          ),
         ),
       ),
     );

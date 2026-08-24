@@ -37,13 +37,13 @@ class MedicineBrand {
           : '$strengthLabel $strengthUnit';
 
   factory MedicineBrand.fromJson(Map<String, dynamic> j) => MedicineBrand(
-        name: j['name']?.toString() ?? '',
-        strengthLabel: j['strengthLabel']?.toString() ?? '',
-        compositionLabel: j['compositionLabel']?.toString() ?? '',
-        strengthUnit: j['strengthUnit']?.toString(),
-        form: j['form']?.toString() ?? 'tablet',
-        note: j['note']?.toString() ?? '',
-      );
+    name: j['name']?.toString() ?? '',
+    strengthLabel: j['strengthLabel']?.toString() ?? '',
+    compositionLabel: j['compositionLabel']?.toString() ?? '',
+    strengthUnit: j['strengthUnit']?.toString(),
+    form: j['form']?.toString() ?? 'tablet',
+    note: j['note']?.toString() ?? '',
+  );
 }
 
 class MedicineBrandRepository {
@@ -69,7 +69,10 @@ class MedicineBrandRepository {
   /// warning at all rather than a guess about a product nobody has recorded.
   Future<MedicineBrand?> lookup(String name) async {
     if (name.trim().isEmpty) return null;
-    final json = await _client.getJson('/medicine-brands/lookup', query: {'name': name.trim()});
+    final json = await _client.getJson(
+      '/medicine-brands/lookup',
+      query: {'name': name.trim()},
+    );
     final b = json['brand'];
     return b is Map<String, dynamic> ? MedicineBrand.fromJson(b) : null;
   }
@@ -80,7 +83,7 @@ final medicineBrandRepositoryProvider = Provider<MedicineBrandRepository>(
 );
 
 /// Suggestions for what the prescriber has typed so far.
-final medicineBrandSearchProvider =
-    FutureProvider.autoDispose.family<List<MedicineBrand>, String>(
-  (ref, q) => ref.watch(medicineBrandRepositoryProvider).search(q),
-);
+final medicineBrandSearchProvider = FutureProvider.autoDispose
+    .family<List<MedicineBrand>, String>(
+      (ref, q) => ref.watch(medicineBrandRepositoryProvider).search(q),
+    );

@@ -212,7 +212,8 @@ class _NutritionInboxScreenState extends ConsumerState<NutritionInboxScreen>
                                   const SizedBox(height: AppSpacing.md),
                                   FilledButton.tonalIcon(
                                     onPressed:
-                                        () => setState(() => _unreadOnly = false),
+                                        () =>
+                                            setState(() => _unreadOnly = false),
                                     icon: const Icon(
                                       Icons.forum_outlined,
                                       size: 18,

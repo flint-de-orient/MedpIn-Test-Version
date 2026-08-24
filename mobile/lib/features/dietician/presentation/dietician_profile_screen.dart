@@ -18,6 +18,7 @@ import '../../profile/presentation/widgets/profile_section.dart';
 import '../../profile/presentation/widgets/theme_selector.dart';
 import '../../../shared/providers/theme_provider.dart';
 import 'widgets/dietician_bell.dart';
+import '../../../shared/widgets/language_picker.dart';
 
 /// The dietician's profile — the counterpart of the doctor's, minus the clinic
 /// tools they have no business in (alerts, knowledge base, patient feedback).
@@ -384,32 +385,9 @@ class _DieticianProfileScreenState
             children: [
               Padding(
                 padding: const EdgeInsets.all(AppSpacing.md),
-                child: Wrap(
-                  spacing: AppSpacing.sm,
-                  runSpacing: AppSpacing.sm,
-                  children: [
-                    // Each option renders in its own script, so a Bengali
-                    // speaker can find "বাংলা" while the app is still in
-                    // English.
-                    _LangChip(
-                      label: l10n.languageEnglish,
-                      selected: currentLocale?.languageCode == 'en',
-                      accent: accent,
-                      onTap: () => _changeLanguage('en'),
-                    ),
-                    _LangChip(
-                      label: l10n.languageBengali,
-                      selected: currentLocale?.languageCode == 'bn',
-                      accent: accent,
-                      onTap: () => _changeLanguage('bn'),
-                    ),
-                    _LangChip(
-                      label: l10n.languageHindi,
-                      selected: currentLocale?.languageCode == 'hi',
-                      accent: accent,
-                      onTap: () => _changeLanguage('hi'),
-                    ),
-                  ],
+                child: LanguagePicker(
+                  selected: currentLocale?.languageCode,
+                  onChanged: _changeLanguage,
                 ),
               ),
             ],
@@ -537,50 +515,6 @@ class _DieticianProfileScreenState
       ),
     ),
   );
-}
-
-class _LangChip extends StatelessWidget {
-  const _LangChip({
-    required this.label,
-    required this.selected,
-    required this.accent,
-    required this.onTap,
-  });
-
-  final String label;
-  final bool selected;
-  final Color accent;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return Material(
-      color: selected ? accent.withValues(alpha: 0.12) : scheme.surface,
-      borderRadius: BorderRadius.circular(20),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(20),
-        onTap: onTap,
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(
-              color: selected ? accent : scheme.outlineVariant,
-            ),
-          ),
-          child: Text(
-            label,
-            style: TextStyle(
-              fontSize: 14,
-              fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-              color: selected ? accent : scheme.onSurface,
-            ),
-          ),
-        ),
-      ),
-    );
-  }
 }
 
 /// A credential on the profile card — the accented one is what the dietician

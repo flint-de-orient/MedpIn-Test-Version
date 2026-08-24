@@ -338,10 +338,7 @@ class _AlertCard extends StatelessWidget {
     // in the app on something already dealt with — and a doctor who learns that
     // red can mean "handled" stops reading red as urgent.
     final settled = a.status == 'resolved' || a.status == 'dismissed';
-    final color =
-        settled
-            ? scheme.outline
-            : alertSeverityColor(a.severity);
+    final color = settled ? scheme.outline : alertSeverityColor(a.severity);
 
     return Container(
       decoration: BoxDecoration(

@@ -117,7 +117,8 @@ class _ConsultScreenState extends ConsumerState<ConsultScreen> {
   /// prescriber to dismiss warnings.
   Future<bool> _confirmStrengths() async {
     final repo = ref.read(medicineBrandRepositoryProvider);
-    final mismatches = <({String name, String typed, String expected, String composition})>[];
+    final mismatches =
+        <({String name, String typed, String expected, String composition})>[];
 
     for (final m in _meds) {
       final name = m.name.text.trim();
@@ -150,44 +151,50 @@ class _ConsultScreenState extends ConsumerState<ConsultScreen> {
 
     final proceed = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(
-          mismatches.length == 1 ? 'Check this strength' : 'Check these strengths',
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            for (final m in mismatches) ...[
-              Text(m.name, style: const TextStyle(fontWeight: FontWeight.w700)),
-              const SizedBox(height: 2),
-              Text(
-                'You wrote ${m.typed}. Our records have this as ${m.expected} '
-                '(${m.composition}).',
-                style: const TextStyle(fontSize: 14, height: 1.4),
-              ),
-              const SizedBox(height: AppSpacing.md),
-            ],
-            Text(
-              'Issue it as written, or go back and change it.',
-              style: TextStyle(
-                fontSize: 13,
-                color: Theme.of(ctx).colorScheme.onSurfaceVariant,
-              ),
+      builder:
+          (ctx) => AlertDialog(
+            title: Text(
+              mismatches.length == 1
+                  ? 'Check this strength'
+                  : 'Check these strengths',
             ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Go back'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                for (final m in mismatches) ...[
+                  Text(
+                    m.name,
+                    style: const TextStyle(fontWeight: FontWeight.w700),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    'You wrote ${m.typed}. Our records have this as ${m.expected} '
+                    '(${m.composition}).',
+                    style: const TextStyle(fontSize: 14, height: 1.4),
+                  ),
+                  const SizedBox(height: AppSpacing.md),
+                ],
+                Text(
+                  'Issue it as written, or go back and change it.',
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: Theme.of(ctx).colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('Go back'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                child: const Text('Issue as written'),
+              ),
+            ],
           ),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Issue as written'),
-          ),
-        ],
-      ),
     );
 
     if (proceed != true) {
@@ -1841,13 +1848,14 @@ class _BrandField extends ConsumerWidget {
       },
       displayStringForOption: (b) => b.name,
       onSelected: onBrandPicked,
-      fieldViewBuilder: (context, textController, focusNode, onSubmit) => TextField(
-        controller: textController,
-        focusNode: focusNode,
-        textCapitalization: TextCapitalization.words,
-        onSubmitted: (_) => onSubmit(),
-        decoration: InputDecoration(labelText: label, isDense: true),
-      ),
+      fieldViewBuilder:
+          (context, textController, focusNode, onSubmit) => TextField(
+            controller: textController,
+            focusNode: focusNode,
+            textCapitalization: TextCapitalization.words,
+            onSubmitted: (_) => onSubmit(),
+            decoration: InputDecoration(labelText: label, isDense: true),
+          ),
       optionsViewBuilder: (context, onSelected, options) {
         final scheme = Theme.of(context).colorScheme;
         return Align(
@@ -1875,7 +1883,10 @@ class _BrandField extends ConsumerWidget {
                       b.compositionLabel,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant),
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: scheme.onSurfaceVariant,
+                      ),
                     ),
                     onTap: () => onSelected(b),
                   );

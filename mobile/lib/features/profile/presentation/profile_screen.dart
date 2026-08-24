@@ -26,6 +26,7 @@ import 'widgets/profile_section.dart';
 import 'widgets/theme_selector.dart';
 import '../../../shared/providers/theme_provider.dart';
 import 'licenses_screen.dart';
+import '../../../shared/widgets/language_picker.dart';
 
 class ProfileScreen extends ConsumerStatefulWidget {
   const ProfileScreen({super.key});
@@ -358,27 +359,20 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                 const SizedBox(height: AppSpacing.lg),
 
                 // ---- Language --------------------------------------------------
-                _SectionLabel(l10n.profileLanguage),
-                // Driven from a list, not three hand-written chips. A Wrap
-                // already stops them overflowing; this stops a fourth language
-                // meaning a fourth block of copied code, and keeps every option
-                // in its own script so a Hindi speaker can find "हिन्दी" while
-                // the app is still in English.
-                Wrap(
-                  spacing: AppSpacing.sm,
-                  runSpacing: AppSpacing.sm,
+                // In a card, like every other group on this screen. Bare chips
+                // on the page background made the one section a first-time
+                // user is most likely to touch the only one that did not look
+                // like part of the app.
+                ProfileSection(
+                  label: l10n.profileLanguage,
                   children: [
-                    for (final (code, label) in <(String, String)>[
-                      ('en', l10n.languageEnglish),
-                      ('bn', l10n.languageBengali),
-                      ('hi', l10n.languageHindi),
-                    ])
-                      _LangChip(
-                        label: label,
-                        selected: currentLocale?.languageCode == code,
-                        accent: accent,
-                        onTap: () => _changeLanguage(code),
+                    Padding(
+                      padding: const EdgeInsets.all(AppSpacing.md),
+                      child: LanguagePicker(
+                        selected: currentLocale?.languageCode,
+                        onChanged: _changeLanguage,
                       ),
+                    ),
                   ],
                 ),
                 const SizedBox(height: AppSpacing.lg),
@@ -705,61 +699,6 @@ class _Header extends StatelessWidget {
           ),
         ),
       ],
-    );
-  }
-}
-
-class _LangChip extends StatelessWidget {
-  const _LangChip({
-    required this.label,
-    required this.selected,
-    required this.accent,
-    required this.onTap,
-  });
-
-  final String label;
-  final bool selected;
-  final Color accent;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-
-    return Semantics(
-      button: true,
-      selected: selected,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(20),
-        child: Container(
-          constraints: const BoxConstraints(minHeight: AppSpacing.minTapTarget),
-          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
-          // No `alignment` here. A Container with an alignment and loose
-          // constraints expands to the maximum width allowed — which made each
-          // chip fill the row and stack vertically instead of sitting side by
-          // side. The Center below does the same job without the growth.
-          decoration: BoxDecoration(
-            color: selected ? accent.withValues(alpha: 0.12) : scheme.surface,
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(
-              color: selected ? accent : scheme.outlineVariant,
-              width: selected ? 1.5 : 1,
-            ),
-          ),
-          child: Center(
-            widthFactor: 1,
-            child: Text(
-              label,
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
-                color: selected ? accent : scheme.onSurface,
-              ),
-            ),
-          ),
-        ),
-      ),
     );
   }
 }
