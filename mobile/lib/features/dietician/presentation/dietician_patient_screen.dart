@@ -14,6 +14,7 @@ import '../../../core/theme/app_spacing.dart';
 import '../../../shared/providers/core_providers.dart';
 import '../../../shared/widgets/auto_refresh.dart';
 import '../../../shared/widgets/authed_image.dart';
+import '../../../shared/widgets/edge_fade.dart';
 import '../../../shared/widgets/fullscreen_photo.dart';
 import '../../clinician/domain/patient_summary.dart';
 import '../../foodlog/domain/food_log.dart';
@@ -44,6 +45,14 @@ class DieticianPatientScreen extends ConsumerStatefulWidget {
 
 class _DieticianPatientScreenState
     extends ConsumerState<DieticianPatientScreen> {
+  final ScrollController _sectionRail = ScrollController();
+
+  @override
+  void dispose() {
+    _sectionRail.dispose();
+    super.dispose();
+  }
+
   /// One anchor per section, so the bar above the record can jump to it.
   ///
   /// The record runs to eight sections — plan, vitals, medicines, advice,
@@ -129,22 +138,26 @@ class _DieticianPatientScreenState
                         ),
                       ),
                     ),
-                    child: ListView.separated(
-                      scrollDirection: Axis.horizontal,
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: AppSpacing.md,
-                        vertical: 6,
+                    child: EdgeFade(
+                      controller: _sectionRail,
+                      child: ListView.separated(
+                        controller: _sectionRail,
+                        scrollDirection: Axis.horizontal,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: AppSpacing.md,
+                          vertical: 6,
+                        ),
+                        itemCount: sections.length,
+                        separatorBuilder: (_, _) => const SizedBox(width: 8),
+                        itemBuilder: (context, i) {
+                          final (id, label) = sections[i];
+                          return ActionChip(
+                            label: Text(label),
+                            visualDensity: VisualDensity.compact,
+                            onPressed: () => _jumpTo(id),
+                          );
+                        },
                       ),
-                      itemCount: sections.length,
-                      separatorBuilder: (_, _) => const SizedBox(width: 8),
-                      itemBuilder: (context, i) {
-                        final (id, label) = sections[i];
-                        return ActionChip(
-                          label: Text(label),
-                          visualDensity: VisualDensity.compact,
-                          onPressed: () => _jumpTo(id),
-                        );
-                      },
                     ),
                   ),
                 Expanded(
@@ -941,10 +954,24 @@ class _DietPlanSection extends ConsumerWidget {
 /// happened to be logged, because the useful question is usually the negative
 /// one: which meal is missing. A list of three photographs cannot answer that;
 /// a grid with an empty dinner slot answers it without being read.
-class _FoodLogSection extends ConsumerWidget {
+class _FoodLogSection extends ConsumerStatefulWidget {
   const _FoodLogSection({required this.patientId});
 
   final String patientId;
+
+  @override
+  ConsumerState<_FoodLogSection> createState() => _FoodLogSectionState();
+}
+
+class _FoodLogSectionState extends ConsumerState<_FoodLogSection> {
+  /// Four earlier meals, then the rest on request. A month of logging put
+  /// thirty rows between the dietician and the bottom of the record, and the
+  /// question this section answers — what has this patient been eating lately
+  /// — is answered by the top of it.
+  static const _earlierCap = 4;
+  bool _showAllEarlier = false;
+
+  String get patientId => widget.patientId;
 
   static const _slots = <String>['breakfast', 'lunch', 'snack', 'dinner'];
 
@@ -977,7 +1004,7 @@ class _FoodLogSection extends ConsumerWidget {
   }
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final async = ref.watch(dietFoodLogProvider(patientId));
 
@@ -1184,7 +1211,11 @@ class _FoodLogSection extends ConsumerWidget {
                     // meals gives no sense of whether the patient logged three
                     // days solidly or one day nine times.
                     for (final day
-                        in _byDay(earlier.take(30).toList()).entries) ...[
+                        in _byDay(
+                          _showAllEarlier
+                              ? earlier.take(30).toList()
+                              : earlier.take(_earlierCap).toList(),
+                        ).entries) ...[
                       const SizedBox(height: AppSpacing.md),
                       Text(
                         day.key,
@@ -1200,6 +1231,26 @@ class _FoodLogSection extends ConsumerWidget {
                         if (i > 0) const SizedBox(height: AppSpacing.sm),
                         _FoodEntry(patientId: patientId, entry: day.value[i]),
                       ],
+                    ],
+                    if (earlier.length > _earlierCap) ...[
+                      const SizedBox(height: AppSpacing.sm),
+                      Center(
+                        child: TextButton(
+                          onPressed:
+                              () => setState(
+                                () => _showAllEarlier = !_showAllEarlier,
+                              ),
+                          child: Text(
+                            _showAllEarlier
+                                ? 'Show less'
+                                : 'View all ${earlier.length} meals',
+                            style: TextStyle(
+                              fontWeight: FontWeight.w700,
+                              color: AppColors.accentOn(context),
+                            ),
+                          ),
+                        ),
+                      ),
                     ],
                   ],
                 ),
@@ -1242,7 +1293,7 @@ class _SlotTile extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final scheme = Theme.of(context).colorScheme;
-    final label = _FoodLogSection._cap(slot);
+    final label = _FoodLogSectionState._cap(slot);
     final e = entry;
 
     if (e == null) {
@@ -2422,10 +2473,30 @@ class _ReviewTick extends ConsumerStatefulWidget {
 class _ReviewTickState extends ConsumerState<_ReviewTick> {
   bool _busy = false;
 
-  Future<void> _toggle() async {
+  /// Reviewed meals untick straight away — a mis-tap has to be cheap to undo.
+  /// An unreviewed one opens the sheet, because the useful thing to do with a
+  /// plate you have just looked at is usually to say something about it.
+  Future<void> _tap() async {
+    if (_busy) return;
+    if (!widget.entry.needsReview) {
+      await _submit(reviewed: false);
+      return;
+    }
+    final note = await showModalBottomSheet<String?>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (_) => _ReviewSheet(entry: widget.entry),
+    );
+    // null is a dismissal — the meal stays in the queue. An empty string is a
+    // deliberate "reviewed, nothing to add".
+    if (note == null) return;
+    await _submit(reviewed: true, note: note);
+  }
+
+  Future<void> _submit({required bool reviewed, String? note}) async {
     if (_busy) return;
     final messenger = ScaffoldMessenger.of(context);
-    final wasReviewed = !widget.entry.needsReview;
     setState(() => _busy = true);
     try {
       await ref
@@ -2433,8 +2504,14 @@ class _ReviewTickState extends ConsumerState<_ReviewTick> {
           .reviewFoodLog(
             widget.patientId,
             widget.entry.id,
-            reviewed: wasReviewed ? false : true,
+            reviewed: reviewed,
+            note: note,
           );
+      if (mounted && (note ?? '').trim().isNotEmpty) {
+        messenger.showSnackBar(
+          const SnackBar(content: Text('Feedback sent to the patient')),
+        );
+      }
       // Both, because the tick changes two screens: this record and the
       // dashboard's attention list and "needs review" captions.
       ref.invalidate(dietFoodLogProvider(widget.patientId));
@@ -2453,7 +2530,7 @@ class _ReviewTickState extends ConsumerState<_ReviewTick> {
       button: true,
       label: reviewed ? 'Reviewed. Tap to undo' : 'Mark this meal reviewed',
       child: GestureDetector(
-        onTap: _toggle,
+        onTap: _tap,
         behavior: HitTestBehavior.opaque,
         child: SizedBox(
           // A comfortable target over a small badge: the visible disc is 26px
@@ -2575,6 +2652,164 @@ class _MarkAllReviewedState extends ConsumerState<_MarkAllReviewed> {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// What a dietician does with a plate they have just looked at.
+///
+/// The tick alone was ambiguous — it toggled a clinical state with no word
+/// attached, and the first question anyone asked of it was "what does the
+/// green tick mean". So the act of reviewing now has a screen: the meal being
+/// judged, and the one thing a dietician actually wants to do about it.
+///
+/// Feedback is optional and the sheet says so. Most plates need nothing said;
+/// forcing a comment on every one is how a review queue becomes something to
+/// clear rather than read.
+class _ReviewSheet extends StatefulWidget {
+  const _ReviewSheet({required this.entry});
+
+  final FoodLogEntry entry;
+
+  @override
+  State<_ReviewSheet> createState() => _ReviewSheetState();
+}
+
+class _ReviewSheetState extends State<_ReviewSheet> {
+  final _note = TextEditingController();
+
+  @override
+  void dispose() {
+    _note.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final e = widget.entry;
+    final meal =
+        e.mealType.isEmpty
+            ? 'Meal'
+            : '${e.mealType[0].toUpperCase()}${e.mealType.substring(1)}';
+
+    return Padding(
+      // The keyboard inset, so the field is never behind the keyboard on a
+      // short phone.
+      padding: EdgeInsets.only(
+        left: AppSpacing.md,
+        right: AppSpacing.md,
+        bottom: MediaQuery.viewInsetsOf(context).bottom + AppSpacing.md,
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              if (e.photoUrl != null)
+                Padding(
+                  padding: const EdgeInsets.only(right: AppSpacing.sm),
+                  child: AuthedImage(
+                    path: e.photoUrl!,
+                    width: 56,
+                    height: 56,
+                    radius: 12,
+                  ),
+                ),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      meal,
+                      style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    if (e.createdAt != null)
+                      Text(
+                        DateFormat('d MMM, h:mm a').format(e.createdAt!),
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: scheme.onSurfaceVariant,
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          if (e.note.isNotEmpty) ...[
+            const SizedBox(height: AppSpacing.sm),
+            Text(
+              e.note,
+              style: TextStyle(fontSize: 14, color: scheme.onSurfaceVariant),
+            ),
+          ],
+          const SizedBox(height: AppSpacing.md),
+          TextField(
+            controller: _note,
+            autofocus: true,
+            minLines: 2,
+            maxLines: 5,
+            maxLength: 1000,
+            textCapitalization: TextCapitalization.sentences,
+            decoration: InputDecoration(
+              labelText: 'Feedback (optional)',
+              hintText: 'e.g. Good portion — try adding a vegetable.',
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(14),
+              ),
+            ),
+          ),
+          const SizedBox(height: AppSpacing.sm),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton(
+                  // Empty string, not null: the meal is reviewed, there is
+                  // simply nothing to say about it. null means the sheet was
+                  // dismissed and the meal stays in the queue.
+                  onPressed: () => Navigator.of(context).pop(''),
+                  style: OutlinedButton.styleFrom(
+                    minimumSize: const Size.fromHeight(48),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                  ),
+                  child: const Text('Mark reviewed'),
+                ),
+              ),
+              const SizedBox(width: AppSpacing.sm),
+              Expanded(
+                child: ValueListenableBuilder<TextEditingValue>(
+                  valueListenable: _note,
+                  builder:
+                      (context, value, _) => FilledButton.icon(
+                        onPressed:
+                            value.text.trim().isEmpty
+                                ? null
+                                : () => Navigator.of(
+                                  context,
+                                ).pop(_note.text.trim()),
+                        style: FilledButton.styleFrom(
+                          minimumSize: const Size.fromHeight(48),
+                          backgroundColor: AppColors.accentOn(context),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                        ),
+                        icon: const Icon(Icons.send_rounded, size: 18),
+                        label: const Text('Send'),
+                      ),
+                ),
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }

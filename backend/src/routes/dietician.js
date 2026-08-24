@@ -1072,7 +1072,17 @@ router.get(
  */
 router.post(
   '/patients/:id/food-log/:logId/review',
-  validate(z.object({ reviewed: z.boolean().default(true) })),
+  validate(
+    z.object({
+      reviewed: z.boolean().default(true),
+      // Feedback on this specific meal. Posting it and marking the meal read
+      // are one act, so they are one request: two calls from the client could
+      // leave a meal ticked with the comment never sent, which is the worst of
+      // the three possible outcomes — it looks handled and the patient heard
+      // nothing.
+      note: z.string().trim().max(1000).optional(),
+    }),
+  ),
   audit('update', 'FoodLog'),
   asyncHandler(async (req, res) => {
     await requireAssigned(req);
@@ -1082,6 +1092,24 @@ router.post(
     if (!log) throw notFound('That meal is not on this record');
 
     const reviewed = req.body.reviewed !== false;
+    const note = (req.body.note ?? '').trim();
+
+    // Send before marking. If posting fails the meal stays in the queue, which
+    // is recoverable; marking first and then failing to send loses the meal
+    // from the worklist with the patient none the wiser.
+    if (reviewed && note.length > 0) {
+      const meal = log.mealType && log.mealType !== 'other' ? log.mealType : 'meal';
+      const when = dayjs(log.createdAt).format('D MMM, h:mm A');
+      // Quoted so the patient knows which plate is being talked about. They
+      // may have logged four that day and "try less rice" answers none of them
+      // on its own.
+      const content = `About your ${meal} on ${when}:
+
+${note}`;
+      await postToCareThread(req.params.id, req.user, content);
+      notifyPatientOfClinicianReply(req.params.id, req.user, note).catch(() => {});
+    }
+
     log.reviewedAt = reviewed ? new Date() : null;
     log.reviewedBy = reviewed ? req.user._id : null;
     await log.save();
@@ -1090,6 +1118,7 @@ router.post(
       id: String(log._id),
       reviewedAt: log.reviewedAt,
       needsReview: !log.reviewedAt,
+      messageSent: reviewed && note.length > 0,
     });
   }),
 );

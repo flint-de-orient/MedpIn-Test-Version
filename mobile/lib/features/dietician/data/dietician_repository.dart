@@ -114,10 +114,18 @@ class DieticianRepository {
     String patientId,
     String logId, {
     bool reviewed = true,
+    String? note,
   }) async {
     await _client.postJson(
       '/dietician/patients/$patientId/food-log/$logId/review',
-      body: {'reviewed': reviewed},
+      body: {
+        'reviewed': reviewed,
+        // One request, not two. Posting the feedback and marking the meal read
+        // are the same act; split across calls, a failure between them leaves
+        // the meal ticked with nothing sent — it looks handled and the patient
+        // heard nothing.
+        if (note != null && note.trim().isNotEmpty) 'note': note.trim(),
+      },
     );
   }
 

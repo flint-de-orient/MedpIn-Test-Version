@@ -517,18 +517,25 @@ class _PatientProfileScreenState extends ConsumerState<PatientProfileScreen> {
                           subtitle: 'Order from the catalog or type your own',
                           icon: Icons.add_circle_outline_rounded,
                           children: [
-                            // An add control, not a search: what is typed here becomes a
-                            // new chip. The leading + says so; a magnifier would promise
-                            // a lookup that does not exist.
+                            // Now a real search. It used to be an add-only
+                            // control — the comment here said a magnifier
+                            // "would promise a lookup that does not exist" —
+                            // so a doctor typing "ldl" got nothing and added a
+                            // duplicate custom test the catalog already
+                            // covered as Lipid Profile. Free text still works;
+                            // it is just no longer the only thing that does.
                             Row(
                               children: [
                                 Expanded(
-                                  child: _PlainField(
+                                  child: _LabSearchField(
                                     controller: _labSearch,
-                                    hint: 'Add another test',
-                                    icon: Icons.add_rounded,
-                                    textInputAction: TextInputAction.done,
-                                    onSubmitted: (_) => _addCustomTest(),
+                                    onPanelPicked: (panel) {
+                                      setState(() {
+                                        _selectedTests.add(panel.name);
+                                        _labSearch.clear();
+                                      });
+                                    },
+                                    onSubmitted: _addCustomTest,
                                   ),
                                 ),
                                 const SizedBox(width: AppSpacing.sm),
@@ -2126,9 +2133,11 @@ class _PlainField extends StatelessWidget {
     this.icon,
     this.textInputAction = TextInputAction.next,
     this.onSubmitted,
+    this.focusNode,
   });
 
   final TextEditingController controller;
+  final FocusNode? focusNode;
   final String hint;
   final IconData? icon;
   final TextInputAction textInputAction;
@@ -2139,6 +2148,7 @@ class _PlainField extends StatelessWidget {
     final scheme = Theme.of(context).colorScheme;
     return TextField(
       controller: controller,
+      focusNode: focusNode,
       textCapitalization: TextCapitalization.words,
       textInputAction: textInputAction,
       onSubmitted: onSubmitted,
@@ -2558,6 +2568,106 @@ class _TestBulkAction extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// The lab-test field, with the catalog behind it.
+///
+/// Matches the medicine field's behaviour on the same screen — type, pick,
+/// done — so the two prescribing inputs work the same way. Anything not in the
+/// catalog is still accepted verbatim on submit: the clinic orders tests this
+/// list has never heard of, and a picker that refused them would be worse than
+/// the plain field it replaced.
+class _LabSearchField extends StatefulWidget {
+  const _LabSearchField({
+    required this.controller,
+    required this.onPanelPicked,
+    required this.onSubmitted,
+  });
+
+  final TextEditingController controller;
+  final ValueChanged<LabPanel> onPanelPicked;
+  final VoidCallback onSubmitted;
+
+  @override
+  State<_LabSearchField> createState() => _LabSearchFieldState();
+}
+
+class _LabSearchFieldState extends State<_LabSearchField> {
+  // Owned and disposed here. RawAutocomplete needs a node whose life matches
+  // the field's; one built inside build() is a fresh node every frame, which
+  // drops focus mid-typing and leaks the old one.
+  final FocusNode _focus = FocusNode();
+
+  @override
+  void dispose() {
+    _focus.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return RawAutocomplete<LabPanel>(
+      textEditingController: widget.controller,
+      focusNode: _focus,
+      // Local, so it answers on the first keystroke with no network and no
+      // spinner — the catalog ships with the app.
+      optionsBuilder: (value) => searchLabPanels(value.text),
+      displayStringForOption: (p) => p.name,
+      onSelected: widget.onPanelPicked,
+      fieldViewBuilder:
+          (context, textController, focusNode, onFieldSubmit) => _PlainField(
+            controller: textController,
+            focusNode: focusNode,
+            hint: 'Search or add a test',
+            icon: Icons.search_rounded,
+            textInputAction: TextInputAction.done,
+            onSubmitted: (_) => widget.onSubmitted(),
+          ),
+      optionsViewBuilder: (context, onSelected, options) {
+        final scheme = Theme.of(context).colorScheme;
+        final q = widget.controller.text;
+        return Align(
+          alignment: Alignment.topLeft,
+          child: Material(
+            elevation: 3,
+            borderRadius: BorderRadius.circular(12),
+            clipBehavior: Clip.antiAlias,
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxHeight: 260, maxWidth: 420),
+              child: ListView.builder(
+                shrinkWrap: true,
+                padding: EdgeInsets.zero,
+                itemCount: options.length,
+                itemBuilder: (context, i) {
+                  final p = options.elementAt(i);
+                  return ListTile(
+                    dense: true,
+                    title: Text(
+                      p.name,
+                      style: const TextStyle(fontWeight: FontWeight.w600),
+                    ),
+                    // Why this one surfaced. Typing "ldl" and being offered
+                    // "Lipid Profile" looks like a misfire until the row says
+                    // "Includes LDL".
+                    subtitle: Text(
+                      labMatchReason(p, q),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: scheme.onSurfaceVariant,
+                      ),
+                    ),
+                    onTap: () => onSelected(p),
+                  );
+                },
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 }

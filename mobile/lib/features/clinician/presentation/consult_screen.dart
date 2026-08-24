@@ -1819,7 +1819,7 @@ class _SelectChip extends StatelessWidget {
 /// exactly as written, because a prescriber who has to fight an autocomplete
 /// stops using it. Picking a suggestion fills the strength, which is the whole
 /// value: the figure comes from a recorded composition rather than memory.
-class _BrandField extends ConsumerWidget {
+class _BrandField extends ConsumerStatefulWidget {
   const _BrandField({
     required this.controller,
     required this.label,
@@ -1831,10 +1831,31 @@ class _BrandField extends ConsumerWidget {
   final ValueChanged<MedicineBrand> onBrandPicked;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<_BrandField> createState() => _BrandFieldState();
+}
+
+class _BrandFieldState extends ConsumerState<_BrandField> {
+  // Was `FocusNode()` inline in build: a new node every rebuild, so the field
+  // lost focus while a doctor was mid-word and every discarded node leaked.
+  // The suggestion list only stayed up at all because the rebuilds happened to
+  // be infrequent.
+  final FocusNode _focus = FocusNode();
+
+  @override
+  void dispose() {
+    _focus.dispose();
+    super.dispose();
+  }
+
+  TextEditingController get controller => widget.controller;
+  String get label => widget.label;
+  ValueChanged<MedicineBrand> get onBrandPicked => widget.onBrandPicked;
+
+  @override
+  Widget build(BuildContext context) {
     return RawAutocomplete<MedicineBrand>(
       textEditingController: controller,
-      focusNode: FocusNode(),
+      focusNode: _focus,
       optionsBuilder: (value) async {
         final q = value.text.trim();
         if (q.length < 2) return const Iterable<MedicineBrand>.empty();

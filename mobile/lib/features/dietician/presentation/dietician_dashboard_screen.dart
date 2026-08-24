@@ -1353,7 +1353,6 @@ class _ActivityCell extends StatelessWidget {
   }
 }
 
-
 /// The overview tile with nothing behind it yet.
 ///
 /// Rendered rather than hidden. "No readings in the last 14 days" is a real

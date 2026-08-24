@@ -45,9 +45,36 @@ router.get(
   validate({ query: z.object({ q: z.string().max(80).optional() }) }),
   asyncHandler(async (req, res) => {
     const q = brandSlug(req.query.q ?? '');
-    const filter = q.length === 0 ? {} : { slug: { $regex: q, $options: 'i' } };
-    const items = await MedicineBrand.find(filter).sort({ name: 1 }).limit(25).lean();
-    res.json({ items: items.map(serialise) });
+    if (q.length === 0) {
+      const items = await MedicineBrand.find({}).sort({ name: 1 }).limit(25).lean();
+      return res.json({ items: items.map(serialise) });
+    }
+
+    // Ranked, not alphabetised.
+    //
+    // This used to sort by name and cut at 25, which put the answer behind the
+    // alphabet: a doctor typing "gluco" got the first 25 products containing
+    // those letters in A-Z order, so "Gluconorm" could be missing entirely
+    // while "Deglucotide" sat at the top. On a prescribing field that is not a
+    // ranking problem, it is a wrong-drug problem.
+    //
+    // So: fetch a wider net, then order by how well each actually matches —
+    // prefix first, then how early the match falls, then the shorter name,
+    // then alphabetically. `slug` is stripped to [a-z0-9] on the way in, which
+    // is also what makes it safe to interpolate here.
+    const pool = await MedicineBrand.find({ slug: { $regex: q } })
+      .limit(200)
+      .lean();
+
+    pool.sort((a, b) => {
+      const ai = a.slug.indexOf(q);
+      const bi = b.slug.indexOf(q);
+      if (ai !== bi) return ai - bi;
+      if (a.slug.length !== b.slug.length) return a.slug.length - b.slug.length;
+      return a.name.localeCompare(b.name);
+    });
+
+    res.json({ items: pool.slice(0, 25).map(serialise) });
   }),
 );
 
