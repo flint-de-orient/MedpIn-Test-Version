@@ -196,42 +196,35 @@ class _DieticianPatientsScreenState
                 // Counted, and counted against what the search has already
                 // narrowed to — a chip reading "Critical (5)" over a list of
                 // two is a chip that lies.
-                SizedBox(
-                  height: 32,
-                  child: Builder(
-                    builder: (context) {
-                      final all = _search_(
-                        async.valueOrNull ?? const <DietPatient>[],
-                      );
-                      final chips = <(String, String, int)>[
-                        ('all', 'All Patients', all.length),
-                        (
-                          'critical',
-                          'Critical',
-                          _byBand(all, 'critical').length,
-                        ),
-                        ('high', 'High Risk', _byBand(all, 'high').length),
-                        ('review', 'Review Due', _byBand(all, 'review').length),
-                        (
-                          'noplan',
-                          'Waiting for Plan',
-                          _byBand(all, 'noplan').length,
-                        ),
-                      ];
-                      // Wrapped rather than scrolled: a rail cuts whatever lands at
-                      // the edge — "High Risk (1" — and a filter you cannot see is a
-                      // filter you do not use. Five is a known, small set, so all five
-                      // fit on screen and the count beside each one stays readable.
-                      return Wrap(
-                        spacing: 8,
-                        runSpacing: 8,
-                        children: [
-                          for (final (key, label, count) in chips)
-                            _filterChipFor(key, label, count),
-                        ],
-                      );
-                    },
-                  ),
+                Builder(
+                  builder: (context) {
+                    final all = _search_(
+                      async.valueOrNull ?? const <DietPatient>[],
+                    );
+                    final chips = <(String, String, int)>[
+                      ('all', 'All Patients', all.length),
+                      ('critical', 'Critical', _byBand(all, 'critical').length),
+                      ('high', 'High Risk', _byBand(all, 'high').length),
+                      ('review', 'Review Due', _byBand(all, 'review').length),
+                      (
+                        'noplan',
+                        'Waiting for Plan',
+                        _byBand(all, 'noplan').length,
+                      ),
+                    ];
+                    // Wrapped rather than scrolled: a rail cuts whatever lands at
+                    // the edge — "High Risk (1" — and a filter you cannot see is a
+                    // filter you do not use. Five is a known, small set, so all five
+                    // fit on screen and the count beside each one stays readable.
+                    return Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        for (final (key, label, count) in chips)
+                          _filterChipFor(key, label, count),
+                      ],
+                    );
+                  },
                 ),
               ],
             ),
@@ -653,8 +646,16 @@ class _FilterChip extends StatelessWidget {
         borderRadius: BorderRadius.circular(20),
         onTap: onTap,
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          alignment: Alignment.center,
+          // No `alignment`, and real vertical padding.
+          //
+          // A Container with an alignment and no width expands to fill its
+          // constraints. Inside the old horizontal rail the width was
+          // unbounded so it shrink-wrapped and looked right; the moment it
+          // moved into a Wrap it was handed the full screen width and every
+          // chip became a full-width bar stacked on the next. The height came
+          // from the rail's SizedBox, which is why it also needed padding of
+          // its own once that went.
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 7),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(20),
             border: Border.all(
