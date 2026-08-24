@@ -380,22 +380,26 @@ class _DashboardHeader extends ConsumerWidget {
                 color: T.inkMuted,
               ),
               const SizedBox(width: 6),
-              Flexible(
+              // Expanded, and no Spacer after it.
+              //
+              // This was Flexible followed by Spacer, and both take a flex of
+              // one — so the free space was split evenly between the date and
+              // an empty box, and the date ellipsised with half the row
+              // standing empty beside it. Shortening the format could never
+              // fix that; "Mon, 24 A…" was the same bug as "Monday, 24 A…".
+              //
+              // With the freshness label laid out at its natural width and
+              // Expanded taking whatever is left, the date gets the real
+              // remainder and the label still sits hard right.
+              Expanded(
                 child: Text(
-                  // Abbreviated, but complete: "Mon, 24 Aug 2026".
-                  //
-                  // Spelling the weekday and month out in full made the line
-                  // longer than the space beside "Updated just now", so it
-                  // ellipsised to "Monday, 24 A…" — which lost the month and
-                  // the year, the two parts actually worth having. A short
-                  // form that fits says more than a long one that does not.
                   DateFormat('EEE, d MMM yyyy').format(DateTime.now()),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: T.small.copyWith(color: T.inkMuted),
                 ),
               ),
-              const Spacer(),
+              const SizedBox(width: 8),
               // Never ellipsised. "Updated just n…" tells the reader nothing —
               // the whole value of the line is the word at the end, and it was
               // the word being cut. If the row is too narrow for both, the

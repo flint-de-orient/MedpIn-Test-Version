@@ -1127,7 +1127,16 @@ router.post(
       const content = `About your ${meal} on ${when}:
 
 ${note}`;
-      await postToCareThread(req.params.id, req.user, content);
+      // The photograph goes with it. A date and a time name the meal only if
+      // the patient can still remember it; the picture is the thing they
+      // actually recognise, and it is already on the record — attaching it
+      // costs nothing and removes the guesswork entirely.
+      await postToCareThread(
+        req.params.id,
+        req.user,
+        content,
+        log.photo ? [log.photo] : [],
+      );
       notifyPatientOfClinicianReply(req.params.id, req.user, note).catch(() => {});
     }
 
