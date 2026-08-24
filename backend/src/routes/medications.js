@@ -15,9 +15,24 @@ import { buildSchedule } from '../services/medicationSchedule.js';
 import { PatientProfile } from '../models/PatientProfile.js';
 import { AiUnavailableError } from '../services/ai/gemini.js';
 import { MedicineBrand, brandSlug } from '../models/MedicineBrand.js';
+import { notifyPatientOfMedicineChange } from '../services/notifications.js';
 
 const router = Router({ mergeParams: true });
 router.use(requireAuth, resolvePatientScope);
+
+/**
+ * True when a clinician is acting on a patient's record rather than the
+ * patient acting on their own.
+ *
+ * The whole point of the notification below. This route is patient-scoped —
+ * a patient adds their own medicines through it too — and telling someone
+ * "your doctor updated your medicines" about a row they just typed in
+ * themselves would be worse than saying nothing.
+ */
+function actingOnBehalf(req) {
+  return req.user.role !== 'patient' && String(req.user._id) !== String(req.patientId);
+}
+
 
 // Prescription photo upload for scanning. Kept in memory — the bytes go
 // straight to the vision model and are never persisted.
@@ -72,6 +87,7 @@ router.post(
       patient: req.patientId,
       prescribedBy: req.user.role === 'patient' ? undefined : req.user._id,
     });
+    if (actingOnBehalf(req)) notifyPatientOfMedicineChange(req.patientId, req.user, 'added');
     res.status(201).json({ medication: serialise(med) });
   }),
 );
@@ -139,6 +155,14 @@ router.post(
       created.push(serialise(med));
     }
 
+    // Once for the batch, not once per medicine — a scanned prescription is a
+    // single act, and the coalescing window downstream would merge them anyway.
+    // Only when a clinician scanned it: a patient photographing their own
+    // prescription does not need telling what they just did.
+    if (created.length > 0 && actingOnBehalf(req)) {
+      notifyPatientOfMedicineChange(req.patientId, req.user, 'added');
+    }
+
     res.status(201).json({ readable: true, created });
   }),
 );
@@ -161,6 +185,7 @@ router.patch(
       { new: true, runValidators: true },
     );
     if (!med) throw notFound('Medication not found');
+    if (actingOnBehalf(req)) notifyPatientOfMedicineChange(req.patientId, req.user, 'changed');
     res.json({ medication: serialise(med) });
   }),
 );
@@ -175,6 +200,10 @@ router.delete(
       { isActive: false, endDate: new Date() },
     );
     if (!med) throw notFound('Medication not found');
+    // Stopping matters more than starting, not less: a patient who keeps
+    // taking something the doctor withdrew is the worse outcome, and their
+    // reminders for it have just disappeared without explanation.
+    if (actingOnBehalf(req)) notifyPatientOfMedicineChange(req.patientId, req.user, 'stopped');
     res.status(204).end();
   }),
 );

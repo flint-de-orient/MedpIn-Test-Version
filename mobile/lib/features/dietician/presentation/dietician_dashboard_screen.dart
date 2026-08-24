@@ -223,58 +223,35 @@ class _Greeting extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final first = name.split(' ').first;
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.end,
+    // A plain column since the freshness label was removed. It claimed
+    // "Updated just now" on every frame regardless of when the fetch actually
+    // happened or whether it succeeded — so on a dropped connection the
+    // counts went stale under a green dot promising they were current. A
+    // staleness indicator that cannot detect staleness is worse than none.
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Flexible(
-                    child: Text(
-                      '${DieticianDashboardScreen._partOfDay()}, '
-                      '${first.isEmpty ? 'there' : first}',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: T.title.copyWith(color: T.ink),
-                    ),
-                  ),
-                  const SizedBox(width: T.s2),
-                  // An icon, not 👋. Emoji render in the system font and shift
-                  // with every OS version — on this device the wave came out a
-                  // different weight and baseline from the type beside it.
-                  Icon(Icons.waving_hand_rounded, size: 18, color: T.warning),
-                ],
-              ),
-              Text(
-                DateFormat('EEEE, d MMMM').format(DateTime.now()),
-                style: T.small.copyWith(color: T.inkMuted),
-              ),
-            ],
-          ),
-        ),
-        // Says the screen is live, which matters on a dashboard that refreshes
-        // itself every thirty seconds — otherwise a dietician has no way to
-        // tell a quiet morning from a stalled connection.
         Row(
-          mainAxisSize: MainAxisSize.min,
           children: [
-            Text(
-              'Updated just now',
-              style: T.label.copyWith(letterSpacing: 0, color: T.inkMuted),
-            ),
-            const SizedBox(width: T.s1),
-            Container(
-              width: 7,
-              height: 7,
-              decoration: const BoxDecoration(
-                color: T.success,
-                shape: BoxShape.circle,
+            Flexible(
+              child: Text(
+                '${DieticianDashboardScreen._partOfDay()}, '
+                '${first.isEmpty ? 'there' : first}',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: T.title.copyWith(color: T.ink),
               ),
             ),
+            const SizedBox(width: T.s2),
+            // An icon, not 👋. Emoji render in the system font and shift
+            // with every OS version — on this device the wave came out a
+            // different weight and baseline from the type beside it.
+            Icon(Icons.waving_hand_rounded, size: 18, color: T.warning),
           ],
+        ),
+        Text(
+          DateFormat('EEEE, d MMMM').format(DateTime.now()),
+          style: T.small.copyWith(color: T.inkMuted),
         ),
       ],
     );

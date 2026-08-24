@@ -310,6 +310,74 @@ export async function notifyPatientOfPrescription(patientId, doctor) {
 }
 
 /**
+ * A clinician changed a patient's medicines outside a prescription.
+ *
+ * The gap this fills: `notifyPatientOfPrescription` only fires from the
+ * prescriptions route, so a medicine added straight onto the patient profile
+ * was silent. The Medicines tab changed under the patient, reminders were
+ * scheduled for a drug nobody had told them about, and the first they knew of
+ * it was an alarm at eight in the morning.
+ *
+ * Coalesced rather than sent per medicine. A doctor writing up a visit adds
+ * four drugs in fifteen seconds, and four buzzes in fifteen seconds is how
+ * people learn to switch notifications off — which then costs them the dose
+ * reminders, which are the ones that matter.
+ *
+ * The window is in memory, so a clustered deployment could send one push per
+ * worker. That is a real limit and the right fix is a job table; it is not
+ * worth one here, because the failure mode is a duplicate notification rather
+ * than a missing one.
+ */
+const pendingMedChanges = new Map();
+const MED_CHANGE_WINDOW_MS = 45_000;
+
+export function notifyPatientOfMedicineChange(patientId, clinician, kind) {
+  const key = String(patientId);
+  const existing = pendingMedChanges.get(key);
+
+  if (existing) {
+    existing.counts[kind] = (existing.counts[kind] ?? 0) + 1;
+    existing.clinician = clinician ?? existing.clinician;
+    return;
+  }
+
+  const entry = {
+    clinician,
+    counts: { [kind]: 1 },
+    timer: setTimeout(() => {
+      pendingMedChanges.delete(key);
+      flushMedChange(key, entry).catch(() => {});
+    }, MED_CHANGE_WINDOW_MS),
+  };
+  // Never hold the process open for a notification.
+  entry.timer.unref?.();
+  pendingMedChanges.set(key, entry);
+}
+
+async function flushMedChange(patientId, entry) {
+  const patient = await User.findById(patientId).select('deviceTokens').lean();
+  const tokens = patient?.deviceTokens ?? [];
+  if (tokens.length === 0) return;
+
+  const { added = 0, changed = 0, stopped = 0 } = entry.counts;
+  const parts = [];
+  if (added) parts.push(`${added} added`);
+  if (changed) parts.push(`${changed} changed`);
+  if (stopped) parts.push(`${stopped} stopped`);
+  const total = added + changed + stopped;
+
+  await deliver({
+    tokens,
+    title: `${entry.clinician?.name ?? 'Your doctor'} updated your medicines`,
+    // The counts, not the drug names. A push notification shows on a locked
+    // screen, and what a patient is taking is not something to put in front of
+    // whoever is holding the phone.
+    body: `${total} ${total === 1 ? 'medicine' : 'medicines'} — ${parts.join(', ')}. Open Medicines to see the details.`,
+    data: { kind: 'medication_change' },
+  });
+}
+
+/**
  * A patient has booked, moved or cancelled an appointment.
  *
  * Sent the moment it happens rather than batched: a cancellation an hour from
