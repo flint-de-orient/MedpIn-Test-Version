@@ -6,6 +6,7 @@ class FoodLogEntry {
     required this.note,
     this.photoUrl,
     this.createdAt,
+    this.reviewedAt,
   });
 
   final String id;
@@ -13,6 +14,14 @@ class FoodLogEntry {
   final String note;
   final String? photoUrl; // /api/v1/uploads/:id/raw
   final DateTime? createdAt;
+
+  /// When a dietician ticked this specific meal off, or null while it is still
+  /// waiting. Only the dietician panel sets it; the patient's own food screen
+  /// never shows it, because "your dietician has read this" is a promise the
+  /// clinic should make deliberately rather than as a side effect of a flag.
+  final DateTime? reviewedAt;
+
+  bool get needsReview => reviewedAt == null;
 
   factory FoodLogEntry.fromJson(Map<String, dynamic> j) => FoodLogEntry(
     id: j['id']?.toString() ?? '',
@@ -23,5 +32,6 @@ class FoodLogEntry {
             ? null
             : j['photoUrl'].toString(),
     createdAt: DateTime.tryParse(j['createdAt']?.toString() ?? '')?.toLocal(),
+    reviewedAt: DateTime.tryParse(j['reviewedAt']?.toString() ?? '')?.toLocal(),
   );
 }

@@ -170,72 +170,43 @@ class _BrandHeader extends StatelessWidget {
           const Spacer(),
           const DieticianBell(),
           const SizedBox(width: T.s3),
-          GestureDetector(
-            onTap: () => context.go('/dietician/profile'),
-            behavior: HitTestBehavior.opaque,
-            child: Row(
-              children: [
-                Stack(
-                  children: [
-                    UserAvatar(
-                      name: name,
-                      avatarUrl: avatarUrl,
-                      accent: T.primary,
-                      size: 38,
-                    ),
-                    // The green dot is not decoration: a dietician sharing a
-                    // caseload needs to know at a glance that they are the one
-                    // signed in on this device.
-                    Positioned(
-                      right: 0,
-                      bottom: 0,
-                      child: Container(
-                        width: 11,
-                        height: 11,
-                        decoration: BoxDecoration(
-                          color: T.success,
-                          shape: BoxShape.circle,
-                          border: Border.all(color: Colors.white, width: 2),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(width: T.s2),
-                ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 108),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        name.split(' ').first,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: T.small.copyWith(
-                          fontWeight: FontWeight.w700,
-                          color: T.ink,
-                        ),
-                      ),
-                      Text(
-                        'Clinical Dietitian',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: T.label.copyWith(
-                          letterSpacing: 0,
-                          fontWeight: FontWeight.w500,
-                          color: T.inkMuted,
-                        ),
-                      ),
-                    ],
+          // Just the avatar. The name, the role and a dropdown chevron all
+          // crowded into the same row as the brand lockup and the bell — four
+          // blocks of text across a phone, none of which a dietician reads
+          // twice. The name belongs in the greeting a line below, which is
+          // where it now lives, and the chevron promised a menu that does not
+          // exist: tapping opens the Profile tab.
+          Semantics(
+            button: true,
+            label: 'Profile',
+            child: GestureDetector(
+              onTap: () => context.go('/dietician/profile'),
+              behavior: HitTestBehavior.opaque,
+              child: Stack(
+                children: [
+                  UserAvatar(
+                    name: name,
+                    avatarUrl: avatarUrl,
+                    accent: T.primary,
+                    size: 38,
                   ),
-                ),
-                const Icon(
-                  Icons.keyboard_arrow_down_rounded,
-                  size: 18,
-                  color: T.inkMuted,
-                ),
-              ],
+                  // Not decoration: a dietician sharing a caseload needs to
+                  // know at a glance whose session this is.
+                  Positioned(
+                    right: 0,
+                    bottom: 0,
+                    child: Container(
+                      width: 11,
+                      height: 11,
+                      decoration: BoxDecoration(
+                        color: T.success,
+                        shape: BoxShape.circle,
+                        border: Border.all(color: Colors.white, width: 2),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         ],
@@ -259,12 +230,23 @@ class _Greeting extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                '${DieticianDashboardScreen._partOfDay()}, '
-                '${first.isEmpty ? 'there' : first} 👋',
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: T.title.copyWith(color: T.ink),
+              Row(
+                children: [
+                  Flexible(
+                    child: Text(
+                      '${DieticianDashboardScreen._partOfDay()}, '
+                      '${first.isEmpty ? 'there' : first}',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: T.title.copyWith(color: T.ink),
+                    ),
+                  ),
+                  const SizedBox(width: T.s2),
+                  // An icon, not 👋. Emoji render in the system font and shift
+                  // with every OS version — on this device the wave came out a
+                  // different weight and baseline from the type beside it.
+                  Icon(Icons.waving_hand_rounded, size: 18, color: T.warning),
+                ],
               ),
               Text(
                 DateFormat('EEEE, d MMMM').format(DateTime.now()),
@@ -316,10 +298,11 @@ class _TodaysWork extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final overview = d.overview;
-    // Side by side only when there is a chart to put beside the count. On a
-    // narrow phone, or with no readings behind it, the work stands alone
-    // full-width rather than squeezing into half a row.
-    final wide = MediaQuery.sizeOf(context).width >= 380 && overview.hasData;
+    // Side by side only where there is room for two columns. Below that they
+    // stack — but the overview is always rendered, which it was not: hiding it
+    // whenever the caseload had no readings meant the commonest reason to look
+    // (has anybody been testing?) was answered by an absence.
+    final wide = MediaQuery.sizeOf(context).width >= 560;
 
     return SectionCard(
       child:
@@ -338,10 +321,8 @@ class _TodaysWork extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   _WorkSummary(d: d),
-                  if (overview.hasData) ...[
-                    const SizedBox(height: T.s4),
-                    _OverviewTile(overview: overview),
-                  ],
+                  const SizedBox(height: T.s4),
+                  _OverviewTile(overview: overview),
                 ],
               ),
     );
@@ -453,6 +434,7 @@ class _OverviewTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final delta = overview.deltaPercent;
+    if (!overview.hasData) return const _OverviewEmpty();
     return InnerTile(
       padding: const EdgeInsets.all(T.s3),
       child: Column(
@@ -837,7 +819,7 @@ class _AttentionRow extends StatelessWidget {
     final narrow = MediaQuery.sizeOf(context).width < 400;
     return InnerTile(
       padding: const EdgeInsets.all(T.s3),
-      onTap: () => context.go('/dietician/patients/${item.patientId}'),
+      onTap: () => context.push('/dietician/patients/${item.patientId}'),
       child: Row(
         children: [
           Stack(
@@ -920,7 +902,7 @@ class _AttentionRow extends StatelessWidget {
             label: item.actionLabel,
             status: status,
             onTap:
-                () => context.go(
+                () => context.push(
                   item.kind == 'log_review'
                       ? '/dietician/patients/${item.patientId}?tab=logs'
                       : '/dietician/patients/${item.patientId}',
@@ -1041,7 +1023,13 @@ class _PlanStatusCard extends StatelessWidget {
                       color: Color(0xFFEDF1F7),
                     ),
                   Expanded(
-                    child: Row(
+                    // Stacked, not icon-beside-text. Three cells across a
+                    // 360dp phone leave about 58dp of text width once a 34px
+                    // plate and its gap are taken out, which is where "Active
+                    // plans" and "Ready to send" were being cut to "Active…"
+                    // and "Ready…". Vertical gives each label the full third.
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.center,
                       children: [
                         Container(
                           width: 34,
@@ -1056,35 +1044,28 @@ class _PlanStatusCard extends StatelessWidget {
                             color: cells[i].tone,
                           ),
                         ),
-                        const SizedBox(width: T.s2),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              MetricValue(value: '${cells[i].n}', size: 20),
-                              Text(
-                                cells[i].label,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: T.label.copyWith(
-                                  letterSpacing: 0,
-                                  fontWeight: FontWeight.w600,
-                                  color: T.ink,
-                                ),
-                              ),
-                              Text(
-                                cells[i].sub,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: T.label.copyWith(
-                                  fontSize: 10,
-                                  letterSpacing: 0,
-                                  fontWeight: FontWeight.w500,
-                                  color: T.inkMuted,
-                                ),
-                              ),
-                            ],
+                        const SizedBox(height: T.s2),
+                        MetricValue(value: '${cells[i].n}', size: 22),
+                        const SizedBox(height: 2),
+                        Text(
+                          cells[i].label,
+                          maxLines: 2,
+                          textAlign: TextAlign.center,
+                          style: T.label.copyWith(
+                            letterSpacing: 0,
+                            fontWeight: FontWeight.w600,
+                            color: T.ink,
+                          ),
+                        ),
+                        Text(
+                          cells[i].sub,
+                          maxLines: 2,
+                          textAlign: TextAlign.center,
+                          style: T.label.copyWith(
+                            fontSize: 10,
+                            letterSpacing: 0,
+                            fontWeight: FontWeight.w500,
+                            color: T.inkMuted,
                           ),
                         ),
                       ],
@@ -1138,7 +1119,7 @@ class _RecentLogs extends StatelessWidget {
           SizedBox(
             // Scaled by the text factor: the caption under each photo grows
             // with the system setting and would otherwise clip.
-            height: MediaQuery.textScalerOf(context).scale(196),
+            height: MediaQuery.textScalerOf(context).scale(210),
             child: ListView.separated(
               scrollDirection: Axis.horizontal,
               padding: const EdgeInsets.only(right: T.s5),
@@ -1164,7 +1145,10 @@ class _LogTile extends StatelessWidget {
     return SizedBox(
       width: 158,
       child: GestureDetector(
-        onTap: () => context.go('/dietician/patients/${log.patientId}'),
+        // push, not go: tapping a meal is a drill-down and has to leave a Back
+        // button. `go` replaced the tab's route, which stranded the
+        // dietician on a patient record with no way out but the nav bar.
+        onTap: () => context.push('/dietician/patients/${log.patientId}'),
         behavior: HitTestBehavior.opaque,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -1239,19 +1223,29 @@ class _LogTile extends StatelessWidget {
             ),
             const SizedBox(height: 3),
             // The line that turns a gallery into a worklist.
+            //
+            // Wraps to two lines rather than ellipsising. At a system text
+            // scale above 1.0 "Needs review" no longer fits a 158px tile on
+            // one line, and the truncation landed mid-word — "Needs revi…" —
+            // on the one caption that has to be unambiguous.
             Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Icon(
-                  log.needsReview ? Icons.circle : Icons.check_circle_rounded,
-                  size: log.needsReview ? 7 : 12,
-                  color: log.needsReview ? T.warning : T.success,
+                Padding(
+                  padding: const EdgeInsets.only(top: 2),
+                  child: Icon(
+                    log.needsReview
+                        ? Icons.schedule_rounded
+                        : Icons.check_circle_rounded,
+                    size: 12,
+                    color: log.needsReview ? T.warning : T.success,
+                  ),
                 ),
                 const SizedBox(width: T.s1),
-                Flexible(
+                Expanded(
                   child: Text(
                     log.needsReview ? 'Needs review' : 'Reviewed',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
+                    maxLines: 2,
                     style: T.label.copyWith(
                       letterSpacing: 0,
                       fontWeight: FontWeight.w600,
@@ -1450,4 +1444,46 @@ class _SparkDates extends StatelessWidget {
       ],
     );
   }
+}
+
+/// The overview tile with nothing behind it yet.
+///
+/// Rendered rather than hidden. "No readings in the last 14 days" is a real
+/// answer to the question the tile asks, and for a dietician it is an
+/// actionable one — a caseload that has stopped testing is exactly the thing
+/// worth noticing. Hiding the block made that state indistinguishable from a
+/// screen that had not finished loading.
+class _OverviewEmpty extends StatelessWidget {
+  const _OverviewEmpty();
+
+  @override
+  Widget build(BuildContext context) => InnerTile(
+    padding: const EdgeInsets.all(T.s3),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Nutrition overview (14 days)',
+          style: T.label.copyWith(
+            letterSpacing: 0,
+            fontWeight: FontWeight.w500,
+            color: T.inkMuted,
+          ),
+        ),
+        const SizedBox(height: T.s3),
+        Row(
+          children: [
+            Icon(Icons.show_chart_rounded, size: 18, color: T.inkFaint),
+            const SizedBox(width: T.s2),
+            Expanded(
+              child: Text(
+                'No glucose readings logged in the last 14 days.',
+                style: T.small.copyWith(color: T.inkMuted),
+              ),
+            ),
+          ],
+        ),
+      ],
+    ),
+  );
 }

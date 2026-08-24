@@ -1083,13 +1083,31 @@ class _FoodLogSection extends ConsumerWidget {
                           ),
                         ),
                       ),
-                      if (entries.isNotEmpty)
-                        Text(
-                          '${recent.length} logged',
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: scheme.onSurfaceVariant,
-                          ),
+                      if (entries.any((e) => e.needsReview))
+                        _MarkAllReviewed(
+                          patientId: patientId,
+                          outstanding:
+                              entries.where((e) => e.needsReview).length,
+                        )
+                      else if (entries.isNotEmpty)
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(
+                              Icons.check_circle_rounded,
+                              size: 14,
+                              color: AppColors.success,
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              'All reviewed',
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                                color: AppColors.success,
+                              ),
+                            ),
+                          ],
                         ),
                     ],
                   ),
@@ -1101,6 +1119,7 @@ class _FoodLogSection extends ConsumerWidget {
                       children: [
                         Expanded(
                           child: _SlotTile(
+                            patientId: patientId,
                             slot: _slots[row],
                             entry: bySlot[_slots[row]],
                           ),
@@ -1108,6 +1127,7 @@ class _FoodLogSection extends ConsumerWidget {
                         const SizedBox(width: AppSpacing.sm),
                         Expanded(
                           child: _SlotTile(
+                            patientId: patientId,
                             slot: _slots[row + 1],
                             entry: bySlot[_slots[row + 1]],
                           ),
@@ -1208,14 +1228,19 @@ class _FoodLogSection extends ConsumerWidget {
 
 /// One meal slot in the day: the photograph if it was logged, a dashed outline
 /// saying which meal is missing if it was not.
-class _SlotTile extends StatelessWidget {
-  const _SlotTile({required this.slot, required this.entry});
+class _SlotTile extends ConsumerWidget {
+  const _SlotTile({
+    required this.patientId,
+    required this.slot,
+    required this.entry,
+  });
 
+  final String patientId;
   final String slot;
   final FoodLogEntry? entry;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final scheme = Theme.of(context).colorScheme;
     final label = _FoodLogSection._cap(slot);
     final e = entry;
@@ -1273,6 +1298,17 @@ class _SlotTile extends StatelessWidget {
                     ),
                   ),
                 ),
+              // The tick, top-right, over the photograph.
+              //
+              // On the picture rather than beside it because the picture is
+              // what is being judged, and a control in a caption bar under
+              // four tiles is four controls in a row with nothing tying each
+              // to its plate.
+              Positioned(
+                top: 6,
+                right: 6,
+                child: _ReviewTick(patientId: patientId, entry: e),
+              ),
               Positioned(
                 left: 0,
                 right: 0,
@@ -2352,6 +2388,183 @@ class _AnalyteChip extends StatelessWidget {
             ),
           ],
         ],
+      ),
+    );
+  }
+}
+
+/// The per-meal review control.
+///
+/// Two states and one tap between them, because a dietician working through a
+/// week of plates should not have to open anything to say "that one's fine".
+/// Reverting matters as much as setting: a mis-tap on a meal that actually
+/// needed a conversation would otherwise quietly bury it.
+class _ReviewTick extends ConsumerStatefulWidget {
+  const _ReviewTick({required this.patientId, required this.entry});
+
+  final String patientId;
+  final FoodLogEntry entry;
+
+  @override
+  ConsumerState<_ReviewTick> createState() => _ReviewTickState();
+}
+
+class _ReviewTickState extends ConsumerState<_ReviewTick> {
+  bool _busy = false;
+
+  Future<void> _toggle() async {
+    if (_busy) return;
+    final messenger = ScaffoldMessenger.of(context);
+    final wasReviewed = !widget.entry.needsReview;
+    setState(() => _busy = true);
+    try {
+      await ref
+          .read(dieticianRepositoryProvider)
+          .reviewFoodLog(
+            widget.patientId,
+            widget.entry.id,
+            reviewed: wasReviewed ? false : true,
+          );
+      // Both, because the tick changes two screens: this record and the
+      // dashboard's attention list and "needs review" captions.
+      ref.invalidate(dietFoodLogProvider(widget.patientId));
+      ref.invalidate(dietDashboardProvider);
+    } on ApiException catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text(e.message)));
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final reviewed = !widget.entry.needsReview;
+    return Semantics(
+      button: true,
+      label: reviewed ? 'Reviewed. Tap to undo' : 'Mark this meal reviewed',
+      child: GestureDetector(
+        onTap: _toggle,
+        behavior: HitTestBehavior.opaque,
+        child: SizedBox(
+          // A comfortable target over a small badge: the visible disc is 26px
+          // and would be a miss on a moving thumb.
+          width: 40,
+          height: 40,
+          child: Center(
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 160),
+              width: 26,
+              height: 26,
+              decoration: BoxDecoration(
+                color:
+                    reviewed
+                        ? AppColors.success
+                        : Colors.white.withValues(alpha: 0.92),
+                shape: BoxShape.circle,
+                boxShadow: const [
+                  BoxShadow(
+                    color: Color(0x33000000),
+                    blurRadius: 6,
+                    offset: Offset(0, 2),
+                  ),
+                ],
+              ),
+              child:
+                  _busy
+                      ? const Padding(
+                        padding: EdgeInsets.all(6),
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                      : Icon(
+                        reviewed ? Icons.check_rounded : Icons.check,
+                        size: 16,
+                        color:
+                            reviewed ? Colors.white : const Color(0xFF9AA4B2),
+                      ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Clears everything outstanding on this record at once.
+class _MarkAllReviewed extends ConsumerStatefulWidget {
+  const _MarkAllReviewed({required this.patientId, required this.outstanding});
+
+  final String patientId;
+  final int outstanding;
+
+  @override
+  ConsumerState<_MarkAllReviewed> createState() => _MarkAllReviewedState();
+}
+
+class _MarkAllReviewedState extends ConsumerState<_MarkAllReviewed> {
+  bool _busy = false;
+
+  Future<void> _run() async {
+    if (_busy) return;
+    final messenger = ScaffoldMessenger.of(context);
+    setState(() => _busy = true);
+    try {
+      final n = await ref
+          .read(dieticianRepositoryProvider)
+          .reviewAllFoodLogs(widget.patientId);
+      ref.invalidate(dietFoodLogProvider(widget.patientId));
+      ref.invalidate(dietDashboardProvider);
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text('$n ${n == 1 ? 'meal' : 'meals'} marked reviewed'),
+        ),
+      );
+    } on ApiException catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text(e.message)));
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      button: true,
+      child: GestureDetector(
+        onTap: _run,
+        behavior: HitTestBehavior.opaque,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+          decoration: BoxDecoration(
+            color: AppColors.warning.withValues(alpha: 0.12),
+            borderRadius: BorderRadius.circular(999),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (_busy)
+                const SizedBox(
+                  width: 12,
+                  height: 12,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              else
+                const Icon(
+                  Icons.done_all_rounded,
+                  size: 14,
+                  color: AppColors.warning,
+                ),
+              const SizedBox(width: 5),
+              Text(
+                '${widget.outstanding} to review',
+                style: const TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.warning,
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

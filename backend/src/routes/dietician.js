@@ -431,6 +431,7 @@ router.get(
           .limit(12)
           .populate('patient', 'name')
           .populate('photo', 'mimeType')
+          .select('patient mealType note photo createdAt reviewedAt')
           .lean(),
         unreadNutritionCount(ids),
         urgentNutritionCount(ids),
@@ -443,7 +444,7 @@ router.get(
               patient: { $in: ids },
               createdAt: { $gte: dayjs().startOf('day').subtract(6, 'day').toDate() },
             })
-              .select('patient createdAt')
+              .select('patient createdAt reviewedAt')
               .sort({ createdAt: -1 })
               .lean()
           : [],
@@ -524,8 +525,6 @@ router.get(
         // Skip bogus logs whose "photo" is not an image (a mis-filed voice note).
         .filter((f) => f.patient && (!f.photo || (f.photo.mimeType ?? '').startsWith('image/')))
         .map((f) => {
-          const profile = assigned.find((p) => String(p.user._id) === String(f.patient._id));
-          const lastReview = profile?.lastDietReviewAt;
           return {
             id: String(f._id),
             patientId: String(f.patient._id),
@@ -534,9 +533,11 @@ router.get(
             note: f.note ?? '',
             photoUrl: f.photo ? `/api/v1/uploads/${f.photo._id}/raw` : null,
             createdAt: f.createdAt,
-            // A photograph alone does not say what to do with it. Anything
-            // logged since the last review is still waiting to be read.
-            needsReview: !lastReview || dayjs(f.createdAt).isAfter(dayjs(lastReview)),
+            // The meal's own state now, not one inferred from a date on the
+            // patient's profile. That inference marked three plates read
+            // because a dietician replied about the fourth.
+            needsReview: !f.reviewedAt,
+            reviewedAt: f.reviewedAt ?? null,
           };
         }),
     });
@@ -759,6 +760,7 @@ router.get(
             note: f.note ?? '',
             photoUrl: f.photo ? `/api/v1/uploads/${f.photo._id}/raw` : null,
             createdAt: f.createdAt,
+            reviewedAt: f.reviewedAt ?? null,
           })),
     });
   }),
@@ -1057,6 +1059,55 @@ router.get(
 );
 
 /** The dietician replies to the patient — lands in the patient's care thread. */
+/**
+ * Mark one meal read, or put it back.
+ *
+ * Deliberately separate from replying. A dietician scanning a week of plates
+ * needs to be able to say "these three are fine, this one we should talk
+ * about" — with review welded to the reply, saying that was impossible: any
+ * message cleared the lot.
+ *
+ * Replying still clears everything outstanding (see the message route). This
+ * is the finer instrument, not a replacement.
+ */
+router.post(
+  '/patients/:id/food-log/:logId/review',
+  validate(z.object({ reviewed: z.boolean().default(true) })),
+  audit('update', 'FoodLog'),
+  asyncHandler(async (req, res) => {
+    await requireAssigned(req);
+    const log = await FoodLog.findOne({ _id: req.params.logId, patient: req.params.id });
+    // Scoped by patient as well as id: a log id alone would let an assigned
+    // dietician mark a meal belonging to somebody else's patient.
+    if (!log) throw notFound('That meal is not on this record');
+
+    const reviewed = req.body.reviewed !== false;
+    log.reviewedAt = reviewed ? new Date() : null;
+    log.reviewedBy = reviewed ? req.user._id : null;
+    await log.save();
+
+    res.json({
+      id: String(log._id),
+      reviewedAt: log.reviewedAt,
+      needsReview: !log.reviewedAt,
+    });
+  }),
+);
+
+/** Mark every outstanding meal on this record read, in one go. */
+router.post(
+  '/patients/:id/food-log/review-all',
+  audit('update', 'FoodLog'),
+  asyncHandler(async (req, res) => {
+    await requireAssigned(req);
+    const result = await FoodLog.updateMany(
+      { patient: req.params.id, reviewedAt: null },
+      { reviewedAt: new Date(), reviewedBy: req.user._id },
+    );
+    res.json({ reviewed: result.modifiedCount ?? 0 });
+  }),
+);
+
 router.post(
   '/patients/:id/message',
   validate({
@@ -1084,8 +1135,17 @@ router.post(
       req.body.replyTo,
     );
 
-    // Mark the food-log review as done for this cycle, and let the patient know.
-    await PatientProfile.updateOne({ user: req.params.id }, { lastDietReviewAt: new Date() });
+    // Two different things, both true when a dietician writes back: the review
+    // cycle restarts, and every meal still sitting unread has now been
+    // answered. Before, only the first was recorded and the second was
+    // inferred from it — which is why replying about one plate silently
+    // cleared the rest.
+    const now = new Date();
+    await PatientProfile.updateOne({ user: req.params.id }, { lastDietReviewAt: now });
+    await FoodLog.updateMany(
+      { patient: req.params.id, reviewedAt: null },
+      { reviewedAt: now, reviewedBy: req.user._id },
+    );
     notifyPatientOfClinicianReply(req.params.id, req.user, req.body.content).catch(() => {});
 
     res.status(201).json({ id: String(message._id) });

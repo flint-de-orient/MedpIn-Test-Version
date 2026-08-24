@@ -17,16 +17,23 @@ import { dayjs } from '../src/utils/clinicTime.js';
 const daysAgo = (n) => dayjs().startOf('day').subtract(n, 'day').add(9, 'hour').toDate();
 
 /**
- * A review stamped after every log in the fixture.
+ * A logged meal. Read by default, because "unread" is the interesting state
+ * and a fixture should have to ask for it.
  *
- * Needed more often than it looks. Any log newer than the last review is by
- * definition unread, and unread wins over both other reasons — so a fixture
- * that wants to exercise adherence or an upcoming review has to have been
- * reviewed *since* its own logs, exactly as a real caught-up patient would be.
+ * Whether a meal is waiting is now the meal's own flag. It used to be derived
+ * by comparing each log against the patient's last review date, which is why
+ * these fixtures previously had to stamp a review *after* their own logs to
+ * test anything but the unread branch.
  */
-const reviewedJustNow = () => new Date();
+const meal = (patient, n, { unread = false } = {}) => ({
+  patient,
+  createdAt: daysAgo(n),
+  reviewedAt: unread ? null : daysAgo(n),
+});
 
-/** A patient profile as the route hands it over. */
+/** A week of read meals — the shape of a patient who is doing fine. */
+const goodWeek = (patient) => [0, 1, 2, 3, 4, 5].map((d) => meal(patient, d));
+
 function profile({ id = 'p1', name = 'Rahul Das', lastReview = null, interval = null } = {}) {
   return {
     user: { _id: id, name, avatarAssetId: null },
@@ -37,24 +44,23 @@ function profile({ id = 'p1', name = 'Rahul Das', lastReview = null, interval = 
 }
 
 function run({ profiles, logs = {}, defaultDays = 14 }) {
-  const logsByPatient = new Map(Object.entries(logs));
   return buildAttention({
     assigned: profiles,
     defaultDays,
-    logsByPatient,
+    logsByPatient: new Map(Object.entries(logs)),
     planBy: new Map(),
   });
 }
 
 describe('buildAttention', () => {
-  test('a log submitted since the last review outranks everything else', () => {
-    // This patient qualifies on all three counts at once: an unread log, a week
-    // with barely any logging, and a review falling due. Only one row should
-    // come out, and it must be the unread log — that is the one with a
-    // patient's words attached to it.
+  test('an unread meal outranks every other reason', () => {
+    // This patient qualifies on all three counts at once: an unread log, a
+    // week with barely any logging, and a review falling due. One row must
+    // come out, and it must be the unread meal — that is the one with a
+    // patient's own submission attached to it.
     const out = run({
       profiles: [profile({ lastReview: daysAgo(13), interval: 14 })],
-      logs: { p1: [{ patient: 'p1', createdAt: daysAgo(0) }] },
+      logs: { p1: [meal('p1', 0, { unread: true })] },
     });
 
     assert.equal(out.length, 1, 'one patient must produce one row, never three');
@@ -62,25 +68,34 @@ describe('buildAttention', () => {
     assert.equal(out[0].label, 'Food log needs review');
   });
 
-  test('a log older than the last review is not waiting to be read', () => {
+  test('a meal a dietician has already ticked is not waiting', () => {
     const out = run({
       profiles: [profile({ lastReview: daysAgo(2), interval: 30 })],
-      logs: { p1: [{ patient: 'p1', createdAt: daysAgo(5) }] },
+      logs: { p1: [meal('p1', 1)] },
     });
 
-    // It falls through to adherence rather than surfacing as unread: the
-    // dietician has already seen that meal.
     assert.notEqual(out[0]?.kind, 'log_review');
   });
 
-  test('low adherence counts days without a log, not logs', () => {
-    // Four meals photographed, all on the same day. A count-based measure would
-    // read that as an adherent week; what is actually being asked is "how many
-    // days did this person engage".
-    const sameDay = [0, 0, 0, 0].map(() => ({ patient: 'p1', createdAt: daysAgo(1) }));
+  test('replying is no longer what marks a meal read', () => {
+    // The regression this whole change exists to prevent. The review date is
+    // recent — under the old rule that alone cleared every plate — but the
+    // meal itself was never ticked, so it is still waiting.
     const out = run({
-      profiles: [profile({ lastReview: daysAgo(1), interval: 30 })],
-      logs: { p1: sameDay },
+      profiles: [profile({ lastReview: new Date(), interval: 30 })],
+      logs: { p1: [meal('p1', 1, { unread: true })] },
+    });
+
+    assert.equal(out[0]?.kind, 'log_review');
+  });
+
+  test('low adherence counts days without a log, not logs', () => {
+    // Four meals photographed, all on the same day. A count-based measure
+    // would read that as an adherent week; what is being asked is "how many
+    // days did this person engage".
+    const out = run({
+      profiles: [profile({ interval: 30, lastReview: daysAgo(1) })],
+      logs: { p1: [0, 0, 0, 0].map(() => meal('p1', 1)) },
     });
 
     assert.equal(out.length, 1);
@@ -89,10 +104,9 @@ describe('buildAttention', () => {
   });
 
   test('a patient logging most days does not surface at all', () => {
-    const most = [0, 1, 2, 3, 4, 5].map((d) => ({ patient: 'p1', createdAt: daysAgo(d) }));
     const out = run({
-      profiles: [profile({ lastReview: reviewedJustNow(), interval: 30 })],
-      logs: { p1: most },
+      profiles: [profile({ interval: 30, lastReview: daysAgo(1) })],
+      logs: { p1: goodWeek('p1') },
     });
 
     assert.deepEqual(out, [], 'six of seven days is not a patient who needs chasing');
@@ -100,8 +114,8 @@ describe('buildAttention', () => {
 
   test('the spark is seven presence flags, oldest first', () => {
     const out = run({
-      profiles: [profile({ lastReview: daysAgo(1), interval: 30 })],
-      logs: { p1: [{ patient: 'p1', createdAt: daysAgo(0) }] },
+      profiles: [profile({ interval: 30, lastReview: daysAgo(1) })],
+      logs: { p1: [meal('p1', 0, { unread: true })] },
     });
 
     assert.equal(out[0].spark.length, 7);
@@ -111,39 +125,18 @@ describe('buildAttention', () => {
   });
 
   test('a review falling inside three days surfaces, one further out does not', () => {
-    const logs = { a: [0, 1, 2, 3, 4, 5].map((d) => ({ patient: 'a', createdAt: daysAgo(d) })) };
-
-    // A short interval, because that is the only shape this branch is
-    // reachable in — see the test below.
     const soon = run({
-      profiles: [profile({ id: 'a', lastReview: reviewedJustNow(), interval: 2 })],
-      logs,
+      profiles: [profile({ id: 'a', lastReview: daysAgo(1), interval: 3 })],
+      logs: { a: goodWeek('a') },
     });
     assert.equal(soon[0]?.kind, 'review_soon');
     assert.match(soon[0].detail, /Review due/);
 
     const later = run({
-      profiles: [profile({ id: 'a', lastReview: reviewedJustNow(), interval: 30 })],
-      logs,
+      profiles: [profile({ id: 'a', lastReview: daysAgo(1), interval: 30 })],
+      logs: { a: goodWeek('a') },
     });
     assert.deepEqual(later, [], 'a month out is not attention-worthy');
-  });
-
-  test('review_soon only fires for short review intervals, by construction', () => {
-    // Documenting a real narrowness rather than pretending it is not there.
-    //
-    // To reach this branch a patient must have no unread logs (so their last
-    // review is newer than their newest log) AND be logging most days AND have
-    // a review due within three days. A review stamped in the last day or two
-    // puts the next one a full interval away — so on the clinic default of 14
-    // days the branch cannot fire at all, and the patient surfaces through the
-    // hero's "reviews due" count instead once it lapses.
-    const logs = { a: [0, 1, 2, 3, 4, 5].map((d) => ({ patient: 'a', createdAt: daysAgo(d) })) };
-    const onDefault = run({
-      profiles: [profile({ id: 'a', lastReview: reviewedJustNow(), interval: 14 })],
-      logs,
-    });
-    assert.deepEqual(onDefault, []);
   });
 
   test('an already-lapsed review never surfaces as "due soon"', () => {
@@ -152,7 +145,7 @@ describe('buildAttention', () => {
     // up under whatever they are actually doing wrong instead.
     const out = run({
       profiles: [profile({ id: 'a', lastReview: daysAgo(40), interval: 14 })],
-      logs: { a: [0, 1, 2, 3, 4, 5].map((d) => ({ patient: 'a', createdAt: daysAgo(d) })) },
+      logs: { a: goodWeek('a') },
     });
     assert.notEqual(out[0]?.kind, 'review_soon');
   });
@@ -166,17 +159,17 @@ describe('buildAttention', () => {
     assert.match(out[0].detail, /No meals logged/);
   });
 
-  test('unread logs sort above low adherence, and the worst adherence first', () => {
+  test('unread meals sort above low adherence, and the worst adherence first', () => {
     const out = run({
       profiles: [
-        profile({ id: 'quiet', name: 'Quiet', lastReview: reviewedJustNow(), interval: 30 }),
-        profile({ id: 'unread', name: 'Unread', lastReview: daysAgo(3), interval: 30 }),
-        profile({ id: 'partial', name: 'Partial', lastReview: reviewedJustNow(), interval: 30 }),
+        profile({ id: 'quiet', name: 'Quiet', interval: 30, lastReview: daysAgo(1) }),
+        profile({ id: 'unread', name: 'Unread', interval: 30, lastReview: daysAgo(3) }),
+        profile({ id: 'partial', name: 'Partial', interval: 30, lastReview: daysAgo(1) }),
       ],
       logs: {
         quiet: [],
-        unread: [{ patient: 'unread', createdAt: daysAgo(0) }],
-        partial: [0, 1, 2].map((d) => ({ patient: 'partial', createdAt: daysAgo(d) })),
+        unread: [meal('unread', 0, { unread: true })],
+        partial: [0, 1, 2].map((d) => meal('partial', d)),
       },
     });
 
@@ -190,8 +183,8 @@ describe('buildAttention', () => {
   test('an interval of zero does not divide the screen by zero', () => {
     // dietReviewIntervalDays is nullable and the clinic default can be unset.
     const out = run({
-      profiles: [profile({ lastReview: reviewedJustNow(), interval: 0 })],
-      logs: { p1: [0, 1, 2, 3, 4, 5].map((d) => ({ patient: 'p1', createdAt: daysAgo(d) })) },
+      profiles: [profile({ interval: 0, lastReview: daysAgo(1) })],
+      logs: { p1: goodWeek('p1') },
       defaultDays: 0,
     });
     assert.deepEqual(out, []);

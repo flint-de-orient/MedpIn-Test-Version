@@ -29,7 +29,10 @@ export function buildAttention({ assigned, defaultDays, logsByPatient, planBy })
     const loggedDays = spark.reduce((a, b) => a + b, 0);
     const missed = 7 - loggedDays;
 
-    const unreviewed = logs.filter((l) => !lastReview || dayjs(l.createdAt).isAfter(lastReview));
+    // The meal's own flag. This used to compare each log against the patient's
+    // last review date, which meant a dietician who replied without looking at
+    // the plates had "reviewed" all of them.
+    const unreviewed = logs.filter((l) => !l.reviewedAt);
 
     const interval = p.dietReviewIntervalDays ?? defaultDays;
     const nextReviewIn =

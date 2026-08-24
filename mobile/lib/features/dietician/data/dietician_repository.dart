@@ -105,6 +105,30 @@ class DieticianRepository {
         .toList();
   }
 
+  /// Ticks one meal off, or puts it back.
+  ///
+  /// Per meal rather than per patient: a dietician scanning a week needs to be
+  /// able to say "these three are fine, this one we should talk about", and
+  /// while review was welded to replying, saying that was impossible.
+  Future<void> reviewFoodLog(
+    String patientId,
+    String logId, {
+    bool reviewed = true,
+  }) async {
+    await _client.postJson(
+      '/dietician/patients/$patientId/food-log/$logId/review',
+      body: {'reviewed': reviewed},
+    );
+  }
+
+  /// Clears everything still outstanding on this record in one call.
+  Future<int> reviewAllFoodLogs(String patientId) async {
+    final json = await _client.postJson(
+      '/dietician/patients/$patientId/food-log/review-all',
+    );
+    return (json['reviewed'] as num?)?.toInt() ?? 0;
+  }
+
   Future<void> sendMessage(
     String patientId, {
     String content = '',

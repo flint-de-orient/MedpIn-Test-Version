@@ -18,10 +18,24 @@ const foodLogSchema = new mongoose.Schema(
     /// and showing it to the dietician are the same act, so they produce one
     /// record — this is the link back to the conversation it came from.
     sourceMessage: { type: mongoose.Schema.Types.ObjectId, ref: 'ChatMessage' },
+
+    /// When a dietician marked this specific meal as read, and who.
+    ///
+    /// Separate from `PatientProfile.lastDietReviewAt`, which was doing both
+    /// jobs and could only do one of them honestly. That field answers "when
+    /// is the next review cycle due"; this one answers "has anyone actually
+    /// looked at this plate". Inferring the second from the first meant
+    /// replying about one worrying meal silently marked the other three read.
+    reviewedAt: { type: Date, default: null },
+    reviewedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
   },
   { timestamps: true },
 );
 
 foodLogSchema.index({ patient: 1, createdAt: -1 });
+// The dashboard's hottest question — "which of this caseload's meals are still
+// unread" — is a scan over patient + reviewedAt, on every load, for every
+// dietician.
+foodLogSchema.index({ patient: 1, reviewedAt: 1 });
 
 export const FoodLog = mongoose.model('FoodLog', foodLogSchema);
