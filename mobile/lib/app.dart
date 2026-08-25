@@ -45,7 +45,18 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
 
   void _syncMedsIfPatient() {
     final user = ref.read(authControllerProvider).user;
-    if (user?.role != 'patient') return;
+    if (user?.role != 'patient') {
+      // Cancel, don't just decline to schedule.
+      //
+      // This returned early for a clinician and left whatever was already on
+      // the device armed — so a doctor signing in on a phone that had been a
+      // patient's kept getting their dose alarms, hours after the fact. A
+      // clinician has no dose reminders of their own, so anything scheduled
+      // here belongs to somebody else and must go. Runs on every resume too,
+      // which is what clears a leftover the next time the app is opened.
+      NotificationService.instance.cancelAllOnSignOut();
+      return;
+    }
     if (ref.read(appPreferencesProvider).medicationReminders) {
       refreshAndScheduleMedicationReminders(ref).catchError((_) {});
     }
@@ -61,9 +72,26 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
     // device it is, and leaving it attached would send the next person to use a
     // shared phone the previous patient's clinical notifications.
     ref.listen(authControllerProvider, (previous, next) {
-      final wasAuthed = previous?.user != null;
-      final isAuthed = next.user != null;
-      if (!wasAuthed && isAuthed) {
+      // Keyed on WHO is signed in, not merely whether anyone is.
+      //
+      // Comparing presence alone missed an account switch: going from patient
+      // straight to doctor without an unauthenticated frame in between left
+      // both sides true, so neither branch ran — no token detach, and no
+      // cancellation of the patient's alarms.
+      final wasId = previous?.user?.id;
+      final isId = next.user?.id;
+      if (wasId == isId) return;
+
+      final wasAuthed = wasId != null;
+      final isAuthed = isId != null;
+      if (wasAuthed && isAuthed) {
+        // A different person on the same device. Tear the old session's
+        // notifications down before arming the new one's.
+        ref.read(pushServiceProvider).stop();
+        NotificationService.instance.cancelAllOnSignOut();
+        ref.read(pushServiceProvider).start();
+        _syncMedsIfPatient();
+      } else if (!wasAuthed && isAuthed) {
         ref.read(pushServiceProvider).start();
         _syncMedsIfPatient();
       } else if (wasAuthed && !isAuthed) {

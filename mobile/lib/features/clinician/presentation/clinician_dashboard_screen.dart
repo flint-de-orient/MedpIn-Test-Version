@@ -258,14 +258,6 @@ class _DashboardHeader extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final user = ref.watch(authControllerProvider).user;
 
-    // Qualifications under the name, where a clinician's identity normally
-    // sits. Falls back to the role when the profile has none, so the line is
-    // never blank.
-    final creds =
-        (user?.qualifications?.trim().isNotEmpty ?? false)
-            ? user!.qualifications!.trim()
-            : (user?.role == 'doctor' ? 'Doctor' : 'Clinic staff');
-
     return Container(
       padding: const EdgeInsets.fromLTRB(T.s4, T.s2, T.s4, T.s3),
       decoration: const BoxDecoration(
@@ -331,38 +323,13 @@ class _DashboardHeader extends ConsumerWidget {
                         accent: T.primary,
                         size: 38,
                       ),
-                      // The name only where there is room for it. On a narrow
-                      // phone it would push the bell off the row, so below
-                      // 380dp the face stands for the doctor on its own.
-                      if (MediaQuery.sizeOf(context).width >= 380) ...[
-                        const SizedBox(width: T.s2),
-                        ConstrainedBox(
-                          constraints: const BoxConstraints(maxWidth: 132),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Text(
-                                user?.name ?? '',
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: T.bodyStrong.copyWith(color: T.ink),
-                              ),
-                              Text(
-                                creds,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: T.small.copyWith(color: T.inkMuted),
-                              ),
-                            ],
-                          ),
-                        ),
-                        const Icon(
-                          Icons.expand_more_rounded,
-                          size: 18,
-                          color: T.inkFaint,
-                        ),
-                      ],
+                      // Just the avatar, as on the dietician's header.
+                      //
+                      // The name, the credentials and a chevron shared one row
+                      // with the brand lockup and the bell — four blocks of
+                      // text across a phone, and the chevron promised a menu
+                      // that does not exist. The greeting a line below already
+                      // says who is signed in; tapping the face opens Profile.
                     ],
                   ),
                 ),
