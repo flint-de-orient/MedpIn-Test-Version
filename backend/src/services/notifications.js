@@ -259,19 +259,54 @@ export async function notifyPatientOfClinicianReply(patientId, clinician, conten
  * Goes to the dietician the patient is assigned to, and to nobody else. A
  * message about somebody else's patient is a message the reader cannot act on.
  */
-export async function notifyDieticianOfPatientMessage(patientId, patientName, content) {
+/**
+ * The dieticians who should hear about this patient.
+ *
+ * Mirrors `scopeFilter` in routes/dietician.js, and it has to: that rule says a
+ * dietician with no explicit assignments covers the whole clinic, so in the
+ * common setup — one dietician, nobody individually assigned — every patient is
+ * theirs. This function used to require an explicit assignment, so their
+ * dashboard listed all seven patients, the bell counted the unread messages,
+ * and no push ever fired for any of them.
+ *
+ * Two shapes, matching that rule exactly: a patient with an assigned dietician
+ * belongs to them alone, and everyone else belongs to whichever dieticians are
+ * covering the clinic at large.
+ */
+async function dieticiansFor(patientId) {
   const profile = await PatientProfile.findOne({ user: patientId })
     .select('assignedDietician')
     .lean();
-  if (!profile?.assignedDietician) return;
 
-  const dietician = await User.findOne({ _id: profile.assignedDietician, isActive: true })
-    .select('deviceTokens')
+  if (profile?.assignedDietician) {
+    const one = await User.findOne({ _id: profile.assignedDietician, isActive: true })
+      .select('deviceTokens')
+      .lean();
+    return one ? [one] : [];
+  }
+
+  const dieticians = await User.find({ role: ROLES.DIETICIAN, isActive: true })
+    .select('_id deviceTokens')
     .lean();
-  if (!dietician?.deviceTokens?.length) return;
+  if (dieticians.length === 0) return [];
+
+  // Only the ones whose scope is the clinic. A dietician with their own named
+  // list has said what they cover, and an unassigned patient is not on it.
+  const assignedCounts = await PatientProfile.aggregate([
+    { $match: { assignedDietician: { $in: dieticians.map((d) => d._id) } } },
+    { $group: { _id: '$assignedDietician', n: { $sum: 1 } } },
+  ]);
+  const hasOwnList = new Set(assignedCounts.map((a) => String(a._id)));
+  return dieticians.filter((d) => !hasOwnList.has(String(d._id)));
+}
+
+export async function notifyDieticianOfPatientMessage(patientId, patientName, content) {
+  const recipients = await dieticiansFor(patientId);
+  const tokens = recipients.flatMap((d) => d.deviceTokens ?? []);
+  if (tokens.length === 0) return;
 
   await deliver({
-    tokens: dietician.deviceTokens,
+    tokens,
     title: `${patientName} sent a message`,
     body: (content ?? '').slice(0, 180),
     data: { kind: 'nutrition_message', patientId: patientId.toString() },

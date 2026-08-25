@@ -102,6 +102,7 @@ class ChatMessage {
     this.senderAvatarUrl,
     this.pinned = false,
     this.deletedForEveryone = false,
+    this.editedAt,
     this.replyToId,
     this.replyPreviewContent,
     this.seenByClinicAt,
@@ -124,6 +125,27 @@ class ChatMessage {
   /// Deleted for everyone by its author. The server withholds the words, files
   /// and quote, so the bubble renders a "message deleted" tombstone in place.
   final bool deletedForEveryone;
+
+  /// When the author last rewrote this, or null if they never did. The thread
+  /// marks it; the words the clinic originally saw stay on the server, which
+  /// is where a medical record needs them.
+  final DateTime? editedAt;
+
+  bool get isEdited => editedAt != null;
+
+  /// Fifteen minutes, matching the server. Checked here as well so the option
+  /// simply is not offered once it has expired, rather than being offered and
+  /// then refused.
+  static const editWindow = Duration(minutes: 15);
+
+  /// An optimistic message not yet acknowledged has no createdAt. Treating
+  /// that as "not editable" is right: there is nothing on the server to edit.
+  bool get canStillEdit =>
+      createdAt != null &&
+      DateTime.now().difference(createdAt!) < editWindow &&
+      !deletedForEveryone &&
+      voiceNotes.isEmpty &&
+      urgency != 'emergency';
 
   /// The message this one answers, when the sender quoted an earlier turn.
   final String? replyToId;
@@ -199,6 +221,8 @@ class ChatMessage {
       senderAvatarUrl: json['senderAvatarUrl']?.toString(),
       pinned: json['pinned'] == true,
       deletedForEveryone: json['deletedForEveryone'] == true,
+      editedAt:
+          DateTime.tryParse(json['editedAt']?.toString() ?? '')?.toLocal(),
       replyToId: json['replyToId']?.toString(),
       replyPreviewContent:
           json['replyPreview'] is Map

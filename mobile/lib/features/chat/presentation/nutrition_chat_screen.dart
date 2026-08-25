@@ -18,6 +18,7 @@ import '../domain/chat_message.dart';
 import 'widgets/care_composer.dart';
 import 'widgets/jump_to_latest.dart';
 import 'widgets/chat_message_bubble.dart';
+import 'widgets/edit_message_sheet.dart';
 
 /// The patient's side of the dietician conversation.
 ///
@@ -327,6 +328,13 @@ class _NutritionChatScreenState extends ConsumerState<NutritionChatScreen>
     }
   }
 
+  /// Rewrite one of our own turns, then reload so the thread shows the new
+  /// words and the "edited" mark. The sheet reports its own failures.
+  Future<void> _editMessage(ChatMessage message) async {
+    final saved = await showEditMessageSheet(context, ref, message);
+    if (saved && mounted) ref.invalidate(nutritionThreadProvider);
+  }
+
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
@@ -533,6 +541,7 @@ class _NutritionChatScreenState extends ConsumerState<NutritionChatScreen>
                             // Delete-for-everyone only on the patient's own turns.
                             onDeleteForEveryone:
                                 m.isUser ? () => _deleteForEveryone(m) : null,
+                            onEdit: m.isUser ? () => _editMessage(m) : null,
                             // Resolve the quoted turn locally when it is still
                             // loaded; the bubble falls back to the server-sent
                             // preview when it is not.

@@ -20,6 +20,16 @@ const chatMessageSchema = new mongoose.Schema(
 
     attachments: [{ type: mongoose.Schema.Types.ObjectId, ref: 'MediaAsset' }],
 
+    /// When the author last rewrote this message, and what it said before.
+    ///
+    /// The original is kept rather than overwritten because this is a clinical
+    /// record: a dietician may already have read "I had two rotis" and acted on
+    /// it before it became "I had four". The thread shows the current text
+    /// marked as edited; the audit trail still holds what was there when the
+    /// clinic saw it.
+    editedAt: { type: Date, default: null },
+    originalContent: { type: String, default: null, maxlength: 20000 },
+
     // --- assistant-turn metadata ---
     triage: {
       urgency: { type: String, enum: ['routine', 'advice', 'urgent', 'emergency'] },

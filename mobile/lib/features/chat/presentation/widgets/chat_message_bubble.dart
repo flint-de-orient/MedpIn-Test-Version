@@ -29,6 +29,7 @@ class ChatMessageBubble extends StatelessWidget {
     this.onTogglePin,
     this.onHide,
     this.onDeleteForEveryone,
+    this.onEdit,
     this.repliedTo,
     this.onQuoteTap,
     this.onCitationTap,
@@ -57,6 +58,10 @@ class ChatMessageBubble extends StatelessWidget {
   /// only for the reader's OWN, non-emergency messages; null everywhere else,
   /// which is also what keeps it off the assistant's turns and other people's.
   final VoidCallback? onDeleteForEveryone;
+
+  /// Rewrite this message. Offered only on the reader's own, still-editable
+  /// message — the caller decides, the same way it decides about deletion.
+  final VoidCallback? onEdit;
 
   /// The message being answered, when this one is a reply.
   final ChatMessage? repliedTo;
@@ -126,6 +131,19 @@ class ChatMessageBubble extends StatelessWidget {
                     );
                   },
                 ),
+                if (onEdit != null && message.canStillEdit)
+                  ListTile(
+                    leading: const Icon(Icons.edit_outlined),
+                    title: const Text('Edit'),
+                    subtitle: const Text(
+                      'Within 15 minutes. The other side sees it was edited.',
+                      style: TextStyle(fontSize: 12),
+                    ),
+                    onTap: () {
+                      Navigator.pop(sheet);
+                      onEdit!();
+                    },
+                  ),
                 if (onReply != null)
                   ListTile(
                     leading: const Icon(Icons.reply_rounded),
@@ -484,6 +502,21 @@ class ChatMessageBubble extends StatelessWidget {
                         color: scheme.onSurfaceVariant,
                       ),
                     ),
+                    // An edit is never silent. On a clinical thread the other
+                    // side may already have read and answered the original,
+                    // and they have to be able to see that the words moved
+                    // under them.
+                    if (message.isEdited) ...[
+                      const SizedBox(width: 4),
+                      Text(
+                        'edited',
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontStyle: FontStyle.italic,
+                          color: scheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
                     // Only on the patient's own turns, and only once a person
                     // from the clinic has opened the thread. Says their message
                     // was read without implying a reply is seconds away.

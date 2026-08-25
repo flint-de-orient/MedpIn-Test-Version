@@ -100,6 +100,16 @@ class ChatRepository {
     await _client.postJson('/chat/messages/$messageId/hide');
   }
 
+  /// Rewrites your own message. The server refuses anything older than its
+  /// fifteen-minute window, anything carrying an emergency verdict and any
+  /// voice note, so callers must surface the error rather than assume success.
+  Future<void> editMessage(String messageId, String content) async {
+    await _client.postJson(
+      '/chat/messages/$messageId/edit',
+      body: {'content': content},
+    );
+  }
+
   /// Deletes the message for everyone — the other participants see a "message
   /// deleted" tombstone in its place. The server allows this only on the
   /// caller's own, non-emergency messages and returns an error otherwise, so

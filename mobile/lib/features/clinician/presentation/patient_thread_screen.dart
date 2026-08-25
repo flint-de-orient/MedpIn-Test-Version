@@ -19,6 +19,7 @@ import '../../../shared/widgets/chat_background.dart';
 import '../../chat/presentation/widgets/voice_recorder_bar.dart';
 import '../../../shared/widgets/user_avatar.dart';
 import '../data/clinician_repository.dart';
+import '../../chat/presentation/widgets/edit_message_sheet.dart';
 
 /// What the doctor's attach button offers.
 enum _DoctorAttach { camera, gallery, document }
@@ -490,6 +491,13 @@ class _PatientThreadScreenState extends ConsumerState<PatientThreadScreen> {
     );
   }
 
+  /// Rewrite one of our own turns, then reload so the thread shows the new
+  /// words and the "edited" mark. The sheet reports its own failures.
+  Future<void> _editMessage(ChatMessage message) async {
+    final saved = await showEditMessageSheet(context, ref, message);
+    if (saved && mounted) _load();
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -684,6 +692,7 @@ class _PatientThreadScreenState extends ConsumerState<PatientThreadScreen> {
             // everyone; the server enforces the same author-only rule.
             onDeleteForEveryone:
                 m.isClinician ? () => _deleteForEveryone(m) : null,
+            onEdit: m.isClinician ? () => _editMessage(m) : null,
           ),
         );
       },

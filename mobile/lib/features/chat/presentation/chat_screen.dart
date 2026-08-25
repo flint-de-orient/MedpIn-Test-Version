@@ -22,6 +22,7 @@ import 'widgets/chat_message_bubble.dart';
 import '../../../shared/widgets/chat_background.dart';
 import 'widgets/assistant_disclaimer_banner.dart';
 import 'widgets/generating_bubble.dart';
+import 'widgets/edit_message_sheet.dart';
 
 class ChatScreen extends ConsumerStatefulWidget {
   const ChatScreen({super.key});
@@ -215,6 +216,14 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
           replyToId: replyTo?.id,
         );
     _scrollToBottom();
+  }
+
+  /// Rewrite one of our own turns, then reload so the thread shows the new
+  /// words and the "edited" mark. The sheet reports its own failures.
+  Future<void> _editMessage(ChatMessage message) async {
+    final saved = await showEditMessageSheet(context, ref, message);
+    if (saved && mounted)
+      ref.read(chatControllerProvider.notifier).pollForUpdates();
   }
 
   @override
@@ -417,6 +426,10 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
                                 onDeleteForEveryone:
                                     message.isUser
                                         ? () => _deleteForEveryone(message)
+                                        : null,
+                                onEdit:
+                                    message.isUser
+                                        ? () => _editMessage(message)
                                         : null,
                                 onRetry:
                                     message.isUser

@@ -31,6 +31,11 @@ const WHICH_MEAL_PROMPT = {
   hi: 'धन्यवाद — यह कौन सा भोजन था, और आपने इसे लगभग कब खाया? नाश्ता, दोपहर का खाना, रात का खाना या स्नैक? मैं इसे सही जगह दर्ज कर दूँगा।',
 };
 
+/// How long an author has to correct themselves. Long enough for a typo
+/// spotted on re-reading, short enough that the other side has probably not
+/// replied to it yet.
+const EDIT_WINDOW_MS = 15 * 60 * 1000;
+
 const router = Router();
 
 /**
@@ -793,6 +798,66 @@ router.post(
 );
 
 /**
+ * Rewrite your own message.
+ *
+ * Held to a fifteen-minute window, and the original is kept.
+ *
+ * This is a clinical record, which makes a silent rewrite genuinely unsafe: a
+ * dietician may already have read "two rotis" and answered it before it became
+ * "four". So an edit is always visible as an edit, the words the clinic
+ * originally saw are preserved on the row, and after a quarter of an hour the
+ * message stands as sent — by then it has almost certainly been read, and the
+ * reply beneath it would stop making sense.
+ *
+ * Anything that raised an alert is frozen outright, for the same reason
+ * deletion is: the alert quoted this text, and editing it would leave the
+ * clinic's record of why it acted disagreeing with what it acted on.
+ */
+router.post(
+  '/messages/:id/edit',
+  requireAuth,
+  validate({ body: z.object({ content: z.string().trim().min(1).max(20000) }) }),
+  audit('update', 'ChatMessage'),
+  asyncHandler(async (req, res) => {
+    const message = await findVisibleMessage(req);
+
+    if (message.deletedForEveryoneAt) {
+      throw badRequest('This message was deleted.');
+    }
+    if (!isOwnMessage(message, req.user)) {
+      throw badRequest('You can only edit your own messages.');
+    }
+    if (message.triage?.urgency === 'emergency' || message.alert) {
+      throw badRequest(
+        'This message is part of an emergency record and cannot be edited. It shows what the clinic was told.',
+      );
+    }
+    // A voice note is not text and cannot be rewritten; there is nothing to
+    // edit and the audio would then contradict the words beside it.
+    if ((message.voiceNotes ?? []).length > 0) {
+      throw badRequest('A voice note cannot be edited. Delete it and send another.');
+    }
+
+    const ageMs = Date.now() - new Date(message.createdAt).getTime();
+    if (ageMs > EDIT_WINDOW_MS) {
+      throw badRequest('Messages can only be edited within 15 minutes of sending.');
+    }
+
+    const next = req.body.content.trim();
+    if (next === message.content) return res.json(serialiseMessage(message));
+
+    // Only on the first edit: the point of reference is what the clinic saw
+    // originally, not the previous revision.
+    if (!message.originalContent) message.originalContent = message.content;
+    message.content = next;
+    message.editedAt = new Date();
+    await message.save();
+
+    res.json(serialiseMessage(message));
+  }),
+);
+
+/**
  * Whether `user` is the author of `message`. A patient owns their own `user`
  * turns; a clinician/dietician owns the turns they personally sent. Everything
  * else — the assistant, the system — is nobody's to delete for everyone.
@@ -887,6 +952,9 @@ function serialiseMessage(m) {
         ? `/api/v1/uploads/${m.sender.avatarAssetId}/raw`
         : null,
     pinned: Boolean(m.pinnedAt),
+    // The thread shows "edited" from this; `originalContent` is deliberately
+    // not sent — it is for the record, not for the other party to read back.
+    editedAt: m.editedAt ?? null,
     replyToId: m.replyTo
       ? (m.replyTo._id ? String(m.replyTo._id) : (m.replyTo.toString?.() ?? String(m.replyTo)))
       : null,

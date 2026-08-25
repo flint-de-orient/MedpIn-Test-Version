@@ -933,6 +933,7 @@ class DietMessage {
     this.imagePaths = const [],
     this.voiceNotes = const [],
     this.documents = const [],
+    this.editedAt,
   });
 
   final String id;
@@ -940,6 +941,18 @@ class DietMessage {
   final String content;
   final String? senderName;
   final DateTime? createdAt;
+
+  /// When the author last rewrote this. The thread marks it; the words the
+  /// clinic first saw stay on the server.
+  final DateTime? editedAt;
+
+  bool get isEdited => editedAt != null;
+
+  /// Matches the server's window, so the action is not offered once it would
+  /// only be refused.
+  bool get canStillEdit =>
+      createdAt != null &&
+      DateTime.now().difference(createdAt!) < const Duration(minutes: 15);
 
   /// Kept at the top of the thread (mirrors the patient/doctor bubbles).
   final bool pinned;
@@ -1007,6 +1020,7 @@ class DietMessage {
             )
             .where((d) => d.url.isNotEmpty)
             .toList(),
+    editedAt: DateTime.tryParse(j['editedAt']?.toString() ?? '')?.toLocal(),
   );
 
   static List<Map<String, dynamic>> _parts(Map<String, dynamic> j) =>
