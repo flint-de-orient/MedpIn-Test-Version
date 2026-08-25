@@ -95,7 +95,13 @@ class ChatController extends StateNotifier<ChatState> {
           state.messages.where((m) => m.id != tempUserId).toList();
       state = state.copyWith(
         sessionId: result.sessionId,
-        messages: [...withoutTemp, result.userMessage, result.reply],
+        messages: [
+          ...withoutTemp,
+          result.userMessage,
+          // The assistant may have stayed out of it — a clinician is
+          // answering. Append nothing rather than an empty bubble.
+          if (result.reply != null) result.reply!,
+        ],
         isSending: false,
       );
     } on ApiException catch (e) {
@@ -156,7 +162,13 @@ class ChatController extends StateNotifier<ChatState> {
       final withoutTemp = state.messages.where((m) => m.id != tempId).toList();
       state = state.copyWith(
         sessionId: result.sessionId,
-        messages: [...withoutTemp, result.userMessage, result.reply],
+        messages: [
+          ...withoutTemp,
+          result.userMessage,
+          // The assistant may have stayed out of it — a clinician is
+          // answering. Append nothing rather than an empty bubble.
+          if (result.reply != null) result.reply!,
+        ],
         isSending: false,
       );
     } on ApiException catch (e) {

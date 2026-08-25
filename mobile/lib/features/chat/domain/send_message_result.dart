@@ -9,7 +9,7 @@ class SendMessageResult {
   const SendMessageResult({
     required this.sessionId,
     required this.userMessage,
-    required this.reply,
+    this.reply,
     required this.triage,
     required this.alert,
     required this.citations,
@@ -17,7 +17,12 @@ class SendMessageResult {
 
   final String sessionId;
   final ChatMessage userMessage;
-  final ChatMessage reply;
+
+  /// Null when the assistant deliberately stayed quiet — a clinician is
+  /// holding this conversation, or has switched it off for this thread. The
+  /// patient's own message still came back; there is simply no answer yet,
+  /// and a person is writing one.
+  final ChatMessage? reply;
   final Triage triage;
   final ChatAlert? alert;
   final List<Citation> citations;
@@ -35,9 +40,12 @@ class SendMessageResult {
       userMessage: ChatMessage.fromJson(
         json['userMessage'] as Map<String, dynamic>,
       ),
-      reply: ChatMessage.fromJson(
-        json['reply'] as Map<String, dynamic>,
-      ).copyWith(citations: citations, triage: triage),
+      reply:
+          json['reply'] == null
+              ? null
+              : ChatMessage.fromJson(
+                json['reply'] as Map<String, dynamic>,
+              ).copyWith(citations: citations, triage: triage),
       triage: triage,
       alert:
           json['alert'] == null

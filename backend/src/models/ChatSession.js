@@ -42,6 +42,22 @@ const chatSessionSchema = new mongoose.Schema(
     reviewedAt: Date,
 
     isArchived: { type: Boolean, default: false },
+
+    /// Whether the assistant answers in this thread.
+    ///
+    /// On by default: most questions arrive when nobody from the clinic is
+    /// awake, and an answer then is the whole point of it. A clinician turns it
+    /// off for a conversation they want to hold themselves — a difficult
+    /// diagnosis, a distressed patient — and back on when they are done.
+    assistantEnabled: { type: Boolean, default: true },
+
+    /// A clinician has this thread open until this moment.
+    ///
+    /// Refreshed by a heartbeat while the screen is in the foreground, so it
+    /// lapses on its own if the app is killed, the phone sleeps or the person
+    /// simply walks away — which is what makes it safe to suppress an answer
+    /// on: the worst case is that it expires and the assistant resumes.
+    clinicianPresentUntil: { type: Date, default: null },
   },
   { timestamps: true },
 );

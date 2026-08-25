@@ -1,7 +1,7 @@
 ﻿import { Router } from 'express';
 import rateLimit from 'express-rate-limit';
 import { z } from 'zod';
-import { requireAuth, requireClinician, resolvePatientScope } from '../middleware/auth.js';
+import { requireAuth, requireClinician, requireRole, resolvePatientScope } from '../middleware/auth.js';
 import { validate, q } from '../middleware/validate.js';
 import { asyncHandler, notFound, badRequest } from '../middleware/errors.js';
 import { ROLES } from '../models/User.js';
@@ -35,6 +35,33 @@ const WHICH_MEAL_PROMPT = {
 /// spotted on re-reading, short enough that the other side has probably not
 /// replied to it yet.
 const EDIT_WINDOW_MS = 15 * 60 * 1000;
+
+/// How long a clinician's heartbeat holds the assistant back.
+///
+/// Comfortably longer than the client's beat so one dropped request does not
+/// hand the conversation back mid-sentence, and short enough that a phone
+/// locked in a pocket releases it quickly.
+const PRESENCE_TTL_MS = 90 * 1000;
+
+/**
+ * Whether the assistant should answer in this thread right now.
+ *
+ * Two ways it stays quiet. A clinician has switched it off for this
+ * conversation, or one of them is reading the thread this minute — in which
+ * case the human is already answering, and a second reply arriving underneath
+ * theirs is how a patient ends up with two different answers to one question.
+ *
+ * This gates the REPLY only. Triage runs on every message regardless: if
+ * somebody reports chest pain the clinic has to be alerted whether or not the
+ * assistant happens to be speaking.
+ */
+function assistantShouldReply(session) {
+  if (!session) return true;
+  if (session.assistantEnabled === false) return false;
+  const until = session.clinicianPresentUntil;
+  if (until && new Date(until).getTime() > Date.now()) return false;
+  return true;
+}
 
 const router = Router();
 
@@ -665,7 +692,13 @@ router.post(
         lastMessageAt: assistantMessage.createdAt,
         $inc: { messageCount: 1 },
       });
-    } else if (triage.urgency !== 'emergency' && triage.urgency !== 'urgent') {
+    } else if (
+      triage.urgency !== 'emergency' &&
+      triage.urgency !== 'urgent' &&
+      // The dietician is holding this conversation, or has asked to. Their
+      // message is coming; a second answer under it would contradict them.
+      assistantShouldReply(session)
+    ) {
       const reply = await nutritionReply({
         patientId,
         sessionId: session._id,
@@ -813,6 +846,49 @@ router.post(
  * deletion is: the alert quoted this text, and editing it would leave the
  * clinic's record of why it acted disagreeing with what it acted on.
  */
+/**
+ * Turn the assistant on or off for one conversation.
+ *
+ * A clinician's switch, not a patient's: the patient cannot know whether
+ * anyone is available to take over, and a thread with the assistant off and
+ * nobody watching is a question into silence.
+ */
+router.patch(
+  '/sessions/:id/assistant',
+  requireAuth,
+  requireRole(ROLES.DOCTOR, ROLES.STAFF, ROLES.DIETICIAN),
+  validate({ body: z.object({ enabled: z.boolean() }) }),
+  audit('update', 'ChatSession'),
+  asyncHandler(async (req, res) => {
+    const session = await ChatSession.findById(req.params.id);
+    if (!session) throw notFound('Conversation not found');
+    session.assistantEnabled = req.body.enabled;
+    await session.save();
+    res.json({ id: session._id, assistantEnabled: session.assistantEnabled });
+  }),
+);
+
+/**
+ * "I am reading this thread." Refreshed while the screen is open.
+ *
+ * Deliberately a heartbeat rather than an open/close pair: a close that never
+ * arrives — app killed, battery dead, tunnel — would leave the assistant
+ * muted indefinitely on a conversation nobody is actually watching.
+ */
+router.post(
+  '/sessions/:id/presence',
+  requireAuth,
+  requireRole(ROLES.DOCTOR, ROLES.STAFF, ROLES.DIETICIAN),
+  asyncHandler(async (req, res) => {
+    const until = new Date(Date.now() + PRESENCE_TTL_MS);
+    await ChatSession.updateOne(
+      { _id: req.params.id },
+      { clinicianPresentUntil: until },
+    );
+    res.json({ until });
+  }),
+);
+
 router.post(
   '/messages/:id/edit',
   requireAuth,

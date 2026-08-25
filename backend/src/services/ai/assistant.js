@@ -90,6 +90,22 @@ function categoriesFor(triage) {
 }
 
 /**
+ * Whether the assistant should answer in this thread right now.
+ *
+ * Mirrors the check in routes/chat.js and must stay in step with it: a
+ * clinician has switched the assistant off for this conversation, or one of
+ * them is reading it this minute. Gates the reply only — triage and alerting
+ * happen before this is ever consulted.
+ */
+function assistantShouldReply(session) {
+  if (!session) return true;
+  if (session.assistantEnabled === false) return false;
+  const until = session.clinicianPresentUntil;
+  if (until && new Date(until).getTime() > Date.now()) return false;
+  return true;
+}
+
+/**
  * Handles one patient turn end to end.
  *
  * Order is deliberate and load-bearing:
@@ -152,6 +168,38 @@ export async function handlePatientMessage({ patientId, sessionId, text, languag
       matchedRules: triage.matchedRules,
     });
     await ChatMessage.findByIdAndUpdate(userMessage._id, { alert: alert._id });
+  }
+
+  // A clinician is holding this conversation, or has switched the assistant
+  // off for it. Everything above still ran — the message is saved and the
+  // clinic has been alerted if it needed to be — but no reply is generated:
+  // the person is answering, and a second answer arriving under theirs is how
+  // a patient ends up with two different accounts of what to do.
+  if (!assistantShouldReply(session)) {
+    session.messageCount = seq;
+    session.lastMessageAt = new Date();
+    session.highestUrgency = maxUrgency(session.highestUrgency, triage.urgency);
+    if (triage.urgency === 'emergency' || triage.urgency === 'urgent') session.flaggedForReview = true;
+    await session.save();
+
+    return {
+      sessionId: session._id,
+      userMessage: serialiseMessage(userMessage),
+      // Null, not an empty reply: the app renders nothing rather than an
+      // empty assistant bubble the patient would read as a failure.
+      reply: null,
+      triage: {
+        urgency: triage.urgency,
+        ruleDriven: triage.ruleDriven,
+        redFlags: triage.redFlags,
+        findings: triage.findings.map((f) => f.summary),
+        extracted: triage.extracted,
+      },
+      alert: alert
+        ? { id: alert._id, severity: alert.severity, type: alert.type, title: alert.title }
+        : null,
+      citations: [],
+    };
   }
 
   // Retrieve grounding + prior turns + the care team's own words, in parallel.

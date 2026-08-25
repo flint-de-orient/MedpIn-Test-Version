@@ -23,6 +23,8 @@ import '../../chat/presentation/widgets/jump_to_latest.dart';
 import '../data/dietician_repository.dart';
 import '../domain/diet_models.dart';
 import 'dietician_providers.dart';
+import '../../chat/presentation/widgets/edit_message_sheet.dart';
+import '../../chat/domain/chat_message.dart';
 
 /// The dietician's side of the patient's care conversation. The dietician's
 /// replies land in the same thread the patient reads (as the doctor's do), so
@@ -233,6 +235,25 @@ class _DieticianChatScreenState extends ConsumerState<DieticianChatScreen>
     ];
   }
 
+  /// Rewrite one of our own turns, then reload so the thread shows the new
+  /// words and the "edited" mark. The sheet reports its own failures.
+  Future<void> _editMessage(DietMessage message) async {
+    final saved = await showEditMessageSheet(
+      context,
+      ref,
+      ChatMessage(
+        id: message.id,
+        seq: 0,
+        role: message.role,
+        content: message.content,
+        language: 'en',
+        urgency: 'routine',
+        createdAt: message.createdAt,
+      ),
+    );
+    if (saved && mounted) ref.invalidate(dietThreadProvider(widget.patientId));
+  }
+
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
@@ -370,6 +391,10 @@ class _DieticianChatScreenState extends ConsumerState<DieticianChatScreen>
                                     ? null
                                     : () => _scrollToMessage(m.replyToId),
                             onReply: () => setState(() => _replyingTo = m),
+                            onEdit:
+                                m.role == 'dietician' || m.role == 'clinician'
+                                    ? () => _editMessage(m)
+                                    : null,
                             onTogglePin: () => _togglePin(m),
                             onHide: () => _hide(m),
                             // Only the dietician's own turns are theirs to delete
@@ -417,6 +442,7 @@ class _Bubble extends StatelessWidget {
     this.onQuoteTap,
     this.onReply,
     this.onTogglePin,
+    this.onEdit,
     this.onHide,
     this.onDeleteForEveryone,
   });
@@ -428,6 +454,10 @@ class _Bubble extends StatelessWidget {
   final VoidCallback? onQuoteTap;
   final VoidCallback? onReply;
   final VoidCallback? onTogglePin;
+
+  /// Rewrite this turn. Offered only on the dietician's own, still-editable
+  /// message — the caller decides, as it does for pinning.
+  final VoidCallback? onEdit;
   final VoidCallback? onHide;
   final VoidCallback? onDeleteForEveryone;
 
@@ -454,6 +484,19 @@ class _Bubble extends StatelessWidget {
                       messenger.showSnackBar(
                         const SnackBar(content: Text('Copied')),
                       );
+                    },
+                  ),
+                if (onEdit != null && message.canStillEdit)
+                  ListTile(
+                    leading: const Icon(Icons.edit_outlined),
+                    title: const Text('Edit'),
+                    subtitle: const Text(
+                      'Within 15 minutes. The patient sees it was edited.',
+                      style: TextStyle(fontSize: 12),
+                    ),
+                    onTap: () {
+                      Navigator.pop(sheet);
+                      onEdit!();
                     },
                   ),
                 if (onReply != null)

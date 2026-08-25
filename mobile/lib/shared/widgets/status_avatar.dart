@@ -52,7 +52,6 @@ class StatusAvatar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final hasPhoto = (avatarUrl ?? '').trim().isNotEmpty;
     // No ring when everything is in range. A ring that is always there is
     // decoration; one that appears only when something wants looking at is
     // information — and on a blue screen a permanent amber circle round
@@ -82,26 +81,22 @@ class StatusAvatar extends StatelessWidget {
               border: quiet ? null : Border.all(color: _tone, width: ring),
               color: Colors.white,
             ),
+            // One avatar, photo or not.
+            //
+            // With no photo this drew a generated character, which made the
+            // patient's own home the only screen in the app where an account
+            // without a picture did not show its owner's initial — the doctor
+            // and dietician panels have always used UserAvatar. An illustrated
+            // stand-in also says nothing about *which* patient, which is
+            // precisely what an avatar is for. UserAvatar already falls back to
+            // the first letter on a tinted disc, so it handles both cases.
             child: ClipOval(
-              child:
-                  hasPhoto
-                      ? UserAvatar(
-                        name: name,
-                        avatarUrl: avatarUrl,
-                        accent: AppColors.accentOn(context),
-                        size: inner,
-                      )
-                      // No photo: the generated figure, which itself falls
-                      // back to the drawn face if that combination has no art.
-                      : ColoredBox(
-                        color: AppColors.accentSoft,
-                        child: CharacterAvatar(
-                          role: role,
-                          gender: gender,
-                          mood: mood,
-                          size: inner,
-                        ),
-                      ),
+              child: UserAvatar(
+                name: name,
+                avatarUrl: avatarUrl,
+                accent: AppColors.accentOn(context),
+                size: inner,
+              ),
             ),
           ),
           // A small solid dot at the corner, and only when the ring is there.
