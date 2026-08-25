@@ -50,7 +50,13 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
   /// while the patient is still looking at the screen, and the request is
   /// cheap: one indexed query, and state is only touched when something new
   /// actually arrived.
-  static const _pollInterval = Duration(seconds: 3);
+  /// Two seconds in every thread, patient and clinician alike.
+  ///
+  /// The nutrition threads sat at eight, which is what "messages arrive late"
+  /// actually was: a reply could be on the server for the better part of ten
+  /// seconds before either side saw it, and leaving the screen and coming back
+  /// fetched it immediately — which is precisely how it was reported.
+  static const _pollInterval = Duration(seconds: 2);
   Timer? _poll;
 
   /// The message being answered, shown above the composer until sent or

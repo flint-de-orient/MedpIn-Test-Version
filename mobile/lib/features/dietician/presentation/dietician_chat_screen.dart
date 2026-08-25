@@ -78,7 +78,14 @@ class _DieticianChatScreenState extends ConsumerState<DieticianChatScreen>
   /// — which for a thread the reader is staring at means never. The care thread
   /// has always done this; the nutrition one was the half that did not.
   Timer? _poll;
-  static const _pollInterval = Duration(seconds: 8);
+
+  /// Two seconds in every thread, patient and clinician alike.
+  ///
+  /// The nutrition threads sat at eight, which is what "messages arrive late"
+  /// actually was: a reply could be on the server for the better part of ten
+  /// seconds before either side saw it, and leaving the screen and coming back
+  /// fetched it immediately — which is precisely how it was reported.
+  static const _pollInterval = Duration(seconds: 2);
 
   @override
   void initState() {

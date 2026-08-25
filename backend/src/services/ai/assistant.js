@@ -420,6 +420,40 @@ export async function* streamPatientMessage({ patientId, sessionId, text, langua
     await ChatMessage.findByIdAndUpdate(userMessage._id, { alert: alert._id });
   }
 
+  // Same gate as the non-streaming path, and it has to be here too: the
+  // toggle would otherwise do nothing at all for any client that streams.
+  // Everything above still ran — the message is saved and the clinic alerted
+  // if it needed to be — but no reply is generated.
+  if (!assistantShouldReply(session)) {
+    session.messageCount = seq;
+    session.lastMessageAt = new Date();
+    session.highestUrgency = maxUrgency(session.highestUrgency, triage.urgency);
+    if (triage.urgency === 'emergency' || triage.urgency === 'urgent') session.flaggedForReview = true;
+    await session.save();
+
+    yield {
+      type: 'meta',
+      data: {
+        sessionId: session._id,
+        userMessage: serialiseMessage(userMessage),
+        triage: {
+          urgency: triage.urgency,
+          ruleDriven: triage.ruleDriven,
+          redFlags: triage.redFlags,
+          findings: triage.findings.map((f) => f.summary),
+          extracted: triage.extracted,
+        },
+        alert: alert
+          ? { id: alert._id, severity: alert.severity, type: alert.type, title: alert.title }
+          : null,
+        citations: [],
+      },
+    };
+    // No reply to hand back. A person is writing one.
+    yield { type: 'done', data: { reply: null } };
+    return;
+  }
+
   const [chunks, history, careTeamNotes] = await Promise.all([
     retrieve(text, { language, categories: categoriesFor(triage), limit: 6 }).catch(() => []),
     ChatMessage.find({ session: session._id, seq: { $lt: seq } })

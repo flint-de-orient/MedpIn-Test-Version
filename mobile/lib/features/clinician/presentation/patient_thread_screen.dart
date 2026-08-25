@@ -85,7 +85,13 @@ class _PatientThreadScreenState extends ConsumerState<PatientThreadScreen> {
   /// Keeps the conversation live while the clinician has it open, so a message
   /// the patient sends appears without reopening the screen. Same interval as
   /// the patient's side, for the same reason: no socket or push channel exists.
-  static const _pollInterval = Duration(seconds: 3);
+  /// Two seconds in every thread, patient and clinician alike.
+  ///
+  /// The nutrition threads sat at eight, which is what "messages arrive late"
+  /// actually was: a reply could be on the server for the better part of ten
+  /// seconds before either side saw it, and leaving the screen and coming back
+  /// fetched it immediately — which is precisely how it was reported.
+  static const _pollInterval = Duration(seconds: 2);
   Timer? _poll;
 
   @override
@@ -124,15 +130,47 @@ class _PatientThreadScreenState extends ConsumerState<PatientThreadScreen> {
   /// Silent refresh: no spinner, no error, and state is replaced only when a
   /// message actually arrived — otherwise every tick would rebuild the
   /// transcript under the doctor's scrolling.
+
+  /// Whether [next] carries anything [current] does not — a different count, a
+  /// different id or text on any row, or an edit. Coarse on purpose: an
+  /// unchanged poll must not rebuild the list and fight the reader's scroll.
+  static bool _threadChanged(
+    List<ChatMessage> next,
+    List<ChatMessage> current,
+  ) {
+    if (next.length != current.length) return true;
+    for (var i = 0; i < next.length; i++) {
+      final a = next[i];
+      final b = current[i];
+      if (a.id != b.id ||
+          a.content != b.content ||
+          a.editedAt != b.editedAt ||
+          a.deletedForEveryone != b.deletedForEveryone) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   Future<void> _pollForUpdates() async {
     if (!mounted || _sending || _loading) return;
     try {
       final result = await ref
           .read(clinicianRepositoryProvider)
           .patientThread(widget.patientId);
-      if (!mounted || result.messages.length <= _messages.length) return;
+      if (!mounted) return;
+      // Count is not the only thing that changes.
+      //
+      // This compared lengths and returned unless the thread had GROWN, so an
+      // edited message, a deleted-for-everyone tombstone and a turn whose
+      // attachments finished uploading all went unnoticed until the screen was
+      // left and reopened. Compare what is actually on the row.
+      if (!_threadChanged(result.messages, _messages)) return;
+      final grew = result.messages.length > _messages.length;
       setState(() => _messages = result.messages);
-      _scrollToBottom();
+      // Only follow a genuinely new message down; re-rendering an edit should
+      // not yank the reader away from where they were looking.
+      if (grew) _scrollToBottom();
     } on ApiException {
       // Ignored — the next tick retries.
     }

@@ -240,7 +240,8 @@ class ChatController extends StateNotifier<ChatState> {
     for (var i = 0; i < next.length; i++) {
       final a = next[i];
       final b = current[i];
-      if (a.id != b.id ||
+      if (a.editedAt != b.editedAt ||
+          a.id != b.id ||
           a.content != b.content ||
           a.voiceNotes.length != b.voiceNotes.length ||
           a.attachmentPaths.length != b.attachmentPaths.length) {
