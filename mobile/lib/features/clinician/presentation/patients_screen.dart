@@ -680,7 +680,9 @@ class _ConversationRow extends StatelessWidget {
                               else ...[
                                 // Say who spoke, so "answered" and "waiting" are
                                 // distinguishable at a glance.
-                                if (!msg.fromPatient)
+                                if (msg.fromAssistant)
+                                  const TextSpan(text: 'Assistant: ')
+                                else if (!msg.fromPatient)
                                   const TextSpan(text: 'You: '),
                                 // A subtle monochrome icon for a media turn —
                                 // premium, not a cheap emoji.

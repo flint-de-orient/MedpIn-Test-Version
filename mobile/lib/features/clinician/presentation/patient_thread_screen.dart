@@ -516,47 +516,69 @@ class _PatientThreadScreenState extends ConsumerState<PatientThreadScreen> {
     return Scaffold(
       appBar: AppBar(
         titleSpacing: 0,
-        title: Row(
-          children: [
-            UserAvatar(
-              name: _patientName ?? '?',
-              avatarUrl: _patientAvatarUrl,
-              accent: AppColors.accentOn(context),
-              size: 36,
-            ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Text(
-                _patientName ?? 'Conversation',
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  color: AppColors.accentOn(context),
-                  fontWeight: FontWeight.w700,
-                  fontSize: 16,
+        // The face and the name ARE the way into the record now.
+        //
+        // There was a separate icon in the actions for it, which is one more
+        // thing competing for a row that also holds an assistant switch and a
+        // call button — and tapping a person's photograph to see who they are
+        // is what every messaging app has trained people to expect.
+        title: Semantics(
+          button: true,
+          label: 'Open ${_patientName ?? 'patient'} record',
+          child: InkWell(
+            onTap:
+                () => context.push(
+                  '/clinician/patients/${widget.patientId}',
+                  extra: _patientName,
                 ),
-              ),
+            child: Row(
+              children: [
+                UserAvatar(
+                  name: _patientName ?? '?',
+                  avatarUrl: _patientAvatarUrl,
+                  accent: AppColors.accentOn(context),
+                  size: 36,
+                ),
+                const SizedBox(width: 8),
+                Flexible(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        _patientName ?? 'Conversation',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: AppColors.accentOn(context),
+                          fontWeight: FontWeight.w700,
+                          fontSize: 16,
+                        ),
+                      ),
+                      // Says what tapping does, and takes the pressure off the
+                      // name — which was being cut to "Rahul…" by the controls
+                      // beside it even though there was room on a second line.
+                      Text(
+                        'View record',
+                        maxLines: 1,
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: AppColors.accentOn(
+                            context,
+                          ).withValues(alpha: 0.75),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
             ),
-          ],
+          ),
         ),
         actions: [
           // In the thread's own header, not a settings screen: the decision is
           // about this conversation and is normally made on opening it.
           AssistantToggle(patientId: widget.patientId, kind: ThreadKind.care),
-          // The patient's full record — clinical summary, prescribe, dietician,
-          // test reports — opens from here; the chat is where the doctor is.
-          IconButton(
-            tooltip: 'Patient record & prescribe',
-            icon: Icon(
-              Icons.assignment_ind_outlined,
-              color: AppColors.accentOn(context),
-            ),
-            onPressed:
-                () => context.push(
-                  '/clinician/patients/${widget.patientId}',
-                  extra: _patientName,
-                ),
-          ),
           // Calling belongs here rather than on the inbox row: the decision to
           // stop typing and phone someone is made while reading the exchange,
           // not while scanning the list.

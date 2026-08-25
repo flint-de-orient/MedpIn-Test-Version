@@ -550,6 +550,12 @@ class MessagePreview {
 
   bool get fromPatient => role == 'user';
 
+  /// The assistant answered, not a person from the clinic. Worth separating:
+  /// the inbox labelled every non-patient turn "You:", so a doctor scanning
+  /// the list read the assistant's replies as their own and could not tell
+  /// which conversations they had actually been part of.
+  bool get fromAssistant => role == 'assistant';
+
   factory MessagePreview.fromJson(Map<String, dynamic> j) => MessagePreview(
     preview: j['preview']?.toString() ?? '',
     role: j['role']?.toString() ?? 'user',

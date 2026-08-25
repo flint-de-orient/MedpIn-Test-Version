@@ -680,6 +680,16 @@ router.get(
     ]);
 
     const ids = users.map((u) => u._id);
+
+    // The doctor's own conversations with these patients. Everything below
+    // that reads the thread is scoped through this, so the inbox and the
+    // thread cannot disagree about what the last message was.
+    const careSessionIds = (
+      await ChatSession.find({ patient: { $in: ids }, kind: { $ne: 'nutrition' } })
+        .select('_id')
+        .lean()
+    ).map((x) => x._id);
+
     const [lastReadings, alertCounts, lastMessages, unreadCounts, signals, hba1cRows] = await Promise.all([
       GlucoseReading.aggregate([
         { $match: { patient: { $in: ids } } },
@@ -692,8 +702,15 @@ router.get(
       ]),
       // Newest turn per patient, whoever wrote it, so the row reads like an
       // inbox: what was last said and when, not merely that a thread exists.
+      //
+      // Scoped to the CARE threads. Matching on the patient alone pulled from
+      // the nutrition conversation too, so the doctor's inbox previewed a line
+      // the dietician had written — and opening the row did not show it,
+      // because the thread endpoint has always filtered to care. An inbox that
+      // previews a message the conversation does not contain is worse than one
+      // that previews nothing.
       ChatMessage.aggregate([
-        { $match: { patient: { $in: ids } } },
+        { $match: { patient: { $in: ids }, session: { $in: careSessionIds } } },
         { $sort: { createdAt: -1 } },
         {
           $group: {
@@ -709,8 +726,18 @@ router.get(
       // Unread means the patient wrote it and no clinician has opened the
       // thread since. `seenByClinicAt` is stamped when the thread is read, so
       // the badge and the patient's "Seen by the clinic" mark cannot disagree.
+      // Same scope, for the same reason: a question a patient asked their
+      // dietician is not the doctor's unread, and counting it gave a badge
+      // that could not be cleared by reading the care thread.
       ChatMessage.aggregate([
-        { $match: { patient: { $in: ids }, role: 'user', seenByClinicAt: null } },
+        {
+          $match: {
+            patient: { $in: ids },
+            session: { $in: careSessionIds },
+            role: 'user',
+            seenByClinicAt: null,
+          },
+        },
         { $group: { _id: '$patient', count: { $sum: 1 } } },
       ]),
       // Sparkline + trend + recency for each row's monitoring strip.
