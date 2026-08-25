@@ -356,6 +356,10 @@ router.get(
     res.json({
       ...paged(items.map(serialiseMessage), { page, limit, total }),
       session: session ? serialiseSession(session) : null,
+      // So the clinician's toggle shows the thread's real state instead of
+      // assuming it. Defaults to on, which is what a session created before
+      // this field existed means.
+      assistantEnabled: session ? session.assistantEnabled !== false : true,
       patient: req.patientUser
         ? {
               id: req.patientUser._id,
@@ -847,45 +851,82 @@ router.post(
  * clinic's record of why it acted disagreeing with what it acted on.
  */
 /**
- * Turn the assistant on or off for one conversation.
+ * Turn the assistant on or off for one patient's thread.
  *
- * A clinician's switch, not a patient's: the patient cannot know whether
- * anyone is available to take over, and a thread with the assistant off and
- * nobody watching is a question into silence.
+ * Keyed on the patient and the kind of conversation rather than a session id,
+ * because neither clinician screen has one: the doctor's thread and the
+ * dietician's are both opened by patient, and the session behind them is the
+ * server's business.
+ *
+ * A clinician's switch, not a patient's. The patient cannot know whether
+ * anyone is free to take over, and a thread with the assistant off and nobody
+ * watching is a question into silence.
  */
-router.patch(
-  '/sessions/:id/assistant',
+async function threadFor(patientId, kind) {
+  return ChatSession.findOne({
+    patient: patientId,
+    kind: kind === 'nutrition' ? 'nutrition' : { $ne: 'nutrition' },
+    isArchived: false,
+  }).sort({ lastMessageAt: -1 });
+}
+
+const threadKind = z.object({ kind: z.enum(['care', 'nutrition']).default('care') });
+
+/**
+ * Read the switch for one thread.
+ *
+ * Its own endpoint so the control is self-contained. The doctor's thread and
+ * the dietician's are fetched through two different repositories with two
+ * different return types, and threading one boolean through both — so a widget
+ * dropped into either could read it — is more plumbing than the flag is worth.
+ */
+router.get(
+  '/patients/:patientId/assistant',
   requireAuth,
   requireRole(ROLES.DOCTOR, ROLES.STAFF, ROLES.DIETICIAN),
-  validate({ body: z.object({ enabled: z.boolean() }) }),
+  validate({ query: threadKind }),
+  asyncHandler(async (req, res) => {
+    const session = await threadFor(req.params.patientId, req.query.kind);
+    // No thread yet means nothing has been turned off. On is the default.
+    res.json({ assistantEnabled: session ? session.assistantEnabled !== false : true });
+  }),
+);
+
+router.patch(
+  '/patients/:patientId/assistant',
+  requireAuth,
+  requireRole(ROLES.DOCTOR, ROLES.STAFF, ROLES.DIETICIAN),
+  validate({ body: threadKind.extend({ enabled: z.boolean() }) }),
   audit('update', 'ChatSession'),
   asyncHandler(async (req, res) => {
-    const session = await ChatSession.findById(req.params.id);
-    if (!session) throw notFound('Conversation not found');
+    const session = await threadFor(req.params.patientId, req.body.kind);
+    if (!session) throw notFound('No conversation with this patient yet');
     session.assistantEnabled = req.body.enabled;
     await session.save();
-    res.json({ id: session._id, assistantEnabled: session.assistantEnabled });
+    res.json({ assistantEnabled: session.assistantEnabled });
   }),
 );
 
 /**
  * "I am reading this thread." Refreshed while the screen is open.
  *
- * Deliberately a heartbeat rather than an open/close pair: a close that never
- * arrives — app killed, battery dead, tunnel — would leave the assistant
- * muted indefinitely on a conversation nobody is actually watching.
+ * A heartbeat rather than an open/close pair on purpose: a close that never
+ * arrives — app killed, battery flat, tunnel — would mute a conversation
+ * nobody is actually watching, indefinitely. This lapses on its own.
  */
 router.post(
-  '/sessions/:id/presence',
+  '/patients/:patientId/presence',
   requireAuth,
   requireRole(ROLES.DOCTOR, ROLES.STAFF, ROLES.DIETICIAN),
+  validate({ body: threadKind }),
   asyncHandler(async (req, res) => {
-    const until = new Date(Date.now() + PRESENCE_TTL_MS);
-    await ChatSession.updateOne(
-      { _id: req.params.id },
-      { clinicianPresentUntil: until },
-    );
-    res.json({ until });
+    const session = await threadFor(req.params.patientId, req.body.kind);
+    // No thread yet is not an error: the clinician opened a patient who has
+    // never written. There is simply nothing to hold back.
+    if (!session) return res.status(204).end();
+    session.clinicianPresentUntil = new Date(Date.now() + PRESENCE_TTL_MS);
+    await session.save();
+    res.json({ until: session.clinicianPresentUntil });
   }),
 );
 

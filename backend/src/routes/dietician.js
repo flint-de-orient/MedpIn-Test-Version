@@ -1012,7 +1012,7 @@ router.get(
       kind: 'nutrition',
       isArchived: false,
     }).sort({ lastMessageAt: -1 });
-    if (!session) return res.json({ items: [] });
+    if (!session) return res.json({ items: [], assistantEnabled: true });
 
     const messages = await ChatMessage.find({ session: session._id })
       .sort({ seq: 1 })
@@ -1023,6 +1023,7 @@ router.get(
       .lean();
 
     res.json({
+      assistantEnabled: session.assistantEnabled !== false,
       items: messages.map((m) => {
         // Deleted for everyone: a tombstone, same as the patient/doctor threads.
         if (m.deletedForEveryoneAt) {

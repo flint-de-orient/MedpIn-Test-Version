@@ -25,6 +25,7 @@ import '../domain/diet_models.dart';
 import 'dietician_providers.dart';
 import '../../chat/presentation/widgets/edit_message_sheet.dart';
 import '../../chat/domain/chat_message.dart';
+import '../../chat/presentation/widgets/assistant_control.dart';
 
 /// The dietician's side of the patient's care conversation. The dietician's
 /// replies land in the same thread the patient reads (as the doctor's do), so
@@ -46,6 +47,9 @@ class DieticianChatScreen extends ConsumerStatefulWidget {
 
 class _DieticianChatScreenState extends ConsumerState<DieticianChatScreen>
     with WidgetsBindingObserver {
+  /// Beats while this screen is up.
+  ClinicianPresence? _presence;
+
   final _controller = TextEditingController();
 
   /// A positioned list, not a plain one: scrolling to a message that has not
@@ -79,6 +83,13 @@ class _DieticianChatScreenState extends ConsumerState<DieticianChatScreen>
   @override
   void initState() {
     super.initState();
+    // Hold the assistant back for as long as this screen is up. The beat
+    // stops in dispose, and lapses by itself if the app never gets there.
+    _presence = ClinicianPresence(
+      ref,
+      patientId: widget.patientId,
+      kind: ThreadKind.nutrition,
+    )..start();
     _itemPositions.itemPositions.addListener(_onScroll);
     WidgetsBinding.instance.addObserver(this);
     _poll = Timer.periodic(_pollInterval, (_) {
@@ -130,6 +141,7 @@ class _DieticianChatScreenState extends ConsumerState<DieticianChatScreen>
 
   @override
   void dispose() {
+    _presence?.stop();
     _poll?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     _itemPositions.itemPositions.removeListener(_onScroll);
@@ -299,6 +311,10 @@ class _DieticianChatScreenState extends ConsumerState<DieticianChatScreen>
           ],
         ),
         actions: [
+          AssistantToggle(
+            patientId: widget.patientId,
+            kind: ThreadKind.nutrition,
+          ),
           if (overview?.phone.isNotEmpty == true)
             IconButton(
               tooltip: 'Call patient',

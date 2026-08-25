@@ -58,4 +58,5 @@ String formatStrength(String? raw) {
 
 /// True when the value states no unit and one had to be assumed — for warning
 /// the prescriber rather than the patient.
-bool strengthAssumesUnit(String? raw) => _bareNumeric.hasMatch((raw ?? '').trim());
+bool strengthAssumesUnit(String? raw) =>
+    _bareNumeric.hasMatch((raw ?? '').trim());

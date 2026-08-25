@@ -20,6 +20,7 @@ import '../../chat/presentation/widgets/voice_recorder_bar.dart';
 import '../../../shared/widgets/user_avatar.dart';
 import '../data/clinician_repository.dart';
 import '../../chat/presentation/widgets/edit_message_sheet.dart';
+import '../../chat/presentation/widgets/assistant_control.dart';
 
 /// What the doctor's attach button offers.
 enum _DoctorAttach { camera, gallery, document }
@@ -46,6 +47,10 @@ class PatientThreadScreen extends ConsumerStatefulWidget {
 }
 
 class _PatientThreadScreenState extends ConsumerState<PatientThreadScreen> {
+  /// Beats while this screen is up, so the assistant holds off for as long as
+  /// the doctor is actually reading.
+  ClinicianPresence? _presence;
+
   final _controller = TextEditingController();
   final _focusNode = FocusNode();
   final _scrollController = ScrollController();
@@ -86,6 +91,13 @@ class _PatientThreadScreenState extends ConsumerState<PatientThreadScreen> {
   @override
   void initState() {
     super.initState();
+    // Hold the assistant back for as long as this screen is up. The beat
+    // stops in dispose, and lapses by itself if the app never gets there.
+    _presence = ClinicianPresence(
+      ref,
+      patientId: widget.patientId,
+      kind: ThreadKind.care,
+    )..start();
     _patientName = widget.patientName;
     _load();
     _poll = Timer.periodic(_pollInterval, (_) => _pollForUpdates());
@@ -101,6 +113,7 @@ class _PatientThreadScreenState extends ConsumerState<PatientThreadScreen> {
 
   @override
   void dispose() {
+    _presence?.stop();
     _poll?.cancel();
     _controller.dispose();
     _focusNode.dispose();
@@ -527,6 +540,9 @@ class _PatientThreadScreenState extends ConsumerState<PatientThreadScreen> {
           ],
         ),
         actions: [
+          // In the thread's own header, not a settings screen: the decision is
+          // about this conversation and is normally made on opening it.
+          AssistantToggle(patientId: widget.patientId, kind: ThreadKind.care),
           // The patient's full record — clinical summary, prescribe, dietician,
           // test reports — opens from here; the chat is where the doctor is.
           IconButton(
