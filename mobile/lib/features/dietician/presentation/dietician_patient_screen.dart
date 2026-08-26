@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -14,7 +15,6 @@ import '../../../core/theme/app_spacing.dart';
 import '../../../shared/providers/core_providers.dart';
 import '../../../shared/widgets/auto_refresh.dart';
 import '../../../shared/widgets/authed_image.dart';
-import '../../../shared/widgets/edge_fade.dart';
 import '../../../shared/widgets/fullscreen_photo.dart';
 import '../../clinician/domain/patient_summary.dart';
 import '../../foodlog/domain/food_log.dart';
@@ -45,36 +45,18 @@ class DieticianPatientScreen extends ConsumerStatefulWidget {
       _DieticianPatientScreenState();
 }
 
-class _DieticianPatientScreenState
-    extends ConsumerState<DieticianPatientScreen> {
-  /// Owned here so the fade can read the rail's position.
-  final ScrollController _sectionRail = ScrollController();
+class _DieticianPatientScreenState extends ConsumerState<DieticianPatientScreen>
+    with SingleTickerProviderStateMixin {
+  /// Owned here rather than taken from a [DefaultTabController] because the
+  /// bottom bar and the attention banner both move the view between tabs, and
+  /// both are built in this class — above where an inherited controller could
+  /// be read from.
+  late final TabController _tabs = TabController(length: 4, vsync: this);
 
   @override
   void dispose() {
-    _sectionRail.dispose();
+    _tabs.dispose();
     super.dispose();
-  }
-
-  /// One anchor per section, so the bar above the record can jump to it.
-  ///
-  /// The record runs to eight sections — plan, vitals, medicines, advice,
-  /// tests, reports, food log — and a dietician who opens it to check what the
-  /// doctor prescribed was scrolling past all of it to find out. The bar
-  /// stays put while the record scrolls under it.
-  final _anchors = <String, GlobalKey>{};
-
-  GlobalKey _anchor(String id) => _anchors.putIfAbsent(id, GlobalKey.new);
-
-  Future<void> _jumpTo(String id) async {
-    final ctx = _anchors[id]?.currentContext;
-    if (ctx == null) return;
-    await Scrollable.ensureVisible(
-      ctx,
-      duration: const Duration(milliseconds: 320),
-      curve: Curves.easeOutCubic,
-      alignment: 0.02,
-    );
   }
 
   @override
@@ -115,206 +97,145 @@ class _DieticianPatientScreenState
                 ),
               ),
           data: (o) {
-            // Only the sections this patient actually has. A jump bar offering
-            // "Lab reports" on a record with none is a promise it cannot keep.
-            // Nutrition first, clinical context last.
+            // Four tabs, not one seven-section scroll.
             //
-            // The old order — plan, vitals, medicines, advice, tests, reports,
-            // then food — was a doctor's record with a diet plan on top. A
-            // dietician opens this page to answer "how is this patient eating
-            // and what needs changing", and the food log was the very last
-            // thing they could reach.
-            final sections = <(String, String)>[
-              ('food', 'Food log'),
-              ('plan', 'Diet plan'),
-              if (o.vitals?.hasAny ?? false) ('vitals', 'Vitals'),
-              if (o.labReports.isNotEmpty) ('reports', 'Reports'),
-              if (o.advisedTests.isNotEmpty || o.latestHba1c != null)
-                ('tests', 'Tests'),
-              if (o.medications.isNotEmpty) ('meds', 'Medicines'),
-              if (o.advice.isNotEmpty) ('advice', 'Advice'),
-            ];
+            // A dietician opens this record with one of four questions: how is
+            // this patient doing, what have they been eating, what am I telling
+            // them to eat, and what did the doctor say. The jump rail answered
+            // that by scrolling faster — every section was still in the way,
+            // and the position was still lost on each refresh. Tabs keep one
+            // question's answer whole and the other three out of it.
+            //
+            // The identity block is the first thing in Overview rather than
+            // pinned above the bar: the app bar already carries the name, and
+            // a permanent header on a phone costs more room than it says.
             return Column(
               children: [
-                if (sections.length > 2)
-                  Container(
-                    height: 44,
-                    width: double.infinity,
-                    decoration: BoxDecoration(
-                      color: scheme.surface,
-                      border: Border(
-                        bottom: BorderSide(
-                          color: scheme.outlineVariant.withValues(alpha: 0.5),
-                        ),
-                      ),
-                    ),
-                    // Wrapped, not scrolled.
-                    //
-                    // A horizontal rail always slices whatever falls at the
-                    // edge — "Advice · T" — and fading that edge only makes
-                    // the cut prettier; the section is still hidden, and a
-                    // jump-to control nobody can see is a jump-to control
-                    // nobody uses. There are six of these and they are known
-                    // at build time, so they can simply all be on screen. Two
-                    // lines of chrome buys every section one tap away, which
-                    // is the whole point of the bar.
-                    // One scrolling row, faded at whichever end has more
-                    // behind it. Wrapping these put two rows of chrome above
-                    // every patient record; the record is what the screen is
-                    // for.
-                    child: SizedBox(
-                      height: MediaQuery.textScalerOf(context).scale(46),
-                      child: EdgeFade(
-                        controller: _sectionRail,
-                        child: ListView.separated(
-                          controller: _sectionRail,
-                          scrollDirection: Axis.horizontal,
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: AppSpacing.md,
-                            vertical: 6,
-                          ),
-                          itemCount: sections.length,
-                          separatorBuilder: (_, _) => const SizedBox(width: 8),
-                          itemBuilder: (context, i) {
-                            final (id, label) = sections[i];
-                            return ActionChip(
-                              label: Text(label),
-                              visualDensity: VisualDensity.compact,
-                              onPressed: () => _jumpTo(id),
-                            );
-                          },
-                        ),
-                      ),
-                    ),
-                  ),
+                _PatientTabBar(controller: _tabs),
                 Expanded(
-                  child: RefreshIndicator(
-                    onRefresh:
-                        () async =>
-                            ref.invalidate(dietOverviewProvider(patientId)),
-                    child: ListView(
-                      padding: const EdgeInsets.fromLTRB(
-                        AppSpacing.md,
-                        AppSpacing.md,
-                        AppSpacing.md,
-                        110,
-                      ),
-                      children: [
-                        _MedicalCard(overview: o),
-                        const SizedBox(height: AppSpacing.md),
-                        // Where the patient is and which way they are going,
-                        // before anything that needs reading.
-                        _NutritionSnapshot(overview: o),
-                        const SizedBox(height: AppSpacing.md),
-                        _AttentionBanner(patientId: patientId, overview: o),
-                        const SizedBox(height: AppSpacing.lg),
-                        // The food log, immediately. It was last on the page,
-                        // below six clinical sections, which put the
-                        // dietician's actual work behind the doctor's.
-                        KeyedSubtree(
-                          key: _anchor('food'),
-                          child: _FoodLogSection(patientId: patientId),
-                        ),
-                        const SizedBox(height: AppSpacing.lg),
-                        // Above the medicines and the log on purpose: the plan is what the
-                        // dietician is here to produce; everything below it is input.
-                        KeyedSubtree(
-                          key: _anchor('plan'),
-                          child: _SectionTitle('Diet plan'),
-                        ),
-                        const SizedBox(height: AppSpacing.sm),
-                        _DietPlanSection(
-                          patientId: patientId,
-                          patientName: patientName ?? o.name,
-                        ),
-                        if (o.vitals?.hasAny ?? false) ...[
+                  child: TabBarView(
+                    controller: _tabs,
+                    children: [
+                      // ---- Overview: where this patient stands -------------
+                      _TabBody(
+                        storageKey: 'diet-tab-overview',
+                        onRefresh: () => _refresh(patientId),
+                        children: [
+                          _MedicalCard(overview: o),
+                          const SizedBox(height: AppSpacing.md),
+                          _NutritionSnapshot(overview: o),
+                          const SizedBox(height: AppSpacing.md),
+                          _AttentionBanner(
+                            patientId: patientId,
+                            overview: o,
+                            onReviewLogs: () => _tabs.animateTo(1),
+                          ),
                           const SizedBox(height: AppSpacing.lg),
+                          _AdherenceCard(patientId: patientId, overview: o),
+                          if (o.labReports.isNotEmpty) ...[
+                            const SizedBox(height: AppSpacing.lg),
+                            _NutritionLabs(reports: o.labReports),
+                          ],
+                        ],
+                      ),
 
-                          const SizedBox(height: AppSpacing.sm),
-                          KeyedSubtree(
-                            key: _anchor('vitals'),
-                            child: _VitalsSection(vitals: o.vitals!),
+                      // ---- Food logs: the dietician's actual queue ---------
+                      _TabBody(
+                        storageKey: 'diet-tab-food',
+                        onRefresh: () => _refresh(patientId),
+                        children: [_FoodLogSection(patientId: patientId)],
+                      ),
+
+                      // ---- Diet plan: what they are being told to eat ------
+                      _TabBody(
+                        storageKey: 'diet-tab-plan',
+                        onRefresh: () => _refresh(patientId),
+                        children: [
+                          _DietPlanSection(
+                            patientId: patientId,
+                            patientName: patientName ?? o.name,
                           ),
                         ],
-                        const SizedBox(height: AppSpacing.lg),
-                        KeyedSubtree(
-                          key: _anchor('meds'),
-                          child: _SectionTitle(
+                      ),
+
+                      // ---- Clinical: everything the doctor put on record ---
+                      _TabBody(
+                        storageKey: 'diet-tab-clinical',
+                        onRefresh: () => _refresh(patientId),
+                        children: [
+                          if (o.vitals?.hasAny ?? false) ...[
+                            _SectionTitle('Vitals'),
+                            const SizedBox(height: AppSpacing.sm),
+                            _VitalsSection(vitals: o.vitals!),
+                            const SizedBox(height: AppSpacing.lg),
+                          ],
+                          _SectionTitle(
                             'Current medicines',
                             trailing: '${o.medications.length}',
                           ),
-                        ),
-                        const SizedBox(height: AppSpacing.sm),
-                        if (o.medications.isEmpty)
-                          _emptyNote(
-                            scheme,
-                            'No medicines on record from the doctor yet.',
-                          )
-                        else
-                          Container(
-                            decoration: BoxDecoration(
-                              color: scheme.surfaceContainerLowest,
-                              borderRadius: BorderRadius.circular(16),
-                              border: Border.all(
-                                color: scheme.outlineVariant.withValues(
-                                  alpha: 0.6,
+                          const SizedBox(height: AppSpacing.sm),
+                          if (o.medications.isEmpty)
+                            _emptyNote(
+                              scheme,
+                              'No medicines on record from the doctor yet.',
+                            )
+                          else
+                            Container(
+                              decoration: BoxDecoration(
+                                color: scheme.surfaceContainerLowest,
+                                borderRadius: BorderRadius.circular(16),
+                                border: Border.all(
+                                  color: scheme.outlineVariant.withValues(
+                                    alpha: 0.6,
+                                  ),
                                 ),
                               ),
-                            ),
-                            clipBehavior: Clip.antiAlias,
-                            child: Column(
-                              children: [
-                                for (
-                                  var i = 0;
-                                  i < o.medications.length;
-                                  i++
-                                ) ...[
-                                  if (i > 0)
-                                    Divider(
-                                      height: 1,
-                                      indent: 56,
-                                      color: scheme.outlineVariant.withValues(
-                                        alpha: 0.4,
+                              clipBehavior: Clip.antiAlias,
+                              child: Column(
+                                children: [
+                                  for (
+                                    var i = 0;
+                                    i < o.medications.length;
+                                    i++
+                                  ) ...[
+                                    if (i > 0)
+                                      Divider(
+                                        height: 1,
+                                        indent: 56,
+                                        color: scheme.outlineVariant.withValues(
+                                          alpha: 0.4,
+                                        ),
                                       ),
-                                    ),
-                                  _MedRow(med: o.medications[i]),
+                                    _MedRow(med: o.medications[i]),
+                                  ],
                                 ],
-                              ],
+                              ),
                             ),
-                          ),
-                        if (o.advice.isNotEmpty) ...[
-                          const SizedBox(height: AppSpacing.lg),
-                          KeyedSubtree(
-                            key: _anchor('advice'),
-                            child: _SectionTitle('Doctor’s advice'),
-                          ),
-                          const SizedBox(height: AppSpacing.sm),
-                          _AdviceSection(advice: o.advice),
-                        ],
-                        if (o.advisedTests.isNotEmpty ||
-                            o.latestHba1c != null) ...[
-                          const SizedBox(height: AppSpacing.lg),
-                          KeyedSubtree(
-                            key: _anchor('tests'),
-                            child: _SectionTitle('Tests ordered by the doctor'),
-                          ),
-                          const SizedBox(height: AppSpacing.sm),
-                          _LabTests(overview: o),
-                        ],
-                        if (o.labReports.isNotEmpty) ...[
-                          const SizedBox(height: AppSpacing.lg),
-                          KeyedSubtree(
-                            key: _anchor('reports'),
-                            child: _SectionTitle(
+                          if (o.advice.isNotEmpty) ...[
+                            const SizedBox(height: AppSpacing.lg),
+                            _SectionTitle('Doctor’s advice'),
+                            const SizedBox(height: AppSpacing.sm),
+                            _AdviceSection(advice: o.advice),
+                          ],
+                          if (o.advisedTests.isNotEmpty ||
+                              o.latestHba1c != null) ...[
+                            const SizedBox(height: AppSpacing.lg),
+                            _SectionTitle('Tests ordered by the doctor'),
+                            const SizedBox(height: AppSpacing.sm),
+                            _LabTests(overview: o),
+                          ],
+                          if (o.labReports.isNotEmpty) ...[
+                            const SizedBox(height: AppSpacing.lg),
+                            _SectionTitle(
                               'Lab reports',
                               trailing: '${o.labReports.length}',
                             ),
-                          ),
-                          const SizedBox(height: AppSpacing.sm),
-                          _LabReportsSection(reports: o.labReports),
+                            const SizedBox(height: AppSpacing.sm),
+                            _LabReportsSection(reports: o.labReports),
+                          ],
                         ],
-                      ],
-                    ),
+                      ),
+                    ],
                   ),
                 ),
               ],
@@ -322,26 +243,70 @@ class _DieticianPatientScreenState
           },
         ),
       ),
+      // Two actions, one of them clearly primary.
+      //
+      // Writing to the patient is what this page leads to, so it keeps the
+      // filled button; sending the plan is the other thing a dietician does
+      // from here and gets an outlined one. Two equally blue buttons would
+      // make the reader choose before they had decided anything.
       bottomNavigationBar: SafeArea(
         minimum: const EdgeInsets.all(AppSpacing.md),
-        child: FilledButton.icon(
-          onPressed:
-              () => context.push(
-                '/dietician/patients/$patientId/chat',
-                extra: patientName,
+        child: Row(
+          children: [
+            Expanded(
+              flex: 3,
+              child: FilledButton.icon(
+                onPressed:
+                    () => context.push(
+                      '/dietician/patients/$patientId/chat',
+                      extra: patientName,
+                    ),
+                style: FilledButton.styleFrom(
+                  minimumSize: const Size.fromHeight(52),
+                  backgroundColor: AppColors.primary,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(T.rControl),
+                  ),
+                ),
+                icon: const Icon(Icons.forum_rounded, size: 20),
+                label: const Text(
+                  'Message patient',
+                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+                ),
               ),
-          style: FilledButton.styleFrom(
-            minimumSize: const Size.fromHeight(52),
-            backgroundColor: AppColors.primary,
-          ),
-          icon: const Icon(Icons.forum_rounded),
-          label: const Text(
-            'Message patient',
-            style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
-          ),
+            ),
+            const SizedBox(width: AppSpacing.sm),
+            Expanded(
+              flex: 2,
+              child: OutlinedButton.icon(
+                onPressed: () => _tabs.animateTo(2),
+                style: OutlinedButton.styleFrom(
+                  minimumSize: const Size.fromHeight(52),
+                  foregroundColor: AppColors.primary,
+                  side: const BorderSide(color: T.line),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(T.rControl),
+                  ),
+                ),
+                icon: const Icon(Icons.edit_note_rounded, size: 20),
+                label: const Text(
+                  'Diet plan',
+                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );
+  }
+
+  /// Every provider this page reads, so a pull on any tab refreshes the whole
+  /// record rather than the one slice that tab happens to show.
+  Future<void> _refresh(String patientId) async {
+    ref.invalidate(dietOverviewProvider(patientId));
+    ref.invalidate(dietPlanProvider(patientId));
+    ref.invalidate(dietFoodLogProvider(patientId));
   }
 
   Widget _emptyNote(ColorScheme scheme, String text) => Container(
@@ -1278,20 +1243,36 @@ class _FoodLogSectionState extends ConsumerState<_FoodLogSection> {
                                   .toList(),
                         ).entries) ...[
                       const SizedBox(height: AppSpacing.md),
-                      Text(
-                        day.key,
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w800,
-                          letterSpacing: 0.7,
-                          color: scheme.onSurfaceVariant,
+                      // Indented onto the rail so the day reads as a stop on
+                      // the timeline rather than a heading floating beside it.
+                      Padding(
+                        padding: const EdgeInsets.only(
+                          left: _MealTimelineRow.gutter + AppSpacing.sm,
+                        ),
+                        child: Text(
+                          day.key,
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: 0.7,
+                            color: scheme.onSurfaceVariant,
+                          ),
                         ),
                       ),
                       const SizedBox(height: AppSpacing.sm),
-                      for (var i = 0; i < day.value.length; i++) ...[
-                        if (i > 0) const SizedBox(height: AppSpacing.sm),
-                        _FoodEntry(patientId: patientId, entry: day.value[i]),
-                      ],
+                      // A dotted rail down the day, one dot per meal. The
+                      // spacing between meals lives inside each row so the
+                      // line runs through it unbroken.
+                      for (var i = 0; i < day.value.length; i++)
+                        _MealTimelineRow(
+                          entry: day.value[i],
+                          isFirst: i == 0,
+                          isLast: i == day.value.length - 1,
+                          child: _FoodEntry(
+                            patientId: patientId,
+                            entry: day.value[i],
+                          ),
+                        ),
                     ],
                     if (earlier.where(_filter.matches).length >
                         _earlierCap) ...[
@@ -3163,10 +3144,19 @@ class _SnapshotCell extends StatelessWidget {
 /// the food log itself, so the banner cannot disagree with the section under
 /// it.
 class _AttentionBanner extends ConsumerWidget {
-  const _AttentionBanner({required this.patientId, required this.overview});
+  const _AttentionBanner({
+    required this.patientId,
+    required this.overview,
+    required this.onReviewLogs,
+  });
 
   final String patientId;
   final DietPatientOverview overview;
+
+  /// Moves the view to the food-log tab. The banner used to offer "Review food
+  /// logs" and then scroll the page by nothing, because the log was a screen
+  /// further down and the anchor rail was what actually moved it.
+  final VoidCallback onReviewLogs;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -3190,7 +3180,7 @@ class _AttentionBanner extends ConsumerWidget {
                 ? 'Newly logged and not yet read.'
                 : 'Most recent: ${DateFormat('d MMM, h:mm a').format(last)}',
         action: 'Review food logs',
-        onTap: () => _jumpToFood(context),
+        onTap: onReviewLogs,
       );
     }
 
@@ -3218,16 +3208,6 @@ class _AttentionBanner extends ConsumerWidget {
       title: 'On track',
       detail:
           'Logging ${overview.foodLogDaysThisWeek}/7 days and every meal reviewed.',
-    );
-  }
-
-  static void _jumpToFood(BuildContext context) {
-    // The food log lives further down this same scroll; the section rail above
-    // is what actually moves the view, so this is deliberately a no-op hint
-    // rather than a broken jump.
-    Scrollable.ensureVisible(
-      context,
-      duration: const Duration(milliseconds: 250),
     );
   }
 }
@@ -3383,6 +3363,16 @@ enum _MealVerdict {
   final String label;
   final IconData icon;
 
+  /// The verdict a stored `mealStatus` stands for, or null when the meal has
+  /// not been judged — including for any value a future server adds that this
+  /// build does not know about.
+  static _MealVerdict? of(String? wire) {
+    for (final v in values) {
+      if (v.wire == wire) return v;
+    }
+    return null;
+  }
+
   Status get status => switch (this) {
     _MealVerdict.onTrack => Status.ok,
     _MealVerdict.review => Status.watch,
@@ -3441,4 +3431,548 @@ class _VerdictChip extends StatelessWidget {
       ),
     );
   }
+}
+
+/// How well this patient is keeping to the plan, in the two figures the data
+/// can actually support.
+///
+/// Food logging is presence per day over the last seven. Meal-plan adherence
+/// is the share of *judged* meals a dietician marked on track — which is why
+/// per-meal verdicts had to exist before this card could: it is a count of
+/// their own decisions, not a guess about a photograph.
+///
+/// The design also asked for "goal progress". There is no goal in the model
+/// and no target to progress towards, so that bar is absent rather than
+/// invented. It becomes possible the day a nutrition goal carries a number.
+class _AdherenceCard extends ConsumerWidget {
+  const _AdherenceCard({required this.patientId, required this.overview});
+
+  final String patientId;
+  final DietPatientOverview overview;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final logs = ref.watch(dietFoodLogProvider(patientId)).valueOrNull;
+    if (logs == null) return const SizedBox.shrink();
+
+    final judged = logs.where((l) => l.mealStatus != null).toList();
+    final onTrack = judged.where((l) => l.mealStatus == 'on_track').length;
+    final planPct =
+        judged.isEmpty ? null : (onTrack / judged.length * 100).round();
+
+    return SectionCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'Nutrition adherence',
+                  style: T.title.copyWith(color: T.ink),
+                ),
+              ),
+              Text(
+                'This week',
+                style: T.label.copyWith(letterSpacing: 0, color: T.inkMuted),
+              ),
+            ],
+          ),
+          const SizedBox(height: T.s4),
+          _AdherenceBar(
+            icon: Icons.event_available_rounded,
+            label: 'Food logging',
+            value: overview.foodLogDaysThisWeek / 7,
+            trailing: '${overview.foodLogDaysThisWeek} / 7 days',
+          ),
+          const SizedBox(height: T.s3),
+          _AdherenceBar(
+            icon: Icons.restaurant_menu_rounded,
+            label: 'Meal plan adherence',
+            value: planPct == null ? null : planPct / 100,
+            // Said plainly rather than shown as 0%: nothing judged yet is not
+            // the same as nothing on track, and a bar at zero would read as
+            // the second.
+            trailing: planPct == null ? 'No meals judged yet' : '$planPct%',
+            caption:
+                judged.isEmpty
+                    ? null
+                    : 'from ${judged.length} judged ${judged.length == 1 ? 'meal' : 'meals'}',
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _AdherenceBar extends StatelessWidget {
+  const _AdherenceBar({
+    required this.icon,
+    required this.label,
+    required this.value,
+    required this.trailing,
+    this.caption,
+  });
+
+  final IconData icon;
+  final String label;
+
+  /// 0..1, or null when there is nothing to measure yet.
+  final double? value;
+  final String trailing;
+  final String? caption;
+
+  @override
+  Widget build(BuildContext context) {
+    final v = value;
+    // Green only where it is earned. A bar that is always the same colour
+    // reports a number; one that changes reports a judgement.
+    final tone =
+        v == null
+            ? T.inkFaint
+            : v >= 0.8
+            ? T.success
+            : v >= 0.5
+            ? T.warning
+            : T.danger;
+
+    return Row(
+      children: [
+        Container(
+          width: 32,
+          height: 32,
+          decoration: BoxDecoration(
+            color: T.primaryTint,
+            borderRadius: BorderRadius.circular(T.rCard),
+          ),
+          child: Icon(icon, size: 17, color: T.primary),
+        ),
+        const SizedBox(width: T.s3),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: T.small.copyWith(
+                  fontWeight: FontWeight.w600,
+                  color: T.ink,
+                ),
+              ),
+              const SizedBox(height: 5),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(999),
+                child: LinearProgressIndicator(
+                  value: v ?? 0,
+                  minHeight: 6,
+                  backgroundColor: const Color(0xFFEDF1F7),
+                  valueColor: AlwaysStoppedAnimation(tone),
+                ),
+              ),
+              if (caption != null) ...[
+                const SizedBox(height: 3),
+                Text(
+                  caption!,
+                  style: T.label.copyWith(
+                    fontSize: 10,
+                    letterSpacing: 0,
+                    color: T.inkFaint,
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+        const SizedBox(width: T.s3),
+        ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 110),
+          child: Text(
+            trailing,
+            maxLines: 2,
+            textAlign: TextAlign.right,
+            style: T.small.copyWith(
+              fontWeight: FontWeight.w700,
+              color: v == null ? T.inkMuted : T.ink,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// The lab values a dietician acts on, newest first, with the direction each
+/// has moved.
+///
+/// Not every result — a full panel is thirty rows and most of them are the
+/// doctor's business. These are the ones a diet plan is actually written
+/// against, and everything else stays one tap away under the reports section.
+///
+/// The trend is computed by finding the same analyte in an older report. No
+/// value carries its own previous, so a direction only appears where the
+/// patient genuinely has two results to compare; a single report shows the
+/// figure and no arrow.
+class _NutritionLabs extends StatelessWidget {
+  const _NutritionLabs({required this.reports});
+
+  final List<LabReport> reports;
+
+  /// Codes worth surfacing, in the order a dietician reads them. Matched
+  /// loosely because labs name the same test half a dozen ways.
+  static const _wanted = <(String, String)>[
+    ('hba1c', 'HbA1c'),
+    ('glucose', 'Glucose'),
+    ('triglyceride', 'Triglycerides'),
+    ('hdl', 'HDL cholesterol'),
+    ('ldl', 'LDL cholesterol'),
+    ('vitamin d', 'Vitamin D'),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    // Newest first, so "the latest value" means what it says.
+    final dated = [...reports.where((r) => r.createdAt != null)]
+      ..sort((a, b) => b.createdAt!.compareTo(a.createdAt!));
+    if (dated.isEmpty) return const SizedBox.shrink();
+
+    final rows = <(String, Analyte, num?)>[];
+    for (final (needle, label) in _wanted) {
+      Analyte? latest;
+      num? previous;
+      for (final report in dated) {
+        final hit = report.analytes.where(
+          (a) =>
+              a.code.toLowerCase().contains(needle) ||
+              a.label.toLowerCase().contains(needle),
+        );
+        if (hit.isEmpty) continue;
+        if (latest == null) {
+          latest = hit.first;
+        } else {
+          previous = hit.first.value;
+          break;
+        }
+      }
+      if (latest != null) rows.add((label, latest, previous));
+    }
+    if (rows.isEmpty) return const SizedBox.shrink();
+
+    return SectionCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'Recent lab results',
+                  style: T.title.copyWith(color: T.ink),
+                ),
+              ),
+              Text(
+                DateFormat('MMM yyyy').format(dated.first.createdAt!),
+                style: T.label.copyWith(letterSpacing: 0, color: T.inkMuted),
+              ),
+            ],
+          ),
+          const SizedBox(height: T.s3),
+          for (var i = 0; i < rows.length; i++) ...[
+            if (i > 0) const Divider(height: T.s4, color: Color(0xFFEDF1F7)),
+            _LabRow(
+              label: rows[i].$1,
+              analyte: rows[i].$2,
+              previous: rows[i].$3,
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _LabRow extends StatelessWidget {
+  const _LabRow({
+    required this.label,
+    required this.analyte,
+    required this.previous,
+  });
+
+  final String label;
+  final Analyte analyte;
+  final num? previous;
+
+  @override
+  Widget build(BuildContext context) {
+    final delta = previous == null ? null : analyte.value - previous!;
+    final shown =
+        delta == null ? null : num.parse(delta.abs().toStringAsFixed(1));
+    final hasDelta = shown != null && shown != 0;
+
+    // Out of range is the lab's own verdict, not ours — the flag comes off the
+    // report. Only that colours the row; a direction is grey, because moving
+    // is not by itself good or bad without knowing which way is which for the
+    // analyte in question.
+    final tone = analyte.abnormal ? T.warning : T.inkMuted;
+
+    return Row(
+      children: [
+        Icon(
+          analyte.abnormal
+              ? Icons.warning_amber_rounded
+              : Icons.science_outlined,
+          size: 18,
+          color: analyte.abnormal ? T.warning : T.primary,
+        ),
+        const SizedBox(width: T.s3),
+        Expanded(
+          child: Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: T.small.copyWith(color: T.ink),
+          ),
+        ),
+        MetricValue(
+          value: '${analyte.value}',
+          unit: analyte.unit,
+          size: 17,
+          color: analyte.abnormal ? T.warning : T.ink,
+        ),
+        if (hasDelta) ...[
+          const SizedBox(width: T.s2),
+          Icon(
+            delta! < 0
+                ? Icons.arrow_downward_rounded
+                : Icons.arrow_upward_rounded,
+            size: 12,
+            color: tone,
+          ),
+          Text(
+            '$shown',
+            style: T.label.copyWith(
+              fontSize: 10,
+              letterSpacing: 0,
+              color: tone,
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+/// The four tabs across the top of a patient record.
+///
+/// Hand-built rather than a bare [TabBar] so the labels sit on a solid surface
+/// with a hairline under it: the content behind scrolls, and an indicator
+/// floating over moving cards reads as part of them.
+class _PatientTabBar extends StatelessWidget {
+  const _PatientTabBar({required this.controller});
+
+  final TabController controller;
+
+  static const _labels = ['Overview', 'Food logs', 'Diet plan', 'Clinical'];
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final accent = AppColors.accentOn(context);
+
+    return Container(
+      decoration: BoxDecoration(
+        color: scheme.surface,
+        border: Border(
+          bottom: BorderSide(
+            color: scheme.outlineVariant.withValues(alpha: 0.5),
+          ),
+        ),
+      ),
+      child: TabBar(
+        controller: controller,
+        // Four short labels fit a phone; making them scroll would hide the
+        // fourth behind an edge for no gain.
+        isScrollable: false,
+        labelColor: accent,
+        unselectedLabelColor: scheme.onSurfaceVariant,
+        labelStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
+        unselectedLabelStyle: const TextStyle(
+          fontSize: 13,
+          fontWeight: FontWeight.w500,
+        ),
+        indicatorColor: accent,
+        indicatorWeight: 2.5,
+        indicatorSize: TabBarIndicatorSize.tab,
+        dividerColor: Colors.transparent,
+        splashBorderRadius: BorderRadius.circular(T.rControl),
+        tabs: [for (final l in _labels) Tab(height: 44, text: l)],
+      ),
+    );
+  }
+}
+
+/// One tab's scrolling content.
+///
+/// Each tab keeps its own scroll position ([storageKey]) so switching away and
+/// back does not dump the reader at the top, and each carries its own pull to
+/// refresh — a gesture that works on three tabs out of four is worse than one
+/// that works nowhere, because the reader stops trusting it.
+class _TabBody extends StatelessWidget {
+  const _TabBody({
+    required this.storageKey,
+    required this.onRefresh,
+    required this.children,
+  });
+
+  final String storageKey;
+  final Future<void> Function() onRefresh;
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) {
+    return RefreshIndicator(
+      onRefresh: onRefresh,
+      child: ListView(
+        key: PageStorageKey<String>(storageKey),
+        // Always scrollable: a short tab still has to accept the pull.
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.fromLTRB(
+          AppSpacing.md,
+          AppSpacing.md,
+          AppSpacing.md,
+          // Clear of the two-button bar pinned at the bottom.
+          110,
+        ),
+        children: children,
+      ),
+    );
+  }
+}
+
+/// One meal on the dotted rail.
+///
+/// The dot is not decoration: filled in the verdict's colour once a dietician
+/// has judged the meal, a hollow ring until then. A day of hollow rings is a
+/// day nobody has read, visible before a single card is.
+class _MealTimelineRow extends StatelessWidget {
+  const _MealTimelineRow({
+    required this.entry,
+    required this.isFirst,
+    required this.isLast,
+    required this.child,
+  });
+
+  /// Width of the rail column. Also used to indent the day label onto it.
+  static const double gutter = 22;
+
+  final FoodLogEntry entry;
+  final bool isFirst;
+  final bool isLast;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final verdict = _MealVerdict.of(entry.mealStatus);
+    final tone =
+        verdict == null
+            ? T.inkFaint
+            : AppColors.toneOn(context, verdict.status.tone);
+
+    return IntrinsicHeight(
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          SizedBox(
+            width: gutter,
+            child: CustomPaint(
+              painter: _TimelinePainter(
+                tone: tone,
+                filled: verdict != null,
+                drawAbove: !isFirst,
+                drawBelow: !isLast,
+                background:
+                    Theme.of(context).colorScheme.surfaceContainerLowest,
+              ),
+            ),
+          ),
+          const SizedBox(width: AppSpacing.sm),
+          Expanded(
+            child: Padding(
+              // Inside the row, not between rows, so the rail keeps drawing
+              // across the gap.
+              padding: EdgeInsets.only(bottom: isLast ? 0 : AppSpacing.sm),
+              child: child,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _TimelinePainter extends CustomPainter {
+  const _TimelinePainter({
+    required this.tone,
+    required this.filled,
+    required this.drawAbove,
+    required this.drawBelow,
+    required this.background,
+  });
+
+  final Color tone;
+  final bool filled;
+  final bool drawAbove;
+  final bool drawBelow;
+  final Color background;
+
+  /// Where the dot sits, measured to land on the first text line of the card
+  /// beside it rather than in the middle of a card of unknown height.
+  static const double _dotY = 20;
+  static const double _radius = 5;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final x = size.width / 2;
+    final line =
+        Paint()
+          ..color = tone.withValues(alpha: 0.45)
+          ..strokeWidth = 1.5
+          ..strokeCap = StrokeCap.round;
+
+    // 2 on, 4 off — short enough to read as dotted at any density, long
+    // enough not to shimmer when the list scrolls.
+    void dots(double from, double to) {
+      for (var y = from; y < to; y += 6) {
+        canvas.drawLine(Offset(x, y), Offset(x, math.min(y + 2, to)), line);
+      }
+    }
+
+    if (drawAbove) dots(0, _dotY - _radius - 3);
+    if (drawBelow) dots(_dotY + _radius + 3, size.height);
+
+    if (filled) {
+      canvas.drawCircle(Offset(x, _dotY), _radius, Paint()..color = tone);
+    } else {
+      // Hollow: knocked out to the card colour so the dotted line does not
+      // show through the middle of it.
+      canvas.drawCircle(Offset(x, _dotY), _radius, Paint()..color = background);
+      canvas.drawCircle(
+        Offset(x, _dotY),
+        _radius,
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 1.8
+          ..color = tone,
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(_TimelinePainter old) =>
+      old.tone != tone ||
+      old.filled != filled ||
+      old.drawAbove != drawAbove ||
+      old.drawBelow != drawBelow ||
+      old.background != background;
 }
