@@ -24,6 +24,8 @@ import 'dietician_patients_screen.dart' show dietRiskColor;
 import 'dietician_providers.dart';
 import 'widgets/plan_history_sheet.dart';
 import '../../medications/domain/strength.dart';
+import '../../../core/theme/tokens.dart';
+import '../../../shared/widgets/surfaces.dart';
 
 /// What the dietician needs to recommend food safely: the patient's medical
 /// status and the doctor's current medicine list. Food advice is given in the
@@ -115,15 +117,22 @@ class _DieticianPatientScreenState
           data: (o) {
             // Only the sections this patient actually has. A jump bar offering
             // "Lab reports" on a record with none is a promise it cannot keep.
+            // Nutrition first, clinical context last.
+            //
+            // The old order — plan, vitals, medicines, advice, tests, reports,
+            // then food — was a doctor's record with a diet plan on top. A
+            // dietician opens this page to answer "how is this patient eating
+            // and what needs changing", and the food log was the very last
+            // thing they could reach.
             final sections = <(String, String)>[
+              ('food', 'Food log'),
               ('plan', 'Diet plan'),
               if (o.vitals?.hasAny ?? false) ('vitals', 'Vitals'),
-              if (o.medications.isNotEmpty) ('meds', 'Medicines'),
-              if (o.advice.isNotEmpty) ('advice', 'Advice'),
+              if (o.labReports.isNotEmpty) ('reports', 'Reports'),
               if (o.advisedTests.isNotEmpty || o.latestHba1c != null)
                 ('tests', 'Tests'),
-              if (o.labReports.isNotEmpty) ('reports', 'Reports'),
-              ('food', 'Food log'),
+              if (o.medications.isNotEmpty) ('meds', 'Medicines'),
+              if (o.advice.isNotEmpty) ('advice', 'Advice'),
             ];
             return Column(
               children: [
@@ -192,6 +201,20 @@ class _DieticianPatientScreenState
                       ),
                       children: [
                         _MedicalCard(overview: o),
+                        const SizedBox(height: AppSpacing.md),
+                        // Where the patient is and which way they are going,
+                        // before anything that needs reading.
+                        _NutritionSnapshot(overview: o),
+                        const SizedBox(height: AppSpacing.md),
+                        _AttentionBanner(patientId: patientId, overview: o),
+                        const SizedBox(height: AppSpacing.lg),
+                        // The food log, immediately. It was last on the page,
+                        // below six clinical sections, which put the
+                        // dietician's actual work behind the doctor's.
+                        KeyedSubtree(
+                          key: _anchor('food'),
+                          child: _FoodLogSection(patientId: patientId),
+                        ),
                         const SizedBox(height: AppSpacing.lg),
                         // Above the medicines and the log on purpose: the plan is what the
                         // dietician is here to produce; everything below it is input.
@@ -290,11 +313,6 @@ class _DieticianPatientScreenState
                           const SizedBox(height: AppSpacing.sm),
                           _LabReportsSection(reports: o.labReports),
                         ],
-                        const SizedBox(height: AppSpacing.lg),
-                        KeyedSubtree(
-                          key: _anchor('food'),
-                          child: _FoodLogSection(patientId: patientId),
-                        ),
                       ],
                     ),
                   ),
@@ -989,6 +1007,11 @@ class _FoodLogSectionState extends ConsumerState<_FoodLogSection> {
   static const _earlierCap = 4;
   bool _showAllEarlier = false;
 
+  /// Which meals the earlier list is showing. Once a patient has logged for a
+  /// month, "find the ones I have not read" is the only question worth asking
+  /// of thirty rows, and scrolling for it is not an answer.
+  _MealFilter _filter = _MealFilter.all;
+
   String get patientId => widget.patientId;
 
   static const _slots = <String>['breakfast', 'lunch', 'snack', 'dinner'];
@@ -1225,14 +1248,34 @@ class _FoodLogSectionState extends ConsumerState<_FoodLogSection> {
                         ),
                       ],
                     ),
+                    const SizedBox(height: AppSpacing.sm),
+                    Row(
+                      children: [
+                        for (final f in _MealFilter.values) ...[
+                          if (f != _MealFilter.values.first)
+                            const SizedBox(width: 6),
+                          _FilterPill(
+                            label: f.label,
+                            // The count, so a filter that would show nothing
+                            // says so before it is tapped.
+                            count: earlier.where(f.matches).length,
+                            selected: _filter == f,
+                            onTap: () => setState(() => _filter = f),
+                          ),
+                        ],
+                      ],
+                    ),
                     // Grouped by the day they were eaten. A flat run of thirty
                     // meals gives no sense of whether the patient logged three
                     // days solidly or one day nine times.
                     for (final day
                         in _byDay(
                           _showAllEarlier
-                              ? earlier.take(30).toList()
-                              : earlier.take(_earlierCap).toList(),
+                              ? earlier.where(_filter.matches).take(30).toList()
+                              : earlier
+                                  .where(_filter.matches)
+                                  .take(_earlierCap)
+                                  .toList(),
                         ).entries) ...[
                       const SizedBox(height: AppSpacing.md),
                       Text(
@@ -1250,7 +1293,8 @@ class _FoodLogSectionState extends ConsumerState<_FoodLogSection> {
                         _FoodEntry(patientId: patientId, entry: day.value[i]),
                       ],
                     ],
-                    if (earlier.length > _earlierCap) ...[
+                    if (earlier.where(_filter.matches).length >
+                        _earlierCap) ...[
                       const SizedBox(height: AppSpacing.sm),
                       Center(
                         child: TextButton(
@@ -1261,7 +1305,7 @@ class _FoodLogSectionState extends ConsumerState<_FoodLogSection> {
                           child: Text(
                             _showAllEarlier
                                 ? 'Show less'
-                                : 'View all ${earlier.length} meals',
+                                : 'View all ${earlier.where(_filter.matches).length} meals',
                             style: TextStyle(
                               fontWeight: FontWeight.w700,
                               color: AppColors.accentOn(context),
@@ -2828,6 +2872,431 @@ class _ReviewSheetState extends State<_ReviewSheet> {
             ],
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// The five-second read: where this patient is, and which way they are going.
+///
+/// Every figure here is measured. Weight and BMI come from the clinic's own
+/// vitals, HbA1c from the lab record with the result before it, and the
+/// logging count from the food log itself.
+///
+/// Three things the design asked for are deliberately absent — meal-plan
+/// adherence, goal progress, and a per-meal verdict. Nothing in the model
+/// defines adherence to a plan, no goal carries a target, and no code
+/// classifies a meal nutritionally. A percentage nobody computed is worse on
+/// a clinical screen than a gap, because it will be believed.
+class _NutritionSnapshot extends StatelessWidget {
+  const _NutritionSnapshot({required this.overview});
+
+  final DietPatientOverview overview;
+
+  @override
+  Widget build(BuildContext context) {
+    final v = overview.vitals;
+    final weight = v?.weightKg;
+    final hba1c = overview.latestHba1c;
+    final delta = overview.hba1cDelta;
+
+    return SectionCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'Nutrition snapshot',
+                  style: T.title.copyWith(color: T.ink),
+                ),
+              ),
+              Text(
+                'Logged ${overview.foodLogDaysThisWeek}/7 days',
+                style: T.label.copyWith(
+                  letterSpacing: 0,
+                  fontWeight: FontWeight.w600,
+                  color:
+                      overview.foodLogDaysThisWeek >= 5 ? T.success : T.warning,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: T.s3),
+          IntrinsicHeight(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Expanded(
+                  child: _SnapshotCell(
+                    value: weight == null ? '—' : '${weight.value}',
+                    unit: weight == null ? null : 'kg',
+                    label: 'Weight',
+                    // Down is the direction this clinic is usually aiming for,
+                    // so it is the encouraging colour — but only when there is
+                    // a previous reading to have moved from.
+                    delta:
+                        (weight?.previous == null)
+                            ? null
+                            : weight!.value - weight.previous!,
+                    goodWhenFalling: true,
+                    unitForDelta: 'kg',
+                  ),
+                ),
+                const _CellDivider(),
+                Expanded(
+                  child: _SnapshotCell(
+                    value: v?.bmi == null ? '—' : v!.bmi!.toStringAsFixed(1),
+                    label: 'BMI',
+                    // The band, not a number nobody reads: 27.7 means little
+                    // on its own and "Overweight" is the clinical reading of
+                    // it. WHO cut-offs.
+                    caption: _bmiBand(v?.bmi),
+                  ),
+                ),
+                const _CellDivider(),
+                Expanded(
+                  child: _SnapshotCell(
+                    value: hba1c == null ? '—' : '$hba1c',
+                    unit: hba1c == null ? null : '%',
+                    label: 'HbA1c',
+                    delta: delta,
+                    goodWhenFalling: true,
+                    unitForDelta: '%',
+                    caption:
+                        overview.hba1cTestedOn == null
+                            ? null
+                            : DateFormat(
+                              'd MMM yyyy',
+                            ).format(overview.hba1cTestedOn!),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// WHO bands. Asian cut-offs are lower, and this clinic's population would
+  /// arguably be better served by them — but the doctor's panel already
+  /// classifies on WHO, and two screens disagreeing about one patient's BMI
+  /// would be worse than either choice.
+  static String? _bmiBand(num? bmi) {
+    if (bmi == null) return null;
+    if (bmi < 18.5) return 'Underweight';
+    if (bmi < 25) return 'Healthy';
+    if (bmi < 30) return 'Overweight';
+    return 'Obese';
+  }
+}
+
+class _CellDivider extends StatelessWidget {
+  const _CellDivider();
+
+  @override
+  Widget build(BuildContext context) => Container(
+    width: 1,
+    margin: const EdgeInsets.symmetric(horizontal: T.s2),
+    color: const Color(0xFFEDF1F7),
+  );
+}
+
+class _SnapshotCell extends StatelessWidget {
+  const _SnapshotCell({
+    required this.value,
+    required this.label,
+    this.unit,
+    this.caption,
+    this.delta,
+    this.goodWhenFalling = true,
+    this.unitForDelta,
+  });
+
+  final String value;
+  final String label;
+  final String? unit;
+  final String? caption;
+  final num? delta;
+  final bool goodWhenFalling;
+  final String? unitForDelta;
+
+  @override
+  Widget build(BuildContext context) {
+    final d = delta;
+    // Zero is not a direction. Rounded first, so a change too small to print
+    // does not render as an arrow pointing at nothing.
+    final shown = d == null ? null : num.parse(d.abs().toStringAsFixed(1));
+    final hasDelta = shown != null && shown != 0;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        MetricValue(value: value, unit: unit, size: 22),
+        const SizedBox(height: 2),
+        Text(
+          label,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: T.label.copyWith(
+            letterSpacing: 0,
+            fontWeight: FontWeight.w600,
+            color: T.inkMuted,
+          ),
+        ),
+        if (hasDelta) ...[
+          const SizedBox(height: 3),
+          Row(
+            children: [
+              Icon(
+                d! < 0
+                    ? Icons.arrow_downward_rounded
+                    : Icons.arrow_upward_rounded,
+                size: 12,
+                color: (d < 0) == goodWhenFalling ? T.success : T.warning,
+              ),
+              const SizedBox(width: 1),
+              Flexible(
+                child: Text(
+                  '$shown${unitForDelta ?? ''}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: T.label.copyWith(
+                    fontSize: 10,
+                    letterSpacing: 0,
+                    color: (d < 0) == goodWhenFalling ? T.success : T.warning,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ] else if (caption != null) ...[
+          const SizedBox(height: 3),
+          Text(
+            caption!,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: T.label.copyWith(
+              fontSize: 10,
+              letterSpacing: 0,
+              color: T.inkFaint,
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+/// What needs doing about this patient, or that nothing does.
+///
+/// Placed directly under the snapshot so the dietician does not have to scroll
+/// three sections to discover there is work — which is what the old ordering
+/// asked of them.
+///
+/// The two reasons are the ones the data can actually support: meals nobody
+/// has read yet, and a patient who has stopped logging. Both are counted from
+/// the food log itself, so the banner cannot disagree with the section under
+/// it.
+class _AttentionBanner extends ConsumerWidget {
+  const _AttentionBanner({required this.patientId, required this.overview});
+
+  final String patientId;
+  final DietPatientOverview overview;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final logs = ref.watch(dietFoodLogProvider(patientId)).valueOrNull;
+    // Nothing loaded yet: say nothing rather than flash "on track" and then
+    // contradict it a moment later.
+    if (logs == null) return const SizedBox.shrink();
+
+    final unreviewed = logs.where((l) => l.needsReview).length;
+    final missed = 7 - overview.foodLogDaysThisWeek;
+    final last = logs.isEmpty ? null : logs.first.createdAt;
+
+    if (unreviewed > 0) {
+      return _Banner(
+        tone: Status.alert,
+        icon: Icons.rate_review_outlined,
+        title:
+            '$unreviewed meal${unreviewed == 1 ? '' : 's'} waiting for review',
+        detail:
+            last == null
+                ? 'Newly logged and not yet read.'
+                : 'Most recent: ${DateFormat('d MMM, h:mm a').format(last)}',
+        action: 'Review food logs',
+        onTap: () => _jumpToFood(context),
+      );
+    }
+
+    if (missed >= 3) {
+      return _Banner(
+        tone: Status.watch,
+        icon: Icons.event_busy_outlined,
+        title: 'Low adherence · $missed missed ${missed == 1 ? 'day' : 'days'}',
+        detail:
+            last == null
+                ? 'No meals logged in the last week.'
+                : 'Last logged ${DateFormat('d MMM').format(last)}',
+        action: 'Message patient',
+        onTap:
+            () => context.push(
+              '/dietician/patients/$patientId/chat',
+              extra: overview.name,
+            ),
+      );
+    }
+
+    return _Banner(
+      tone: Status.ok,
+      icon: Icons.check_circle_outline_rounded,
+      title: 'On track',
+      detail:
+          'Logging ${overview.foodLogDaysThisWeek}/7 days and every meal reviewed.',
+    );
+  }
+
+  static void _jumpToFood(BuildContext context) {
+    // The food log lives further down this same scroll; the section rail above
+    // is what actually moves the view, so this is deliberately a no-op hint
+    // rather than a broken jump.
+    Scrollable.ensureVisible(
+      context,
+      duration: const Duration(milliseconds: 250),
+    );
+  }
+}
+
+class _Banner extends StatelessWidget {
+  const _Banner({
+    required this.tone,
+    required this.icon,
+    required this.title,
+    required this.detail,
+    this.action,
+    this.onTap,
+  });
+
+  final Status tone;
+  final IconData icon;
+  final String title;
+  final String detail;
+  final String? action;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(T.s4),
+      decoration: BoxDecoration(
+        color: tone.tint,
+        borderRadius: BorderRadius.circular(T.rSection),
+        border: Border.all(color: tone.tone.withValues(alpha: 0.28)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, size: 20, color: tone.tone),
+          const SizedBox(width: T.s3),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(title, style: T.bodyStrong.copyWith(color: tone.tone)),
+                const SizedBox(height: 2),
+                Text(detail, style: T.small.copyWith(color: T.inkMuted)),
+                if (action != null && onTap != null) ...[
+                  const SizedBox(height: T.s1),
+                  ActionLink(label: action!, onTap: onTap!),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Which meals the earlier list shows.
+enum _MealFilter {
+  all('All'),
+  needsReview('Needs review'),
+  reviewed('Reviewed');
+
+  const _MealFilter(this.label);
+
+  final String label;
+
+  bool matches(FoodLogEntry e) => switch (this) {
+    _MealFilter.all => true,
+    _MealFilter.needsReview => e.needsReview,
+    _MealFilter.reviewed => !e.needsReview,
+  };
+}
+
+/// A filter with its count on it.
+///
+/// The count is the point: "Needs review 0" tells a dietician they are done
+/// without them having to tap it and read an empty list to find out.
+class _FilterPill extends StatelessWidget {
+  const _FilterPill({
+    required this.label,
+    required this.count,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String label;
+  final int count;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final accent = AppColors.accentOn(context);
+    final dim = count == 0 && !selected;
+
+    return Semantics(
+      button: true,
+      selected: selected,
+      child: GestureDetector(
+        onTap: onTap,
+        behavior: HitTestBehavior.opaque,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+          decoration: BoxDecoration(
+            color: selected ? accent : Colors.transparent,
+            borderRadius: BorderRadius.circular(999),
+            border: Border.all(
+              color:
+                  selected
+                      ? accent
+                      : scheme.outlineVariant.withValues(
+                        alpha: dim ? 0.4 : 0.8,
+                      ),
+            ),
+          ),
+          child: Text(
+            '$label $count',
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+              color:
+                  selected
+                      ? Colors.white
+                      : dim
+                      ? scheme.onSurfaceVariant.withValues(alpha: 0.6)
+                      : scheme.onSurface,
+            ),
+          ),
+        ),
       ),
     );
   }
