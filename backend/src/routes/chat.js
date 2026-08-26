@@ -222,6 +222,11 @@ router.get(
 router.get(
   '/thread',
   requireAuth,
+  // Without this `q(req)` falls back to req.query, where page and limit are
+  // strings and skip does not exist at all — which produced a page envelope
+  // full of NaN, a cast error in the app rather than an ApiException, and a
+  // spinner that never stopped because the narrow catch never fired.
+  validate({ query: pageParams }),
   asyncHandler(async (req, res) => {
     const { page, limit, skip } = q(req);
 

@@ -239,6 +239,8 @@ class ChatController extends StateNotifier<ChatState> {
       state = state.copyWith(messages: messages);
     } on ApiException {
       // Ignored on purpose — the next tick retries.
+    } catch (_) {
+      // Same: a poll that throws must cost one tick, not the screen.
     }
   }
 
@@ -278,6 +280,15 @@ class ChatController extends StateNotifier<ChatState> {
       state = state.copyWith(messages: messages, isLoadingHistory: false);
     } on ApiException catch (e) {
       state = state.copyWith(isLoadingHistory: false, error: e);
+    } catch (_) {
+      // Anything at all, not only an ApiException.
+      //
+      // A malformed page envelope threw a cast error on the way through
+      // Paged.fromJson, which this narrow catch never saw — so the spinner
+      // stayed up forever and polling, which skips while isLoadingHistory,
+      // never ran again either. A loading flag that only clears on the happy
+      // path is a screen that can hang on any surprise the server produces.
+      state = state.copyWith(isLoadingHistory: false);
     }
   }
 
@@ -294,6 +305,8 @@ class ChatController extends StateNotifier<ChatState> {
       await openSession(paged.items.first.id);
     } on ApiException catch (e) {
       state = state.copyWith(isLoadingHistory: false, error: e);
+    } catch (_) {
+      state = state.copyWith(isLoadingHistory: false);
     }
   }
 
