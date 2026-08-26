@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("kotlin-android")
@@ -20,6 +22,26 @@ plugins {
 // Without --target-platform the Flutter tool also expects an x86_64 APK and
 // exits non-zero when Gradle does not produce one.
 val splitPerAbi = (project.findProperty("split-per-abi") as String?).toBoolean()
+
+// The release signing key, read from android/key.properties (gitignored).
+//
+// Android stores the signature at install time and refuses any update carrying
+// a different one. That makes the key an irreversible commitment: once a build
+// signed with it is in someone's hands, every future update must use the same
+// file, and losing it means every user has to uninstall — losing their login,
+// their preferences and their scheduled reminders — before they can install
+// again. Back it up somewhere that will outlive this laptop.
+//
+// Absent, the build falls back to the debug key and says so loudly. That keeps
+// `flutter run --release` working on a machine without the keystore, which is
+// most of them, without letting a debug-signed build be mistaken for a
+// shippable one.
+val keystoreProperties = Properties()
+val keystorePropertiesFile = rootProject.file("key.properties")
+val hasReleaseKey = keystorePropertiesFile.exists()
+if (hasReleaseKey) {
+    keystorePropertiesFile.inputStream().use { keystoreProperties.load(it) }
+}
 
 android {
     namespace = "com.akdcare.akd_care"
@@ -54,11 +76,45 @@ android {
         versionName = flutter.versionName
     }
 
+    signingConfigs {
+        if (hasReleaseKey) {
+            create("release") {
+                keyAlias = keystoreProperties["keyAlias"] as String
+                keyPassword = keystoreProperties["keyPassword"] as String
+                // Relative to android/, so key.properties can say
+                // `storeFile=medpin-release.jks` and the file sits beside it.
+                storeFile = rootProject.file(keystoreProperties["storeFile"] as String)
+                storePassword = keystoreProperties["storePassword"] as String
+            }
+        }
+    }
+
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig =
+                if (hasReleaseKey) {
+                    signingConfigs.getByName("release")
+                } else {
+                    // Loud on purpose. A debug-signed APK installs and runs
+                    // perfectly, so nothing about the build or the phone says
+                    // it cannot be updated later — the failure surfaces months
+                    // afterwards, on every user at once.
+                    // println, not logger.warn: the Flutter tool filters
+                    // Gradle's warn level out entirely, so the banner was
+                    // never once printed — a warning nobody sees is precisely
+                    // the failure it was written to prevent.
+                    println(
+                        "\n" +
+                            "  ****************************************************************\n" +
+                            "  *  NO RELEASE KEY — signing with the DEBUG key.                *\n" +
+                            "  *  Do not distribute this build.                               *\n" +
+                            "  *  Anyone who installs it can never be updated from a properly *\n" +
+                            "  *  signed build without uninstalling first and losing their    *\n" +
+                            "  *  data.  See android/KEYSTORE.md.                             *\n" +
+                            "  ****************************************************************\n",
+                    )
+                    signingConfigs.getByName("debug")
+                }
 
             // Almost the whole APK is the Flutter engine, shipped once per CPU
             // architecture: 20.7 MB for arm64, 18.9 for 32-bit ARM and 22.2 for

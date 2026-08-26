@@ -63,3 +63,10 @@ serviceAccountKey.json
 .agents/
 skills-lock.json
 mobile/android/.kotlin/
+
+# Release signing material. The keystore is irreplaceable — losing it means
+# every installed user must uninstall before they can update again.
+mobile/android/*.jks
+mobile/android/*.keystore
+mobile/android/app/*.jks
+mobile/android/app/*.keystore
