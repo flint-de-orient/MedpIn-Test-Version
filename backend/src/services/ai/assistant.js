@@ -99,7 +99,16 @@ function categoriesFor(triage) {
  */
 function assistantShouldReply(session) {
   if (!session) return true;
+  // Off is off, however it was reached.
   if (session.assistantEnabled === false) return false;
+  // On, chosen deliberately, outranks presence. A clinician who switches the
+  // assistant back on while reading the thread is saying "answer this, I am
+  // only watching" — and the heartbeat they are still sending would otherwise
+  // keep it silent for as long as they stayed on the screen, which is exactly
+  // when they were looking to see whether the switch had worked.
+  if (session.assistantExplicit) return true;
+  // Never configured: hold off while somebody from the clinic is reading, so
+  // the assistant does not answer over a reply being typed.
   const until = session.clinicianPresentUntil;
   if (until && new Date(until).getTime() > Date.now()) return false;
   return true;

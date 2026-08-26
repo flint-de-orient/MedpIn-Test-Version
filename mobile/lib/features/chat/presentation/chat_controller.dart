@@ -206,8 +206,23 @@ class ChatController extends StateNotifier<ChatState> {
   /// Quietly re-reads the open conversation so a clinician's reply appears on
   /// its own, without the patient reloading or being told to.
   Future<void> pollForUpdates() async {
+    if (state.isSending || state.isLoadingHistory) return;
+
+    // No session yet? Try to find one instead of giving up.
+    //
+    // resumeLatest runs once when the tab opens and returns empty-handed if
+    // the patient has never written. If the DOCTOR then starts the
+    // conversation, the session exists on the server and this screen has no
+    // id for it — so every tick returned here and nothing ever appeared. The
+    // push notification arrived, the patient opened the app, and the thread
+    // was empty until they left the tab and came back, which remounted and
+    // resumed. That is the whole bug: a conversation the clinic opens was
+    // invisible in real time.
     final id = state.sessionId;
-    if (id == null || state.isSending || state.isLoadingHistory) return;
+    if (id == null) {
+      await resumeLatest();
+      return;
+    }
 
     try {
       final paged = await _repository.getSessionMessages(id, limit: 200);

@@ -57,7 +57,16 @@ const PRESENCE_TTL_MS = 90 * 1000;
  */
 function assistantShouldReply(session) {
   if (!session) return true;
+  // Off is off, however it was reached.
   if (session.assistantEnabled === false) return false;
+  // On, chosen deliberately, outranks presence. A clinician who switches the
+  // assistant back on while reading the thread is saying "answer this, I am
+  // only watching" — and the heartbeat they are still sending would otherwise
+  // keep it silent for as long as they stayed on the screen, which is exactly
+  // when they were looking to see whether the switch had worked.
+  if (session.assistantExplicit) return true;
+  // Never configured: hold off while somebody from the clinic is reading, so
+  // the assistant does not answer over a reply being typed.
   const until = session.clinicianPresentUntil;
   if (until && new Date(until).getTime() > Date.now()) return false;
   return true;
@@ -902,6 +911,11 @@ router.patch(
     const session = await threadFor(req.params.patientId, req.body.kind);
     if (!session) throw notFound('No conversation with this patient yet');
     session.assistantEnabled = req.body.enabled;
+    // A person has now decided, so presence stops second-guessing it.
+    session.assistantExplicit = true;
+    // And clear the hold outright, so the change takes effect on the very next
+    // message rather than up to ninety seconds later.
+    if (req.body.enabled) session.clinicianPresentUntil = null;
     await session.save();
     res.json({ assistantEnabled: session.assistantEnabled });
   }),
@@ -924,6 +938,10 @@ router.post(
     // No thread yet is not an error: the clinician opened a patient who has
     // never written. There is simply nothing to hold back.
     if (!session) return res.status(204).end();
+    // A thread somebody has configured is not up for reinterpretation by a
+    // heartbeat: recording presence here would put the hold straight back and
+    // silence an assistant that was deliberately switched on.
+    if (session.assistantExplicit) return res.status(204).end();
     session.clinicianPresentUntil = new Date(Date.now() + PRESENCE_TTL_MS);
     await session.save();
     res.json({ until: session.clinicianPresentUntil });

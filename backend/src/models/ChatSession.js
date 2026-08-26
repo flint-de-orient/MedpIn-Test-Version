@@ -51,6 +51,18 @@ const chatSessionSchema = new mongoose.Schema(
     /// diagnosis, a distressed patient — and back on when they are done.
     assistantEnabled: { type: Boolean, default: true },
 
+    /// Whether a clinician has actually made this choice, as opposed to the
+    /// thread simply never having been configured.
+    ///
+    /// The difference decides whether presence applies. "On" reached by
+    /// default means "nobody has said" — hold the assistant back while a
+    /// clinician is reading, so it does not beat them to a reply. "On" chosen
+    /// deliberately means "let it answer, I am only watching", and presence
+    /// must not override that: without this the switch appeared to do nothing,
+    /// because the heartbeat kept suppressing the assistant the whole time the
+    /// clinician sat on the thread they had just re-enabled it for.
+    assistantExplicit: { type: Boolean, default: false },
+
     /// A clinician has this thread open until this moment.
     ///
     /// Refreshed by a heartbeat while the screen is in the foreground, so it
