@@ -204,6 +204,61 @@ router.get(
   }),
 );
 
+/**
+ * The patient's whole care conversation, across every session it spans.
+ *
+ * The clinician has always read the thread this way — `careSessionIds`, plural
+ * — while the patient was pinned to one session id resolved when the tab
+ * opened. When those disagreed the two sides were looking at different
+ * conversations: the doctor wrote into the newest session, the patient's
+ * screen kept polling an older one, and the reply never appeared. The push
+ * notification still fired, because that is addressed by patient rather than
+ * by session, which is exactly how it presented — "the notification arrives
+ * but the message is not there".
+ *
+ * Ordered by `createdAt`, not `seq`: seq restarts inside each session, so it
+ * cannot order a history that spans several.
+ */
+router.get(
+  '/thread',
+  requireAuth,
+  asyncHandler(async (req, res) => {
+    const { page, limit, skip } = q(req);
+
+    const sessionIds = (
+      await ChatSession.find({
+        patient: req.user._id,
+        kind: { $ne: 'nutrition' },
+      })
+        .select('_id')
+        .lean()
+    ).map((x) => x._id);
+
+    if (sessionIds.length === 0) {
+      return res.json(paged([], { page, limit, total: 0 }));
+    }
+
+    const filter = { session: { $in: sessionIds }, hiddenFor: { $ne: req.user._id } };
+    const [items, total] = await Promise.all([
+      ChatMessage.find(filter)
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .populate('sender', 'name avatarAssetId')
+        .populate('replyTo', 'content role')
+        .populate('attachments', 'kind mimeType transcript originalName sizeBytes')
+        .lean(),
+      ChatMessage.countDocuments(filter),
+    ]);
+
+    // Oldest first for the reader, newest-first for the page window above —
+    // the same shape the per-session route returns.
+    res.json(
+      paged(items.reverse().map(serialiseMessage), { page, limit, total }),
+    );
+  }),
+);
+
 router.get(
   '/sessions/:id/messages',
   requireAuth,
@@ -897,7 +952,21 @@ router.get(
   asyncHandler(async (req, res) => {
     const session = await threadFor(req.params.patientId, req.query.kind);
     // No thread yet means nothing has been turned off. On is the default.
-    res.json({ assistantEnabled: session ? session.assistantEnabled !== false : true });
+    if (!session) return res.json({ assistantEnabled: true, heldByPresence: false });
+
+    const until = session.clinicianPresentUntil;
+    res.json({
+      assistantEnabled: session.assistantEnabled !== false,
+      // On, but not answering right now because somebody from the clinic has
+      // the thread open. The control has to be able to say this: "Assistant
+      // on" while it visibly does not reply is the switch appearing broken,
+      // which is exactly how it was reported.
+      heldByPresence:
+        session.assistantEnabled !== false &&
+        !session.assistantExplicit &&
+        Boolean(until) &&
+        new Date(until).getTime() > Date.now(),
+    });
   }),
 );
 

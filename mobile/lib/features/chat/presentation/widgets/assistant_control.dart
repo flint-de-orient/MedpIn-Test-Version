@@ -99,10 +99,29 @@ class _AssistantToggleState extends ConsumerState<AssistantToggle> {
   bool _busy = false;
   bool _loaded = false;
 
+  /// On, but not answering: somebody from the clinic has this thread open, so
+  /// the assistant is holding back rather than replying over a message being
+  /// typed. Shown as its own state because "Assistant on" beside an assistant
+  /// that visibly does not answer reads as a broken switch — which is how it
+  /// was reported, twice.
+  bool _held = false;
+
+  /// The control repolls, because the thing it reports can change without the
+  /// clinician touching anything: presence lapses ninety seconds after the
+  /// last heartbeat, and a colleague may open or leave the same thread.
+  Timer? _refresh;
+
   @override
   void initState() {
     super.initState();
     _load();
+    _refresh = Timer.periodic(const Duration(seconds: 10), (_) => _load());
+  }
+
+  @override
+  void dispose() {
+    _refresh?.cancel();
+    super.dispose();
   }
 
   /// Reads the thread's real state once. Optimistic default of on: that is
@@ -119,6 +138,7 @@ class _AssistantToggleState extends ConsumerState<AssistantToggle> {
       if (!mounted) return;
       setState(() {
         _on = json['assistantEnabled'] != false;
+        _held = json['heldByPresence'] == true;
         _loaded = true;
       });
     } catch (_) {
@@ -134,6 +154,9 @@ class _AssistantToggleState extends ConsumerState<AssistantToggle> {
     setState(() {
       _busy = true;
       _on = next;
+      // Whatever the server decides, it is no longer merely holding: this is
+      // now a decision somebody made.
+      _held = false;
     });
     try {
       await ref
@@ -171,12 +194,18 @@ class _AssistantToggleState extends ConsumerState<AssistantToggle> {
     if (!_loaded) return const SizedBox(width: 12);
     return Tooltip(
       message:
-          _on
+          _held
+              ? 'On, but waiting while you have this thread open. '
+                  'Tap to let it answer anyway.'
+              : _on
               ? 'The assistant answers when you are not here'
               : 'You are answering this thread yourself',
       child: InkWell(
         borderRadius: BorderRadius.circular(999),
-        onTap: _busy ? null : () => _set(!_on),
+        // Held means on-but-waiting, so the useful action is "answer anyway"
+        // rather than "turn off" — the clinician is looking at this control
+        // precisely because the assistant is not replying.
+        onTap: _busy ? null : () => _set(_held ? true : !_on),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
           child: Row(
@@ -190,17 +219,35 @@ class _AssistantToggleState extends ConsumerState<AssistantToggle> {
                 )
               else
                 Icon(
-                  _on ? Icons.auto_awesome_rounded : Icons.person_rounded,
+                  _held
+                      ? Icons.pause_circle_outline_rounded
+                      : _on
+                      ? Icons.auto_awesome_rounded
+                      : Icons.person_rounded,
                   size: 16,
-                  color: _on ? scheme.primary : scheme.onSurfaceVariant,
+                  color:
+                      _held
+                          ? scheme.tertiary
+                          : _on
+                          ? scheme.primary
+                          : scheme.onSurfaceVariant,
                 ),
               const SizedBox(width: 6),
               Text(
-                _on ? 'Assistant on' : 'You are replying',
+                _held
+                    ? 'Paused — you are here'
+                    : _on
+                    ? 'Assistant on'
+                    : 'You are replying',
                 style: TextStyle(
                   fontSize: 12,
                   fontWeight: FontWeight.w700,
-                  color: _on ? scheme.primary : scheme.onSurfaceVariant,
+                  color:
+                      _held
+                          ? scheme.tertiary
+                          : _on
+                          ? scheme.primary
+                          : scheme.onSurfaceVariant,
                 ),
               ),
             ],

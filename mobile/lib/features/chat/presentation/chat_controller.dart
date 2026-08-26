@@ -208,25 +208,24 @@ class ChatController extends StateNotifier<ChatState> {
   Future<void> pollForUpdates() async {
     if (state.isSending || state.isLoadingHistory) return;
 
-    // No session yet? Try to find one instead of giving up.
+    // Read the whole conversation, not one session of it.
     //
-    // resumeLatest runs once when the tab opens and returns empty-handed if
-    // the patient has never written. If the DOCTOR then starts the
-    // conversation, the session exists on the server and this screen has no
-    // id for it — so every tick returned here and nothing ever appeared. The
-    // push notification arrived, the patient opened the app, and the thread
-    // was empty until they left the tab and came back, which remounted and
-    // resumed. That is the whole bug: a conversation the clinic opens was
-    // invisible in real time.
-    final id = state.sessionId;
-    if (id == null) {
-      await resumeLatest();
-      return;
-    }
+    // Polling a single session id was the real defect behind "the
+    // notification arrives but the message is not there": the clinician's
+    // thread spans every care session, so a doctor writing into the newest one
+    // was invisible to a patient whose screen had resolved an older one when
+    // the tab opened. Both sides now read the same thing.
 
     try {
-      final paged = await _repository.getSessionMessages(id, limit: 200);
-      final messages = [...paged.items]..sort((a, b) => a.seq.compareTo(b.seq));
+      final paged = await _repository.getThread(limit: 200);
+      // By time, not seq: seq restarts inside each session and cannot order a
+      // history that spans several.
+      final messages = [...paged.items]..sort((a, b) {
+        final at = a.createdAt;
+        final bt = b.createdAt;
+        if (at == null || bt == null) return a.seq.compareTo(b.seq);
+        return at.compareTo(bt);
+      });
       // NEVER shrink the visible thread. A message the patient just sent that the
       // server has not echoed back on this exact poll — or a transient short
       // read — must not wipe what is on screen. Dropping this guard is what made
@@ -269,8 +268,13 @@ class ChatController extends StateNotifier<ChatState> {
   Future<void> openSession(String sessionId) async {
     state = ChatState(sessionId: sessionId, isLoadingHistory: true);
     try {
-      final paged = await _repository.getSessionMessages(sessionId, limit: 100);
-      final messages = [...paged.items]..sort((a, b) => a.seq.compareTo(b.seq));
+      final paged = await _repository.getThread(limit: 200);
+      final messages = [...paged.items]..sort((a, b) {
+        final at = a.createdAt;
+        final bt = b.createdAt;
+        if (at == null || bt == null) return a.seq.compareTo(b.seq);
+        return at.compareTo(bt);
+      });
       state = state.copyWith(messages: messages, isLoadingHistory: false);
     } on ApiException catch (e) {
       state = state.copyWith(isLoadingHistory: false, error: e);

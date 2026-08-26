@@ -67,6 +67,21 @@ class ChatRepository {
     return Paged.fromJson(json, ChatSession.fromJson);
   }
 
+  /// The patient's whole care conversation, across every session it spans.
+  ///
+  /// The clinician has always read it this way. Reading one session instead
+  /// meant that when the two disagreed — the doctor writing into the newest,
+  /// this screen polling an older one — the reply simply never appeared, while
+  /// the push notification still arrived, because that is addressed by patient
+  /// rather than by session.
+  Future<Paged<ChatMessage>> getThread({int page = 1, int limit = 200}) async {
+    final json = await _client.getJson(
+      '/chat/thread',
+      query: {'page': page, 'limit': limit},
+    );
+    return Paged.fromJson(json, ChatMessage.fromJson);
+  }
+
   Future<Paged<ChatMessage>> getSessionMessages(
     String sessionId, {
     int page = 1,
