@@ -1845,20 +1845,19 @@ class _AdviceSection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SectionCard(
-      // The tiles bring their own horizontal padding so an expanded one can
-      // rule edge to edge inside the card.
-      padding: const EdgeInsets.fromLTRB(T.s5, T.s5, T.s5, T.s2),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const SectionHeader(
+          SectionHeader(
             icon: Icons.assignment_outlined,
             title: 'Doctor\u2019s advice',
             subtitle: 'The reasoning a plan should respect',
+            trailing:
+                advice.length < 2 ? null : _CountBadge(count: advice.length),
           ),
-          for (var i = 0; i < advice.length; i++) ...[
+          for (final entry in advice) ...[
             const _HairRule(),
-            _AdviceTile(entry: advice[i]),
+            _AdviceTile(entry: entry),
           ],
         ],
       ),
@@ -1866,77 +1865,115 @@ class _AdviceSection extends StatelessWidget {
   }
 }
 
-class _AdviceTile extends StatelessWidget {
+/// One visit's advice, opening to the detail.
+///
+/// Built from a GestureDetector and an `if`, not an ExpansionTile.
+///
+/// The Material widget renders as a flat grey rectangle on the clinic's
+/// phones once its card has been scrolled out of the list's cache extent and
+/// rebuilt — take a record to the bottom, come back up, and the doctor's
+/// advice is a grey block until the screen is left and re-entered. It is the
+/// only Material default left on a screen otherwise built from this app's own
+/// surfaces, and it brought a stack of layer-making machinery (Offstage,
+/// ClipRect over an Align heightFactor, an AnimatedBuilder, a ListTile with
+/// its own ink) to animate a disclosure. Showing and hiding the rows outright
+/// costs a reflow that nobody will notice and paints with nothing but text.
+class _AdviceTile extends StatefulWidget {
   const _AdviceTile({required this.entry});
 
   final DietAdvice entry;
 
   @override
+  State<_AdviceTile> createState() => _AdviceTileState();
+}
+
+class _AdviceTileState extends State<_AdviceTile> {
+  bool _open = false;
+
+  @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
+    final e = widget.entry;
     final date =
-        entry.issuedOn != null
-            ? DateFormat('d MMM yyyy').format(entry.issuedOn!)
-            : '—';
-    final dx = entry.diagnosis.join(', ');
-    return Theme(
-      data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
-      child: ExpansionTile(
-        tilePadding: const EdgeInsets.symmetric(
-          horizontal: AppSpacing.md,
-          vertical: 0,
-        ),
-        childrenPadding: const EdgeInsets.fromLTRB(
-          AppSpacing.md,
-          0,
-          AppSpacing.md,
-          AppSpacing.md,
-        ),
-        expandedCrossAxisAlignment: CrossAxisAlignment.start,
-        title: Text(
-          date,
-          style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
-        ),
-        subtitle: Text(
-          dx.isNotEmpty ? dx : (entry.doctorName ?? 'Advice on record'),
-          style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant),
-        ),
+        e.issuedOn != null
+            ? DateFormat('d MMM yyyy').format(e.issuedOn!)
+            : 'Undated';
+    final dx = e.diagnosis.join(', ');
+    final detail = <(String, String)>[
+      if (e.diagnosis.isNotEmpty) ('Diagnosis', dx),
+      if (e.generalAdvice.isNotEmpty) ('Advice', e.generalAdvice),
+      if (e.followUpOn != null)
+        ('Follow-up', DateFormat('d MMM yyyy').format(e.followUpOn!)),
+      if (e.doctorName != null) ('By', e.doctorName!),
+    ];
+
+    return Padding(
+      padding: const EdgeInsets.only(top: T.s3),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          if (entry.diagnosis.isNotEmpty)
-            _kv(scheme, 'Diagnosis', entry.diagnosis.join(', ')),
-          if (entry.generalAdvice.isNotEmpty)
-            _kv(scheme, 'Advice', entry.generalAdvice),
-          if (entry.followUpOn != null)
-            _kv(
-              scheme,
-              'Follow-up',
-              DateFormat('d MMM yyyy').format(entry.followUpOn!),
+          Semantics(
+            button: detail.isNotEmpty,
+            expanded: detail.isEmpty ? null : _open,
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap:
+                  detail.isEmpty ? null : () => setState(() => _open = !_open),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(date, style: T.bodyStrong.copyWith(color: T.ink)),
+                        const SizedBox(height: 2),
+                        Text(
+                          dx.isNotEmpty
+                              ? dx
+                              : (e.doctorName ?? 'Advice on record'),
+                          style: T.small.copyWith(color: T.inkMuted),
+                        ),
+                      ],
+                    ),
+                  ),
+                  if (detail.isNotEmpty) ...[
+                    const SizedBox(width: T.s2),
+                    AnimatedRotation(
+                      turns: _open ? 0.5 : 0,
+                      duration: const Duration(milliseconds: 160),
+                      child: const Icon(
+                        Icons.expand_more_rounded,
+                        size: 22,
+                        color: T.inkMuted,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
             ),
-          if (entry.doctorName != null) _kv(scheme, 'By', entry.doctorName!),
+          ),
+          if (_open && detail.isNotEmpty) ...[
+            const SizedBox(height: T.s3),
+            InnerTile(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  for (var i = 0; i < detail.length; i++) ...[
+                    if (i > 0) const SizedBox(height: T.s3),
+                    Text(
+                      detail[i].$1.toUpperCase(),
+                      style: T.label.copyWith(color: T.inkMuted),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(detail[i].$2, style: T.body.copyWith(color: T.ink)),
+                  ],
+                ],
+              ),
+            ),
+          ],
         ],
       ),
     );
   }
-
-  Widget _kv(ColorScheme scheme, String k, String v) => Padding(
-    padding: const EdgeInsets.only(bottom: 8),
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          k.toUpperCase(),
-          style: TextStyle(
-            fontSize: 12,
-            fontWeight: FontWeight.w700,
-            letterSpacing: 0.4,
-            color: scheme.onSurfaceVariant,
-          ),
-        ),
-        const SizedBox(height: 0),
-        Text(v, style: const TextStyle(fontSize: 14, height: 1.35)),
-      ],
-    ),
-  );
 }
 
 /// The reports the patient actually uploaded, each with its transcribed values,
