@@ -127,6 +127,7 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
       supportedLocales: AppLocalizations.supportedLocales,
       localizationsDelegates: AppLocalizations.localizationsDelegates,
       routerConfig: router,
+      scrollBehavior: const AppScrollBehavior(),
       // The lock gate sits above every route, so it covers the whole app when
       // locked. `child` is the router's current page.
       builder: (context, child) {
@@ -141,5 +142,45 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
         );
       },
     );
+  }
+}
+
+/// Overscroll that paints, on every device.
+///
+/// Material 3 on Android uses [StretchingOverscrollIndicator], which under
+/// Impeller wraps the entire scroll view in an `ImageFiltered` built from a
+/// fragment shader. On this clinic's phones that filter comes back blank: pull
+/// past the top of a list and the whole scrollable area — every card, every
+/// reading — turns into one flat grey rectangle until the finger lifts. A
+/// record that disappears when a dietician overscrolls it is not a cosmetic
+/// problem; the screen is for reading and it stops showing anything.
+///
+/// The glow indicator draws with ordinary canvas operations, no shader and no
+/// image filter, so there is nothing to fail. Set here rather than per screen
+/// because a scroll view that behaves differently from the rest of the app is
+/// the next bug report.
+class AppScrollBehavior extends MaterialScrollBehavior {
+  const AppScrollBehavior();
+
+  @override
+  Widget buildOverscrollIndicator(
+    BuildContext context,
+    Widget child,
+    ScrollableDetails details,
+  ) {
+    switch (getPlatform(context)) {
+      case TargetPlatform.iOS:
+      case TargetPlatform.linux:
+      case TargetPlatform.macOS:
+      case TargetPlatform.windows:
+        return child;
+      case TargetPlatform.android:
+      case TargetPlatform.fuchsia:
+        return GlowingOverscrollIndicator(
+          axisDirection: details.direction,
+          color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.35),
+          child: child,
+        );
+    }
   }
 }
