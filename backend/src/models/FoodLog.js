@@ -26,6 +26,22 @@ const foodLogSchema = new mongoose.Schema(
     /// is the next review cycle due"; this one answers "has anyone actually
     /// looked at this plate". Inferring the second from the first meant
     /// replying about one worrying meal silently marked the other three read.
+    /// The dietician's verdict on this meal, set when they review it.
+    ///
+    /// Their judgement, not a computation: nothing here can look at a
+    /// photograph of rice and dal and know the portion, the oil or what the
+    /// patient ate around it. A guess dressed as an assessment on a clinical
+    /// screen would be believed, so the person who can actually tell is the
+    /// one who says.
+    ///
+    /// on_track — fits the plan.  review — worth a conversation.
+    /// concern  — a significant deviation.
+    mealStatus: {
+      type: String,
+      enum: ['on_track', 'review', 'concern'],
+      default: null,
+    },
+
     reviewedAt: { type: Date, default: null },
     reviewedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
   },

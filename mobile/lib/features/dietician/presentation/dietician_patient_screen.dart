@@ -1587,6 +1587,20 @@ class _FoodEntry extends StatelessWidget {
                           color: scheme.onSurfaceVariant,
                         ),
                       ),
+                    // The dietician's own verdict, where they left one. Only
+                    // ever shown when somebody actually judged the meal — an
+                    // untagged plate says nothing rather than "on track".
+                    if (entry.mealStatusLabel != null) ...[
+                      const SizedBox(width: 6),
+                      StatusPill(
+                        label: entry.mealStatusLabel!,
+                        status: switch (entry.mealStatus) {
+                          'on_track' => Status.ok,
+                          'concern' => Status.alert,
+                          _ => Status.watch,
+                        },
+                      ),
+                    ],
                   ],
                 ),
                 if (entry.note.isNotEmpty) ...[
@@ -2544,19 +2558,23 @@ class _ReviewTickState extends ConsumerState<_ReviewTick> {
       await _submit(reviewed: false);
       return;
     }
-    final note = await showModalBottomSheet<String?>(
+    final result = await showModalBottomSheet<_ReviewResult?>(
       context: context,
       isScrollControlled: true,
       showDragHandle: true,
       builder: (_) => _ReviewSheet(entry: widget.entry),
     );
-    // null is a dismissal — the meal stays in the queue. An empty string is a
-    // deliberate "reviewed, nothing to add".
-    if (note == null) return;
-    await _submit(reviewed: true, note: note);
+    // null is a dismissal — the meal stays in the queue. A result with an
+    // empty note is a deliberate "reviewed, nothing to add".
+    if (result == null) return;
+    await _submit(reviewed: true, note: result.note, status: result.status);
   }
 
-  Future<void> _submit({required bool reviewed, String? note}) async {
+  Future<void> _submit({
+    required bool reviewed,
+    String? note,
+    String? status,
+  }) async {
     if (_busy) return;
     final messenger = ScaffoldMessenger.of(context);
     setState(() => _busy = true);
@@ -2568,6 +2586,7 @@ class _ReviewTickState extends ConsumerState<_ReviewTick> {
             widget.entry.id,
             reviewed: reviewed,
             note: note,
+            status: status,
           );
       if (mounted && (note ?? '').trim().isNotEmpty) {
         messenger.showSnackBar(
@@ -2741,6 +2760,12 @@ class _ReviewSheet extends StatefulWidget {
 class _ReviewSheetState extends State<_ReviewSheet> {
   final _note = TextEditingController();
 
+  /// Left unset unless the dietician picks one. Reviewing a plate without a
+  /// verdict is a normal thing to do — most meals need no comment — and
+  /// demanding a category on every one turns the queue into something to
+  /// clear rather than read.
+  String? _status;
+
   @override
   void dispose() {
     _note.dispose();
@@ -2812,9 +2837,39 @@ class _ReviewSheetState extends State<_ReviewSheet> {
             ),
           ],
           const SizedBox(height: AppSpacing.md),
+          Text(
+            'How was it?',
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w700,
+              color: scheme.onSurfaceVariant,
+            ),
+          ),
+          const SizedBox(height: AppSpacing.sm),
+          Row(
+            children: [
+              for (final v in _MealVerdict.values) ...[
+                if (v != _MealVerdict.values.first)
+                  const SizedBox(width: AppSpacing.sm),
+                Expanded(
+                  child: _VerdictChip(
+                    verdict: v,
+                    selected: _status == v.wire,
+                    // Tapping the chosen one clears it: a verdict set by
+                    // mistake must be removable without closing the sheet.
+                    onTap:
+                        () => setState(
+                          () => _status = _status == v.wire ? null : v.wire,
+                        ),
+                  ),
+                ),
+              ],
+            ],
+          ),
+          const SizedBox(height: AppSpacing.md),
           TextField(
             controller: _note,
-            autofocus: true,
+            autofocus: false,
             minLines: 2,
             maxLines: 5,
             maxLength: 1000,
@@ -2835,7 +2890,10 @@ class _ReviewSheetState extends State<_ReviewSheet> {
                   // Empty string, not null: the meal is reviewed, there is
                   // simply nothing to say about it. null means the sheet was
                   // dismissed and the meal stays in the queue.
-                  onPressed: () => Navigator.of(context).pop(''),
+                  onPressed:
+                      () => Navigator.of(
+                        context,
+                      ).pop(_ReviewResult(note: '', status: _status)),
                   style: OutlinedButton.styleFrom(
                     minimumSize: const Size.fromHeight(48),
                     shape: RoundedRectangleBorder(
@@ -2854,9 +2912,12 @@ class _ReviewSheetState extends State<_ReviewSheet> {
                         onPressed:
                             value.text.trim().isEmpty
                                 ? null
-                                : () => Navigator.of(
-                                  context,
-                                ).pop(_note.text.trim()),
+                                : () => Navigator.of(context).pop(
+                                  _ReviewResult(
+                                    note: _note.text.trim(),
+                                    status: _status,
+                                  ),
+                                ),
                         style: FilledButton.styleFrom(
                           minimumSize: const Size.fromHeight(48),
                           backgroundColor: AppColors.accentOn(context),
@@ -3295,6 +3356,86 @@ class _FilterPill extends StatelessWidget {
                       ? scheme.onSurfaceVariant.withValues(alpha: 0.6)
                       : scheme.onSurface,
             ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// What the review sheet hands back.
+class _ReviewResult {
+  const _ReviewResult({required this.note, this.status});
+
+  final String note;
+  final String? status;
+}
+
+/// The three verdicts a dietician can put on a meal.
+enum _MealVerdict {
+  onTrack('on_track', 'On track', Icons.check_circle_outline_rounded),
+  review('review', 'Review', Icons.error_outline_rounded),
+  concern('concern', 'Concern', Icons.report_gmailerrorred_rounded);
+
+  const _MealVerdict(this.wire, this.label, this.icon);
+
+  final String wire;
+  final String label;
+  final IconData icon;
+
+  Status get status => switch (this) {
+    _MealVerdict.onTrack => Status.ok,
+    _MealVerdict.review => Status.watch,
+    _MealVerdict.concern => Status.alert,
+  };
+}
+
+class _VerdictChip extends StatelessWidget {
+  const _VerdictChip({
+    required this.verdict,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final _MealVerdict verdict;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final tone = verdict.status.tone;
+    return Semantics(
+      button: true,
+      selected: selected,
+      child: GestureDetector(
+        onTap: onTap,
+        behavior: HitTestBehavior.opaque,
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 6),
+          decoration: BoxDecoration(
+            color: selected ? verdict.status.tint : Colors.transparent,
+            borderRadius: BorderRadius.circular(T.rControl),
+            border: Border.all(
+              color: selected ? tone : T.line,
+              width: selected ? 1.5 : 1,
+            ),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(verdict.icon, size: 18, color: selected ? tone : T.inkMuted),
+              const SizedBox(height: 3),
+              Text(
+                verdict.label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                  color: selected ? tone : T.inkMuted,
+                ),
+              ),
+            ],
           ),
         ),
       ),

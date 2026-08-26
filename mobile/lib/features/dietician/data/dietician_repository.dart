@@ -125,6 +125,7 @@ class DieticianRepository {
     String logId, {
     bool reviewed = true,
     String? note,
+    String? status,
   }) async {
     await _client.postJson(
       '/dietician/patients/$patientId/food-log/$logId/review',
@@ -135,6 +136,7 @@ class DieticianRepository {
         // the meal ticked with nothing sent — it looks handled and the patient
         // heard nothing.
         if (note != null && note.trim().isNotEmpty) 'note': note.trim(),
+        if (status != null) 'status': status,
       },
     );
   }

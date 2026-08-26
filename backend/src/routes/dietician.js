@@ -559,6 +559,7 @@ router.get(
             // because a dietician replied about the fourth.
             needsReview: !f.reviewedAt,
             reviewedAt: f.reviewedAt ?? null,
+            mealStatus: f.mealStatus ?? null,
           };
         }),
     });
@@ -811,6 +812,7 @@ router.get(
             photoUrl: f.photo ? `/api/v1/uploads/${f.photo._id}/raw` : null,
             createdAt: f.createdAt,
             reviewedAt: f.reviewedAt ?? null,
+            mealStatus: f.mealStatus ?? null,
           })),
     });
   }),
@@ -1132,6 +1134,10 @@ router.post(
       // the three possible outcomes — it looks handled and the patient heard
       // nothing.
       note: z.string().trim().max(1000).optional(),
+      // The dietician's verdict, optional: ticking a plate without a word
+      // about it is still a review, and forcing a category on every meal
+      // would make the queue something to clear rather than read.
+      status: z.enum(['on_track', 'review', 'concern']).nullish(),
     }),
   ),
   audit('update', 'FoodLog'),
@@ -1172,6 +1178,10 @@ ${note}`;
 
     log.reviewedAt = reviewed ? new Date() : null;
     log.reviewedBy = reviewed ? req.user._id : null;
+    // Un-reviewing clears the verdict too: a tag left behind on a meal that is
+    // back in the queue would claim somebody had judged it.
+    if (!reviewed) log.mealStatus = null;
+    else if (req.body.status !== undefined) log.mealStatus = req.body.status;
     await log.save();
 
     res.json({

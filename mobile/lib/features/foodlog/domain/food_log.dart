@@ -7,6 +7,7 @@ class FoodLogEntry {
     this.photoUrl,
     this.createdAt,
     this.reviewedAt,
+    this.mealStatus,
   });
 
   final String id;
@@ -23,6 +24,19 @@ class FoodLogEntry {
 
   bool get needsReview => reviewedAt == null;
 
+  /// The dietician's verdict — on_track | review | concern — or null when they
+  /// ticked the meal without one. Their judgement, never a computation: no
+  /// photograph carries the portion, the oil, or what was eaten around it.
+  final String? mealStatus;
+
+  /// The words the panel shows for it.
+  String? get mealStatusLabel => switch (mealStatus) {
+    'on_track' => 'On track',
+    'review' => 'Review',
+    'concern' => 'Concern',
+    _ => null,
+  };
+
   factory FoodLogEntry.fromJson(Map<String, dynamic> j) => FoodLogEntry(
     id: j['id']?.toString() ?? '',
     mealType: j['mealType']?.toString() ?? 'other',
@@ -33,5 +47,6 @@ class FoodLogEntry {
             : j['photoUrl'].toString(),
     createdAt: DateTime.tryParse(j['createdAt']?.toString() ?? '')?.toLocal(),
     reviewedAt: DateTime.tryParse(j['reviewedAt']?.toString() ?? '')?.toLocal(),
+    mealStatus: j['mealStatus']?.toString(),
   );
 }
