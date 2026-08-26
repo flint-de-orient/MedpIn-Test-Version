@@ -614,7 +614,7 @@ router.get(
     // advice, vitals, the uploaded reports. A dietician planning around metformin
     // needs to know it was stopped last week; a pending HbA1c is the difference
     // between "your control is fine" and a number nobody has yet.
-    const [meds, prescriptions, labResults, allResultNames, latestHba1c, vitals, latestGlucose] =
+    const [meds, prescriptions, labResults, allResultNames, latestHba1c, weekLogs, vitals, latestGlucose] =
       await Promise.all([
       Medication.find({ patient: req.params.id, isActive: true })
         .select('name strength dose schedule instructions')
@@ -635,10 +635,26 @@ router.get(
       // pushed the oldest one out and its test went back to "awaiting result"
       // even though the patient had sent it.
       LabResult.find({ patient: req.params.id }).select('testName').lean(),
-      Hba1cRecord.findOne({ patient: req.params.id }).sort({ testedOn: -1 }).lean(),
+      // Two, not one: a lone figure says where the patient is, and a
+      // dietician's question is which way they are going. The previous result
+      // is the cheapest possible answer to that and it is already on record.
+      Hba1cRecord.find({ patient: req.params.id }).sort({ testedOn: -1 }).limit(2).lean(),
+      FoodLog.find({
+        patient: req.params.id,
+        createdAt: { $gte: dayjs().startOf('day').subtract(6, 'day').toDate() },
+      })
+        .select('createdAt')
+        .lean(),
       VitalRecord.find({ patient: req.params.id }).sort({ recordedAt: -1 }).limit(40).lean(),
       GlucoseReading.findOne({ patient: req.params.id }).sort({ measuredAt: -1 }).lean(),
     ]);
+
+    // Presence per day, not a count of meals: four snacks on one Tuesday is
+    // one day of logging, and the figure is meant to say how engaged the
+    // patient is rather than how hungry.
+    const loggedDays = new Set(
+      weekLogs.map((l) => dayjs(l.createdAt).format('YYYY-MM-DD')),
+    ).size;
 
     const advised = [...new Set(prescriptions.flatMap((p) => p.labTestsAdvised ?? []).filter(Boolean))];
     const reported = new Set(allResultNames.map((r) => normaliseTestName(r.testName)));
@@ -752,8 +768,21 @@ router.get(
             createdAt: r.createdAt,
           };
         }),
-        latestHba1c: latestHba1c
-          ? { percentage: latestHba1c.percentage, testedOn: latestHba1c.testedOn }
+        // Days out of the last seven on which the patient logged anything.
+        // Presence, not count: somebody who photographs four snacks on Tuesday
+        // has not logged four days. This is the one adherence figure the data
+        // actually supports — meal-plan adherence and goal progress would need
+        // a definition and a target that do not exist yet.
+        foodLogDaysThisWeek: loggedDays,
+        latestHba1c: latestHba1c[0]
+          ? {
+              percentage: latestHba1c[0].percentage,
+              testedOn: latestHba1c[0].testedOn,
+              // Null when there is nothing to compare against. A direction
+              // nobody can compute is not shown at all, rather than guessed.
+              previous: latestHba1c[1]?.percentage ?? null,
+              previousOn: latestHba1c[1]?.testedOn ?? null,
+            }
           : null,
       },
       reviewIntervalDays: profile.dietReviewIntervalDays ?? null,

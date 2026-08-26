@@ -115,6 +115,8 @@ class DietPatientOverview {
     this.labReports = const [],
     this.latestHba1c,
     this.hba1cTestedOn,
+    this.previousHba1c,
+    this.foodLogDaysThisWeek = 0,
   });
 
   final String id;
@@ -152,6 +154,23 @@ class DietPatientOverview {
 
   final num? latestHba1c;
   final DateTime? hba1cTestedOn;
+
+  /// The result before the latest, when there is one. A direction nobody can
+  /// compute is not shown at all rather than guessed at.
+  final num? previousHba1c;
+
+  /// Days out of the last seven on which this patient logged anything.
+  ///
+  /// The one adherence figure the data actually supports. Meal-plan adherence
+  /// and goal progress would each need a definition and a target that do not
+  /// exist in the model yet.
+  final int foodLogDaysThisWeek;
+
+  /// Change since the previous result, or null when there is no previous one.
+  num? get hba1cDelta =>
+      (latestHba1c != null && previousHba1c != null)
+          ? latestHba1c! - previousHba1c!
+          : null;
 
   /// Whole years since birth, for the header.
   int? get age {
@@ -224,6 +243,9 @@ class DietPatientOverview {
                     ?.toString() ??
                 '',
           )?.toLocal(),
+      previousHba1c:
+          (labs['latestHba1c'] as Map<String, dynamic>?)?['previous'] as num?,
+      foodLogDaysThisWeek: (j['foodLogDaysThisWeek'] as num?)?.toInt() ?? 0,
     );
   }
 }
