@@ -63,7 +63,6 @@ class _DieticianPatientScreenState extends ConsumerState<DieticianPatientScreen>
   Widget build(BuildContext context) {
     final patientId = widget.patientId;
     final patientName = widget.patientName;
-    final scheme = Theme.of(context).colorScheme;
     final async = ref.watch(dietOverviewProvider(patientId));
 
     return Scaffold(
@@ -164,73 +163,21 @@ class _DieticianPatientScreenState extends ConsumerState<DieticianPatientScreen>
                         onRefresh: () => _refresh(patientId),
                         children: [
                           if (o.vitals?.hasAny ?? false) ...[
-                            _SectionTitle('Vitals'),
-                            const SizedBox(height: AppSpacing.sm),
                             _VitalsSection(vitals: o.vitals!),
-                            const SizedBox(height: AppSpacing.lg),
+                            const SizedBox(height: AppSpacing.md),
                           ],
-                          _SectionTitle(
-                            'Current medicines',
-                            trailing: '${o.medications.length}',
-                          ),
-                          const SizedBox(height: AppSpacing.sm),
-                          if (o.medications.isEmpty)
-                            _emptyNote(
-                              scheme,
-                              'No medicines on record from the doctor yet.',
-                            )
-                          else
-                            Container(
-                              decoration: BoxDecoration(
-                                color: scheme.surfaceContainerLowest,
-                                borderRadius: BorderRadius.circular(16),
-                                border: Border.all(
-                                  color: scheme.outlineVariant.withValues(
-                                    alpha: 0.6,
-                                  ),
-                                ),
-                              ),
-                              clipBehavior: Clip.antiAlias,
-                              child: Column(
-                                children: [
-                                  for (
-                                    var i = 0;
-                                    i < o.medications.length;
-                                    i++
-                                  ) ...[
-                                    if (i > 0)
-                                      Divider(
-                                        height: 1,
-                                        indent: 56,
-                                        color: scheme.outlineVariant.withValues(
-                                          alpha: 0.4,
-                                        ),
-                                      ),
-                                    _MedRow(med: o.medications[i]),
-                                  ],
-                                ],
-                              ),
-                            ),
+                          _MedicinesSection(meds: o.medications),
                           if (o.advice.isNotEmpty) ...[
-                            const SizedBox(height: AppSpacing.lg),
-                            _SectionTitle('Doctor’s advice'),
-                            const SizedBox(height: AppSpacing.sm),
+                            const SizedBox(height: AppSpacing.md),
                             _AdviceSection(advice: o.advice),
                           ],
                           if (o.advisedTests.isNotEmpty ||
                               o.latestHba1c != null) ...[
-                            const SizedBox(height: AppSpacing.lg),
-                            _SectionTitle('Tests ordered by the doctor'),
-                            const SizedBox(height: AppSpacing.sm),
+                            const SizedBox(height: AppSpacing.md),
                             _LabTests(overview: o),
                           ],
                           if (o.labReports.isNotEmpty) ...[
-                            const SizedBox(height: AppSpacing.lg),
-                            _SectionTitle(
-                              'Lab reports',
-                              trailing: '${o.labReports.length}',
-                            ),
-                            const SizedBox(height: AppSpacing.sm),
+                            const SizedBox(height: AppSpacing.md),
                             _LabReportsSection(reports: o.labReports),
                           ],
                         ],
@@ -308,20 +255,6 @@ class _DieticianPatientScreenState extends ConsumerState<DieticianPatientScreen>
     ref.invalidate(dietPlanProvider(patientId));
     ref.invalidate(dietFoodLogProvider(patientId));
   }
-
-  Widget _emptyNote(ColorScheme scheme, String text) => Container(
-    width: double.infinity,
-    padding: const EdgeInsets.all(AppSpacing.md),
-    decoration: BoxDecoration(
-      color: scheme.surfaceContainerLowest,
-      borderRadius: BorderRadius.circular(16),
-      border: Border.all(color: scheme.outlineVariant.withValues(alpha: 0.5)),
-    ),
-    child: Text(
-      text,
-      style: TextStyle(fontSize: 14, color: scheme.onSurfaceVariant),
-    ),
-  );
 }
 
 class _MedicalCard extends StatelessWidget {
@@ -536,38 +469,6 @@ class _MedRow extends StatelessWidget {
   }
 }
 
-class _SectionTitle extends StatelessWidget {
-  const _SectionTitle(this.text, {this.trailing});
-  final String text;
-  final String? trailing;
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Text(
-          text,
-          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
-        ),
-        if (trailing != null) ...[
-          const SizedBox(width: 8),
-          Text(
-            trailing!,
-            style: TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w700,
-              color: Theme.of(context).colorScheme.onSurfaceVariant,
-            ),
-          ),
-        ],
-      ],
-    );
-  }
-}
-
-/// The plan at a glance, with the one thing that matters most about it: whether
-/// the patient has actually been sent it. A finished-looking plan the patient
-/// has never seen is a draft, and the card says so rather than looking done.
 class _DietPlanSection extends ConsumerWidget {
   /// Files the current plan as history and opens the editor on a blank page.
   ///
@@ -716,8 +617,6 @@ class _DietPlanSection extends ConsumerWidget {
                           plan.goal.isNotEmpty
                               ? plan.goal
                               : '${plan.meals.length} meals planned',
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
                           style: const TextStyle(
                             fontSize: 14,
                             fontWeight: FontWeight.w700,
@@ -758,8 +657,6 @@ class _DietPlanSection extends ConsumerWidget {
                             meal.time.isNotEmpty
                                 ? '${meal.name} · ${meal.time}'
                                 : meal.name,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
                             style: TextStyle(
                               fontSize: 12,
                               fontWeight: FontWeight.w700,
@@ -1441,8 +1338,7 @@ class _SlotTile extends ConsumerWidget {
                       Expanded(
                         child: Text(
                           label,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
+                          maxLines: 2,
                           textAlign: TextAlign.right,
                           style: const TextStyle(
                             fontSize: 12,
@@ -1630,7 +1526,6 @@ class _LabTestsState extends State<_LabTests> {
   @override
   Widget build(BuildContext context) {
     final overview = widget.overview;
-    final scheme = Theme.of(context).colorScheme;
     final hba1c = overview.latestHba1c;
     // Awaiting first: those are the ones still outstanding, and a cap that
     // hides them behind results already in would hide the only actionable half.
@@ -1641,49 +1536,53 @@ class _LabTestsState extends State<_LabTests> {
     final shown = _showAll ? ordered : ordered.take(_cap).toList();
     final hidden = ordered.length - shown.length;
 
-    return Container(
-      padding: const EdgeInsets.all(AppSpacing.md),
-      decoration: BoxDecoration(
-        color: scheme.surfaceContainerLowest,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: scheme.outlineVariant.withValues(alpha: 0.6)),
-      ),
+    return SectionCard(
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          SectionHeader(
+            icon: Icons.science_outlined,
+            title: 'Tests ordered',
+            subtitle: 'By the doctor, and what has come back',
+            trailing:
+                ordered.isEmpty ? null : _CountBadge(count: ordered.length),
+          ),
           if (hba1c != null) ...[
-            Row(
-              children: [
-                Icon(
-                  Icons.science_outlined,
-                  size: 19,
-                  color: AppColors.accentOn(context),
-                ),
-                const SizedBox(width: AppSpacing.sm),
-                Text(
-                  'Last HbA1c  $hba1c%',
-                  style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-                const Spacer(),
-                if (overview.hba1cTestedOn != null)
-                  Text(
-                    DateFormat('MMM yyyy').format(overview.hba1cTestedOn!),
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: scheme.onSurfaceVariant,
+            const SizedBox(height: T.s4),
+            InnerTile(
+              // The one number the whole plan is judged on, so it gets a tile
+              // of its own rather than a line in a list of orders.
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Last HbA1c',
+                          style: T.label.copyWith(
+                            letterSpacing: 0,
+                            color: T.inkMuted,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        MetricValue(value: '$hba1c', unit: '%', size: 20),
+                      ],
                     ),
                   ),
-              ],
+                  if (overview.hba1cTestedOn != null)
+                    Text(
+                      DateFormat('MMM yyyy').format(overview.hba1cTestedOn!),
+                      style: T.small.copyWith(color: T.inkMuted),
+                    ),
+                ],
+              ),
             ),
-            if (overview.advisedTests.isNotEmpty)
-              const Divider(height: AppSpacing.lg),
           ],
+          if (shown.isNotEmpty) const SizedBox(height: T.s2),
           for (final test in shown)
             Padding(
-              padding: const EdgeInsets.only(bottom: 4),
+              padding: const EdgeInsets.only(top: T.s3),
               child: Row(
                 children: [
                   Icon(
@@ -1695,23 +1594,14 @@ class _LabTestsState extends State<_LabTests> {
                         test.reported ? AppColors.success : AppColors.warning,
                   ),
                   const SizedBox(width: AppSpacing.sm),
-                  Expanded(
-                    child: Text(
-                      test.name,
-                      style: const TextStyle(fontSize: 14),
-                    ),
-                  ),
-                  Text(
-                    // "Result in" read as "result in three days" — the
-                    // opposite of what it meant, on the one row where the
-                    // difference is whether anyone still has to chase it.
-                    test.reported ? 'Result received' : 'Awaiting result',
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                      color:
-                          test.reported ? AppColors.success : AppColors.warning,
-                    ),
+                  Expanded(child: Text(test.name, style: T.body)),
+                  const SizedBox(width: T.s2),
+                  // "Result in" read as "result in three days" — the opposite
+                  // of what it meant, on the one row where the difference is
+                  // whether anyone still has to chase it.
+                  StatusPill(
+                    label: test.reported ? 'Received' : 'Awaiting',
+                    status: test.reported ? Status.ok : Status.watch,
                   ),
                 ],
               ),
@@ -1763,7 +1653,6 @@ class _VitalsSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
     final v = vitals;
     final tiles = <Widget>[
       if (v.bloodPressure != null)
@@ -1827,60 +1716,22 @@ class _VitalsSection extends StatelessWidget {
         ),
     ];
 
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(AppSpacing.md),
-      decoration: BoxDecoration(
-        color: scheme.surfaceContainerLowest,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: scheme.outlineVariant.withValues(alpha: 0.55),
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: const Color(0xFF0B1B33).withValues(alpha: 0.04),
-            blurRadius: 12,
-            offset: const Offset(0, 3),
-          ),
-        ],
-      ),
-      // A single column with rules between, not a two-across grid. Each row
-      // carries a trend arrow on its right edge, and paired into columns those
-      // arrows landed mid-card where they read as decoration rather than as the
-      // end of a line.
+    // A single column with rules between, not a two-across grid. Each row
+    // carries a trend arrow on its right edge, and paired into columns those
+    // arrows landed mid-card where they read as decoration rather than as the
+    // end of a line.
+    return SectionCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Row(
-            children: [
-              Icon(
-                Icons.monitor_heart_rounded,
-                size: 19,
-                color: AppColors.accentOn(context),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  'Recent Vitals',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w800,
-                    color: AppColors.accentOn(context),
-                  ),
-                ),
-              ),
-              Text(
-                tiles.length == 1 ? '1 measure' : '${tiles.length} measures',
-                style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant),
-              ),
-            ],
+          SectionHeader(
+            icon: Icons.monitor_heart_rounded,
+            title: 'Recent vitals',
+            subtitle: 'Last recorded reading of each',
+            trailing: _CountBadge(count: tiles.length),
           ),
-          const SizedBox(height: 0),
           for (var i = 0; i < tiles.length; i++) ...[
-            Divider(
-              height: 1,
-              color: scheme.outlineVariant.withValues(alpha: 0.5),
-            ),
+            const _HairRule(),
             tiles[i],
           ],
         ],
@@ -1993,22 +1844,20 @@ class _AdviceSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return Container(
-      decoration: BoxDecoration(
-        color: scheme.surfaceContainerLowest,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: scheme.outlineVariant.withValues(alpha: 0.6)),
-      ),
-      clipBehavior: Clip.antiAlias,
+    return SectionCard(
+      // The tiles bring their own horizontal padding so an expanded one can
+      // rule edge to edge inside the card.
+      padding: const EdgeInsets.fromLTRB(T.s5, T.s5, T.s5, T.s2),
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          const SectionHeader(
+            icon: Icons.assignment_outlined,
+            title: 'Doctor\u2019s advice',
+            subtitle: 'The reasoning a plan should respect',
+          ),
           for (var i = 0; i < advice.length; i++) ...[
-            if (i > 0)
-              Divider(
-                height: 1,
-                color: scheme.outlineVariant.withValues(alpha: 0.4),
-              ),
+            const _HairRule(),
             _AdviceTile(entry: advice[i]),
           ],
         ],
@@ -2050,8 +1899,6 @@ class _AdviceTile extends StatelessWidget {
         ),
         subtitle: Text(
           dx.isNotEmpty ? dx : (entry.doctorName ?? 'Advice on record'),
-          maxLines: 2,
-          overflow: TextOverflow.ellipsis,
           style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant),
         ),
         children: [
@@ -2122,33 +1969,42 @@ class _LabReportsSectionState extends State<_LabReportsSection> {
     final shown = _showAll ? sorted : sorted.take(_cap).toList();
     final hidden = sorted.length - shown.length;
 
-    return Column(
-      children: [
-        for (final r in shown)
-          Padding(
-            padding: const EdgeInsets.only(bottom: AppSpacing.sm),
-            child: _DietLabReportRow(report: r),
+    return SectionCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          SectionHeader(
+            icon: Icons.description_outlined,
+            title: 'Lab reports',
+            subtitle: 'What the lab actually sent back',
+            trailing: _CountBadge(count: sorted.length),
           ),
-        if (hidden > 0 || _showAll)
-          Align(
-            alignment: Alignment.centerLeft,
-            child: TextButton(
-              onPressed: () => setState(() => _showAll = !_showAll),
-              style: TextButton.styleFrom(
-                padding: const EdgeInsets.symmetric(horizontal: 4),
-                visualDensity: VisualDensity.compact,
-                foregroundColor: AppColors.accentOn(context),
-              ),
-              child: Text(
-                _showAll ? 'Show less' : 'View all ${sorted.length} reports',
-                style: const TextStyle(
-                  fontSize: 13.5,
-                  fontWeight: FontWeight.w700,
+          for (final r in shown)
+            Padding(
+              padding: const EdgeInsets.only(top: T.s3),
+              child: _DietLabReportRow(report: r),
+            ),
+          if (hidden > 0 || _showAll)
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton(
+                onPressed: () => setState(() => _showAll = !_showAll),
+                style: TextButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 4),
+                  visualDensity: VisualDensity.compact,
+                  foregroundColor: AppColors.accentOn(context),
+                ),
+                child: Text(
+                  _showAll ? 'Show less' : 'View all ${sorted.length} reports',
+                  style: const TextStyle(
+                    fontSize: 13.5,
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
               ),
             ),
-          ),
-      ],
+        ],
+      ),
     );
   }
 }
@@ -2248,13 +2104,7 @@ class _DietLabReportRowState extends ConsumerState<_DietLabReportRow> {
     final showThumb = report.hasFile && report.isImage;
     final abnormal = report.analytes.where((a) => a.abnormal).toList();
 
-    final tile = Container(
-      padding: const EdgeInsets.all(AppSpacing.sm),
-      decoration: BoxDecoration(
-        color: scheme.surfaceContainerLowest,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: scheme.outlineVariant.withValues(alpha: 0.6)),
-      ),
+    final tile = InnerTile(
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -2474,13 +2324,9 @@ class _AnalyteChip extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Flexible(
-            child: Text(
-              '${analyte.label} ',
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant),
-            ),
+          Text(
+            '${analyte.label} ',
+            style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant),
           ),
           Text(
             _fmt(analyte.value),
@@ -3081,8 +2927,7 @@ class _SnapshotCell extends StatelessWidget {
         const SizedBox(height: 2),
         Text(
           label,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
+          maxLines: 2,
           style: T.label.copyWith(
             letterSpacing: 0,
             fontWeight: FontWeight.w600,
@@ -3105,7 +2950,6 @@ class _SnapshotCell extends StatelessWidget {
                 child: Text(
                   '$shown${unitForDelta ?? ''}',
                   maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
                   style: T.label.copyWith(
                     fontSize: 10,
                     letterSpacing: 0,
@@ -3119,8 +2963,7 @@ class _SnapshotCell extends StatelessWidget {
           const SizedBox(height: 3),
           Text(
             caption!,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
+            maxLines: 2,
             style: T.label.copyWith(
               fontSize: 10,
               letterSpacing: 0,
@@ -3417,8 +3260,8 @@ class _VerdictChip extends StatelessWidget {
               const SizedBox(height: 3),
               Text(
                 verdict.label,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
+                maxLines: 2,
+                textAlign: TextAlign.center,
                 style: TextStyle(
                   fontSize: 11,
                   fontWeight: FontWeight.w700,
@@ -3483,20 +3326,24 @@ class _AdherenceCard extends ConsumerWidget {
             icon: Icons.event_available_rounded,
             label: 'Food logging',
             value: overview.foodLogDaysThisWeek / 7,
-            trailing: '${overview.foodLogDaysThisWeek} / 7 days',
+            readout: '${overview.foodLogDaysThisWeek}/7',
+            caption:
+                overview.foodLogDaysThisWeek == 0
+                    ? 'Nothing logged in the last seven days'
+                    : 'days logged in the last seven',
           ),
-          const SizedBox(height: T.s3),
+          const SizedBox(height: T.s4),
           _AdherenceBar(
             icon: Icons.restaurant_menu_rounded,
             label: 'Meal plan adherence',
             value: planPct == null ? null : planPct / 100,
-            // Said plainly rather than shown as 0%: nothing judged yet is not
-            // the same as nothing on track, and a bar at zero would read as
-            // the second.
-            trailing: planPct == null ? 'No meals judged yet' : '$planPct%',
+            // A dash, not 0%. Nothing judged yet is not the same as nothing
+            // on track, and a bar at zero would read as the second — so the
+            // reason goes underneath in words.
+            readout: planPct == null ? '—' : '$planPct%',
             caption:
                 judged.isEmpty
-                    ? null
+                    ? 'No meals judged yet'
                     : 'from ${judged.length} judged ${judged.length == 1 ? 'meal' : 'meals'}',
           ),
         ],
@@ -3510,7 +3357,7 @@ class _AdherenceBar extends StatelessWidget {
     required this.icon,
     required this.label,
     required this.value,
-    required this.trailing,
+    required this.readout,
     this.caption,
   });
 
@@ -3519,7 +3366,13 @@ class _AdherenceBar extends StatelessWidget {
 
   /// 0..1, or null when there is nothing to measure yet.
   final double? value;
-  final String trailing;
+
+  /// The figure itself, kept to a few characters so it can sit on the label's
+  /// line. Anything that needs a sentence belongs in [caption].
+  final String readout;
+
+  /// The line under the bar: where the figure came from, or why there isn't
+  /// one. Wraps freely — it has the whole width of the card.
   final String? caption;
 
   @override
@@ -3537,6 +3390,7 @@ class _AdherenceBar extends StatelessWidget {
             : T.danger;
 
     return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Container(
           width: 32,
@@ -3552,50 +3406,52 @@ class _AdherenceBar extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                label,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: T.small.copyWith(
-                  fontWeight: FontWeight.w600,
-                  color: T.ink,
-                ),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.baseline,
+                textBaseline: TextBaseline.alphabetic,
+                children: [
+                  Expanded(
+                    child: Text(
+                      label,
+                      style: T.small.copyWith(
+                        fontWeight: FontWeight.w600,
+                        color: T.ink,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: T.s2),
+                  Text(
+                    readout,
+                    style: T.small.copyWith(
+                      fontWeight: FontWeight.w800,
+                      color: v == null ? T.inkFaint : T.ink,
+                    ),
+                  ),
+                ],
               ),
-              const SizedBox(height: 5),
+              const SizedBox(height: 7),
               ClipRRect(
                 borderRadius: BorderRadius.circular(999),
                 child: LinearProgressIndicator(
                   value: v ?? 0,
-                  minHeight: 6,
+                  minHeight: 7,
                   backgroundColor: const Color(0xFFEDF1F7),
                   valueColor: AlwaysStoppedAnimation(tone),
                 ),
               ),
               if (caption != null) ...[
-                const SizedBox(height: 3),
+                const SizedBox(height: 5),
                 Text(
                   caption!,
                   style: T.label.copyWith(
-                    fontSize: 10,
+                    fontSize: 11,
                     letterSpacing: 0,
-                    color: T.inkFaint,
+                    fontWeight: FontWeight.w500,
+                    color: T.inkMuted,
                   ),
                 ),
               ],
             ],
-          ),
-        ),
-        const SizedBox(width: T.s3),
-        ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 110),
-          child: Text(
-            trailing,
-            maxLines: 2,
-            textAlign: TextAlign.right,
-            style: T.small.copyWith(
-              fontWeight: FontWeight.w700,
-              color: v == null ? T.inkMuted : T.ink,
-            ),
           ),
         ),
       ],
@@ -3726,14 +3582,7 @@ class _LabRow extends StatelessWidget {
           color: analyte.abnormal ? T.warning : T.primary,
         ),
         const SizedBox(width: T.s3),
-        Expanded(
-          child: Text(
-            label,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: T.small.copyWith(color: T.ink),
-          ),
-        ),
+        Expanded(child: Text(label, style: T.small.copyWith(color: T.ink))),
         MetricValue(
           value: '${analyte.value}',
           unit: analyte.unit,
@@ -3975,4 +3824,87 @@ class _TimelinePainter extends CustomPainter {
       old.drawAbove != drawAbove ||
       old.drawBelow != drawBelow ||
       old.background != background;
+}
+
+/// The medicines the doctor has this patient on.
+///
+/// A dietician reads this list for one thing — whether a drug on it changes
+/// what the plan can say — so it is a section in its own right rather than a
+/// list appended to the vitals.
+class _MedicinesSection extends StatelessWidget {
+  const _MedicinesSection({required this.meds});
+
+  final List<DietMed> meds;
+
+  @override
+  Widget build(BuildContext context) {
+    return SectionCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          SectionHeader(
+            icon: Icons.medication_rounded,
+            title: 'Current medicines',
+            subtitle: 'Prescribed by the doctor',
+            trailing: meds.isEmpty ? null : _CountBadge(count: meds.length),
+          ),
+          if (meds.isEmpty) ...[
+            const SizedBox(height: T.s4),
+            Text(
+              'Nothing on record from the doctor yet.',
+              style: T.body.copyWith(color: T.inkMuted),
+            ),
+          ] else
+            for (final m in meds) ...[const _HairRule(), _MedRow(med: m)],
+        ],
+      ),
+    );
+  }
+}
+
+/// A count on a section heading, as a plate rather than loose type.
+///
+/// "Lab reports 7" set as two pieces of text read as a title someone had
+/// typed a number after. The number is a different kind of thing from the
+/// title and now looks like one.
+class _CountBadge extends StatelessWidget {
+  const _CountBadge({required this.count});
+
+  final int count;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
+      decoration: BoxDecoration(color: T.primaryTint, borderRadius: T.rFull),
+      child: Text(
+        '$count',
+        style: T.label.copyWith(
+          letterSpacing: 0,
+          fontWeight: FontWeight.w800,
+          color: T.primary,
+        ),
+      ),
+    );
+  }
+}
+
+/// The rule between rows inside a [SectionCard].
+///
+/// One weight and one inset everywhere, because five sections had five —
+/// some indented past an icon, some not, some a full-strength divider and
+/// some a wash. A rule that varies reads as a mistake in whichever card is
+/// the odd one out.
+class _HairRule extends StatelessWidget {
+  const _HairRule();
+
+  @override
+  Widget build(BuildContext context) {
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    return Container(
+      height: 1,
+      margin: const EdgeInsets.only(top: T.s3),
+      color: dark ? const Color(0x14FFFFFF) : T.line,
+    );
+  }
 }

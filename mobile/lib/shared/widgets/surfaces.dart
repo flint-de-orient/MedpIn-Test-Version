@@ -153,17 +153,16 @@ class SectionHeader extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
+              // Wraps rather than ellipsises. A section called "Tests
+              // ordered by the doct…" tells the reader less than the same
+              // words on two lines, and costs the same room to say it.
               Text(
                 title,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
                 style: T.title.copyWith(color: dark ? Colors.white : T.ink),
               ),
               if (subtitle != null)
                 Text(
                   subtitle!,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
                   style: T.label.copyWith(
                     fontWeight: FontWeight.w500,
                     letterSpacing: 0,
@@ -320,25 +319,32 @@ class MetricValue extends StatelessWidget {
   Widget build(BuildContext context) {
     final dark = Theme.of(context).brightness == Brightness.dark;
     final ink = color ?? (dark ? Colors.white : T.ink);
-    return Text.rich(
-      TextSpan(
-        children: [
-          TextSpan(text: value),
-          if (unit != null)
-            TextSpan(
-              text: ' $unit',
-              style: TextStyle(
-                fontSize: size * 0.48,
-                fontWeight: FontWeight.w600,
-                letterSpacing: 0,
-                color: T.inkMuted,
+    // Shrinks to fit rather than ellipsising. A truncated word is still
+    // readable; a truncated reading is a different number — "148" cut to
+    // "14…" is wrong, not short — so the one thing this must never do is
+    // drop a digit.
+    return FittedBox(
+      fit: BoxFit.scaleDown,
+      alignment: Alignment.centerLeft,
+      child: Text.rich(
+        TextSpan(
+          children: [
+            TextSpan(text: value),
+            if (unit != null)
+              TextSpan(
+                text: ' $unit',
+                style: TextStyle(
+                  fontSize: size * 0.48,
+                  fontWeight: FontWeight.w600,
+                  letterSpacing: 0,
+                  color: T.inkMuted,
+                ),
               ),
-            ),
-        ],
+          ],
+        ),
+        maxLines: 1,
+        style: T.metric.copyWith(fontSize: size, color: ink),
       ),
-      maxLines: 1,
-      overflow: TextOverflow.ellipsis,
-      style: T.metric.copyWith(fontSize: size, color: ink),
     );
   }
 }
