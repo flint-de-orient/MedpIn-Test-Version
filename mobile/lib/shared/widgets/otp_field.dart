@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -86,17 +88,14 @@ class _OtpCodeFieldState extends State<OtpCodeField> {
       textField: true,
       child: Stack(
         children: [
-          Row(
-            children: [
-              for (var i = 0; i < widget.length; i++) ...[
-                if (i > 0) const SizedBox(width: T.s2),
-                Expanded(child: _box(i, code, cursor, focused)),
-              ],
-            ],
-          ),
-
-          // The real field, over the boxes and invisible. It keeps its own
-          // hit area so a tap anywhere on the row opens the keyboard.
+          // The field is painted FIRST, the boxes over it.
+          //
+          // The other order shipped, and the digits were invisible: this app's
+          // inputDecorationTheme sets `filled: true` with a white fillColor,
+          // so an "invisible" TextField laid over the boxes painted a solid
+          // white rectangle across all six of them and only their bottom edge
+          // showed. `filled: false` below fixes that on its own — but drawing
+          // the boxes last means no future theme change can cover them again.
           Positioned.fill(
             child: TextField(
               controller: widget.controller,
@@ -115,13 +114,33 @@ class _OtpCodeFieldState extends State<OtpCodeField> {
               showCursor: false,
               enableInteractiveSelection: false,
               decoration: const InputDecoration(
+                // Every one of these overrides something the app theme would
+                // otherwise draw on top of the boxes.
+                filled: false,
+                isDense: true,
                 border: InputBorder.none,
                 focusedBorder: InputBorder.none,
                 enabledBorder: InputBorder.none,
+                disabledBorder: InputBorder.none,
+                errorBorder: InputBorder.none,
+                focusedErrorBorder: InputBorder.none,
                 contentPadding: EdgeInsets.zero,
                 counterText: '',
               ),
               onTap: () => setState(() {}),
+            ),
+          ),
+
+          // Over the field, and transparent to touch so a tap anywhere on the
+          // row still lands on it and opens the keyboard.
+          IgnorePointer(
+            child: Row(
+              children: [
+                for (var i = 0; i < widget.length; i++) ...[
+                  if (i > 0) const SizedBox(width: T.s2),
+                  Expanded(child: _box(i, code, cursor, focused)),
+                ],
+              ],
             ),
           ),
         ],
@@ -144,8 +163,10 @@ class _OtpCodeFieldState extends State<OtpCodeField> {
 
     return Container(
       // Comfortably past the 48px floor: this is the one control on the
-      // screen, and these patients are largely elderly.
-      height: MediaQuery.textScalerOf(context).scale(56),
+      // screen, and these patients are largely elderly. Floored, because the
+      // app caps its text scaler at 1.0 — so scaling alone could only ever
+      // make this box smaller than it was designed to be, never larger.
+      height: math.max(56, MediaQuery.textScalerOf(context).scale(56)),
       alignment: Alignment.center,
       decoration: BoxDecoration(
         color: widget.hasError ? T.dangerTint : T.surfaceRaised,
