@@ -45,28 +45,29 @@ class PillButton extends StatelessWidget {
               borderRadius: T.rFull,
               boxShadow: enabled ? T.eAction : null,
             ),
-            child: loading
-                ? const SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      valueColor: AlwaysStoppedAnimation(Colors.white),
-                    ),
-                  )
-                : Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      if (icon != null) ...[
-                        Icon(icon, size: 20, color: Colors.white),
-                        const SizedBox(width: T.s2),
-                      ],
-                      Text(
-                        label,
-                        style: T.bodyStrong.copyWith(color: Colors.white),
+            child:
+                loading
+                    ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        valueColor: AlwaysStoppedAnimation(Colors.white),
                       ),
-                    ],
-                  ),
+                    )
+                    : Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (icon != null) ...[
+                          Icon(icon, size: 20, color: Colors.white),
+                          const SizedBox(width: T.s2),
+                        ],
+                        Text(
+                          label,
+                          style: T.bodyStrong.copyWith(color: Colors.white),
+                        ),
+                      ],
+                    ),
           ),
         ),
       ),
@@ -123,11 +124,7 @@ class PillButtonOutlined extends StatelessWidget {
 /// tell you something a static label says for free, and it leaves the field
 /// looking empty-but-busy at rest.
 class AuthField extends StatelessWidget {
-  const AuthField({
-    super.key,
-    required this.label,
-    required this.child,
-  });
+  const AuthField({super.key, required this.label, required this.child});
 
   final String label;
   final Widget child;
@@ -139,10 +136,10 @@ class AuthField extends StatelessWidget {
       children: [
         Padding(
           padding: const EdgeInsets.only(bottom: T.s2),
-          child: Text(label, style: T.small.copyWith(
-            color: T.ink,
-            fontWeight: FontWeight.w600,
-          )),
+          child: Text(
+            label,
+            style: T.small.copyWith(color: T.ink, fontWeight: FontWeight.w600),
+          ),
         ),
         child,
       ],
@@ -159,18 +156,37 @@ class AuthField extends StatelessWidget {
     String? prefixText,
   }) {
     OutlineInputBorder border(Color c, [double w = 1]) => OutlineInputBorder(
-          borderRadius: BorderRadius.circular(T.rCard),
-          borderSide: BorderSide(color: c, width: w),
-        );
+      borderRadius: BorderRadius.circular(T.rCard),
+      borderSide: BorderSide(color: c, width: w),
+    );
     return InputDecoration(
       hintText: hint,
       hintStyle: T.body.copyWith(color: T.inkFaint),
       helperText: helper,
       helperStyle: T.small.copyWith(color: T.inkMuted),
       helperMaxLines: 2,
-      prefixIcon: prefix,
-      prefixText: prefixText,
-      prefixStyle: T.body.copyWith(color: T.ink),
+      // The country code is drawn as a leading widget, not as `prefixText`.
+      //
+      // Flutter hides prefixText while the field is empty and unfocused, so
+      // "+91" appeared only once someone started typing — which is the one
+      // moment they no longer need telling. Before that the box read "Enter
+      // your 10-digit number" with nothing saying which country's ten digits,
+      // on the screen where a patient decides whether to type their number
+      // with a code or without one. A prefixIcon is always painted.
+      prefixIcon:
+          prefix ??
+          (prefixText == null
+              ? null
+              : Padding(
+                padding: const EdgeInsets.only(left: T.s4, right: T.s2),
+                child: Text(
+                  prefixText.trim(),
+                  style: T.body.copyWith(color: T.ink),
+                ),
+              )),
+      // Without this the code sits inside a 48px icon slot, pushed away from
+      // the number it belongs to.
+      prefixIconConstraints: const BoxConstraints(minWidth: 0, minHeight: 0),
       suffixIcon: suffix,
       filled: true,
       fillColor: T.surfaceRaised,
@@ -243,7 +259,11 @@ class CircleBack extends StatelessWidget {
                 color: T.surfaceRaised,
                 border: Border.all(color: T.line),
               ),
-              child: const Icon(Icons.arrow_back_rounded, size: 20, color: T.ink),
+              child: const Icon(
+                Icons.arrow_back_rounded,
+                size: 20,
+                color: T.ink,
+              ),
             ),
           ),
         ),

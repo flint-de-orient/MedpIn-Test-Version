@@ -178,6 +178,20 @@ void main() {
       expect(find.text('Enter a valid 10-digit mobile number'), findsOneWidget);
     });
 
+    testWidgets('the country code is visible before anything is typed', (
+      tester,
+    ) async {
+      await tester.pumpWidget(harness(const LoginScreen()));
+
+      // It was a `prefixText`, which Flutter hides while the field is empty
+      // and unfocused — so "+91" appeared only once someone started typing,
+      // which is the one moment they no longer need telling. Before that the
+      // box read "Enter your 10-digit number" with nothing saying whose ten
+      // digits, on the screen where a patient decides whether to include a
+      // country code.
+      expect(find.text('+91'), findsOneWidget);
+    });
+
     testWidgets('offers the doctor a way to a password', (tester) async {
       await tester.pumpWidget(harness(const LoginScreen()));
       // Quiet, but present: the doctor is the one person who has a password
@@ -303,6 +317,14 @@ void main() {
       // A RenderFlex overflow throws in a widget test, which is the whole
       // point of pumping the real theme above.
       expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('the country code is visible on the register form too', (
+      tester,
+    ) async {
+      useTallSurface(tester);
+      await tester.pumpWidget(harness(const RegisterScreen()));
+      expect(find.text('+91'), findsOneWidget);
     });
 
     testWidgets('the first step fits a phone screen', (tester) async {
