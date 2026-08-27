@@ -4,7 +4,7 @@ import { requireAuth, requireDietician } from '../middleware/auth.js';
 import { validate } from '../middleware/validate.js';
 import { asyncHandler, notFound } from '../middleware/errors.js';
 import { audit } from '../middleware/audit.js';
-import { User } from '../models/User.js';
+import { User, ROLES } from '../models/User.js';
 import { PatientProfile } from '../models/PatientProfile.js';
 import { Medication } from '../models/Medication.js';
 import { Prescription } from '../models/Prescription.js';
@@ -280,6 +280,58 @@ async function unreadNutritionCount(patientIds) {
  * Scoped to their own caseload throughout. A notification about somebody else's
  * patient is one the reader cannot act on.
  */
+/**
+ * For each of [sessions], the other dietician already answering it.
+ *
+ * The list is not filtered by ownership the way push notifications are, and
+ * deliberately: a push is an interruption and sending two people the same one
+ * is waste, but this list is also the worklist. Hiding a patient's unread
+ * message from everyone except whoever answered last would mean that if that
+ * person is away, nobody sees it at all — which is worse than seeing it twice.
+ *
+ * So the row stays and says who has it instead. "Romit Dey is answering" is
+ * something a reader can act on; the same row with no label is a second
+ * dietician drafting a reply to a question that is already being handled.
+ */
+async function handledByOther(sessions, meId) {
+  if (sessions.length === 0) return new Map();
+
+  const replies = await ChatMessage.aggregate([
+    {
+      $match: {
+        session: { $in: sessions.map((s) => s._id) },
+        role: 'clinician',
+        sender: { $ne: null },
+      },
+    },
+    { $sort: { seq: -1 } },
+    { $group: { _id: '$session', sender: { $first: '$sender' } } },
+  ]);
+
+  // Only other dieticians. A doctor answering in the nutrition thread is not
+  // someone this dietician should stand down for, and neither is themselves.
+  const senderIds = replies
+    .map((r) => r.sender)
+    .filter((id) => String(id) !== String(meId));
+  if (senderIds.length === 0) return new Map();
+
+  const others = await User.find({
+    _id: { $in: senderIds },
+    role: ROLES.DIETICIAN,
+    isActive: true,
+  })
+    .select('name')
+    .lean();
+  const nameById = new Map(others.map((u) => [String(u._id), u.name]));
+
+  const bySession = new Map();
+  for (const r of replies) {
+    const name = nameById.get(String(r.sender));
+    if (name) bySession.set(String(r._id), name);
+  }
+  return bySession;
+}
+
 router.get(
   '/notifications',
   asyncHandler(async (req, res) => {
@@ -306,15 +358,18 @@ router.get(
         .select('_id patient')
         .lean();
       if (sessions.length > 0) {
-        const unread = await ChatMessage.find({
-          role: 'user',
-          seenByClinicAt: null,
-          session: { $in: sessions.map((x) => x._id) },
-        })
-          .sort({ createdAt: -1 })
-          .limit(30)
-          .select('patient content createdAt attachments')
-          .lean();
+        const [unread, handledBy] = await Promise.all([
+          ChatMessage.find({
+            role: 'user',
+            seenByClinicAt: null,
+            session: { $in: sessions.map((x) => x._id) },
+          })
+            .sort({ createdAt: -1 })
+            .limit(30)
+            .select('patient session content createdAt attachments')
+            .lean(),
+          handledByOther(sessions, req.user._id),
+        ]);
 
         messages = unread
           .map((m) => {
@@ -330,6 +385,8 @@ router.get(
               text: text.length > 0 ? text.slice(0, 200) : 'Sent a photo',
               at: m.createdAt,
               unread: true,
+              // Null unless another dietician is already in this conversation.
+              handledBy: handledBy.get(String(m.session)) ?? null,
             };
           })
           .filter(Boolean);

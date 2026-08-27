@@ -3,6 +3,8 @@ import { getMessaging } from '../config/firebase.js';
 import { ClinicalAlert } from '../models/ClinicalAlert.js';
 import { logger } from '../config/logger.js';
 import { PatientProfile } from '../models/PatientProfile.js';
+import { ChatSession } from '../models/ChatSession.js';
+import { ChatMessage } from '../models/ChatMessage.js';
 
 /**
  * Notification transport.
@@ -273,11 +275,66 @@ export async function notifyPatientOfClinicianReply(patientId, clinician, conten
  * belongs to them alone, and everyone else belongs to whichever dieticians are
  * covering the clinic at large.
  */
-async function dieticiansFor(patientId) {
+/**
+ * Which of the covering dieticians a patient's message should reach.
+ *
+ * Split out from the queries so the rule itself can be read and tested. Every
+ * argument is already resolved: `pool` is the dieticians currently covering the
+ * clinic at large, `lastReplierId` is whichever of them answered this patient
+ * most recently, `urgency` is the triage on the message that just arrived.
+ *
+ * @param {{pool: Array<{_id: any}>, lastReplierId: string|null, urgency: string|null}} input
+ */
+export function routeToDieticians({ pool, lastReplierId, urgency }) {
+  // One dietician covering the clinic is the whole clinic's dietician. This is
+  // the setup the app launched with and it was never wrong — the fan-out only
+  // becomes a problem when there is someone else it could have gone to.
+  if (pool.length <= 1) return pool;
+
+  // An urgent or emergency message goes to everyone covering.
+  //
+  // The ownership rule below is a courtesy — it stops two dieticians being
+  // pinged about a question one of them is already handling. It must never
+  // decide that nobody hears about chest pain because the person who usually
+  // answers this patient is off today.
+  if (urgency === 'urgent' || urgency === 'emergency') return pool;
+
+  // Whoever answered this patient last owns the conversation. They have the
+  // history, the plan and the context; a second dietician arriving cold adds
+  // nothing and two people drafting the same reply is worse than one.
+  if (lastReplierId) {
+    const owner = pool.find((d) => String(d._id) === String(lastReplierId));
+    if (owner) return [owner];
+  }
+
+  // Nobody has answered this patient yet, so nobody owns them. Everyone
+  // covering hears about it, and the first to reply becomes the owner by the
+  // rule above.
+  return pool;
+}
+
+/**
+ * The dieticians who should hear about this patient.
+ *
+ * Visibility and notification are deliberately different things here.
+ * `scopeFilter` in routes/dietician.js decides who may *see* a patient, and it
+ * stays wide on purpose: any covering dietician can open any unrestricted
+ * patient and help. This decides who gets *woken up*, which is a narrower
+ * question — a push about a conversation somebody else is already having is
+ * noise, and two dieticians answering the same question is worse than noise.
+ *
+ * Three shapes:
+ *  - a patient the doctor has assigned belongs to that dietician alone;
+ *  - everyone else belongs to the dieticians covering the clinic at large;
+ *  - and among those, to whichever one is already in the conversation.
+ */
+async function dieticiansFor(patientId, { urgency } = {}) {
   const profile = await PatientProfile.findOne({ user: patientId })
     .select('assignedDietician')
     .lean();
 
+  // The doctor's explicit assignment wins over everything below it. It is the
+  // one place a human has said who is responsible for this patient.
   if (profile?.assignedDietician) {
     const one = await User.findOne({ _id: profile.assignedDietician, isActive: true })
       .select('deviceTokens')
@@ -297,11 +354,47 @@ async function dieticiansFor(patientId) {
     { $group: { _id: '$assignedDietician', n: { $sum: 1 } } },
   ]);
   const hasOwnList = new Set(assignedCounts.map((a) => String(a._id)));
-  return dieticians.filter((d) => !hasOwnList.has(String(d._id)));
+  const pool = dieticians.filter((d) => !hasOwnList.has(String(d._id)));
+
+  // Skip the lookup entirely when the answer cannot depend on it.
+  if (pool.length <= 1 || urgency === 'urgent' || urgency === 'emergency') {
+    return routeToDieticians({ pool, lastReplierId: null, urgency });
+  }
+
+  return routeToDieticians({
+    pool,
+    lastReplierId: await lastDieticianToReply(patientId, pool),
+    urgency,
+  });
 }
 
-export async function notifyDieticianOfPatientMessage(patientId, patientName, content) {
-  const recipients = await dieticiansFor(patientId);
+/**
+ * The dietician who most recently answered this patient, if any.
+ *
+ * Constrained to senders in [pool], so a doctor answering in the nutrition
+ * thread does not erase the dietician who was handling it — the query walks
+ * back past them to the last reply that was actually a covering dietician's.
+ */
+async function lastDieticianToReply(patientId, pool) {
+  const session = await ChatSession.findOne({ patient: patientId, kind: 'nutrition' })
+    .select('_id')
+    .lean();
+  if (!session) return null;
+
+  const last = await ChatMessage.findOne({
+    session: session._id,
+    role: 'clinician',
+    sender: { $in: pool.map((d) => d._id) },
+  })
+    .sort({ seq: -1 })
+    .select('sender')
+    .lean();
+
+  return last?.sender ? String(last.sender) : null;
+}
+
+export async function notifyDieticianOfPatientMessage(patientId, patientName, content, { urgency } = {}) {
+  const recipients = await dieticiansFor(patientId, { urgency });
   const tokens = recipients.flatMap((d) => d.deviceTokens ?? []);
   if (tokens.length === 0) return;
 

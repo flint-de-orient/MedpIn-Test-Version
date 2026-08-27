@@ -16,6 +16,7 @@ class PanelNotification {
     this.avatarUrl,
     this.at,
     this.unread = false,
+    this.handledBy,
   });
 
   final String id;
@@ -33,6 +34,15 @@ class PanelNotification {
   final DateTime? at;
   final bool unread;
 
+  /// Another clinician is already answering this conversation, by name.
+  ///
+  /// Null when nobody is, which is the only case in a single-clinician clinic.
+  /// The row is shown either way — this list is the worklist, and hiding a
+  /// patient's message because someone else replied last would mean that if
+  /// they are away, nobody sees it at all. Saying who has it turns a duplicate
+  /// alert into something the reader can act on.
+  final String? handledBy;
+
   factory PanelNotification.fromJson(Map<String, dynamic> j) =>
       PanelNotification(
         id: j['id']?.toString() ?? '',
@@ -43,6 +53,7 @@ class PanelNotification {
         avatarUrl: j['avatarUrl']?.toString(),
         at: DateTime.tryParse(j['at']?.toString() ?? '')?.toLocal(),
         unread: j['unread'] == true,
+        handledBy: j['handledBy']?.toString(),
       );
 }
 
@@ -364,6 +375,29 @@ class _Row extends StatelessWidget {
                                 : scheme.onSurfaceVariant,
                       ),
                     ),
+                    if (item.handledBy != null) ...[
+                      const SizedBox(height: 4),
+                      Row(
+                        children: [
+                          Icon(
+                            Icons.how_to_reg_outlined,
+                            size: 14,
+                            color: scheme.onSurfaceVariant,
+                          ),
+                          const SizedBox(width: 4),
+                          Expanded(
+                            child: Text(
+                              '${item.handledBy} is answering this',
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                                color: scheme.onSurfaceVariant,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
                   ],
                 ),
               ),

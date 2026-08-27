@@ -132,6 +132,7 @@ class _NotificationSheetState extends ConsumerState<_NotificationSheet> {
             avatarUrl: n.avatarUrl,
             at: n.at,
             unread: n.unread,
+            handledBy: n.handledBy,
           ),
       ],
       unread: view?.unread ?? 0,

@@ -1094,6 +1094,7 @@ class DietNotification {
     this.avatarUrl,
     this.at,
     this.unread = false,
+    this.handledBy,
   });
 
   final String id;
@@ -1107,6 +1108,10 @@ class DietNotification {
   final DateTime? at;
   final bool unread;
 
+  /// The other dietician already answering this conversation, by name, or null
+  /// when nobody is.
+  final String? handledBy;
+
   factory DietNotification.fromJson(Map<String, dynamic> j) => DietNotification(
     id: j['id']?.toString() ?? '',
     kind: j['kind']?.toString() ?? 'message',
@@ -1116,6 +1121,7 @@ class DietNotification {
     avatarUrl: j['avatarUrl']?.toString(),
     at: DateTime.tryParse(j['at']?.toString() ?? '')?.toLocal(),
     unread: j['unread'] == true,
+    handledBy: j['handledBy']?.toString(),
   );
 }
 

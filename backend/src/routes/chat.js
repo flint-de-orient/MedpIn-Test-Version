@@ -658,7 +658,11 @@ router.post(
 
     // Tell the dietician a question has arrived. Fire-and-forget: a push
     // that fails must not fail the patient's message, which is already saved.
-    notifyDieticianOfPatientMessage(patientId, req.user.name, text).catch(() => {});
+    // Urgency goes with it: an urgent message reaches every covering
+    // dietician, a routine one only whoever is already in this conversation.
+    notifyDieticianOfPatientMessage(patientId, req.user.name, text, {
+      urgency: triage.urgency,
+    }).catch(() => {});
 
     if (triage.urgency === 'emergency' || triage.urgency === 'urgent') {
       const alert = await raiseAlert({
