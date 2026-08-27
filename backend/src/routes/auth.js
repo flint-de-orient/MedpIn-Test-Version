@@ -241,6 +241,9 @@ router.post(
       dateOfBirth,
       gender,
       role,
+      // Reaching here means a code sent to this number came back, so the
+      // number is proved by construction.
+      phoneVerifiedAt: new Date(),
       consent: {
         termsAcceptedAt: new Date(),
         dataProcessingAcceptedAt: new Date(),

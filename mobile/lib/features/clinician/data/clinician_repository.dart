@@ -62,7 +62,11 @@ class ClinicianRepository {
   Future<String> createPatient({
     required String name,
     required String phone,
-    String? password,
+
+    /// Proof from `/auth/otp/verify` that a code texted to this number came
+    /// back. Null when the desk registered without taking one — the record is
+    /// still created, the patient just has an unproved number.
+    String? phoneToken,
     int? age,
     String? gender,
     String? address,
@@ -80,7 +84,7 @@ class ClinicianRepository {
       body: {
         'name': name,
         'phone': phone,
-        if (password != null && password.isNotEmpty) 'password': password,
+        if (phoneToken != null) 'phoneToken': phoneToken,
         if (age != null) 'age': age,
         if (gender != null) 'gender': gender,
         if (address != null && address.isNotEmpty) 'address': address,

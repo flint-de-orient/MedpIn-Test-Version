@@ -34,6 +34,15 @@ const userSchema = new mongoose.Schema(
     // by the clinic and may sign in with a password, do. Accounts created
     // before the change keep theirs and keep working.
     passwordHash: { type: String, select: false },
+
+    // When a code texted to this number was typed back correctly.
+    //
+    // Sign-in is that code, so an unproved number is an account nobody can get
+    // into — and the person who cannot get in is the patient, weeks later, with
+    // no way to tell whether the number was mistyped at the desk. Null means it
+    // has never been proved, which the doctor's screen says out loud rather
+    // than leaving to be discovered.
+    phoneVerifiedAt: { type: Date, default: null },
     role: { type: String, enum: Object.values(ROLES), default: ROLES.PATIENT, index: true },
     language: { type: String, enum: LANGUAGES, default: 'en' },
 

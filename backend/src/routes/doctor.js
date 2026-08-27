@@ -1,10 +1,9 @@
 import { Router } from 'express';
-import { randomBytes } from 'node:crypto';
 import dayjs from 'dayjs';
 import { z } from 'zod';
 import { requireAuth, requireClinician } from '../middleware/auth.js';
 import { validate, q } from '../middleware/validate.js';
-import { asyncHandler, notFound, conflict } from '../middleware/errors.js';
+import { asyncHandler, notFound, conflict, badRequest } from '../middleware/errors.js';
 import { audit } from '../middleware/audit.js';
 import { User, ROLES } from '../models/User.js';
 import { PatientProfile } from '../models/PatientProfile.js';
@@ -43,6 +42,7 @@ import { embed } from '../services/ai/gemini.js';
 import { paged, pageParams } from '../utils/pagination.js';
 import { logger } from '../config/logger.js';
 import { env } from '../config/env.js';
+import { phoneFromToken } from '../services/otp.js';
 
 const router = Router();
 router.use(requireAuth, requireClinician);
@@ -492,9 +492,13 @@ router.post(
         .trim()
         .transform(toE164)
         .pipe(z.string().regex(/^\+?[1-9]\d{7,14}$/, 'Enter a valid phone number')),
-      // Optional at the desk: reception often enrols a patient without setting a
-      // login password. One is generated when omitted so the account is valid.
-      password: z.string().min(8, 'At least 8 characters').max(128).optional(),
+      // Proof from `/auth/otp/verify` that a code texted to this number came
+      // back, when the desk took it. Optional on purpose: a patient whose
+      // phone is flat or out of signal still has to be registerable, and the
+      // clinical record is worth having even when the app login is not yet
+      // usable. The number is checked against the token below rather than
+      // trusted alongside it.
+      phoneToken: z.string().min(20).optional(),
       // Age is what the desk usually knows; converted to an approximate DOB so
       // the rest of the app (which derives age from DOB) stays consistent. An
       // explicit dateOfBirth wins when provided.
@@ -519,12 +523,24 @@ router.post(
     const b = req.body;
     if (await User.exists({ phone: b.phone })) throw conflict('An account with this phone number already exists');
 
+    // A token vouches for one number. Taking the token and the phone as two
+    // independent fields would let a desk verify one number and register
+    // another, so the two have to agree before the token means anything.
+    let phoneVerifiedAt = null;
+    if (b.phoneToken) {
+      if (phoneFromToken(b.phoneToken) !== b.phone) {
+        throw badRequest('That verification was for a different number. Verify this one again.');
+      }
+      phoneVerifiedAt = new Date();
+    }
+
     const dob = b.dateOfBirth ?? (b.age != null ? dayjs().subtract(b.age, 'year').toDate() : undefined);
 
     const user = new User({
       name: b.name,
       phone: b.phone,
       role: ROLES.PATIENT,
+      phoneVerifiedAt,
       ...(dob ? { dateOfBirth: dob } : {}),
       ...(b.gender ? { gender: b.gender } : {}),
       consent: {
@@ -533,7 +549,9 @@ router.post(
         aiDisclaimerAcceptedAt: new Date(),
       },
     });
-    await user.setPassword(b.password ?? randomBytes(12).toString('hex'));
+    // No password. The patient signs in with a code texted to the number
+    // above; there is nothing here to set, and a password the desk invents and
+    // reads out is a credential in a waiting room.
     await user.save();
 
     // Single-doctor clinic: assign the patient to the doctor so dietician/care
