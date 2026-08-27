@@ -290,17 +290,26 @@ class ChatController extends StateNotifier<ChatState> {
         if (at == null || bt == null) return a.seq.compareTo(b.seq);
         return at.compareTo(bt);
       });
-      // NEVER shrink the visible thread. A message the patient just sent that the
-      // server has not echoed back on this exact poll — or a transient short
-      // read — must not wipe what is on screen. Dropping this guard is what made
-      // sent text, voice and photos flash up and then vanish a second later.
-      if (messages.length < state.messages.length) return;
-      // Otherwise replace when anything changed — a new clinician reply, or a
-      // message whose content/attachments came back fuller — so a doctor's reply
-      // appears live and nothing renders stale. Unchanged polls do nothing, so
-      // the list never rebuilds under the patient's scrolling.
-      if (!_messagesDiffer(messages, state.messages)) return;
-      state = state.copyWith(messages: messages);
+      // Merged, not replaced, and never compared on length.
+      //
+      // This used to bail out whenever the server returned fewer messages than
+      // were on screen — the guard that stopped a short read wiping a message
+      // the patient had just sent. It also meant that if the two ever
+      // disagreed by even one, a working fetch was thrown away on every tick
+      // and the thread silently stopped moving: reopening the screen showed
+      // everything, because opening REPLACES state instead of comparing it.
+      // That is the shape the bug had — notifications arriving, screen frozen,
+      // reopen and it is all there.
+      //
+      // A union by id cannot shrink the thread, so nothing needs guarding
+      // against. A message the patient just sent survives a server that has
+      // not echoed it yet, and a doctor's reply lands whatever else is on
+      // screen.
+      final merged = _merge(state.messages, messages);
+      // Unchanged polls do nothing, so the list never rebuilds under the
+      // patient's scrolling.
+      if (!_messagesDiffer(merged, state.messages)) return;
+      state = state.copyWith(messages: merged);
     } on ApiException catch (e) {
       _pollFailed(e.code);
     } catch (e) {
@@ -333,6 +342,31 @@ class ChatController extends StateNotifier<ChatState> {
     // Rebuild only when the answer changes, so a screen that is fine is never
     // rebuilt by a poll and a stale one says so exactly once.
     if (pollFailures == 7) state = state.copyWith();
+  }
+
+  /// Everything on screen plus everything the server returned, once each.
+  ///
+  /// The server's copy wins a collision: it carries the edits, the transcripts
+  /// and the real attachment urls, where the local one may be an optimistic
+  /// echo. Sorted by time for the same reason the fetch is — seq restarts
+  /// inside each session and cannot order a history that spans several.
+  static List<ChatMessage> _merge(
+    List<ChatMessage> local,
+    List<ChatMessage> remote,
+  ) {
+    final byId = <String, ChatMessage>{};
+    for (final m in local) {
+      byId[m.id] = m;
+    }
+    for (final m in remote) {
+      byId[m.id] = m;
+    }
+    return byId.values.toList()..sort((a, b) {
+      final at = a.createdAt;
+      final bt = b.createdAt;
+      if (at == null || bt == null) return a.seq.compareTo(b.seq);
+      return at.compareTo(bt);
+    });
   }
 
   /// True when [next] carries anything the current [current] does not — a

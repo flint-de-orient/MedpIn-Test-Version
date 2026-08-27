@@ -37,6 +37,9 @@ class _FakeChatRepository extends ChatRepository {
   /// dropped connection that a poll actually meets.
   bool failThread = false;
 
+  /// What getThread hands back.
+  List<ChatMessage> thread = const [];
+
   @override
   Future<SendMessageResult> sendMessage({
     String? sessionId,
@@ -52,11 +55,11 @@ class _FakeChatRepository extends ChatRepository {
   Future<Paged<ChatMessage>> getThread({int page = 1, int limit = 200}) async {
     threadReads += 1;
     if (failThread) throw StateError('thread unavailable');
-    return const Paged<ChatMessage>(
-      items: [],
+    return Paged<ChatMessage>(
+      items: thread,
       page: 1,
       limit: 200,
-      total: 0,
+      total: thread.length,
       hasMore: false,
     );
   }
@@ -179,6 +182,123 @@ void main() {
       await controller.pollForUpdates();
 
       expect(controller.isStale, isFalse);
+    });
+  });
+
+  group("a doctor's reply lands while the screen is open", () {
+    ChatMessage msg(String id, String role, String content, int minute) =>
+        ChatMessage(
+          id: id,
+          seq: minute,
+          role: role,
+          content: content,
+          language: 'en',
+          urgency: 'routine',
+          createdAt: DateTime(2026, 8, 27, 14, minute),
+        );
+
+    test('a new clinician message appears', () async {
+      final repo = _FakeChatRepository(throwOnSend: Exception('x'));
+      final controller = ChatController(repo, _FakeUploadRepository());
+      addTearDown(controller.dispose);
+
+      repo.thread = [msg('a', 'user', 'Hi', 25)];
+      await controller.pollForUpdates();
+      expect(controller.state.messages.length, 1);
+
+      // The doctor replies.
+      repo.thread = [
+        msg('a', 'user', 'Hi', 25),
+        msg('b', 'clinician', 'Hello', 26),
+      ];
+      await controller.pollForUpdates();
+
+      expect(controller.state.messages.map((m) => m.id), ['a', 'b']);
+    });
+
+    test('a server that returns fewer does not stall the thread', () async {
+      // The bug. The poll used to bail out whenever the server returned fewer
+      // messages than were on screen, so one disagreement froze every
+      // subsequent tick — notifications kept arriving, the screen never moved,
+      // and reopening it showed everything because opening replaces state
+      // rather than comparing it.
+      final repo = _FakeChatRepository(throwOnSend: Exception('x'));
+      final controller = ChatController(repo, _FakeUploadRepository());
+      addTearDown(controller.dispose);
+
+      repo.thread = [
+        msg('a', 'user', 'Hi', 25),
+        msg('b', 'assistant', 'Hello', 25),
+        msg('c', 'user', 'Vitamin D', 26),
+      ];
+      await controller.pollForUpdates();
+      expect(controller.state.messages.length, 3);
+
+      // Now the server returns one fewer than the screen holds, and a new
+      // clinician reply among them.
+      repo.thread = [
+        msg('a', 'user', 'Hi', 25),
+        msg('d', 'clinician', 'Hello back', 28),
+      ];
+      await controller.pollForUpdates();
+
+      final ids = controller.state.messages.map((m) => m.id).toList();
+      expect(ids, contains('d'), reason: 'the reply never arrived');
+      // And nothing already on screen was thrown away to get it.
+      expect(ids, containsAll(<String>['a', 'b', 'c']));
+    });
+
+    test(
+      'a message the patient just sent is not wiped by a short read',
+      () async {
+        // Why the length guard existed. The merge has to keep this property
+        // without the guard, or sent text flashes up and vanishes.
+        final repo = _FakeChatRepository(throwOnSend: Exception('x'));
+        final controller = ChatController(repo, _FakeUploadRepository());
+        addTearDown(controller.dispose);
+
+        repo.thread = [
+          msg('a', 'user', 'Hi', 25),
+          msg('b', 'user', 'Mine', 26),
+        ];
+        await controller.pollForUpdates();
+
+        repo.thread = [msg('a', 'user', 'Hi', 25)];
+        await controller.pollForUpdates();
+
+        expect(
+          controller.state.messages.map((m) => m.id),
+          containsAll(['a', 'b']),
+        );
+      },
+    );
+
+    test('the same poll twice changes nothing', () async {
+      // An unchanged poll must not rebuild the list under the reader's thumb.
+      final repo = _FakeChatRepository(throwOnSend: Exception('x'));
+      final controller = ChatController(repo, _FakeUploadRepository());
+      addTearDown(controller.dispose);
+
+      repo.thread = [msg('a', 'user', 'Hi', 25)];
+      await controller.pollForUpdates();
+      final first = controller.state.messages;
+      await controller.pollForUpdates();
+
+      expect(identical(controller.state.messages, first), isTrue);
+    });
+
+    test('an edited message is taken from the server', () async {
+      final repo = _FakeChatRepository(throwOnSend: Exception('x'));
+      final controller = ChatController(repo, _FakeUploadRepository());
+      addTearDown(controller.dispose);
+
+      repo.thread = [msg('a', 'clinician', 'Take one', 25)];
+      await controller.pollForUpdates();
+
+      repo.thread = [msg('a', 'clinician', 'Take two', 25)];
+      await controller.pollForUpdates();
+
+      expect(controller.state.messages.single.content, 'Take two');
     });
   });
 
