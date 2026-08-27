@@ -22,6 +22,7 @@ import { notifyPatientOfClinicianReply } from '../services/notifications.js';
 import { dayjs } from '../utils/clinicTime.js';
 import { getClinicSettings } from '../models/ClinicSettings.js';
 import { buildAttention } from '../services/nutritionAttention.js';
+import { normaliseTestName } from '../utils/testNames.js';
 
 /**
  * The dietician panel API. A dietician only ever sees the patients a doctor has
@@ -875,52 +876,6 @@ router.get(
   }),
 );
 
-/**
- * A lab test name reduced to something two spellings of the same test agree on.
- *
- * The doctor picks the advised name from a catalogue; the patient uploads under
- * whatever the lab printed, or types their own. Comparing those as raw strings
- * meant "HbA1c" and "HBA1C (Glycated Haemoglobin)" were different tests, so a
- * report the patient had definitely sent still showed as awaiting.
- *
- * Case, punctuation and spacing go. The aliases cover the handful of tests that
- * are genuinely known by more than one name — this is not an attempt at fuzzy
- * matching, which would eventually mark the wrong test as done.
- */
-const TEST_ALIASES = new Map([
-  ['glycatedhaemoglobin', 'hba1c'],
-  ['glycatedhemoglobin', 'hba1c'],
-  ['glycosylatedhaemoglobin', 'hba1c'],
-  ['glycosylatedhemoglobin', 'hba1c'],
-  ['hba1cglycatedhaemoglobin', 'hba1c'],
-  ['a1c', 'hba1c'],
-  ['fastingbloodsugar', 'fbs'],
-  ['fastingplasmaglucose', 'fbs'],
-  ['bloodsugarfasting', 'fbs'],
-  ['postprandialbloodsugar', 'ppbs'],
-  ['bloodsugarpostprandial', 'ppbs'],
-  ['kidneyfunctiontest', 'kft'],
-  ['kidneyfunction', 'kft'],
-  ['renalfunctiontest', 'kft'],
-  ['liverfunctiontest', 'lft'],
-  ['liverfunction', 'lft'],
-  ['completebloodcount', 'cbc'],
-  ['thyroidprofile', 'thyroid'],
-  ['thyroidfunctiontest', 'thyroid'],
-  ['vitamind', 'vitd'],
-  ['vitamind25hydroxy', 'vitd'],
-  ['vitaminb12', 'vitb12'],
-  ['serumelectrolytes', 'electrolytes'],
-  ['lipidprofile', 'lipid'],
-]);
-
-function normaliseTestName(name) {
-  const bare = String(name ?? '')
-    .toLowerCase()
-    .replace(/\(.*?\)/g, '')
-    .replace(/[^a-z0-9]/g, '');
-  return TEST_ALIASES.get(bare) ?? bare;
-}
 
 /** The patient's current diet plan, or null if none has been written yet. */
 router.get(

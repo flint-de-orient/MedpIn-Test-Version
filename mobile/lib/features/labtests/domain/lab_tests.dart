@@ -73,18 +73,45 @@ class LabResult {
 
 /// The tests the doctor advised + the reports the patient has uploaded.
 class LabTestsView {
-  const LabTestsView({required this.advised, required this.results});
+  const LabTestsView({
+    required this.advised,
+    required this.results,
+    this.reportedNames,
+  });
 
   final List<String> advised;
   final List<LabResult> results;
 
+  /// The advised tests the server says already have a report, verbatim as they
+  /// appear in [advised].
+  ///
+  /// The decision belongs on the server: it is the same question the doctor's
+  /// panel and the upload reminder answer, and three different answers to it
+  /// is what had a patient nudged to upload a report they had already sent.
+  /// Null when the server did not send the field at all — an older build.
+  /// An *empty* set is a real answer ("none of them are reported yet") and
+  /// must not be mistaken for silence.
+  final Set<String>? reportedNames;
+
   /// True once a report has been uploaded for [test].
-  bool hasResultFor(String test) =>
-      results.any((r) => r.testName.toLowerCase() == test.toLowerCase());
+  bool hasResultFor(String test) {
+    final fromServer = reportedNames;
+    if (fromServer != null) return fromServer.contains(test);
+    // An older server that does not send the per-test status yet. Exact match
+    // is weak — it misses "Vitamin D" against a lab's "Vitamin D (25-Hydroxy)"
+    // — but a wrong tick is worse than a missing one, so it stays strict.
+    return results.any((r) => r.testName.toLowerCase() == test.toLowerCase());
+  }
 
   factory LabTestsView.fromJson(Map<String, dynamic> j) => LabTestsView(
     advised:
         (j['advised'] as List?)?.map((e) => e.toString()).toList() ?? const [],
+    reportedNames:
+        (j['advisedStatus'] as List?)
+            ?.whereType<Map<String, dynamic>>()
+            .where((e) => e['reported'] == true)
+            .map((e) => e['name'].toString())
+            .toSet(),
     results:
         (j['results'] as List?)
             ?.whereType<Map<String, dynamic>>()

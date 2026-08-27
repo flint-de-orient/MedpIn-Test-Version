@@ -11,6 +11,7 @@ import { buildAnalytes } from '../services/analyteCatalog.js';
 import { Hba1cRecord } from '../models/Hba1cRecord.js';
 import { GlucoseReading } from '../models/GlucoseReading.js';
 import { recomputePatientRisk } from '../services/analytics.js';
+import { reportedNames, isReported } from '../utils/testNames.js';
 
 /**
  * The patient's lab tests: the tests the doctor advised (pulled from active
@@ -72,7 +73,21 @@ router.get(
         .lean(),
     ]);
     const advised = [...new Set(prescriptions.flatMap((p) => p.labTestsAdvised ?? []).filter(Boolean))];
-    res.json({ advised, results: results.map(serialiseResult) });
+
+    // Whether each advised test has a report, decided here rather than in the
+    // app. The client used to compare the two names with `==`, so "Vitamin D"
+    // and the lab's "Vitamin D (25-Hydroxy)" were different tests and an
+    // uploaded report never ticked off the advice it answered.
+    //
+    // `advised` keeps its old shape alongside this: a patient running an older
+    // build still gets the list it expects.
+    const reported = reportedNames(results);
+    const advisedStatus = advised.map((name) => ({
+      name,
+      reported: isReported(name, reported),
+    }));
+
+    res.json({ advised, advisedStatus, results: results.map(serialiseResult) });
   }),
 );
 
