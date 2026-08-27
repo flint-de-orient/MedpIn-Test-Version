@@ -1118,4 +1118,98 @@ class AppLocalizationsBn extends AppLocalizations {
   @override
   String get errorAiUnavailable =>
       'সহায়ক সাময়িকভাবে উপলব্ধ নেই। একটু পরে আবার চেষ্টা করুন।';
+
+  @override
+  String get authOtpSendButton => 'OTP পাঠান';
+
+  @override
+  String get authOtpTitle => 'আপনার নম্বর যাচাই করুন';
+
+  @override
+  String authOtpSentTo(String phone) {
+    return 'আমরা $phone নম্বরে ৬ সংখ্যার কোড পাঠিয়েছি';
+  }
+
+  @override
+  String get authOtpLabel => 'যাচাইকরণ কোড';
+
+  @override
+  String get authOtpVerifyButton => 'যাচাই করুন';
+
+  @override
+  String get authOtpResend => 'আবার পাঠান';
+
+  @override
+  String authOtpResendIn(int seconds) {
+    return '$seconds সেকেন্ড পরে নতুন কোড চাইতে পারবেন';
+  }
+
+  @override
+  String get authOtpChangeNumber => 'অন্য নম্বর ব্যবহার করুন';
+
+  @override
+  String get authOtpIncomplete => 'সবগুলি ৬ সংখ্যা লিখুন';
+
+  @override
+  String get authOtpSimulated =>
+      'এই সার্ভারে SMS সেট করা নেই, তাই কোনও বার্তা পাঠানো হয়নি। কোডটি সার্ভার লগে আছে।';
+
+  @override
+  String get authPhoneVerified => 'যাচাই হয়েছে';
+
+  @override
+  String get authVerifyPhoneButton => 'যাচাই';
+
+  @override
+  String get authAlreadyRegistered =>
+      'এই ফোন নম্বরটি ইতিমধ্যে নিবন্ধিত। অনুগ্রহ করে লগ ইন করুন।';
+
+  @override
+  String get authNotRegistered =>
+      'এই নম্বরের জন্য কোনও অ্যাকাউন্ট পাওয়া যায়নি। প্রথমে একটি তৈরি করুন।';
+
+  @override
+  String get authInviteLabel => 'আপনার কি একটি আমন্ত্রণ কোড আছে?';
+
+  @override
+  String get authInviteHint => 'আমন্ত্রণ কোড লিখুন';
+
+  @override
+  String get authInviteHelper =>
+      'শুধুমাত্র ক্লিনিক-আমন্ত্রিত পুষ্টিবিদদের জন্য। রোগীরা এটি খালি রাখতে পারেন।';
+
+  @override
+  String get authInviteValidateButton => 'যাচাই';
+
+  @override
+  String get authInviteVerified => 'পুষ্টিবিদ আমন্ত্রণ যাচাই হয়েছে';
+
+  @override
+  String get authInviteInvalid =>
+      'এই আমন্ত্রণ কোডটি বৈধ নয় বা মেয়াদ শেষ হয়ে গেছে।';
+
+  @override
+  String get authInviteRemove => 'কোড সরান';
+
+  @override
+  String get authRegisterTitleDietician => 'পুষ্টিবিদ নিবন্ধন';
+
+  @override
+  String get authRegisterTitlePatient => 'রোগী নিবন্ধন';
+
+  @override
+  String get authVerifyFirst => 'চালিয়ে যেতে আপনার ফোন নম্বর যাচাই করুন';
+
+  @override
+  String get authDoctorPasswordLink => 'ডাক্তার? পাসওয়ার্ড দিয়ে সাইন ইন করুন';
+
+  @override
+  String get authDoctorPasswordTitle => 'ডাক্তার সাইন-ইন';
+
+  @override
+  String get authDoctorPasswordSubtitle =>
+      'ক্লিনিক কর্মীদের অ্যাকাউন্টের জন্য। রোগী ও পুষ্টিবিদরা SMS কোড দিয়ে সাইন ইন করেন।';
+
+  @override
+  String get authUseOtpInstead => 'পরিবর্তে SMS কোড দিয়ে সাইন ইন করুন';
 }

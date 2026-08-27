@@ -345,7 +345,11 @@
   "apptTomorrow": "আগামীকাল",
   "apptWithDoctor": "{doctor}-এর সঙ্গে",
   "@apptWithDoctor": {
-    "placeholders": { "doctor": { "type": "String" } }
+    "placeholders": {
+      "doctor": {
+        "type": "String"
+      }
+    }
   },
   "errorBadRequest": "অনুরোধটি বোঝা যায়নি।",
   "errorValidation": "আপনার দেওয়া তথ্য যাচাই করুন।",
@@ -357,5 +361,33 @@
   "errorRateLimited": "অনেকবার চেষ্টা হয়েছে। কিছুক্ষণ পর আবার চেষ্টা করুন।",
   "errorInvalidId": "এই রেফারেন্সটি সঠিক নয়।",
   "errorInternal": "আমাদের দিক থেকে একটি সমস্যা হয়েছে। আবার চেষ্টা করুন।",
-  "errorAiUnavailable": "সহায়ক সাময়িকভাবে উপলব্ধ নেই। একটু পরে আবার চেষ্টা করুন।"
+  "errorAiUnavailable": "সহায়ক সাময়িকভাবে উপলব্ধ নেই। একটু পরে আবার চেষ্টা করুন।",
+  "authOtpSendButton": "OTP পাঠান",
+  "authOtpTitle": "আপনার নম্বর যাচাই করুন",
+  "authOtpSentTo": "আমরা {phone} নম্বরে ৬ সংখ্যার কোড পাঠিয়েছি",
+  "authOtpLabel": "যাচাইকরণ কোড",
+  "authOtpVerifyButton": "যাচাই করুন",
+  "authOtpResend": "আবার পাঠান",
+  "authOtpResendIn": "{seconds} সেকেন্ড পরে নতুন কোড চাইতে পারবেন",
+  "authOtpChangeNumber": "অন্য নম্বর ব্যবহার করুন",
+  "authOtpIncomplete": "সবগুলি ৬ সংখ্যা লিখুন",
+  "authOtpSimulated": "এই সার্ভারে SMS সেট করা নেই, তাই কোনও বার্তা পাঠানো হয়নি। কোডটি সার্ভার লগে আছে।",
+  "authPhoneVerified": "যাচাই হয়েছে",
+  "authVerifyPhoneButton": "যাচাই",
+  "authAlreadyRegistered": "এই ফোন নম্বরটি ইতিমধ্যে নিবন্ধিত। অনুগ্রহ করে লগ ইন করুন।",
+  "authNotRegistered": "এই নম্বরের জন্য কোনও অ্যাকাউন্ট পাওয়া যায়নি। প্রথমে একটি তৈরি করুন।",
+  "authInviteLabel": "আপনার কি একটি আমন্ত্রণ কোড আছে?",
+  "authInviteHint": "আমন্ত্রণ কোড লিখুন",
+  "authInviteHelper": "শুধুমাত্র ক্লিনিক-আমন্ত্রিত পুষ্টিবিদদের জন্য। রোগীরা এটি খালি রাখতে পারেন।",
+  "authInviteValidateButton": "যাচাই",
+  "authInviteVerified": "পুষ্টিবিদ আমন্ত্রণ যাচাই হয়েছে",
+  "authInviteInvalid": "এই আমন্ত্রণ কোডটি বৈধ নয় বা মেয়াদ শেষ হয়ে গেছে।",
+  "authInviteRemove": "কোড সরান",
+  "authRegisterTitleDietician": "পুষ্টিবিদ নিবন্ধন",
+  "authRegisterTitlePatient": "রোগী নিবন্ধন",
+  "authVerifyFirst": "চালিয়ে যেতে আপনার ফোন নম্বর যাচাই করুন",
+  "authDoctorPasswordLink": "ডাক্তার? পাসওয়ার্ড দিয়ে সাইন ইন করুন",
+  "authDoctorPasswordTitle": "ডাক্তার সাইন-ইন",
+  "authDoctorPasswordSubtitle": "ক্লিনিক কর্মীদের অ্যাকাউন্টের জন্য। রোগী ও পুষ্টিবিদরা SMS কোড দিয়ে সাইন ইন করেন।",
+  "authUseOtpInstead": "পরিবর্তে SMS কোড দিয়ে সাইন ইন করুন"
 }

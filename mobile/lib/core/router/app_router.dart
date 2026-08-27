@@ -6,6 +6,7 @@ import '../../features/appointments/domain/clinic.dart';
 import '../../features/clinician/domain/knowledge_chunk.dart';
 import '../../features/auth/presentation/auth_controller.dart';
 import '../../features/auth/presentation/login_screen.dart';
+import '../../features/auth/presentation/doctor_password_login_screen.dart';
 import '../../features/auth/presentation/register_screen.dart';
 import '../../features/chat/presentation/chat_screen.dart';
 import '../../features/chat/presentation/nutrition_chat_screen.dart';
@@ -69,12 +70,14 @@ class _RouterRefreshNotifier extends ChangeNotifier {
 /// screen is on top from outside the widget tree (a push message handler).
 final GlobalKey<NavigatorState> rootNavigatorKey = GlobalKey<NavigatorState>();
 
-bool _isClinician(AuthState s) => s.user?.role == 'doctor' || s.user?.role == 'staff';
+bool _isClinician(AuthState s) =>
+    s.user?.role == 'doctor' || s.user?.role == 'staff';
 bool _isDietician(AuthState s) => s.user?.role == 'dietician';
 
 String? _redirect(Ref ref, GoRouterState state) {
   final authState = ref.read(authControllerProvider);
-  final hasLanguage = ref.read(localeControllerProvider.notifier).hasChosenLanguage;
+  final hasLanguage =
+      ref.read(localeControllerProvider.notifier).hasChosenLanguage;
   final loc = state.matchedLocation;
 
   const splash = '/splash';
@@ -126,41 +129,91 @@ final Provider<GoRouter> appRouterProvider = Provider<GoRouter>((ref) {
     refreshListenable: refreshNotifier,
     redirect: (context, state) => _redirect(ref, state),
     routes: [
-      GoRoute(path: '/splash', builder: (context, state) => const SplashScreen()),
-      GoRoute(path: '/language', builder: (context, state) => const LanguagePickerScreen()),
+      GoRoute(
+        path: '/splash',
+        builder: (context, state) => const SplashScreen(),
+      ),
+      GoRoute(
+        path: '/language',
+        builder: (context, state) => const LanguagePickerScreen(),
+      ),
       GoRoute(path: '/login', builder: (context, state) => const LoginScreen()),
-      GoRoute(path: '/register', builder: (context, state) => const RegisterScreen()),
+      GoRoute(
+        path: '/register',
+        builder: (context, state) => const RegisterScreen(),
+      ),
+      // Pushed from a quiet link on the login screen. Patients and dieticians
+      // have no password at all, so this is not a second tab beside the code
+      // form — it is somewhere only the doctor goes.
+      GoRoute(
+        path: '/login/password',
+        builder: (context, state) => const DoctorPasswordLoginScreen(),
+      ),
 
       // Clinical-alert triage, chat review and knowledge curation are pushed
       // over the clinician shell from several places, so they live at the root.
-      GoRoute(path: '/clinician/alerts', builder: (context, state) => const AlertsScreen()),
-      GoRoute(path: '/clinician/appointments', builder: (context, state) => const AppointmentsAdminScreen()),
-      GoRoute(path: '/clinician/clinics', builder: (context, state) => const ClinicsScreen()),
-      GoRoute(path: '/clinician/clinics/new', builder: (context, state) => const ClinicEditScreen()),
+      GoRoute(
+        path: '/clinician/alerts',
+        builder: (context, state) => const AlertsScreen(),
+      ),
+      GoRoute(
+        path: '/clinician/appointments',
+        builder: (context, state) => const AppointmentsAdminScreen(),
+      ),
+      GoRoute(
+        path: '/clinician/clinics',
+        builder: (context, state) => const ClinicsScreen(),
+      ),
+      GoRoute(
+        path: '/clinician/clinics/new',
+        builder: (context, state) => const ClinicEditScreen(),
+      ),
       GoRoute(
         path: '/clinician/clinics/edit',
-        builder: (context, state) => ClinicEditScreen(clinic: state.extra as Clinic?),
+        builder:
+            (context, state) =>
+                ClinicEditScreen(clinic: state.extra as Clinic?),
       ),
       GoRoute(
         path: '/clinician/chat-review',
         // ?tab=nutrition opens straight on the nutrition threads, so the
         // dashboard's "N nutrition unread" lands on the messages it counted
         // rather than on the flagged queue.
-        builder: (context, state) =>
-            ChatReviewScreen(initialTab: state.uri.queryParameters['tab']),
+        builder:
+            (context, state) =>
+                ChatReviewScreen(initialTab: state.uri.queryParameters['tab']),
       ),
       GoRoute(
         path: '/clinician/chat-review/:id',
-        builder: (context, state) => ChatReviewDetailScreen(sessionId: state.pathParameters['id']!),
+        builder:
+            (context, state) =>
+                ChatReviewDetailScreen(sessionId: state.pathParameters['id']!),
       ),
-      GoRoute(path: '/clinician/dieticians', builder: (context, state) => const DieticiansScreen()),
-      GoRoute(path: '/clinician/feedback', builder: (context, state) => const FeedbackInboxScreen()),
-      GoRoute(path: '/clinician/export', builder: (context, state) => const ExportScreen()),
-      GoRoute(path: '/clinician/knowledge', builder: (context, state) => const KnowledgeScreen()),
-      GoRoute(path: '/clinician/knowledge/new', builder: (context, state) => const KnowledgeEditScreen()),
+      GoRoute(
+        path: '/clinician/dieticians',
+        builder: (context, state) => const DieticiansScreen(),
+      ),
+      GoRoute(
+        path: '/clinician/feedback',
+        builder: (context, state) => const FeedbackInboxScreen(),
+      ),
+      GoRoute(
+        path: '/clinician/export',
+        builder: (context, state) => const ExportScreen(),
+      ),
+      GoRoute(
+        path: '/clinician/knowledge',
+        builder: (context, state) => const KnowledgeScreen(),
+      ),
+      GoRoute(
+        path: '/clinician/knowledge/new',
+        builder: (context, state) => const KnowledgeEditScreen(),
+      ),
       GoRoute(
         path: '/clinician/knowledge/edit',
-        builder: (context, state) => KnowledgeEditScreen(chunk: state.extra as KnowledgeChunk?),
+        builder:
+            (context, state) =>
+                KnowledgeEditScreen(chunk: state.extra as KnowledgeChunk?),
       ),
       // No '/clinician/messages': the Messages tab is the inbox, and a second
       // route by the same name pointed at the retired DirectMessage table —
@@ -170,26 +223,29 @@ final Provider<GoRouter> appRouterProvider = Provider<GoRouter>((ref) {
       // inbox holding a different half of the exchange.
       GoRoute(
         path: '/clinician/patients/:id/thread',
-        builder: (context, state) => PatientThreadScreen(
-          patientId: state.pathParameters['id']!,
-          patientName: state.extra as String?,
-        ),
+        builder:
+            (context, state) => PatientThreadScreen(
+              patientId: state.pathParameters['id']!,
+              patientName: state.extra as String?,
+            ),
       ),
       // The patient's prescriptions, with per-document PDF download.
       GoRoute(
         path: '/clinician/patients/:id/prescriptions',
-        builder: (context, state) => PrescriptionListScreen(
-          patientId: state.pathParameters['id']!,
-          patientName: state.extra as String?,
-        ),
+        builder:
+            (context, state) => PrescriptionListScreen(
+              patientId: state.pathParameters['id']!,
+              patientName: state.extra as String?,
+            ),
       ),
       // The consultation flow: vitals → diagnosis → advice → prescription.
       GoRoute(
         path: '/clinician/patients/:id/consult',
-        builder: (context, state) => ConsultScreen(
-          patientId: state.pathParameters['id']!,
-          patientName: state.extra as String?,
-        ),
+        builder:
+            (context, state) => ConsultScreen(
+              patientId: state.pathParameters['id']!,
+              patientName: state.extra as String?,
+            ),
       ),
       // Receptionist intake. Declared BEFORE the `:id` route so the static
       // `new` segment is matched as the form, not as a patient id.
@@ -203,7 +259,9 @@ final Provider<GoRouter> appRouterProvider = Provider<GoRouter>((ref) {
       // inside the shell.
       GoRoute(
         path: '/clinician/patients/:id',
-        builder: (context, state) => PatientProfileScreen(patientId: state.pathParameters['id']!),
+        builder:
+            (context, state) =>
+                PatientProfileScreen(patientId: state.pathParameters['id']!),
       ),
 
       // Editing your own details is a form, not a place. Nested inside a shell
@@ -226,28 +284,33 @@ final Provider<GoRouter> appRouterProvider = Provider<GoRouter>((ref) {
       // returns you to the dashboard or the list, whichever it was.
       GoRoute(
         path: '/dietician/patients/:id',
-        builder: (context, state) => DieticianPatientScreen(
-          patientId: state.pathParameters['id']!,
-          patientName: state.extra as String?,
-        ),
+        builder:
+            (context, state) => DieticianPatientScreen(
+              patientId: state.pathParameters['id']!,
+              patientName: state.extra as String?,
+            ),
       ),
       GoRoute(
         path: '/dietician/patients/:id/diet',
-        builder: (context, state) => DietPlanScreen(
-          patientId: state.pathParameters['id']!,
-          patientName: state.extra as String?,
-        ),
+        builder:
+            (context, state) => DietPlanScreen(
+              patientId: state.pathParameters['id']!,
+              patientName: state.extra as String?,
+            ),
       ),
       GoRoute(
         path: '/dietician/patients/:id/chat',
-        builder: (context, state) => DieticianChatScreen(
-          patientId: state.pathParameters['id']!,
-          patientName: state.extra as String?,
-        ),
+        builder:
+            (context, state) => DieticianChatScreen(
+              patientId: state.pathParameters['id']!,
+              patientName: state.extra as String?,
+            ),
       ),
 
       StatefulShellRoute.indexedStack(
-        builder: (context, state, navigationShell) => DieticianShell(navigationShell: navigationShell),
+        builder:
+            (context, state, navigationShell) =>
+                DieticianShell(navigationShell: navigationShell),
         branches: [
           StatefulShellBranch(
             routes: [
@@ -264,8 +327,10 @@ final Provider<GoRouter> appRouterProvider = Provider<GoRouter>((ref) {
                 // ?filter=review|noplan|critical|high — the dashboard counts
                 // link straight to the worklist they stand for, so tapping "3
                 // reviews due" lands on those three rather than on everyone.
-                builder: (context, state) =>
-                    DieticianPatientsScreen(initialFilter: state.uri.queryParameters['filter']),
+                builder:
+                    (context, state) => DieticianPatientsScreen(
+                      initialFilter: state.uri.queryParameters['filter'],
+                    ),
               ),
             ],
           ),
@@ -283,13 +348,25 @@ final Provider<GoRouter> appRouterProvider = Provider<GoRouter>((ref) {
       // ---- Patient app --------------------------------------------------
       // Three tabs: the AI/clinic Assistant, Medicines, and Profile.
       StatefulShellRoute.indexedStack(
-        builder: (context, state, navigationShell) => AppShell(navigationShell: navigationShell),
+        builder:
+            (context, state, navigationShell) =>
+                AppShell(navigationShell: navigationShell),
         branches: [
           StatefulShellBranch(
-            routes: [GoRoute(path: '/home', builder: (context, state) => const HomeScreen())],
+            routes: [
+              GoRoute(
+                path: '/home',
+                builder: (context, state) => const HomeScreen(),
+              ),
+            ],
           ),
           StatefulShellBranch(
-            routes: [GoRoute(path: '/chat', builder: (context, state) => const ChatScreen())],
+            routes: [
+              GoRoute(
+                path: '/chat',
+                builder: (context, state) => const ChatScreen(),
+              ),
+            ],
           ),
           StatefulShellBranch(
             routes: [
@@ -297,9 +374,18 @@ final Provider<GoRouter> appRouterProvider = Provider<GoRouter>((ref) {
                 path: '/medications',
                 builder: (context, state) => const MedicationsScreen(),
                 routes: [
-                  GoRoute(path: 'reminders', builder: (context, state) => const ReminderTimesScreen()),
-                  GoRoute(path: 'history', builder: (context, state) => const DoseHistoryScreen()),
-                  GoRoute(path: 'prescriptions', builder: (context, state) => const PrescriptionsScreen()),
+                  GoRoute(
+                    path: 'reminders',
+                    builder: (context, state) => const ReminderTimesScreen(),
+                  ),
+                  GoRoute(
+                    path: 'history',
+                    builder: (context, state) => const DoseHistoryScreen(),
+                  ),
+                  GoRoute(
+                    path: 'prescriptions',
+                    builder: (context, state) => const PrescriptionsScreen(),
+                  ),
                 ],
               ),
             ],
@@ -327,11 +413,26 @@ final Provider<GoRouter> appRouterProvider = Provider<GoRouter>((ref) {
                 path: '/profile',
                 builder: (context, state) => const ProfileScreen(),
                 routes: [
-                  GoRoute(path: 'edit', builder: (context, state) => const EditProfileScreen()),
-                  GoRoute(path: 'health', builder: (context, state) => const HealthDetailsScreen()),
-                  GoRoute(path: 'notifications', builder: (context, state) => const NotificationsScreen()),
-                  GoRoute(path: 'tests', builder: (context, state) => const LabTestsScreen()),
-                  GoRoute(path: 'feedback', builder: (context, state) => const FeedbackScreen()),
+                  GoRoute(
+                    path: 'edit',
+                    builder: (context, state) => const EditProfileScreen(),
+                  ),
+                  GoRoute(
+                    path: 'health',
+                    builder: (context, state) => const HealthDetailsScreen(),
+                  ),
+                  GoRoute(
+                    path: 'notifications',
+                    builder: (context, state) => const NotificationsScreen(),
+                  ),
+                  GoRoute(
+                    path: 'tests',
+                    builder: (context, state) => const LabTestsScreen(),
+                  ),
+                  GoRoute(
+                    path: 'feedback',
+                    builder: (context, state) => const FeedbackScreen(),
+                  ),
                 ],
               ),
             ],
@@ -344,7 +445,9 @@ final Provider<GoRouter> appRouterProvider = Provider<GoRouter>((ref) {
       // Profile. Appointments, clinics and knowledge tools remain reachable from
       // the Profile hub's shortcuts.
       StatefulShellRoute.indexedStack(
-        builder: (context, state, navigationShell) => ClinicianShell(navigationShell: navigationShell),
+        builder:
+            (context, state, navigationShell) =>
+                ClinicianShell(navigationShell: navigationShell),
         branches: [
           StatefulShellBranch(
             routes: [

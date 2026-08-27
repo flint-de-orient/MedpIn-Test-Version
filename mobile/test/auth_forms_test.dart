@@ -1,4 +1,5 @@
 import 'package:akd_care/core/utils/auth_validators.dart';
+import 'package:akd_care/features/auth/presentation/doctor_password_login_screen.dart';
 import 'package:akd_care/features/auth/presentation/login_screen.dart';
 import 'package:akd_care/features/auth/presentation/register_screen.dart';
 import 'package:akd_care/l10n/gen/app_localizations.dart';
@@ -133,218 +134,154 @@ void main() {
   });
 
   group('Login form', () {
+    testWidgets('asks for a number and nothing else', (tester) async {
+      await tester.pumpWidget(harness(const LoginScreen()));
+
+      // The whole point of the redesign. A patient has no password to type,
+      // and a box asking for one is a box they cannot fill.
+      expect(find.widgetWithText(AuthField, 'Password'), findsNothing);
+      expect(find.widgetWithText(AuthField, 'Phone number'), findsOneWidget);
+      expect(find.widgetWithText(PillButton, 'Send OTP'), findsOneWidget);
+      expect(find.widgetWithText(PillButton, 'Log in'), findsNothing);
+    });
+
     testWidgets('shows nothing until the button is pressed', (tester) async {
       await tester.pumpWidget(harness(const LoginScreen()));
-      await tester.pumpAndSettle();
-
-      await enter(tester, 'Phone number', '98300');
       expect(find.text('Enter a valid 10-digit mobile number'), findsNothing);
-      expect(find.text('Please enter your password'), findsNothing);
 
-      await submit(tester, 'Log in');
-      expect(find.text('Enter a valid 10-digit mobile number'), findsOneWidget);
-      expect(find.text('Please enter your password'), findsOneWidget);
+      await enter(tester, 'Phone number', '123');
+      // Still nothing: errors wait for a submit rather than scolding someone
+      // three digits into a ten-digit number.
+      expect(find.text('Enter a valid 10-digit mobile number'), findsNothing);
     });
 
     testWidgets('rejects a 9-digit number and one starting below 6', (
       tester,
     ) async {
       await tester.pumpWidget(harness(const LoginScreen()));
-      await tester.pumpAndSettle();
-      await submit(tester, 'Log in');
 
       await enter(tester, 'Phone number', '983001234');
+      await submit(tester, 'Send OTP');
       expect(find.text('Enter a valid 10-digit mobile number'), findsOneWidget);
 
       await enter(tester, 'Phone number', '5830012345');
+      await tester.pumpAndSettle();
       expect(find.text('Enter a valid 10-digit mobile number'), findsOneWidget);
-
-      await enter(tester, 'Phone number', '9830012345');
-      expect(find.text('Enter a valid 10-digit mobile number'), findsNothing);
     });
 
-    testWidgets(
-      'does not impose the 8-char registration rule on an existing password',
-      (tester) async {
-        await tester.pumpWidget(harness(const LoginScreen()));
-        await tester.pumpAndSettle();
-        await submit(tester, 'Log in');
+    testWidgets('offers the doctor a way to a password', (tester) async {
+      await tester.pumpWidget(harness(const LoginScreen()));
+      // Quiet, but present: the doctor is the one person who has a password
+      // and there has to be somewhere to type it.
+      expect(find.text('Doctor? Sign in with a password'), findsOneWidget);
+    });
+  });
 
-        // The server accepts any non-empty password on login.
-        await enter(tester, 'Password', 'short');
-        expect(
-          find.text('Password must be at least 8 characters'),
-          findsNothing,
-        );
-        expect(find.text('Please enter your password'), findsNothing);
-      },
-    );
+  group('Doctor password form', () {
+    testWidgets('is the only screen that asks for a password', (tester) async {
+      await tester.pumpWidget(harness(const DoctorPasswordLoginScreen()));
+      expect(find.widgetWithText(AuthField, 'Phone number'), findsOneWidget);
+      expect(find.widgetWithText(AuthField, 'Password'), findsOneWidget);
+    });
+
+    testWidgets('does not impose the registration length rule on an existing '
+        'password', (tester) async {
+      await tester.pumpWidget(harness(const DoctorPasswordLoginScreen()));
+
+      await enter(tester, 'Phone number', '9830012345');
+      await enter(tester, 'Password', 'short');
+      await submit(tester, 'Log in');
+
+      // A doctor whose password predates any rule must not be told their own
+      // password is "too short" — that reads as a rule about the account.
+      expect(find.text('Password must be at least 8 characters'), findsNothing);
+    });
+
+    testWidgets('still requires something in the box', (tester) async {
+      await tester.pumpWidget(harness(const DoctorPasswordLoginScreen()));
+      await enter(tester, 'Phone number', '9830012345');
+      await submit(tester, 'Log in');
+      expect(find.text('Please enter your password'), findsOneWidget);
+    });
   });
 
   group('Register form', () {
-    testWidgets('typing in one field does not turn the rest of the form red', (
-      tester,
-    ) async {
+    testWidgets('has no password fields and no progress bar', (tester) async {
       useTallSurface(tester);
       await tester.pumpWidget(harness(const RegisterScreen()));
-      await tester.pumpAndSettle();
 
-      // The reported bug: `AutovalidateMode.onUserInteraction` validates the
-      // whole form on the first keystroke, so entering a name lit up phone,
-      // password, confirm, date of birth and gender all at once.
-      await enter(tester, 'Full name', 'Tanm');
+      expect(find.widgetWithText(AuthField, 'Password'), findsNothing);
+      expect(find.widgetWithText(AuthField, 'Confirm password'), findsNothing);
+      // The bar measured a two-step wizard. There is one step now, and a
+      // progress indicator that only ever reads "1 of 2" is furniture.
+      expect(find.byType(StepBar), findsNothing);
+    });
 
-      for (final error in [
-        'Enter a valid 10-digit mobile number',
-        'Please enter your password',
-        'Please select your date of birth',
-        'Please select an option',
-      ]) {
-        expect(
-          find.text(error),
-          findsNothing,
-          reason: 'shown while still typing: $error',
+    testWidgets('asks for the number before the invite code', (tester) async {
+      useTallSurface(tester);
+      await tester.pumpWidget(harness(const RegisterScreen()));
+
+      // The order is load-bearing: the code decides which fields the form is
+      // going to ask for, so it cannot come after them.
+      final phone = tester.getTopLeft(
+        find.widgetWithText(AuthField, 'Phone number'),
+      );
+      final invite = tester.getTopLeft(
+        find.widgetWithText(AuthField, 'Have an invite code?'),
+      );
+      expect(phone.dy, lessThan(invite.dy));
+    });
+
+    testWidgets(
+      'keeps the rest of the form back until the number is verified',
+      (tester) async {
+        useTallSurface(tester);
+        await tester.pumpWidget(harness(const RegisterScreen()));
+
+        // Nothing to fill in and nothing to submit. A page of greyed-out fields
+        // reads as broken; an absent one reads as not-yet.
+        expect(find.widgetWithText(AuthField, 'Full name'), findsNothing);
+        expect(find.widgetWithText(AuthField, 'Date of birth'), findsNothing);
+
+        final button = tester.widget<PillButton>(
+          find.widgetWithText(PillButton, 'Create account'),
         );
-      }
-    });
+        expect(button.onPressed, isNull);
+      },
+    );
 
-    testWidgets('blocks submit until every required field is answered', (
+    testWidgets('says why it will not submit rather than doing nothing', (
       tester,
     ) async {
       useTallSurface(tester);
       await tester.pumpWidget(harness(const RegisterScreen()));
-      await tester.pumpAndSettle();
 
-      await submit(tester, 'Create account');
-
-      expect(find.text('Please select your date of birth'), findsOneWidget);
-      expect(find.text('Please select an option'), findsOneWidget);
+      // A disabled button cannot be tapped, so the reason has to be on the
+      // screen already — it is, in the section heading above the field.
+      expect(find.text('Your phone number'), findsOneWidget);
+      expect(find.text('Verify'), findsWidgets);
     });
 
-    testWidgets('after a failed submit, fixing a field clears its error live', (
-      tester,
-    ) async {
+    testWidgets('an invalid number never reaches the server', (tester) async {
       useTallSurface(tester);
       await tester.pumpWidget(harness(const RegisterScreen()));
+
+      await enter(tester, 'Phone number', '12345');
+      await tester.tap(find.widgetWithText(OutlinedButton, 'Verify').first);
       await tester.pumpAndSettle();
 
-      await submit(tester, 'Create account');
       expect(find.text('Enter a valid 10-digit mobile number'), findsOneWidget);
-
-      await enter(tester, 'Phone number', '9830012345');
-      expect(find.text('Enter a valid 10-digit mobile number'), findsNothing);
     });
 
-    testWidgets('does not ask for diabetes type at signup', (tester) async {
+    testWidgets('the invite code explains who it is for', (tester) async {
       useTallSurface(tester);
       await tester.pumpWidget(harness(const RegisterScreen()));
-      await tester.pumpAndSettle();
 
-      // Removed by request. Note the consequence: the server applies
-      // `.default('type2')` to an omitted diabetesType, so whichever screen
-      // collects it later must confirm it before type-dependent advice is
-      // trusted. Gender remains the only dropdown on the form.
-      expect(find.text('Diabetes type'), findsNothing);
-      expect(find.byType(DropdownButtonFormField<String>), findsOneWidget);
-    });
-
-    testWidgets('offers exactly three gender options', (tester) async {
-      useTallSurface(tester);
-      await tester.pumpWidget(harness(const RegisterScreen()));
-      await tester.pumpAndSettle();
-
-      await tester.tap(find.byType(DropdownButtonFormField<String>));
-      await tester.pumpAndSettle();
-
-      for (final label in ['Male', 'Female', 'Other']) {
-        expect(find.text(label), findsWidgets, reason: label);
-      }
-      // Removed by request. The server still accepts (and defaults to)
-      // 'undisclosed', but the field is required so a choice is always made.
-      expect(find.text('Prefer not to say'), findsNothing);
-    });
-
-    testWidgets('catches a mistyped password confirmation', (tester) async {
-      useTallSurface(tester);
-      await tester.pumpWidget(harness(const RegisterScreen()));
-      await tester.pumpAndSettle();
-      await submit(tester, 'Create account');
-
-      await enter(tester, 'Password', 'Patient@1234');
-      await enter(tester, 'Confirm password', 'Patient@1235');
-      expect(find.text('Passwords do not match'), findsOneWidget);
-
-      await enter(tester, 'Confirm password', 'Patient@1234');
-      expect(find.text('Passwords do not match'), findsNothing);
-    });
-
-    testWidgets('correcting the first password clears a stale mismatch', (
-      tester,
-    ) async {
-      useTallSurface(tester);
-      await tester.pumpWidget(harness(const RegisterScreen()));
-      await tester.pumpAndSettle();
-      await submit(tester, 'Create account');
-
-      await enter(tester, 'Password', 'Patient@1234');
-      await enter(tester, 'Confirm password', 'Patient@9999');
-      expect(find.text('Passwords do not match'), findsOneWidget);
-
-      // Fixing the *upper* field must re-run the confirmation's validator.
-      await enter(tester, 'Password', 'Patient@9999');
-      expect(find.text('Passwords do not match'), findsNothing);
-    });
-
-    testWidgets('enforces name and password bounds', (tester) async {
-      useTallSurface(tester);
-      await tester.pumpWidget(harness(const RegisterScreen()));
-      await tester.pumpAndSettle();
-      await submit(tester, 'Create account');
-
-      await enter(tester, 'Full name', 'A');
-      expect(find.text('Please enter your full name'), findsOneWidget);
-
-      await enter(tester, 'Full name', 'A' * 121);
-      expect(find.text('Name must be 120 characters or fewer'), findsOneWidget);
-
-      await enter(tester, 'Full name', 'Rahul Das');
-      expect(find.text('Please enter your full name'), findsNothing);
-
-      await enter(tester, 'Password', 'short');
+      // Every patient sees this field and almost none of them should fill it
+      // in, so it says so rather than leaving them guessing.
       expect(
-        find.text('Password must be at least 8 characters'),
+        find.textContaining('Patients can leave this empty'),
         findsOneWidget,
-      );
-
-      await enter(tester, 'Password', 'x' * 129);
-      expect(
-        find.text('Password must be 128 characters or fewer'),
-        findsOneWidget,
-      );
-    });
-
-    testWidgets('email is optional but validated when present', (tester) async {
-      useTallSurface(tester);
-      await tester.pumpWidget(harness(const RegisterScreen()));
-      await tester.pumpAndSettle();
-      await submit(tester, 'Create account');
-
-      await enter(tester, 'Email (optional)', 'not-an-email');
-      expect(
-        find.text('Enter a valid email address, or leave it blank'),
-        findsOneWidget,
-      );
-
-      await enter(tester, 'Email (optional)', '');
-      expect(
-        find.text('Enter a valid email address, or leave it blank'),
-        findsNothing,
-      );
-
-      await enter(tester, 'Email (optional)', 'rahul@example.com');
-      expect(
-        find.text('Enter a valid email address, or leave it blank'),
-        findsNothing,
       );
     });
   });

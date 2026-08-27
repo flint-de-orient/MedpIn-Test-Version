@@ -8,7 +8,8 @@ import { GlucoseReading } from '../models/GlucoseReading.js';
 import { signAccessToken, issueRefreshToken, rotateRefreshToken, revokeAllForUser } from '../services/tokens.js';
 import { requireAuth } from '../middleware/auth.js';
 import { validate } from '../middleware/validate.js';
-import { asyncHandler, unauthorized, conflict } from '../middleware/errors.js';
+import { asyncHandler, unauthorized, conflict, badRequest, notFound } from '../middleware/errors.js';
+import { requestOtp, verifyOtp, signPhoneToken, phoneFromToken } from '../services/otp.js';
 import { AuditLog } from '../models/AuditLog.js';
 import { logger } from '../config/logger.js';
 import { env } from '../config/env.js';
@@ -39,8 +40,12 @@ const phoneSchema = z
 
 const registerSchema = z.object({
   name: z.string().trim().min(2).max(120),
-  phone: phoneSchema,
-  password: z.string().min(8, 'Password must be at least 8 characters').max(128),
+
+  // Proof from `/auth/otp/verify` that this number was texted a code and the
+  // code came back. The phone is read out of the token, never off the body:
+  // taking both and trusting them to match would let a caller verify one
+  // number and register another.
+  phoneToken: z.string().min(20),
   email: z.string().email().optional(),
   language: z.enum(LANGUAGES).default('en'),
   dateOfBirth: z.coerce.date().optional(),
@@ -63,13 +68,151 @@ const registerSchema = z.object({
   inviteCode: z.string().trim().max(64).optional(),
 });
 
+/**
+ * Whether a typed code currently onboards a dietician.
+ *
+ * Read from the clinic settings the doctor last generated, falling back to the
+ * env var for a clinic that has never rotated one. Without the stored code
+ * here, pressing Generate would mint a code that self-registration then
+ * refused — a rotate button that quietly breaks the thing it rotates.
+ */
+async function isValidDieticianInvite(code) {
+  if (!code) return false;
+  const settings = await getClinicSettings();
+  const active = settings.dieticianInviteCode || env.DIETICIAN_INVITE_CODE;
+  return Boolean(active) && code === active;
+}
+
+// A code request costs the clinic an SMS and costs whoever owns the number
+// their attention, so it is limited harder than the credential endpoints.
+const otpLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 6,
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  message: { error: { code: 'RATE_LIMITED', message: 'Too many code requests. Please try again in a few minutes.' } },
+});
+
+const otpPurpose = z.enum(['register', 'login']);
+
+/**
+ * Text a one-time passcode.
+ *
+ * The existence check differs by purpose and is deliberate rather than
+ * careless: registration has to say "this number already has an account, log
+ * in instead" or the patient fills a whole form to be rejected at the end, and
+ * login has to say "no account here" or they sit waiting for a message that is
+ * never coming. Both answers reveal whether a number is registered. That is
+ * the cost of the flow the clinic asked for, and it is the same cost every
+ * OTP sign-in in the country pays.
+ */
+router.post(
+  '/otp/request',
+  otpLimiter,
+  validate({ body: z.object({ phone: phoneSchema, purpose: otpPurpose }) }),
+  asyncHandler(async (req, res) => {
+    const { phone, purpose } = req.body;
+
+    const existing = await User.findOne({ phone }).select('isActive').lean();
+
+    if (purpose === 'register' && existing) {
+      throw conflict('This phone number is already registered. Please log in instead.', {
+        reason: 'ALREADY_REGISTERED',
+      });
+    }
+    if (purpose === 'login') {
+      if (!existing) {
+        throw notFound('No account found for this number. Please register first.');
+      }
+      if (!existing.isActive) {
+        throw unauthorized('This account has been deactivated. Please contact the clinic.');
+      }
+    }
+
+    const result = await requestOtp({ phone, purpose });
+    res.json(result);
+  }),
+);
+
+/**
+ * Spend a code.
+ *
+ * A login ends here with a session. A registration ends with a phone token,
+ * because the form still has to be filled in and something has to carry
+ * "this number is theirs" across that gap.
+ */
+router.post(
+  '/otp/verify',
+  authLimiter,
+  validate({
+    body: z.object({
+      phone: phoneSchema,
+      purpose: otpPurpose,
+      code: z.string().trim().regex(/^\d{4,8}$/, 'Enter the code from the SMS'),
+    }),
+  }),
+  asyncHandler(async (req, res) => {
+    const { phone, purpose, code } = req.body;
+
+    await verifyOtp({ phone, purpose, code });
+
+    if (purpose === 'register') {
+      // Re-checked after the code is spent: the number could have been
+      // registered by someone else during the ten minutes it was valid.
+      if (await User.exists({ phone })) {
+        throw conflict('This phone number is already registered. Please log in instead.', {
+          reason: 'ALREADY_REGISTERED',
+        });
+      }
+      return res.json({ phoneToken: signPhoneToken(phone) });
+    }
+
+    const user = await User.findOne({ phone });
+    if (!user || !user.isActive) throw unauthorized('No account found for this number.');
+
+    user.lastLoginAt = new Date();
+    await user.save();
+
+    const accessToken = signAccessToken(user);
+    const refreshToken = await issueRefreshToken(user, { req });
+
+    AuditLog.create({ actor: user._id, actorRole: user.role, action: 'login_otp', resource: 'User', resourceId: user._id, ip: req.ip }).catch(() => {});
+
+    res.json({ user: user.toPublic(), accessToken, refreshToken });
+  }),
+);
+
+/**
+ * Check an invite code without spending it.
+ *
+ * The registration form asks so it can switch to dietician fields the moment
+ * the code is accepted, rather than making someone fill in a patient form and
+ * discover at submit that it was the wrong one. Registration checks the code
+ * again for itself — this endpoint is a courtesy to the UI, not the gate.
+ */
+router.post(
+  '/invite/validate',
+  authLimiter,
+  validate({ body: z.object({ code: z.string().trim().min(1).max(64) }) }),
+  asyncHandler(async (req, res) => {
+    const valid = await isValidDieticianInvite(req.body.code);
+    if (!valid) throw badRequest('That invite code is not valid or has expired.');
+    res.json({ valid: true, role: ROLES.DIETICIAN });
+  }),
+);
+
 router.post(
   '/register',
   authLimiter,
   validate({ body: registerSchema }),
   asyncHandler(async (req, res) => {
-    const { name, phone, password, email, language, dateOfBirth, gender, address, diabetesType, inviteCode } = req.body;
+    const { name, phoneToken, email, language, dateOfBirth, gender, address, diabetesType, inviteCode } = req.body;
 
+    const phone = phoneFromToken(phoneToken);
+
+    // Checked again here, not only when the code was requested. Between the
+    // two calls is a real gap, and two people registering the same number at
+    // once must not both succeed.
     if (await User.exists({ phone })) {
       throw conflict('An account with this phone number already exists');
     }
@@ -81,10 +224,13 @@ router.post(
     // env var for a clinic that has never rotated one. Without the stored code
     // here, pressing Generate would mint a code that self-registration then
     // refused — a rotate button that quietly breaks the thing it rotates.
-    const settings = await getClinicSettings();
-    const activeInvite = settings.dieticianInviteCode || env.DIETICIAN_INVITE_CODE;
-    const isDietician =
-      Boolean(inviteCode) && Boolean(activeInvite) && inviteCode === activeInvite;
+    // The role is decided here, from the code, and never read off the
+    // request. An APK can be edited to post `role: 'dietician'`; it cannot
+    // produce a code it does not have.
+    const isDietician = await isValidDieticianInvite(inviteCode);
+    if (inviteCode && !isDietician) {
+      throw badRequest('That invite code is not valid or has expired.');
+    }
     const role = isDietician ? ROLES.DIETICIAN : ROLES.PATIENT;
 
     const user = new User({
@@ -101,7 +247,9 @@ router.post(
         aiDisclaimerAcceptedAt: new Date(),
       },
     });
-    await user.setPassword(password);
+    // No password. Patients and dieticians sign in with a code texted to the
+    // number they just proved is theirs; there is nothing here to set, and a
+    // password nobody uses is a credential to lose.
     await user.save();
 
     // Only patients get a clinical profile; a dietician has no diabetes record.
@@ -149,8 +297,10 @@ router.post(
 
     const user = await User.findOne({ phone }).select('+passwordHash');
     // Same error either way — a different message for "no such user" tells an
-    // attacker which numbers are registered patients.
-    if (!user || !user.isActive || !(await user.verifyPassword(password))) {
+    // attacker which numbers are registered patients. An account with no
+    // password hash (every patient and dietician registered since OTP sign-up)
+    // fails here for the same reason and with the same words.
+    if (!user || !user.isActive || !user.passwordHash || !(await user.verifyPassword(password))) {
       logger.warn({ phone: `***${phone.slice(-4)}` }, 'failed login attempt');
       throw unauthorized('Incorrect phone number or password');
     }

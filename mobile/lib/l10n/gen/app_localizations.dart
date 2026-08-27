@@ -2229,6 +2229,174 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'The assistant is temporarily unavailable. Please try again shortly.'**
   String get errorAiUnavailable;
+
+  /// Auth: authOtpSendButton
+  ///
+  /// In en, this message translates to:
+  /// **'Send OTP'**
+  String get authOtpSendButton;
+
+  /// Auth: authOtpTitle
+  ///
+  /// In en, this message translates to:
+  /// **'Verify your number'**
+  String get authOtpTitle;
+
+  /// Auth: authOtpSentTo
+  ///
+  /// In en, this message translates to:
+  /// **'We sent a 6-digit code to {phone}'**
+  String authOtpSentTo(String phone);
+
+  /// Auth: authOtpLabel
+  ///
+  /// In en, this message translates to:
+  /// **'Verification code'**
+  String get authOtpLabel;
+
+  /// Auth: authOtpVerifyButton
+  ///
+  /// In en, this message translates to:
+  /// **'Verify'**
+  String get authOtpVerifyButton;
+
+  /// Auth: authOtpResend
+  ///
+  /// In en, this message translates to:
+  /// **'Send it again'**
+  String get authOtpResend;
+
+  /// Auth: authOtpResendIn
+  ///
+  /// In en, this message translates to:
+  /// **'You can ask for a new code in {seconds}s'**
+  String authOtpResendIn(int seconds);
+
+  /// Auth: authOtpChangeNumber
+  ///
+  /// In en, this message translates to:
+  /// **'Use a different number'**
+  String get authOtpChangeNumber;
+
+  /// Auth: authOtpIncomplete
+  ///
+  /// In en, this message translates to:
+  /// **'Enter all 6 digits'**
+  String get authOtpIncomplete;
+
+  /// Auth: authOtpSimulated
+  ///
+  /// In en, this message translates to:
+  /// **'SMS is not set up on this server, so no message was sent. The code is in the server log.'**
+  String get authOtpSimulated;
+
+  /// Auth: authPhoneVerified
+  ///
+  /// In en, this message translates to:
+  /// **'Verified'**
+  String get authPhoneVerified;
+
+  /// Auth: authVerifyPhoneButton
+  ///
+  /// In en, this message translates to:
+  /// **'Verify'**
+  String get authVerifyPhoneButton;
+
+  /// Auth: authAlreadyRegistered
+  ///
+  /// In en, this message translates to:
+  /// **'This phone number is already registered. Please log in instead.'**
+  String get authAlreadyRegistered;
+
+  /// Auth: authNotRegistered
+  ///
+  /// In en, this message translates to:
+  /// **'No account found for this number. Please create one first.'**
+  String get authNotRegistered;
+
+  /// Auth: authInviteLabel
+  ///
+  /// In en, this message translates to:
+  /// **'Have an invite code?'**
+  String get authInviteLabel;
+
+  /// Auth: authInviteHint
+  ///
+  /// In en, this message translates to:
+  /// **'Enter invite code'**
+  String get authInviteHint;
+
+  /// Auth: authInviteHelper
+  ///
+  /// In en, this message translates to:
+  /// **'Only for dieticians invited by the clinic. Patients can leave this empty.'**
+  String get authInviteHelper;
+
+  /// Auth: authInviteValidateButton
+  ///
+  /// In en, this message translates to:
+  /// **'Validate'**
+  String get authInviteValidateButton;
+
+  /// Auth: authInviteVerified
+  ///
+  /// In en, this message translates to:
+  /// **'Dietician invitation verified'**
+  String get authInviteVerified;
+
+  /// Auth: authInviteInvalid
+  ///
+  /// In en, this message translates to:
+  /// **'That invite code is not valid or has expired.'**
+  String get authInviteInvalid;
+
+  /// Auth: authInviteRemove
+  ///
+  /// In en, this message translates to:
+  /// **'Remove code'**
+  String get authInviteRemove;
+
+  /// Auth: authRegisterTitleDietician
+  ///
+  /// In en, this message translates to:
+  /// **'Dietician registration'**
+  String get authRegisterTitleDietician;
+
+  /// Auth: authRegisterTitlePatient
+  ///
+  /// In en, this message translates to:
+  /// **'Patient registration'**
+  String get authRegisterTitlePatient;
+
+  /// Auth: authVerifyFirst
+  ///
+  /// In en, this message translates to:
+  /// **'Verify your phone number to continue'**
+  String get authVerifyFirst;
+
+  /// Auth: authDoctorPasswordLink
+  ///
+  /// In en, this message translates to:
+  /// **'Doctor? Sign in with a password'**
+  String get authDoctorPasswordLink;
+
+  /// Auth: authDoctorPasswordTitle
+  ///
+  /// In en, this message translates to:
+  /// **'Doctor sign-in'**
+  String get authDoctorPasswordTitle;
+
+  /// Auth: authDoctorPasswordSubtitle
+  ///
+  /// In en, this message translates to:
+  /// **'For clinic staff accounts. Patients and dieticians sign in with a code sent by SMS.'**
+  String get authDoctorPasswordSubtitle;
+
+  /// Auth: authUseOtpInstead
+  ///
+  /// In en, this message translates to:
+  /// **'Sign in with an SMS code instead'**
+  String get authUseOtpInstead;
 }
 
 class _AppLocalizationsDelegate

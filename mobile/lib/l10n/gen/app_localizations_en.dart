@@ -1124,4 +1124,98 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get errorAiUnavailable =>
       'The assistant is temporarily unavailable. Please try again shortly.';
+
+  @override
+  String get authOtpSendButton => 'Send OTP';
+
+  @override
+  String get authOtpTitle => 'Verify your number';
+
+  @override
+  String authOtpSentTo(String phone) {
+    return 'We sent a 6-digit code to $phone';
+  }
+
+  @override
+  String get authOtpLabel => 'Verification code';
+
+  @override
+  String get authOtpVerifyButton => 'Verify';
+
+  @override
+  String get authOtpResend => 'Send it again';
+
+  @override
+  String authOtpResendIn(int seconds) {
+    return 'You can ask for a new code in ${seconds}s';
+  }
+
+  @override
+  String get authOtpChangeNumber => 'Use a different number';
+
+  @override
+  String get authOtpIncomplete => 'Enter all 6 digits';
+
+  @override
+  String get authOtpSimulated =>
+      'SMS is not set up on this server, so no message was sent. The code is in the server log.';
+
+  @override
+  String get authPhoneVerified => 'Verified';
+
+  @override
+  String get authVerifyPhoneButton => 'Verify';
+
+  @override
+  String get authAlreadyRegistered =>
+      'This phone number is already registered. Please log in instead.';
+
+  @override
+  String get authNotRegistered =>
+      'No account found for this number. Please create one first.';
+
+  @override
+  String get authInviteLabel => 'Have an invite code?';
+
+  @override
+  String get authInviteHint => 'Enter invite code';
+
+  @override
+  String get authInviteHelper =>
+      'Only for dieticians invited by the clinic. Patients can leave this empty.';
+
+  @override
+  String get authInviteValidateButton => 'Validate';
+
+  @override
+  String get authInviteVerified => 'Dietician invitation verified';
+
+  @override
+  String get authInviteInvalid =>
+      'That invite code is not valid or has expired.';
+
+  @override
+  String get authInviteRemove => 'Remove code';
+
+  @override
+  String get authRegisterTitleDietician => 'Dietician registration';
+
+  @override
+  String get authRegisterTitlePatient => 'Patient registration';
+
+  @override
+  String get authVerifyFirst => 'Verify your phone number to continue';
+
+  @override
+  String get authDoctorPasswordLink => 'Doctor? Sign in with a password';
+
+  @override
+  String get authDoctorPasswordTitle => 'Doctor sign-in';
+
+  @override
+  String get authDoctorPasswordSubtitle =>
+      'For clinic staff accounts. Patients and dieticians sign in with a code sent by SMS.';
+
+  @override
+  String get authUseOtpInstead => 'Sign in with an SMS code instead';
 }

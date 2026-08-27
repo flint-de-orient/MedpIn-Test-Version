@@ -401,7 +401,11 @@
   "apptTomorrow": "Tomorrow",
   "apptWithDoctor": "with {doctor}",
   "@apptWithDoctor": {
-    "placeholders": { "doctor": { "type": "String" } }
+    "placeholders": {
+      "doctor": {
+        "type": "String"
+      }
+    }
   },
   "@profileNotificationsBody": {
     "description": "Push delivery is stubbed server-side; say so plainly rather than implying reminders will arrive"
@@ -416,5 +420,127 @@
   "errorRateLimited": "Too many attempts. Please wait a moment and try again.",
   "errorInvalidId": "That reference is invalid.",
   "errorInternal": "Something went wrong on our end. Please try again.",
-  "errorAiUnavailable": "The assistant is temporarily unavailable. Please try again shortly."
+  "errorAiUnavailable": "The assistant is temporarily unavailable. Please try again shortly.",
+  "authOtpSendButton": "Send OTP",
+  "@authOtpSendButton": {
+    "description": "Auth: authOtpSendButton"
+  },
+  "authOtpTitle": "Verify your number",
+  "@authOtpTitle": {
+    "description": "Auth: authOtpTitle"
+  },
+  "authOtpSentTo": "We sent a 6-digit code to {phone}",
+  "@authOtpSentTo": {
+    "description": "Auth: authOtpSentTo",
+    "placeholders": {
+      "phone": {
+        "type": "String"
+      }
+    }
+  },
+  "authOtpLabel": "Verification code",
+  "@authOtpLabel": {
+    "description": "Auth: authOtpLabel"
+  },
+  "authOtpVerifyButton": "Verify",
+  "@authOtpVerifyButton": {
+    "description": "Auth: authOtpVerifyButton"
+  },
+  "authOtpResend": "Send it again",
+  "@authOtpResend": {
+    "description": "Auth: authOtpResend"
+  },
+  "authOtpResendIn": "You can ask for a new code in {seconds}s",
+  "@authOtpResendIn": {
+    "description": "Auth: authOtpResendIn",
+    "placeholders": {
+      "seconds": {
+        "type": "int"
+      }
+    }
+  },
+  "authOtpChangeNumber": "Use a different number",
+  "@authOtpChangeNumber": {
+    "description": "Auth: authOtpChangeNumber"
+  },
+  "authOtpIncomplete": "Enter all 6 digits",
+  "@authOtpIncomplete": {
+    "description": "Auth: authOtpIncomplete"
+  },
+  "authOtpSimulated": "SMS is not set up on this server, so no message was sent. The code is in the server log.",
+  "@authOtpSimulated": {
+    "description": "Auth: authOtpSimulated"
+  },
+  "authPhoneVerified": "Verified",
+  "@authPhoneVerified": {
+    "description": "Auth: authPhoneVerified"
+  },
+  "authVerifyPhoneButton": "Verify",
+  "@authVerifyPhoneButton": {
+    "description": "Auth: authVerifyPhoneButton"
+  },
+  "authAlreadyRegistered": "This phone number is already registered. Please log in instead.",
+  "@authAlreadyRegistered": {
+    "description": "Auth: authAlreadyRegistered"
+  },
+  "authNotRegistered": "No account found for this number. Please create one first.",
+  "@authNotRegistered": {
+    "description": "Auth: authNotRegistered"
+  },
+  "authInviteLabel": "Have an invite code?",
+  "@authInviteLabel": {
+    "description": "Auth: authInviteLabel"
+  },
+  "authInviteHint": "Enter invite code",
+  "@authInviteHint": {
+    "description": "Auth: authInviteHint"
+  },
+  "authInviteHelper": "Only for dieticians invited by the clinic. Patients can leave this empty.",
+  "@authInviteHelper": {
+    "description": "Auth: authInviteHelper"
+  },
+  "authInviteValidateButton": "Validate",
+  "@authInviteValidateButton": {
+    "description": "Auth: authInviteValidateButton"
+  },
+  "authInviteVerified": "Dietician invitation verified",
+  "@authInviteVerified": {
+    "description": "Auth: authInviteVerified"
+  },
+  "authInviteInvalid": "That invite code is not valid or has expired.",
+  "@authInviteInvalid": {
+    "description": "Auth: authInviteInvalid"
+  },
+  "authInviteRemove": "Remove code",
+  "@authInviteRemove": {
+    "description": "Auth: authInviteRemove"
+  },
+  "authRegisterTitleDietician": "Dietician registration",
+  "@authRegisterTitleDietician": {
+    "description": "Auth: authRegisterTitleDietician"
+  },
+  "authRegisterTitlePatient": "Patient registration",
+  "@authRegisterTitlePatient": {
+    "description": "Auth: authRegisterTitlePatient"
+  },
+  "authVerifyFirst": "Verify your phone number to continue",
+  "@authVerifyFirst": {
+    "description": "Auth: authVerifyFirst"
+  },
+  "authDoctorPasswordLink": "Doctor? Sign in with a password",
+  "@authDoctorPasswordLink": {
+    "description": "Auth: authDoctorPasswordLink"
+  },
+  "authDoctorPasswordTitle": "Doctor sign-in",
+  "@authDoctorPasswordTitle": {
+    "description": "Auth: authDoctorPasswordTitle"
+  },
+  "authDoctorPasswordSubtitle": "For clinic staff accounts. Patients and dieticians sign in with a code sent by SMS.",
+  "@authDoctorPasswordSubtitle": {
+    "description": "Auth: authDoctorPasswordSubtitle"
+  },
+  "authUseOtpInstead": "Sign in with an SMS code instead",
+  "@authUseOtpInstead": {
+    "description": "Auth: authUseOtpInstead"
+  }
 }

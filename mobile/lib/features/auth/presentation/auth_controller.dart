@@ -60,6 +60,36 @@ class AuthController extends StateNotifier<AuthState> {
     }
   }
 
+  /// Ask for a code. Returns null on success, the failure otherwise.
+  Future<({OtpSent? sent, ApiException? error})> requestOtp({
+    required String phone,
+    required String purpose,
+  }) async {
+    try {
+      return (sent: await _repository.requestOtp(phone: phone, purpose: purpose), error: null);
+    } on ApiException catch (e) {
+      return (sent: null, error: e);
+    }
+  }
+
+  /// Spend a login code. Ends signed in.
+  Future<ApiException?> verifyLoginOtp({
+    required String phone,
+    required String code,
+  }) async {
+    _busy = true;
+    try {
+      final result = await _repository.verifyLoginOtp(phone: phone, code: code);
+      state = AuthState.authenticated(result.user);
+      return null;
+    } on ApiException catch (e) {
+      return e;
+    } finally {
+      _busy = false;
+    }
+  }
+
+  /// Password sign-in, which only doctors and clinic staff have.
   Future<ApiException?> login({
     required String phone,
     required String password,
@@ -78,8 +108,7 @@ class AuthController extends StateNotifier<AuthState> {
 
   Future<ApiException?> register({
     required String name,
-    required String phone,
-    required String password,
+    required String phoneToken,
     String? email,
     required String language,
     String? dateOfBirth,
@@ -100,8 +129,7 @@ class AuthController extends StateNotifier<AuthState> {
     try {
       final result = await _repository.register(
         name: name,
-        phone: phone,
-        password: password,
+        phoneToken: phoneToken,
         email: email,
         language: language,
         dateOfBirth: dateOfBirth,

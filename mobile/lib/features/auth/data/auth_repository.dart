@@ -2,6 +2,32 @@ import '../../../core/network/api_client.dart';
 import '../../../core/storage/secure_store.dart';
 import '../domain/user.dart';
 
+/// What `/auth/otp/request` says about the code it just sent.
+class OtpSent {
+  const OtpSent({
+    required this.expiresInSeconds,
+    required this.resendAfterSeconds,
+    required this.simulated,
+  });
+
+  factory OtpSent.fromJson(Map<String, dynamic> j) => OtpSent(
+    expiresInSeconds: (j['expiresInSeconds'] as num?)?.toInt() ?? 600,
+    resendAfterSeconds: (j['resendAfterSeconds'] as num?)?.toInt() ?? 45,
+    simulated: j['simulated'] == true,
+  );
+
+  /// How long the code stays good for.
+  final int expiresInSeconds;
+
+  /// How long before the server will send another.
+  final int resendAfterSeconds;
+
+  /// True when the server has no SMS credentials and logged the code instead
+  /// of texting it. Only ever true off production, and the screen says so —
+  /// a tester who is not told will sit waiting for a message.
+  final bool simulated;
+}
+
 /// Result of a successful login/register call.
 class AuthResult {
   const AuthResult({
@@ -23,10 +49,62 @@ class AuthRepository {
   final ApiClient _client;
   final SecureStore _secureStore;
 
+  /// Ask for a code. `purpose` is `register` or `login`.
+  ///
+  /// Throws with a 409 when registering a number that already has an account,
+  /// and a 404 when signing in to one that does not — both of which the caller
+  /// turns into a sentence and a way out.
+  Future<OtpSent> requestOtp({
+    required String phone,
+    required String purpose,
+  }) async {
+    final json = await _client.postJson(
+      '/auth/otp/request',
+      body: {'phone': phone, 'purpose': purpose},
+    );
+    return OtpSent.fromJson(json);
+  }
+
+  /// Spend a login code. Ends with a session.
+  Future<AuthResult> verifyLoginOtp({
+    required String phone,
+    required String code,
+  }) async {
+    final json = await _client.postJson(
+      '/auth/otp/verify',
+      body: {'phone': phone, 'purpose': 'login', 'code': code},
+    );
+    return _resultFromJson(json);
+  }
+
+  /// Spend a registration code.
+  ///
+  /// Ends with a short-lived token rather than a session: the form has still
+  /// to be filled in, and this is what carries "the number is theirs" across
+  /// that gap so the client is never asked to vouch for itself.
+  Future<String> verifyRegisterOtp({
+    required String phone,
+    required String code,
+  }) async {
+    final json = await _client.postJson(
+      '/auth/otp/verify',
+      body: {'phone': phone, 'purpose': 'register', 'code': code},
+    );
+    return json['phoneToken'] as String;
+  }
+
+  /// Check an invite code before the form is submitted.
+  ///
+  /// Throws when it is not valid. The server checks it again at registration —
+  /// this call only exists so the form can switch to dietician fields the
+  /// moment the code is accepted.
+  Future<void> validateInviteCode(String code) async {
+    await _client.postJson('/auth/invite/validate', body: {'code': code});
+  }
+
   Future<AuthResult> register({
     required String name,
-    required String phone,
-    required String password,
+    required String phoneToken,
     String? email,
     required String language,
     String? dateOfBirth,
@@ -47,8 +125,7 @@ class AuthRepository {
       '/auth/register',
       body: {
         'name': name,
-        'phone': phone,
-        'password': password,
+        'phoneToken': phoneToken,
         if (email != null && email.isNotEmpty) 'email': email,
         'language': language,
         if (dateOfBirth != null) 'dateOfBirth': dateOfBirth,
@@ -71,6 +148,7 @@ class AuthRepository {
     return _resultFromJson(json);
   }
 
+  /// Password sign-in, which only doctors and clinic staff have.
   Future<AuthResult> login({
     required String phone,
     required String password,

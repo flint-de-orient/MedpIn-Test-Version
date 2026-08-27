@@ -29,7 +29,11 @@ const userSchema = new mongoose.Schema(
       unique: true,
       match: [/^\S+@\S+\.\S+$/, 'invalid email'],
     },
-    passwordHash: { type: String, required: true, select: false },
+    // Optional since sign-in moved to a texted code. Patients and dieticians
+    // registered this way never get one; doctors and staff, who are onboarded
+    // by the clinic and may sign in with a password, do. Accounts created
+    // before the change keep theirs and keep working.
+    passwordHash: { type: String, select: false },
     role: { type: String, enum: Object.values(ROLES), default: ROLES.PATIENT, index: true },
     language: { type: String, enum: LANGUAGES, default: 'en' },
 

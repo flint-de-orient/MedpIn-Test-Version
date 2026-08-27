@@ -49,6 +49,37 @@ const schema = z.object({
   // the doctor is onboarding).
   DIETICIAN_INVITE_CODE: z.string().min(4).default('CLINQ-DIET-2026'),
 
+  // ---- SMS one-time passcodes (MSG91) ------------------------------------
+  //
+  // Left blank in development on purpose. With no auth key the OTP service
+  // does not call MSG91 at all — it logs the code instead, so the flow can be
+  // exercised end to end without spending an SMS or needing a real handset.
+  // That fallback refuses to run when NODE_ENV is production: a clinic that
+  // deploys without credentials must fail loudly at the first request rather
+  // than print patients' login codes into the server log.
+  MSG91_AUTH_KEY: z.string().default(''),
+  MSG91_SENDER_ID: z.string().default(''),
+
+  // One approved template per purpose. India's DLT registration ties the
+  // sender, the template and its wording together, so these are not
+  // interchangeable and the text cannot be edited from here.
+  MSG91_TEMPLATE_LOGIN: z.string().default(''),
+  MSG91_TEMPLATE_REGISTER: z.string().default(''),
+
+  // Ten minutes, because that is what the approved templates tell the patient
+  // ("OTP is valid for 10 minutes only"). The message and the server have to
+  // agree; changing this without re-registering the template makes the SMS
+  // lie.
+  OTP_TTL_MINUTES: z.coerce.number().min(1).max(30).default(10),
+
+  // Wrong guesses allowed before the code is burned and a new one must be
+  // requested.
+  OTP_MAX_ATTEMPTS: z.coerce.number().min(1).max(10).default(5),
+
+  // How long a caller must wait before asking for another code for the same
+  // number and purpose.
+  OTP_RESEND_COOLDOWN_SECONDS: z.coerce.number().min(15).max(300).default(45),
+
   // Clinic wall-clock timezone. All appointment slot times are computed in this
   // zone, so the schedule is correct no matter what timezone the server runs in
   // (a VPS is often UTC). India is a single zone.

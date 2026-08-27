@@ -1124,4 +1124,98 @@ class AppLocalizationsHi extends AppLocalizations {
   @override
   String get errorAiUnavailable =>
       'सहायक अभी अस्थायी रूप से उपलब्ध नहीं है। कृपया थोड़ी देर बाद कोशिश करें।';
+
+  @override
+  String get authOtpSendButton => 'OTP भेजें';
+
+  @override
+  String get authOtpTitle => 'अपना नंबर सत्यापित करें';
+
+  @override
+  String authOtpSentTo(String phone) {
+    return 'हमने $phone पर 6 अंकों का कोड भेजा है';
+  }
+
+  @override
+  String get authOtpLabel => 'सत्यापन कोड';
+
+  @override
+  String get authOtpVerifyButton => 'सत्यापित करें';
+
+  @override
+  String get authOtpResend => 'फिर से भेजें';
+
+  @override
+  String authOtpResendIn(int seconds) {
+    return '$seconds सेकंड में नया कोड मांग सकते हैं';
+  }
+
+  @override
+  String get authOtpChangeNumber => 'दूसरा नंबर इस्तेमाल करें';
+
+  @override
+  String get authOtpIncomplete => 'सभी 6 अंक दर्ज करें';
+
+  @override
+  String get authOtpSimulated =>
+      'इस सर्वर पर SMS सेट नहीं है, इसलिए कोई संदेश नहीं भेजा गया। कोड सर्वर लॉग में है।';
+
+  @override
+  String get authPhoneVerified => 'सत्यापित';
+
+  @override
+  String get authVerifyPhoneButton => 'सत्यापित करें';
+
+  @override
+  String get authAlreadyRegistered =>
+      'यह फ़ोन नंबर पहले से पंजीकृत है। कृपया लॉग इन करें।';
+
+  @override
+  String get authNotRegistered =>
+      'इस नंबर के लिए कोई खाता नहीं मिला। कृपया पहले खाता बनाएँ।';
+
+  @override
+  String get authInviteLabel => 'क्या आपके पास आमंत्रण कोड है?';
+
+  @override
+  String get authInviteHint => 'आमंत्रण कोड दर्ज करें';
+
+  @override
+  String get authInviteHelper =>
+      'केवल क्लिनिक द्वारा आमंत्रित आहार विशेषज्ञों के लिए। मरीज़ इसे खाली छोड़ सकते हैं।';
+
+  @override
+  String get authInviteValidateButton => 'जाँचें';
+
+  @override
+  String get authInviteVerified => 'आहार विशेषज्ञ आमंत्रण सत्यापित';
+
+  @override
+  String get authInviteInvalid =>
+      'यह आमंत्रण कोड मान्य नहीं है या समाप्त हो चुका है।';
+
+  @override
+  String get authInviteRemove => 'कोड हटाएँ';
+
+  @override
+  String get authRegisterTitleDietician => 'आहार विशेषज्ञ पंजीकरण';
+
+  @override
+  String get authRegisterTitlePatient => 'मरीज़ पंजीकरण';
+
+  @override
+  String get authVerifyFirst => 'जारी रखने के लिए अपना फ़ोन नंबर सत्यापित करें';
+
+  @override
+  String get authDoctorPasswordLink => 'डॉक्टर हैं? पासवर्ड से साइन इन करें';
+
+  @override
+  String get authDoctorPasswordTitle => 'डॉक्टर साइन-इन';
+
+  @override
+  String get authDoctorPasswordSubtitle =>
+      'क्लिनिक स्टाफ़ खातों के लिए। मरीज़ और आहार विशेषज्ञ SMS कोड से साइन इन करते हैं।';
+
+  @override
+  String get authUseOtpInstead => 'इसके बजाय SMS कोड से साइन इन करें';
 }

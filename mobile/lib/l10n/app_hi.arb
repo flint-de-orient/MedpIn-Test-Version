@@ -345,7 +345,11 @@
   "apptTomorrow": "कल",
   "apptWithDoctor": "{doctor} के साथ",
   "@apptWithDoctor": {
-    "placeholders": { "doctor": { "type": "String" } }
+    "placeholders": {
+      "doctor": {
+        "type": "String"
+      }
+    }
   },
   "errorBadRequest": "यह अनुरोध समझा नहीं जा सका।",
   "errorValidation": "कृपया दर्ज की गई जानकारी जांचें।",
@@ -357,5 +361,33 @@
   "errorRateLimited": "बहुत बार कोशिश की गई। कृपया थोड़ी देर बाद फिर कोशिश करें।",
   "errorInvalidId": "यह संदर्भ मान्य नहीं है।",
   "errorInternal": "हमारी तरफ से कुछ गड़बड़ हुई। कृपया फिर से कोशिश करें।",
-  "errorAiUnavailable": "सहायक अभी अस्थायी रूप से उपलब्ध नहीं है। कृपया थोड़ी देर बाद कोशिश करें।"
+  "errorAiUnavailable": "सहायक अभी अस्थायी रूप से उपलब्ध नहीं है। कृपया थोड़ी देर बाद कोशिश करें।",
+  "authOtpSendButton": "OTP भेजें",
+  "authOtpTitle": "अपना नंबर सत्यापित करें",
+  "authOtpSentTo": "हमने {phone} पर 6 अंकों का कोड भेजा है",
+  "authOtpLabel": "सत्यापन कोड",
+  "authOtpVerifyButton": "सत्यापित करें",
+  "authOtpResend": "फिर से भेजें",
+  "authOtpResendIn": "{seconds} सेकंड में नया कोड मांग सकते हैं",
+  "authOtpChangeNumber": "दूसरा नंबर इस्तेमाल करें",
+  "authOtpIncomplete": "सभी 6 अंक दर्ज करें",
+  "authOtpSimulated": "इस सर्वर पर SMS सेट नहीं है, इसलिए कोई संदेश नहीं भेजा गया। कोड सर्वर लॉग में है।",
+  "authPhoneVerified": "सत्यापित",
+  "authVerifyPhoneButton": "सत्यापित करें",
+  "authAlreadyRegistered": "यह फ़ोन नंबर पहले से पंजीकृत है। कृपया लॉग इन करें।",
+  "authNotRegistered": "इस नंबर के लिए कोई खाता नहीं मिला। कृपया पहले खाता बनाएँ।",
+  "authInviteLabel": "क्या आपके पास आमंत्रण कोड है?",
+  "authInviteHint": "आमंत्रण कोड दर्ज करें",
+  "authInviteHelper": "केवल क्लिनिक द्वारा आमंत्रित आहार विशेषज्ञों के लिए। मरीज़ इसे खाली छोड़ सकते हैं।",
+  "authInviteValidateButton": "जाँचें",
+  "authInviteVerified": "आहार विशेषज्ञ आमंत्रण सत्यापित",
+  "authInviteInvalid": "यह आमंत्रण कोड मान्य नहीं है या समाप्त हो चुका है।",
+  "authInviteRemove": "कोड हटाएँ",
+  "authRegisterTitleDietician": "आहार विशेषज्ञ पंजीकरण",
+  "authRegisterTitlePatient": "मरीज़ पंजीकरण",
+  "authVerifyFirst": "जारी रखने के लिए अपना फ़ोन नंबर सत्यापित करें",
+  "authDoctorPasswordLink": "डॉक्टर हैं? पासवर्ड से साइन इन करें",
+  "authDoctorPasswordTitle": "डॉक्टर साइन-इन",
+  "authDoctorPasswordSubtitle": "क्लिनिक स्टाफ़ खातों के लिए। मरीज़ और आहार विशेषज्ञ SMS कोड से साइन इन करते हैं।",
+  "authUseOtpInstead": "इसके बजाय SMS कोड से साइन इन करें"
 }
