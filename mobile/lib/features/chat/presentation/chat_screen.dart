@@ -23,6 +23,7 @@ import '../../../shared/widgets/chat_background.dart';
 import 'widgets/assistant_disclaimer_banner.dart';
 import 'widgets/generating_bubble.dart';
 import 'widgets/edit_message_sheet.dart';
+import '../../../core/push/chat_push_signal.dart';
 
 class ChatScreen extends ConsumerStatefulWidget {
   const ChatScreen({super.key});
@@ -59,6 +60,10 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
   static const _pollInterval = Duration(seconds: 2);
   Timer? _poll;
 
+  /// Cancelled with the timer. A push arriving after this screen is gone must
+  /// not touch a disposed controller.
+  StreamSubscription<ChatThreadKind>? _pushSignal;
+
   /// The message being answered, shown above the composer until sent or
   /// dismissed. Null when writing a fresh message.
   ChatMessage? _replyingTo;
@@ -84,6 +89,19 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
     });
     _poll = Timer.periodic(_pollInterval, (_) {
       if (mounted) ref.read(chatControllerProvider.notifier).pollForUpdates();
+    });
+
+    // The timer is the backstop. This is the mechanism.
+    //
+    // The server pushes on every clinician reply, so the moment one is written
+    // the phone already knows — it was raising a banner and telling the open
+    // thread nothing. Reading it here is what makes a reply land while the
+    // patient is looking at the screen, and it keeps working when the poll
+    // does not.
+    _pushSignal = ChatPushSignal.instance.stream.listen((kind) {
+      if (kind == ChatThreadKind.care && mounted) {
+        ref.read(chatControllerProvider.notifier).pollForUpdates();
+      }
     });
   }
 
@@ -111,6 +129,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _poll?.cancel();
+    _pushSignal?.cancel();
     _itemPositions.itemPositions.removeListener(_onScroll);
     super.dispose();
   }

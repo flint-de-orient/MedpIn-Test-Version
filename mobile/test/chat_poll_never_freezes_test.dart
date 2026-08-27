@@ -33,6 +33,10 @@ class _FakeChatRepository extends ChatRepository {
 
   int threadReads = 0;
 
+  /// When true, getThread throws — standing in for the malformed envelope or
+  /// dropped connection that a poll actually meets.
+  bool failThread = false;
+
   @override
   Future<SendMessageResult> sendMessage({
     String? sessionId,
@@ -47,6 +51,7 @@ class _FakeChatRepository extends ChatRepository {
   @override
   Future<Paged<ChatMessage>> getThread({int page = 1, int limit = 200}) async {
     threadReads += 1;
+    if (failThread) throw StateError('thread unavailable');
     return const Paged<ChatMessage>(
       items: [],
       page: 1,
@@ -122,6 +127,59 @@ void main() {
     final controller = controllerThatFailsWith(Exception('x'));
     addTearDown(controller.dispose);
     expect(controller.state.isSending, isFalse);
+  });
+
+  group('a failing poll is countable, not silent', () {
+    test(
+      'a run of failures is counted and eventually reads as stale',
+      () async {
+        // The whole point. Both catches used to be empty, so a thread that had
+        // stopped updating was indistinguishable from one with nothing new — in
+        // the app and in the log. This is what makes it observable.
+        final repo = _FakeChatRepository(throwOnSend: Exception('x'))
+          ..failThread = true;
+        final controller = ChatController(repo, _FakeUploadRepository());
+        addTearDown(controller.dispose);
+
+        for (var i = 0; i < 7; i++) {
+          await controller.pollForUpdates();
+        }
+
+        expect(controller.pollFailures, 7);
+        expect(controller.isStale, isTrue);
+      },
+    );
+
+    test('one success clears the count', () async {
+      final repo = _FakeChatRepository(throwOnSend: Exception('x'))
+        ..failThread = true;
+      final controller = ChatController(repo, _FakeUploadRepository());
+      addTearDown(controller.dispose);
+
+      await controller.pollForUpdates();
+      expect(controller.pollFailures, 1);
+
+      repo.failThread = false;
+      await controller.pollForUpdates();
+
+      // A thread that recovers must stop saying it is stale, or the warning
+      // becomes furniture nobody reads.
+      expect(controller.pollFailures, 0);
+      expect(controller.isStale, isFalse);
+    });
+
+    test('a few failures do not cry stale', () async {
+      // Two seconds of network hiccup is not an outage.
+      final repo = _FakeChatRepository(throwOnSend: Exception('x'))
+        ..failThread = true;
+      final controller = ChatController(repo, _FakeUploadRepository());
+      addTearDown(controller.dispose);
+
+      await controller.pollForUpdates();
+      await controller.pollForUpdates();
+
+      expect(controller.isStale, isFalse);
+    });
   });
 
   test('an empty message is not sent at all', () async {

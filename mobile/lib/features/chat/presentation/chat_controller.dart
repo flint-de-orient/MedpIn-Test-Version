@@ -4,6 +4,7 @@ import '../../../core/network/api_exception.dart';
 import '../../../shared/data/upload_repository.dart';
 import '../data/chat_repository.dart';
 import '../domain/chat_message.dart';
+import 'package:flutter/foundation.dart';
 
 class ChatState {
   const ChatState({
@@ -275,6 +276,12 @@ class ChatController extends StateNotifier<ChatState> {
 
     try {
       final paged = await _repository.getThread(limit: 200);
+      // Cleared here, not at the end of the try: the checks below return early
+      // on the ordinary case of "nothing new", so a reset placed after them
+      // never runs on a quiet thread — and a thread that had recovered from an
+      // outage would have gone on calling itself stale for as long as nobody
+      // wrote in it.
+      pollFailures = 0;
       // By time, not seq: seq restarts inside each session and cannot order a
       // history that spans several.
       final messages = [...paged.items]..sort((a, b) {
@@ -294,11 +301,38 @@ class ChatController extends StateNotifier<ChatState> {
       // the list never rebuilds under the patient's scrolling.
       if (!_messagesDiffer(messages, state.messages)) return;
       state = state.copyWith(messages: messages);
-    } on ApiException {
-      // Ignored on purpose — the next tick retries.
-    } catch (_) {
-      // Same: a poll that throws must cost one tick, not the screen.
+    } on ApiException catch (e) {
+      _pollFailed(e.code);
+    } catch (e) {
+      _pollFailed(e.runtimeType.toString());
     }
+  }
+
+  /// How many polls in a row have failed. Zero whenever one succeeds.
+  ///
+  /// A failing poll still costs one tick rather than the screen — retrying is
+  /// right and an error banner every two seconds would be intolerable. What
+  /// was wrong was that it cost *nothing visible ever*: both catches were
+  /// empty, so a thread that had silently stopped updating looked exactly like
+  /// a thread with nothing new in it. That is how "messages do not arrive in
+  /// real time" survived three rounds of looking for it — there was nothing to
+  /// see, in the app or in a log.
+  int pollFailures = 0;
+
+  /// True once the poll has failed enough times that the screen should stop
+  /// implying it is live. Roughly fifteen seconds at a two-second tick.
+  bool get isStale => pollFailures >= 7;
+
+  void _pollFailed(String reason) {
+    pollFailures += 1;
+    // Logged on the first failure and then every tenth, so a persistent
+    // outage leaves a trail without filling the log.
+    if (pollFailures == 1 || pollFailures % 10 == 0) {
+      debugPrint('chat poll failed ($pollFailures consecutive): $reason');
+    }
+    // Rebuild only when the answer changes, so a screen that is fine is never
+    // rebuilt by a poll and a stale one says so exactly once.
+    if (pollFailures == 7) state = state.copyWith();
   }
 
   /// True when [next] carries anything the current [current] does not — a

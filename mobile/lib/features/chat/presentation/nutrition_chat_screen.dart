@@ -20,6 +20,7 @@ import 'widgets/jump_to_latest.dart';
 import 'widgets/chat_message_bubble.dart';
 import 'widgets/edit_message_sheet.dart';
 import '../../../core/theme/tokens.dart';
+import '../../../core/push/chat_push_signal.dart';
 
 /// The patient's side of the dietician conversation.
 ///
@@ -125,6 +126,10 @@ class _NutritionChatScreenState extends ConsumerState<NutritionChatScreen>
   /// has always done this; the nutrition one was the half that did not.
   Timer? _poll;
 
+  /// Cancelled with the timer, so a push after this screen is gone does not
+  /// invalidate a provider nobody is watching.
+  StreamSubscription<ChatThreadKind>? _pushSignal;
+
   /// Two seconds in every thread, patient and clinician alike.
   ///
   /// The nutrition threads sat at eight, which is what "messages arrive late"
@@ -138,6 +143,13 @@ class _NutritionChatScreenState extends ConsumerState<NutritionChatScreen>
     super.initState();
     _itemPositions.itemPositions.addListener(_onScroll);
     WidgetsBinding.instance.addObserver(this);
+    // See the note in chat_screen.dart: the push is the mechanism and the
+    // timer below is the backstop.
+    _pushSignal = ChatPushSignal.instance.stream.listen((kind) {
+      if (kind == ChatThreadKind.nutrition && mounted) {
+        ref.invalidate(nutritionThreadProvider);
+      }
+    });
     _poll = Timer.periodic(_pollInterval, (_) {
       if (mounted) ref.invalidate(nutritionThreadProvider);
     });
@@ -190,6 +202,7 @@ class _NutritionChatScreenState extends ConsumerState<NutritionChatScreen>
   @override
   void dispose() {
     _poll?.cancel();
+    _pushSignal?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     _itemPositions.itemPositions.removeListener(_onScroll);
     _controller.dispose();

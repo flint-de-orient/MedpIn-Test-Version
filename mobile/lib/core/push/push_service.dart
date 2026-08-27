@@ -9,6 +9,7 @@ import '../../features/auth/presentation/auth_controller.dart';
 import '../../shared/providers/core_providers.dart';
 import '../../shared/services/notification_service.dart';
 import '../router/app_router.dart';
+import 'chat_push_signal.dart';
 
 /// Registers this device for push and keeps its token current on the server.
 ///
@@ -80,6 +81,15 @@ class PushService {
         }
         return;
       }
+      // Tell an open chat screen to go and read the message.
+      //
+      // This is what makes a reply appear while the patient is looking at the
+      // thread. Before it, foreground FCM raised a banner and nothing else, so
+      // the screen learned about the message only when its two-second poll
+      // happened to succeed — and every failure in that poll is swallowed by
+      // design, so when it stopped working the thread just went quiet.
+      ChatPushSignal.instance.fromPushData(m.data);
+
       final n = m.notification;
       if (n == null) return;
       NotificationService.instance.show(
