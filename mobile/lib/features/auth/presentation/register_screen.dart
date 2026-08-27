@@ -389,7 +389,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
 
               Expanded(
                 child: SingleChildScrollView(
-                  padding: const EdgeInsets.fromLTRB(T.s5, T.s4, T.s5, T.s6),
+                  padding: const EdgeInsets.fromLTRB(T.s5, T.s4, T.s5, T.s8),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
@@ -404,10 +404,14 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                             _isDietician ? null : l10n.authRegisterSubtitle,
                       ),
 
-                      _section('Your phone number'),
+                      // No section heading over either of these. Each holds
+                      // one labelled field, so a heading above it said the
+                      // same words twice — "Your phone number" over a field
+                      // labelled "Phone number", and "Have an invite code?"
+                      // over a field labelled "Have an invite code?".
+                      const SizedBox(height: T.s8),
                       _phoneBlock(l10n),
-
-                      _section(l10n.authInviteLabel, note: 'optional'),
+                      const SizedBox(height: T.s8),
                       _inviteBlock(l10n),
 
                       // Everything below is a form nobody can submit until the
@@ -707,8 +711,15 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                       onPressed: _phoneVerified ? _submit : null,
                     ),
                     const SizedBox(height: T.s4),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
+                    // Wraps rather than a Row.
+                    //
+                    // Two texts side by side is a Row that fits in English and
+                    // overflows in Hindi, where the same sentence is half again
+                    // as long. A Wrap puts the link on its own line instead of
+                    // running it off the edge.
+                    Wrap(
+                      alignment: WrapAlignment.center,
+                      crossAxisAlignment: WrapCrossAlignment.center,
                       children: [
                         Text(
                           l10n.authHaveAccount,
@@ -755,51 +766,50 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Expanded(
-              child: AuthField(
-                label: l10n.authPhoneLabel,
-                child: TextFormField(
-                  controller: _phoneController,
-                  enabled: !_codeSent,
-                  keyboardType: TextInputType.phone,
-                  autofillHints: const [AutofillHints.telephoneNumber],
-                  style: T.body.copyWith(color: T.ink),
-                  // One limiter, in the formatters. maxLength enforces after
-                  // them and rewrites the value, resetting the caret to the
-                  // end mid-edit. See the login screen.
-                  inputFormatters: [
-                    FilteringTextInputFormatter.digitsOnly,
-                    LengthLimitingTextInputFormatter(10),
-                  ],
-                  decoration: AuthField.decoration(
-                    hint: l10n.authPhoneHint,
-                    prefixText: '${AuthValidators.countryCode} ',
-                  ),
-                ),
-              ),
+        AuthField(
+          label: l10n.authPhoneLabel,
+          child: TextFormField(
+            controller: _phoneController,
+            enabled: !_codeSent,
+            keyboardType: TextInputType.phone,
+            autofillHints: const [AutofillHints.telephoneNumber],
+            style: T.body.copyWith(color: T.ink),
+            // One limiter, in the formatters. maxLength enforces after them
+            // and rewrites the value, resetting the caret to the end mid-edit.
+            // See the login screen.
+            inputFormatters: [
+              FilteringTextInputFormatter.digitsOnly,
+              LengthLimitingTextInputFormatter(10),
+            ],
+            decoration: AuthField.decoration(
+              hint: l10n.authPhoneHint,
+              prefixText: '${AuthValidators.countryCode} ',
             ),
-            const SizedBox(width: T.s3),
-            // Sits on the field's baseline, not the label's — the label is
-            // above the box and the button belongs beside the box.
-            Padding(
-              padding: const EdgeInsets.only(top: T.s6),
-              child: _InlineAction(
-                label:
-                    _codeSent
-                        ? l10n.authOtpVerifyButton
-                        : l10n.authVerifyPhoneButton,
-                busy: _sendingCode,
-                onPressed: _codeSent ? _verifyCode : _sendCode,
-              ),
-            ),
-          ],
+          ),
+        ),
+        const SizedBox(height: T.s3),
+        // Under the field, not beside it.
+        //
+        // Beside it, the field was an Expanded sharing a Row with a button
+        // whose label is one word in English and three in Hindi — and the app
+        // theme gives every OutlinedButton a minimum width of infinity, so the
+        // button took the whole row and the field collapsed to the width of a
+        // single character. Stacked, there is nothing to share and nothing to
+        // lose, in any language and at any text size.
+        Align(
+          alignment: Alignment.centerRight,
+          child: _InlineAction(
+            label:
+                _codeSent
+                    ? l10n.authOtpVerifyButton
+                    : l10n.authVerifyPhoneButton,
+            busy: _sendingCode,
+            onPressed: _codeSent ? _verifyCode : _sendCode,
+          ),
         ),
 
         if (_codeSent) ...[
-          const SizedBox(height: T.s5),
+          const SizedBox(height: T.s4),
           Text(
             l10n.authOtpSentTo(
               '${AuthValidators.countryCode} ${_phoneController.text}',
@@ -876,34 +886,27 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Expanded(
-              child: AuthField(
-                label: l10n.authInviteLabel,
-                child: TextFormField(
-                  controller: _inviteController,
-                  textCapitalization: TextCapitalization.characters,
-                  style: T.body.copyWith(color: T.ink),
-                  decoration: AuthField.decoration(hint: l10n.authInviteHint),
-                  onFieldSubmitted: (_) => _validateInvite(),
-                ),
-              ),
-            ),
-            const SizedBox(width: T.s3),
-            Padding(
-              padding: const EdgeInsets.only(top: T.s6),
-              child: _InlineAction(
-                label: l10n.authInviteValidateButton,
-                busy: _checkingInvite,
-                onPressed: _validateInvite,
-              ),
-            ),
-          ],
+        AuthField(
+          label: l10n.authInviteLabel,
+          child: TextFormField(
+            controller: _inviteController,
+            textCapitalization: TextCapitalization.characters,
+            style: T.body.copyWith(color: T.ink),
+            decoration: AuthField.decoration(hint: l10n.authInviteHint),
+            onFieldSubmitted: (_) => _validateInvite(),
+          ),
         ),
         const SizedBox(height: T.s2),
         Text(l10n.authInviteHelper, style: T.small.copyWith(color: T.inkFaint)),
+        const SizedBox(height: T.s3),
+        Align(
+          alignment: Alignment.centerRight,
+          child: _InlineAction(
+            label: l10n.authInviteValidateButton,
+            busy: _checkingInvite,
+            onPressed: _validateInvite,
+          ),
+        ),
         if (_inviteError != null) ...[
           const SizedBox(height: T.s3),
           InlineError(message: _inviteError!),
@@ -913,10 +916,14 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
   }
 }
 
-/// A short outlined button that sits beside a field.
+/// The short action that belongs to the field above it.
 ///
-/// Its own height rather than the field's: an inherited one made it 40px on
-/// one screen and 56 on another, and neither was a tap target.
+/// Sets its own [ButtonStyle.minimumSize]. The app theme gives every
+/// OutlinedButton `Size.fromHeight(52)`, which is `Size(double.infinity, 52)`
+/// — a minimum *width* of infinity. That is right for a button that owns its
+/// row and catastrophic for one that shares it: in a Row beside an Expanded
+/// field, the button claimed the whole width and the field rendered one
+/// character wide, its label running down the screen a letter at a time.
 class _InlineAction extends StatelessWidget {
   const _InlineAction({
     required this.label,
@@ -930,33 +937,33 @@ class _InlineAction extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      height: T.tap,
-      child: OutlinedButton(
-        onPressed: busy ? null : onPressed,
-        style: OutlinedButton.styleFrom(
-          foregroundColor: T.primary,
-          side: const BorderSide(color: T.primary),
-          padding: const EdgeInsets.symmetric(horizontal: T.s4),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(T.rCard),
-          ),
+    return OutlinedButton(
+      onPressed: busy ? null : onPressed,
+      style: OutlinedButton.styleFrom(
+        foregroundColor: T.primary,
+        side: const BorderSide(color: T.primary),
+        // Wide enough to read as a button, tall enough to hit, and shrink-
+        // wrapping past that rather than filling whatever it is put in.
+        minimumSize: const Size(112, T.tap),
+        padding: const EdgeInsets.symmetric(horizontal: T.s5),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(T.rCard),
         ),
-        child:
-            busy
-                ? const SizedBox(
-                  width: 18,
-                  height: 18,
-                  child: CircularProgressIndicator(strokeWidth: 2.2),
-                )
-                : Text(
-                  label,
-                  style: T.small.copyWith(
-                    color: T.primary,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
       ),
+      child:
+          busy
+              ? const SizedBox(
+                width: 18,
+                height: 18,
+                child: CircularProgressIndicator(strokeWidth: 2.2),
+              )
+              : Text(
+                label,
+                style: T.small.copyWith(
+                  color: T.primary,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
     );
   }
 }
@@ -967,6 +974,10 @@ class _InlineAction extends StatelessWidget {
 /// The word matters as much as the tick — this clinic's patients include
 /// people with red-green colour deficiency, and a green check on its own says
 /// nothing to them.
+///
+/// The undo sits under the value rather than beside it, for the same reason
+/// the Verify button does: "Use a different number" is three words in English
+/// and more in Hindi, and a Row cannot hold both without one of them losing.
 class _VerifiedRow extends StatelessWidget {
   const _VerifiedRow({
     required this.value,
@@ -983,40 +994,53 @@ class _VerifiedRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.fromLTRB(T.s4, T.s3, T.s3, T.s3),
+      padding: const EdgeInsets.fromLTRB(T.s4, T.s4, T.s4, T.s2),
       decoration: BoxDecoration(
         color: T.successTint,
         borderRadius: BorderRadius.circular(T.rControl),
         border: Border.all(color: T.success.withValues(alpha: 0.35)),
       ),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const Icon(Icons.check_circle_rounded, size: 20, color: T.success),
-          const SizedBox(width: T.s3),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(value, style: T.bodyStrong.copyWith(color: T.ink)),
-                Text(badge, style: T.small.copyWith(color: T.success)),
-              ],
-            ),
-          ),
-          TextButton(
-            onPressed: onAction,
-            style: TextButton.styleFrom(
-              foregroundColor: T.primary,
-              padding: const EdgeInsets.symmetric(
-                horizontal: T.s3,
-                vertical: T.s3,
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Icon(
+                Icons.check_circle_rounded,
+                size: 20,
+                color: T.success,
               ),
-            ),
-            child: Text(
-              actionLabel,
-              textAlign: TextAlign.end,
-              style: T.small.copyWith(
-                color: T.primary,
-                fontWeight: FontWeight.w700,
+              const SizedBox(width: T.s3),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(value, style: T.bodyStrong.copyWith(color: T.ink)),
+                    const SizedBox(height: 2),
+                    Text(badge, style: T.small.copyWith(color: T.success)),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          Align(
+            alignment: Alignment.centerRight,
+            child: TextButton(
+              onPressed: onAction,
+              style: TextButton.styleFrom(
+                foregroundColor: T.primary,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: T.s3,
+                  vertical: T.s3,
+                ),
+              ),
+              child: Text(
+                actionLabel,
+                style: T.small.copyWith(
+                  color: T.primary,
+                  fontWeight: FontWeight.w700,
+                ),
               ),
             ),
           ),

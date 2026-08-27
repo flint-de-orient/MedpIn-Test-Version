@@ -90,7 +90,12 @@ String? _redirect(Ref ref, GoRouterState state) {
   const clinicianHome = '/clinician/dashboard';
   const dieticianHome = '/dietician/dashboard';
 
-  final isAuthRoute = loc == login || loc == register;
+  // Everything under /login counts, not just /login itself. The doctor's
+  // password screen is /login/password, and an exact-match check bounced an
+  // unauthenticated caller straight back to /login — so the link looked like
+  // it did nothing.
+  final isAuthRoute =
+      loc == register || loc == login || loc.startsWith('$login/');
 
   if (authState.status == AuthStatus.unknown) {
     return loc == splash ? null : splash;

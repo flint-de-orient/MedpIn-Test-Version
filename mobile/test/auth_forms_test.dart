@@ -1,3 +1,4 @@
+import 'package:akd_care/core/theme/app_theme.dart';
 import 'package:akd_care/core/utils/auth_validators.dart';
 import 'package:akd_care/features/auth/presentation/doctor_password_login_screen.dart';
 import 'package:akd_care/features/auth/presentation/login_screen.dart';
@@ -17,6 +18,14 @@ import 'package:flutter_test/flutter_test.dart';
 void main() {
   Widget harness(Widget screen) => ProviderScope(
     child: MaterialApp(
+      // The real theme, not a bare MaterialApp.
+      //
+      // Without it these tests missed a shipped bug: AppTheme gives every
+      // OutlinedButton `minimumSize: Size.fromHeight(52)` — a minimum *width*
+      // of infinity — so a button sharing a Row with an Expanded field took
+      // the whole row and the field rendered one character wide. A themeless
+      // harness renders a layout no user ever sees.
+      theme: AppTheme.light(),
       locale: const Locale('en'),
       localizationsDelegates: const [
         AppLocalizations.delegate,
@@ -256,10 +265,11 @@ void main() {
       useTallSurface(tester);
       await tester.pumpWidget(harness(const RegisterScreen()));
 
-      // A disabled button cannot be tapped, so the reason has to be on the
-      // screen already — it is, in the section heading above the field.
-      expect(find.text('Your phone number'), findsOneWidget);
-      expect(find.text('Verify'), findsWidgets);
+      // A disabled button cannot be tapped, so the thing to do next has to be
+      // on the screen already: a phone field with a Verify beside it, sitting
+      // where the form would otherwise be.
+      expect(find.widgetWithText(AuthField, 'Phone number'), findsOneWidget);
+      expect(find.widgetWithText(OutlinedButton, 'Verify'), findsOneWidget);
     });
 
     testWidgets('an invalid number never reaches the server', (tester) async {
@@ -271,6 +281,62 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('Enter a valid 10-digit mobile number'), findsOneWidget);
+    });
+
+    testWidgets('the phone field gets the width of the screen', (tester) async {
+      useTallSurface(tester);
+      await tester.pumpWidget(harness(const RegisterScreen()));
+
+      // It shipped 14px wide, its label running down the page a letter at a
+      // time, because the Verify button beside it inherited a minimum width of
+      // infinity from the theme. Anything close to the full width is fine;
+      // the failure this guards against is an order of magnitude off.
+      final field = tester.getSize(
+        find.widgetWithText(AuthField, 'Phone number'),
+      );
+      expect(field.width, greaterThan(240));
+    });
+
+    testWidgets('nothing on the form overflows its row', (tester) async {
+      useTallSurface(tester);
+      await tester.pumpWidget(harness(const RegisterScreen()));
+      // A RenderFlex overflow throws in a widget test, which is the whole
+      // point of pumping the real theme above.
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('the first step fits a phone screen', (tester) async {
+      // A form that overflows by a few dozen pixels is worse than one that
+      // clearly scrolls: it jiggles, and the reader cannot tell whether there
+      // is more below or the screen is broken. This shipped that way, with a
+      // section heading over each of two single-field blocks pushing it ~150px
+      // past the viewport.
+      //
+      // The bound is a ceiling rather than a measurement. This harness renders
+      // with a test font whose every glyph is a full em, so text here is
+      // markedly wider than on any real device and a strict `== 0` would fail
+      // on a screen that fits with room to spare.
+      tester.view.physicalSize = const Size(720, 1600);
+      tester.view.devicePixelRatio = 2.0;
+      addTearDown(tester.view.reset);
+
+      await tester.pumpWidget(harness(const RegisterScreen()));
+      await tester.pump(const Duration(milliseconds: 200));
+
+      final position =
+          tester.state<ScrollableState>(find.byType(Scrollable).first).position;
+      expect(position.maxScrollExtent, lessThan(160));
+    });
+
+    testWidgets('no field is labelled twice', (tester) async {
+      useTallSurface(tester);
+      await tester.pumpWidget(harness(const RegisterScreen()));
+
+      // A section heading over a single labelled field said the same words
+      // twice — "Your phone number" above a field labelled "Phone number".
+      for (final label in ['Phone number', 'Have an invite code?']) {
+        expect(find.text(label), findsOneWidget, reason: label);
+      }
     });
 
     testWidgets('the invite code explains who it is for', (tester) async {

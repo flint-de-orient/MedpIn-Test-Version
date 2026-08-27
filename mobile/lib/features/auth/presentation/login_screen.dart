@@ -323,8 +323,12 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                         onTap: _backToPhone,
                       )
                     else ...[
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
+                      // Wraps rather than a Row: two texts side by side fit
+                      // in English and overflow in Hindi, where the same
+                      // sentence is half again as long.
+                      Wrap(
+                        alignment: WrapAlignment.center,
+                        crossAxisAlignment: WrapCrossAlignment.center,
                         children: [
                           Text(
                             l10n.authNoAccount,
