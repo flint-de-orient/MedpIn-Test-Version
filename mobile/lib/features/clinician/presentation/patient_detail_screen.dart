@@ -1243,8 +1243,34 @@ class _DieticianSection extends ConsumerWidget {
       showDragHandle: true,
       builder:
           (ctx) => StatefulBuilder(
-            builder:
-                (ctx, setSheet) => Padding(
+            builder: (ctx, setSheet) {
+              final scheme = Theme.of(ctx).colorScheme;
+
+              Future<void> save() async {
+                try {
+                  // Cadence is clinic-wide now, so the dead per-patient field
+                  // is never set. A null dieticianId is the clinic default —
+                  // the same call clears a restriction and applies one.
+                  await repo.assignDietician(
+                    patientId,
+                    dieticianId: selectedId,
+                    reviewIntervalDays: null,
+                  );
+                  if (ctx.mounted) Navigator.pop(ctx, true);
+                } catch (_) {
+                  if (ctx.mounted) {
+                    ScaffoldMessenger.of(ctx).showSnackBar(
+                      const SnackBar(content: Text('Could not save')),
+                    );
+                  }
+                }
+              }
+
+              // Scrollable, because this list grows with the clinic. With
+              // three dieticians and the warning showing, the fixed column ran
+              // past the bottom of the sheet and took the save button with it.
+              return SafeArea(
+                child: SingleChildScrollView(
                   padding: EdgeInsets.fromLTRB(
                     AppSpacing.md,
                     0,
@@ -1253,7 +1279,7 @@ class _DieticianSection extends ConsumerWidget {
                   ),
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
                       const Text(
                         'Nutrition care',
@@ -1264,32 +1290,59 @@ class _DieticianSection extends ConsumerWidget {
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        'By default the clinic dietician covers this patient. Restrict to a specific dietician only if this patient should be handled by that person alone.',
+                        'By default every dietician in the clinic covers this '
+                        'patient. Restrict to one only if this patient should '
+                        'be handled by that person alone.',
                         style: TextStyle(
                           fontSize: 12,
                           height: 1.35,
-                          color: Theme.of(ctx).colorScheme.onSurfaceVariant,
+                          color: scheme.onSurfaceVariant,
                         ),
                       ),
                       const SizedBox(height: AppSpacing.md),
+
+                      // One RadioGroup owns the selection, so each tile only
+                      // declares its value. The per-tile groupValue/onChanged
+                      // pair is deprecated, and it was also the shape that let
+                      // two tiles disagree about what was selected.
+                      RadioGroup<String?>(
+                        groupValue: selectedId,
+                        onChanged: (v) => setSheet(() => selectedId = v),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            // The default is an option in the list, not a
+                            // separate button that appears only once a
+                            // restriction exists. Without it there was no way
+                            // back: pick a dietician on an unrestricted
+                            // patient and the radio could not be cleared.
+                            const RadioListTile<String?>(
+                              contentPadding: EdgeInsets.zero,
+                              value: null,
+                              title: Text('Clinic dietician'),
+                              subtitle: Text(
+                                'Whoever is covering answers this patient',
+                              ),
+                            ),
+                            for (final d in options)
+                              RadioListTile<String?>(
+                                contentPadding: EdgeInsets.zero,
+                                value: d.id,
+                                title: Text(d.name),
+                              ),
+                          ],
+                        ),
+                      ),
                       if (options.isEmpty)
                         Padding(
                           padding: const EdgeInsets.symmetric(vertical: 4),
                           child: Text(
                             'No dieticians yet — add one below.',
-                            style: TextStyle(
-                              color: Theme.of(ctx).colorScheme.onSurfaceVariant,
-                            ),
+                            style: TextStyle(color: scheme.onSurfaceVariant),
                           ),
                         ),
-                      for (final d in options)
-                        RadioListTile<String>(
-                          contentPadding: EdgeInsets.zero,
-                          value: d.id,
-                          groupValue: selectedId,
-                          onChanged: (v) => setSheet(() => selectedId = v),
-                          title: Text(d.name),
-                        ),
+
                       Align(
                         alignment: Alignment.centerLeft,
                         child: TextButton.icon(
@@ -1298,7 +1351,11 @@ class _DieticianSection extends ConsumerWidget {
                             if (created != null) {
                               try {
                                 options = await repo.dieticians();
-                              } catch (_) {}
+                              } catch (_) {
+                                // The account was created; the list will catch
+                                // up on the next open. Selecting it below is
+                                // what matters now.
+                              }
                               setSheet(() => selectedId = created.id);
                             }
                           },
@@ -1306,6 +1363,7 @@ class _DieticianSection extends ConsumerWidget {
                           label: const Text('Add a new dietician'),
                         ),
                       ),
+
                       if (selectedId != null) ...[
                         const SizedBox(height: AppSpacing.sm),
                         Container(
@@ -1325,7 +1383,10 @@ class _DieticianSection extends ConsumerWidget {
                               const SizedBox(width: 8),
                               Expanded(
                                 child: Text(
-                                  'This limits the chosen dietician to only the patients you restrict to them — they stop seeing the rest of the clinic by default.',
+                                  'This limits the chosen dietician to only '
+                                  'the patients you restrict to them — they '
+                                  'stop seeing the rest of the clinic by '
+                                  'default.',
                                   style: TextStyle(
                                     fontSize: 12,
                                     height: 1.3,
@@ -1337,67 +1398,34 @@ class _DieticianSection extends ConsumerWidget {
                           ),
                         ),
                       ],
+
                       const SizedBox(height: AppSpacing.lg),
-                      Row(
-                        children: [
-                          if (summary.assignedDieticianId != null)
-                            TextButton(
-                              style: TextButton.styleFrom(
-                                foregroundColor: AppColors.danger,
-                              ),
-                              onPressed: () async {
-                                try {
-                                  await repo.assignDietician(
-                                    patientId,
-                                    dieticianId: null,
-                                    reviewIntervalDays: null,
-                                  );
-                                  if (ctx.mounted) Navigator.pop(ctx, true);
-                                } catch (_) {
-                                  if (ctx.mounted)
-                                    ScaffoldMessenger.of(ctx).showSnackBar(
-                                      const SnackBar(
-                                        content: Text('Could not save'),
-                                      ),
-                                    );
-                                }
-                              },
-                              child: const Text('Back to clinic default'),
-                            ),
-                          const Spacer(),
-                          FilledButton(
-                            onPressed:
-                                selectedId == null
-                                    ? null
-                                    : () async {
-                                      try {
-                                        // Cadence is clinic-wide now, so we never set the
-                                        // dead per-patient field.
-                                        await repo.assignDietician(
-                                          patientId,
-                                          dieticianId: selectedId,
-                                          reviewIntervalDays: null,
-                                        );
-                                        if (ctx.mounted)
-                                          Navigator.pop(ctx, true);
-                                      } catch (_) {
-                                        if (ctx.mounted)
-                                          ScaffoldMessenger.of(
-                                            ctx,
-                                          ).showSnackBar(
-                                            const SnackBar(
-                                              content: Text('Could not save'),
-                                            ),
-                                          );
-                                      }
-                                    },
-                            child: const Text('Restrict to this dietician'),
+                      // Full width and on its own line.
+                      //
+                      // This was a Row of [TextButton, Spacer, FilledButton].
+                      // "Back to clinic default" beside "Restrict to this
+                      // dietician" is wider than a phone, and an overflowing
+                      // Row drops its last child without a word — so the save
+                      // button was not there to press, and picking a dietician
+                      // appeared to do nothing.
+                      FilledButton(
+                        onPressed: save,
+                        style: FilledButton.styleFrom(
+                          minimumSize: const Size.fromHeight(
+                            AppSpacing.minTapTarget,
                           ),
-                        ],
+                        ),
+                        child: Text(
+                          selectedId == null
+                              ? 'Use the clinic default'
+                              : 'Restrict to this dietician',
+                        ),
                       ),
                     ],
                   ),
                 ),
+              );
+            },
           ),
     );
 

@@ -19,6 +19,7 @@ import 'widgets/care_composer.dart';
 import 'widgets/jump_to_latest.dart';
 import 'widgets/chat_message_bubble.dart';
 import 'widgets/edit_message_sheet.dart';
+import '../../../core/theme/tokens.dart';
 
 /// The patient's side of the dietician conversation.
 ///
@@ -371,58 +372,76 @@ class _NutritionChatScreenState extends ConsumerState<NutritionChatScreen>
         // wrote here. A patient talking to "Your dietician" is talking to a
         // department; talking to Romit Dey is talking to a person, and the
         // person is the reason they answer honestly about what they ate.
-        title: Row(
-          children: [
-            // titleSpacing is 0 so the row can start at the avatar; the inset
-            // has to come back here, or the photo sits clipped against the
-            // screen edge.
-            const SizedBox(width: AppSpacing.sm),
-            UserAvatar(
-              name: dieticianName ?? '',
-              avatarUrl: dieticianAvatar,
-              accent: AppColors.accentOn(context),
-              size: 38,
-            ),
-            const SizedBox(width: AppSpacing.sm),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    dieticianName ?? 'Your dietician',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                  Text(
-                    dieticianName == null
-                        ? 'Food and nutrition'
-                        : 'Your dietician · Food and nutrition',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: scheme.onSurfaceVariant,
-                    ),
-                  ),
-                ],
+        title: Padding(
+          // titleSpacing is 0 so the row can own its own inset. It has to give
+          // one back, or the avatar sits against the screen edge — which is how
+          // this shipped, at 8px, half of every other leading inset in the app.
+          padding: const EdgeInsets.only(left: AppSpacing.md),
+          child: Row(
+            children: [
+              UserAvatar(
+                name: dieticianName ?? '',
+                avatarUrl: dieticianAvatar,
+                accent: AppColors.accentOn(context),
+                size: 40,
               ),
-            ),
-          ],
+              const SizedBox(width: AppSpacing.sm + AppSpacing.xs),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      dieticianName ?? 'Your dietician',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                        height: 1.25,
+                      ),
+                    ),
+                    const SizedBox(height: 1),
+                    Text(
+                      dieticianName == null
+                          ? 'Food and nutrition'
+                          : 'Your dietician · Food and nutrition',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 12,
+                        height: 1.25,
+                        color: scheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
         ),
         actions: [
           // The log still exists as a list — scrolling back weeks through a
           // conversation to find one meal is not a search.
+          //
+          // One icon, one size, from the one set. It used to be a book with a
+          // fork welded to its corner at a negative offset, drawn on a disc of
+          // the bar's own colour to keep the two marks apart: three shapes
+          // doing one job, and the composite hung outside its own 24px box.
           IconButton(
             tooltip: 'Meal history',
             onPressed: () => context.push('/food-log/history'),
-            icon: const _MealLogIcon(),
+            icon: const Icon(Icons.restaurant_menu_rounded, size: 24),
           ),
-          const SizedBox(width: 4),
+          const SizedBox(width: AppSpacing.sm),
         ],
+        // A hairline, so the header reads as a header rather than as the top
+        // of the conversation. The guidance strip below carries its own tint
+        // and without this the two ran together.
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(1),
+          child: Container(height: 1, color: T.line),
+        ),
       ),
       body: ChatBackground(
         child: Column(
@@ -635,42 +654,3 @@ class _NutritionChatScreenState extends ConsumerState<NutritionChatScreen>
 /// itself, so reusing it here would read as "you are here" rather than as a way
 /// through to the log. A plain photo library, which this was, says pictures and
 /// says nothing about meals.
-class _MealLogIcon extends StatelessWidget {
-  const _MealLogIcon();
-
-  @override
-  Widget build(BuildContext context) {
-    // The badge sits on a disc of the bar's own colour so the fork reads as a
-    // separate mark instead of merging into the book's edge.
-    final barColor =
-        Theme.of(context).appBarTheme.backgroundColor ??
-        Theme.of(context).colorScheme.surface;
-
-    return SizedBox(
-      width: 24,
-      height: 24,
-      child: Stack(
-        clipBehavior: Clip.none,
-        children: [
-          const Positioned(
-            left: 0,
-            top: 0,
-            child: Icon(Icons.menu_book_rounded, size: 22),
-          ),
-          Positioned(
-            right: -2,
-            bottom: -2,
-            child: Container(
-              padding: const EdgeInsets.all(0),
-              decoration: BoxDecoration(
-                color: barColor,
-                shape: BoxShape.circle,
-              ),
-              child: const Icon(Icons.restaurant_rounded, size: 11),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}

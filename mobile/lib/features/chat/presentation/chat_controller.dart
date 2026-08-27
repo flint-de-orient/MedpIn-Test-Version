@@ -73,6 +73,7 @@ class ChatController extends StateNotifier<ChatState> {
       urgency: 'routine',
       createdAt: DateTime.now(),
     );
+    _sendStartedAt = DateTime.now();
     state = state.copyWith(
       isSending: true,
       clearError: true,
@@ -102,14 +103,34 @@ class ChatController extends StateNotifier<ChatState> {
           // answering. Append nothing rather than an empty bubble.
           if (result.reply != null) result.reply!,
         ],
-        isSending: false,
       );
     } on ApiException catch (e) {
       state = state.copyWith(
         messages: state.messages.where((m) => m.id != tempUserId).toList(),
-        isSending: false,
         error: e,
       );
+    } catch (_) {
+      // Anything that is not an ApiException — a malformed payload, a socket
+      // dropped mid-request, a cast on a field that came back the wrong shape.
+      // Caught for the same reason as the finally below: this used to escape,
+      // and the escape was the bug.
+      state = state.copyWith(
+        messages: state.messages.where((m) => m.id != tempUserId).toList(),
+        error: const ApiException(
+          code: 'NETWORK_ERROR',
+          message: 'Could not send that message. Please try again.',
+        ),
+      );
+    } finally {
+      // Released on every path, including the ones nobody thought of.
+      //
+      // This screen polls every two seconds and skips the poll while a send is
+      // in flight. Leave the flag raised and the thread stops updating for as
+      // long as the app is open — which is exactly how "the doctor's replies
+      // do not arrive" was reported, from a patient whose send had thrown
+      // something other than an ApiException some minutes earlier.
+      _sendStartedAt = null;
+      state = state.copyWith(isSending: false);
     }
   }
 
@@ -138,6 +159,7 @@ class ChatController extends StateNotifier<ChatState> {
       createdAt: DateTime.now(),
       voiceNotes: [VoiceNote(url: '', localPath: localPath)],
     );
+    _sendStartedAt = DateTime.now();
     state = state.copyWith(
       isSending: true,
       clearError: true,
@@ -169,14 +191,26 @@ class ChatController extends StateNotifier<ChatState> {
           // answering. Append nothing rather than an empty bubble.
           if (result.reply != null) result.reply!,
         ],
-        isSending: false,
       );
     } on ApiException catch (e) {
       state = state.copyWith(
         messages: state.messages.where((m) => m.id != tempId).toList(),
-        isSending: false,
         error: e,
       );
+    } catch (_) {
+      // The upload is the likeliest thrower here: a file that vanished, a
+      // codec the transcriber rejects, a connection lost mid-upload. None of
+      // those are ApiExceptions and all of them used to escape.
+      state = state.copyWith(
+        messages: state.messages.where((m) => m.id != tempId).toList(),
+        error: const ApiException(
+          code: 'NETWORK_ERROR',
+          message: 'Could not send that message. Please try again.',
+        ),
+      );
+    } finally {
+      _sendStartedAt = null;
+      state = state.copyWith(isSending: false);
     }
   }
 
@@ -205,8 +239,31 @@ class ChatController extends StateNotifier<ChatState> {
 
   /// Quietly re-reads the open conversation so a clinician's reply appears on
   /// its own, without the patient reloading or being told to.
+  /// When the in-flight send started, or null if none is.
+  ///
+  /// Only used to stop a send that never finished from silencing the poll —
+  /// see [_sendIsBlocking].
+  DateTime? _sendStartedAt;
+
+  /// A send is worth pausing the poll for, but not forever.
+  ///
+  /// Polling skips while a send is in flight so a refetch cannot wipe the
+  /// optimistic bubble out from under it. That is right for the second or two
+  /// a send takes and catastrophic if the flag ever sticks: the thread stops
+  /// updating for the rest of the session and the only symptom is that
+  /// replies stop arriving. It has stuck twice — once on isLoadingHistory,
+  /// once on isSending — so the guard now expires whatever else goes wrong.
+  static const _sendGrace = Duration(seconds: 30);
+
+  bool get _sendIsBlocking {
+    if (!state.isSending) return false;
+    final started = _sendStartedAt;
+    if (started == null) return false;
+    return DateTime.now().difference(started) < _sendGrace;
+  }
+
   Future<void> pollForUpdates() async {
-    if (state.isSending || state.isLoadingHistory) return;
+    if (_sendIsBlocking || state.isLoadingHistory) return;
 
     // Read the whole conversation, not one session of it.
     //
