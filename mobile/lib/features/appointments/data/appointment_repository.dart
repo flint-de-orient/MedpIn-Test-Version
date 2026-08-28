@@ -87,6 +87,25 @@ class AppointmentRepository {
 
   /// Clinician-only: advance the appointment's status (confirm, complete, …)
   /// and optionally attach consultation notes.
+  /// Ask the clinic for an appointment without choosing a slot.
+  ///
+  /// The other path — picking a free time from the published schedule —
+  /// confirms immediately. This one creates a request the desk answers, for
+  /// the patient who would rather say "Tuesday" than read a timetable.
+  Future<Appointment> requestAppointment({
+    required DateTime preferredFor,
+    String reason = '',
+  }) async {
+    final json = await _client.postJson(
+      '/appointments/request',
+      body: {
+        'preferredFor': preferredFor.toUtc().toIso8601String(),
+        if (reason.isNotEmpty) 'reason': reason,
+      },
+    );
+    return Appointment.fromJson(json['appointment'] as Map<String, dynamic>);
+  }
+
   /// Turn a request into a booking: give it a clinic and a time.
   ///
   /// One call, not reschedule-then-set-status. Reschedule validates the time

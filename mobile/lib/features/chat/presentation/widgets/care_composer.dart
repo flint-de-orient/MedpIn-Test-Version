@@ -8,6 +8,7 @@ import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_spacing.dart';
 import '../../../../shared/data/upload_repository.dart';
 import 'voice_recorder_bar.dart';
+import '../../../appointments/presentation/request_appointment_sheet.dart';
 
 /// The message composer used on both sides of the nutrition thread.
 ///
@@ -77,11 +78,38 @@ class _CareComposerState extends ConsumerState<CareComposer> {
                   subtitle: const Text('PDF, Word, Excel, text…'),
                   onTap: () => Navigator.pop(ctx, 'document'),
                 ),
+                const Divider(height: 1),
+                // Not an attachment, but it belongs on the same menu: this is
+                // where a patient already comes to say something to the clinic,
+                // and "can I see the doctor" is the commonest thing they want
+                // to say. Making them find a separate screen for it is how a
+                // request becomes a phone call instead.
+                ListTile(
+                  leading: const Icon(Icons.event_available_outlined),
+                  title: const Text('Ask for an appointment'),
+                  subtitle: const Text('The clinic confirms a time'),
+                  onTap: () => Navigator.pop(ctx, 'appointment'),
+                ),
               ],
             ),
           ),
     );
     if (choice == null) return;
+
+    if (choice == 'appointment') {
+      final messenger = ScaffoldMessenger.of(context);
+      final sent = await showRequestAppointmentSheet(context);
+      if (sent) {
+        messenger.showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Request sent. The clinic will confirm a time and let you know.',
+            ),
+          ),
+        );
+      }
+      return;
+    }
 
     String path;
     String filename;
