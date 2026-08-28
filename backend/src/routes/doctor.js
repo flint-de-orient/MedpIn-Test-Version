@@ -521,7 +521,7 @@ router.post(
   audit('create', 'User'),
   asyncHandler(async (req, res) => {
     const b = req.body;
-    if (await User.exists({ phone: b.phone })) throw conflict('An account with this phone number already exists');
+    if (await User.phoneTaken(b.phone)) throw conflict('An account with this phone number already exists');
 
     // A token vouches for one number. Taking the token and the phone as two
     // independent fields would let a desk verify one number and register
@@ -1747,7 +1747,7 @@ router.post(
   audit('create', 'User'),
   asyncHandler(async (req, res) => {
     const { name, phone, password } = req.body;
-    if (await User.exists({ phone })) throw conflict('An account with this phone number already exists');
+    if (await User.phoneTaken(phone)) throw conflict('An account with this phone number already exists');
     const user = new User({
       name,
       phone,

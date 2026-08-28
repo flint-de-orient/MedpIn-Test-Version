@@ -1,6 +1,18 @@
 import mongoose from 'mongoose';
 import bcrypt from 'bcryptjs';
 
+/**
+ * The filter that finds an account by any number it can sign in with.
+ *
+ * Written once and used by every lookup in the auth path. Eight places asked
+ * `{ phone }` directly; each would have had to learn about alternates
+ * separately, and the one that was missed would be a number that receives a
+ * code and then cannot spend it.
+ */
+export function byLoginPhone(phone) {
+  return { $or: [{ phone }, { altPhones: phone }] };
+}
+
 export const ROLES = Object.freeze({
   PATIENT: 'patient',
   DOCTOR: 'doctor',
@@ -33,6 +45,30 @@ const userSchema = new mongoose.Schema(
     // registered this way never get one; doctors and staff, who are onboarded
     // by the clinic and may sign in with a password, do. Accounts created
     // before the change keep theirs and keep working.
+    /// Other numbers that sign in to this same account.
+    ///
+    /// A clinic reception desk is one identity with two lines. Giving it two
+    /// accounts would work — staff data is clinic-wide, so both would see the
+    /// same thing — but a patient would then get replies from "Clinic
+    /// Reception" and "Clinic Reception 2" and reasonably wonder how many
+    /// receptions there are. One desk should look like one desk.
+    ///
+    /// These are login credentials, not contact details. The numbers patients
+    /// ring live on the Clinic record; these are numbers that can receive a
+    /// one-time code for this account. Every one of them can sign in and reach
+    /// exactly the same data, and every action is recorded against the one
+    /// account whichever line was used.
+    ///
+    /// Uniqueness is enforced by `phoneTaken()` rather than by an index: a
+    /// unique index on this array would stop two accounts sharing an alternate,
+    /// but not stop an alternate colliding with another account's primary, and
+    /// half a guarantee in the auth path is worse than a stated one.
+    altPhones: {
+      type: [String],
+      default: [],
+      index: true,
+    },
+
     passwordHash: { type: String, select: false },
 
     // When a code texted to this number was typed back correctly.
@@ -108,6 +144,7 @@ userSchema.methods.toPublic = function toPublic() {
     // `||`, not `??`: a cleared address is stored as an empty string, and
     // the app should read that as "none set" rather than as a blank line.
     address: this.address || null,
+    altPhones: this.altPhones ?? [],
     avatarUrl: this.avatarAssetId ? `/api/v1/uploads/${this.avatarAssetId}/raw` : null,
     // Doctor letterhead fields; null for patients/staff who never set them.
     qualifications: this.qualifications ?? null,
@@ -116,6 +153,24 @@ userSchema.methods.toPublic = function toPublic() {
     signatureUrl: this.signatureAssetId ? `/api/v1/uploads/${this.signatureAssetId}/raw` : null,
     createdAt: this.createdAt,
   };
+};
+
+/**
+ * Is this number already claimed by anyone — as a primary or an alternate?
+ *
+ * The check every place that assigns a number has to make. Two accounts
+ * claiming one number means a code sent to it signs somebody into whichever
+ * document the query happened to return first.
+ */
+userSchema.statics.phoneTaken = async function phoneTaken(phone, exceptId = null) {
+  const q = { ...byLoginPhone(phone) };
+  if (exceptId) q._id = { $ne: exceptId };
+  return Boolean(await this.exists(q));
+};
+
+/** Find the account that signs in with this number, primary or alternate. */
+userSchema.statics.findByLoginPhone = function findByLoginPhone(phone) {
+  return this.findOne(byLoginPhone(phone));
 };
 
 export const User = mongoose.model('User', userSchema);

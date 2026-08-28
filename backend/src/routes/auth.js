@@ -113,7 +113,10 @@ router.post(
   asyncHandler(async (req, res) => {
     const { phone, purpose } = req.body;
 
-    const existing = await User.findOne({ phone }).select('isActive').lean();
+    // Any number this account signs in with, not just its primary. A desk
+    // with two lines is one account; a code sent to the second line has to
+    // find it, or the number receives a code it can never spend.
+    const existing = await User.findByLoginPhone(phone).select('isActive').lean();
 
     if (purpose === 'register' && existing) {
       throw conflict('This phone number is already registered. Please log in instead.', {
@@ -159,7 +162,7 @@ router.post(
     if (purpose === 'register') {
       // Re-checked after the code is spent: the number could have been
       // registered by someone else during the ten minutes it was valid.
-      if (await User.exists({ phone })) {
+      if (await User.phoneTaken(phone)) {
         throw conflict('This phone number is already registered. Please log in instead.', {
           reason: 'ALREADY_REGISTERED',
         });
@@ -167,7 +170,7 @@ router.post(
       return res.json({ phoneToken: signPhoneToken(phone) });
     }
 
-    const user = await User.findOne({ phone });
+    const user = await User.findByLoginPhone(phone);
     if (!user || !user.isActive) throw unauthorized('No account found for this number.');
 
     user.lastLoginAt = new Date();
@@ -213,7 +216,7 @@ router.post(
     // Checked again here, not only when the code was requested. Between the
     // two calls is a real gap, and two people registering the same number at
     // once must not both succeed.
-    if (await User.exists({ phone })) {
+    if (await User.phoneTaken(phone)) {
       throw conflict('An account with this phone number already exists');
     }
 
@@ -298,7 +301,7 @@ router.post(
   asyncHandler(async (req, res) => {
     const { phone, password } = req.body;
 
-    const user = await User.findOne({ phone }).select('+passwordHash');
+    const user = await User.findByLoginPhone(phone).select('+passwordHash');
     // Same error either way — a different message for "no such user" tells an
     // attacker which numbers are registered patients. An account with no
     // password hash (every patient and dietician registered since OTP sign-up)

@@ -26,7 +26,7 @@
  * uses — it connects to whatever MONGODB_URI points at.
  */
 import { connectDb } from '../src/config/db.js';
-import { User } from '../src/models/User.js';
+import { User, byLoginPhone } from '../src/models/User.js';
 import { toE164 } from '../src/utils/phone.js';
 import { logger } from '../src/config/logger.js';
 
@@ -101,7 +101,9 @@ async function main() {
 
   // The unique index would reject this anyway; a name is more use than a
   // duplicate-key stack trace at 11pm.
-  const holder = await User.findOne({ phone, _id: { $ne: user._id } })
+  // Checks alternates too: a number already serving as another account's
+  // second line is just as taken as one that is its primary.
+  const holder = await User.findOne({ ...byLoginPhone(phone), _id: { $ne: user._id } })
     .select('name role')
     .lean();
   if (holder) {
