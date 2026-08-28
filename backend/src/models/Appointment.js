@@ -20,7 +20,30 @@ const appointmentSchema = new mongoose.Schema(
     clinic: { type: mongoose.Schema.Types.ObjectId, ref: 'Clinic', index: true },
 
     mode: { type: String, enum: ['in_clinic', 'teleconsult'], default: 'in_clinic' },
-    scheduledFor: { type: Date, required: true, index: true },
+    /// When the appointment is. Absent while it is only a request.
+    ///
+    /// It was unconditionally required, which forced a chat request to invent a
+    /// time — and since 'requested' counts as an active status, that invented
+    /// time then held a real slot. A patient asking "can I come Tuesday?" would
+    /// block that hour for everyone, including the desk trying to confirm the
+    /// very request that blocked it.
+    scheduledFor: {
+      type: Date,
+      index: true,
+      required: [
+        function requiredOnceScheduled() {
+          return this.status !== 'requested';
+        },
+        'scheduledFor is required once an appointment is confirmed',
+      ],
+    },
+
+    /// The day the patient asked for, on a request. Never a booking.
+    ///
+    /// Deliberately a separate field from scheduledFor: it is a wish, not a
+    /// commitment, and nothing that reads the schedule should ever mistake it
+    /// for one.
+    preferredFor: { type: Date },
     durationMinutes: { type: Number, default: 15, min: 5, max: 120 },
 
     status: { type: String, enum: APPOINTMENT_STATUS, default: 'requested', index: true },

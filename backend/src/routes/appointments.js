@@ -161,6 +161,101 @@ router.post(
   }),
 );
 
+/**
+ * Ask for an appointment without choosing a slot.
+ *
+ * The booking route above is the fast path: a patient picks a free slot from
+ * the published schedule and it confirms immediately. This is the other half —
+ * a patient saying "can I see the doctor this week?" from the care thread, with
+ * a day in mind rather than a time.
+ *
+ * It is a real Appointment at status `requested`, not a chat message. A request
+ * that lives only in the conversation cannot be listed, counted, reminded on or
+ * reported, and it is lost the moment the thread scrolls. The desk turns it
+ * into a time; the row is the same row throughout.
+ *
+ * `preferredFor` is what the patient asked for, not a promise. Staff confirm it
+ * or move it, and the patient is told which.
+ */
+router.post(
+  '/request',
+  validate({
+    body: z.object({
+      // A day they have in mind. Required, because "sometime" gives the desk
+      // nothing to work with and turns into a phone call anyway.
+      preferredFor: z.coerce.date(),
+      mode: z.enum(['in_clinic', 'teleconsult']).default('in_clinic'),
+      reason: z.string().max(600).optional(),
+      patientId: z.string().optional(),
+    }),
+  }),
+  audit('create', 'Appointment'),
+  asyncHandler(async (req, res) => {
+    const { preferredFor, mode, reason } = req.body;
+
+    if (dayjs(preferredFor).isBefore(dayjs().startOf('day'))) {
+      throw badRequest('Please choose a day that has not passed');
+    }
+
+    const patientId = isPatient(req) ? req.user._id : req.body.patientId;
+    if (!patientId) throw badRequest('patientId is required');
+
+    const doctor = await User.findOne({ role: ROLES.DOCTOR });
+    if (!doctor) throw badRequest('No doctor is available for booking');
+
+    // One open request at a time. A patient who taps twice, or asks again next
+    // day because nobody has answered, should not appear on the desk's list as
+    // two people wanting two appointments.
+    const existing = await Appointment.findOne({
+      patient: patientId,
+      status: 'requested',
+    });
+    if (existing) {
+      existing.preferredFor = preferredFor;
+      if (reason) existing.reason = reason;
+      existing.mode = mode;
+      await existing.save();
+      await existing.populate(POPULATE);
+      return res.json({ appointment: serialise(existing), updated: true });
+    }
+
+    const appointment = await Appointment.create({
+      patient: patientId,
+      doctor: doctor._id,
+      // No clinic and no time yet: the desk assigns both when it confirms.
+      //
+      // preferredFor, NOT scheduledFor. 'requested' is an active status, so a
+      // time written here would hold that slot against everyone — including the
+      // desk trying to confirm this very request at a different hour.
+      preferredFor,
+      mode,
+      reason,
+      status: 'requested',
+    });
+
+    await appointment.populate(POPULATE);
+
+    // The desk hears first, which is the whole point of the request path: the
+    // doctor has already approved the hours, and staff book inside them.
+    // The desk hears, and only the desk.
+    //
+    // Pushing every request to the doctor as well would put him back in the
+    // middle of routine scheduling — the exact bottleneck the request path
+    // exists to avoid. He has already approved the hours; he learns of the
+    // appointment when it is confirmed and lands in his day. If the clinic has
+    // no staff account yet, it falls back to him, because a request nobody is
+    // told about is worse than one that interrupts.
+    await notifyClinicOfAppointmentChange(
+      appointment,
+      req.patientUser?.name ?? appointment.patient?.name ?? 'A patient',
+      'requested',
+      { deskOnly: true },
+    );
+
+    res.status(201).json({ appointment: serialise(appointment) });
+  }),
+);
+
 router.patch(
   '/:id/reschedule',
   validate({ body: z.object({ scheduledFor: z.coerce.date() }) }),
@@ -441,7 +536,11 @@ function serialise(a) {
           phone: clinic.phone ?? null,
         }
       : null,
-    scheduledFor: a.scheduledFor,
+    scheduledFor: a.scheduledFor ?? null,
+    // The day a patient asked for, on a request that has no time yet. Kept
+    // separate from scheduledFor so nothing reading the schedule mistakes a
+    // wish for a booking.
+    preferredFor: a.preferredFor ?? null,
     durationMinutes: a.durationMinutes,
     mode: a.mode,
     status: a.status,

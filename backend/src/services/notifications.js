@@ -511,18 +511,39 @@ async function flushMedChange(patientId, entry) {
  * Sent the moment it happens rather than batched: a cancellation an hour from
  * now is only useful if the doctor hears about it in time to refill the slot.
  */
-export async function notifyClinicOfAppointmentChange(appointment, patientName, change) {
-  const staff = await User.find({ role: { $in: [ROLES.DOCTOR, ROLES.STAFF] }, isActive: true })
+export async function notifyClinicOfAppointmentChange(appointment, patientName, change, opts = {}) {
+  // A request is the desk's work, not the doctor's: he has already approved the
+  // hours, and staff book inside them. Telling him about every request would
+  // recreate the bottleneck the request path exists to remove. A confirmed or
+  // cancelled appointment does reach him — that is his day changing.
+  const deskOnly = opts.deskOnly === true;
+  let staff = await User.find({
+    role: deskOnly ? ROLES.STAFF : { $in: [ROLES.DOCTOR, ROLES.STAFF] },
+    isActive: true,
+  })
     .select('deviceTokens')
     .lean();
 
-  const when = new Date(appointment.scheduledFor).toLocaleString('en-IN', {
-    dateStyle: 'medium',
-    timeStyle: 'short',
-    timeZone: 'Asia/Kolkata',
-  });
+  // A clinic with no staff account yet is every clinic on its first day. A
+  // request nobody is told about is worse than one that interrupts the doctor.
+  if (deskOnly && staff.length === 0) {
+    staff = await User.find({ role: ROLES.DOCTOR, isActive: true }).select('deviceTokens').lean();
+  }
 
-  const verb = { booked: 'booked', rescheduled: 'moved', cancelled: 'cancelled' }[change] ?? change;
+  // A request carries a preferred day and no time. Printing a time for it —
+  // whatever the field happened to hold — would tell the desk the patient chose
+  // an hour they never chose.
+  const at = appointment.scheduledFor ?? appointment.preferredFor;
+  const when = at
+    ? new Date(at).toLocaleString('en-IN', {
+        dateStyle: 'medium',
+        ...(appointment.scheduledFor ? { timeStyle: 'short' } : {}),
+        timeZone: 'Asia/Kolkata',
+      })
+    : 'a date to be arranged';
+
+  const verb =
+    { booked: 'booked', rescheduled: 'moved', cancelled: 'cancelled', requested: 'asked for' }[change] ?? change;
 
   await deliver({
     tokens: staff.flatMap((s) => s.deviceTokens ?? []),

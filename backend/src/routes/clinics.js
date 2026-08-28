@@ -7,6 +7,7 @@ import { audit } from '../middleware/audit.js';
 import { Clinic } from '../models/Clinic.js';
 import { User, ROLES } from '../models/User.js';
 import { generateSlots } from '../services/scheduling.js';
+import { forgetClinicIdentity } from '../services/clinicIdentity.js';
 import { dayjs, DATE_RE, TIME_RE } from '../utils/clinicTime.js';
 
 const router = Router();
@@ -35,7 +36,17 @@ const clinicBody = z.object({
   addressLine: z.string().max(400).optional(),
   city: z.string().max(120).optional(),
   phone: z.string().max(40).optional(),
+  altPhone: z.string().max(40).optional(),
   mapUrl: z.string().max(600).optional(),
+  // The brand the patient meets — see models/Clinic.js. Editable here so a
+  // clinic can rename itself or change its number without a redeploy, which is
+  // what living in an env var prevented.
+  tagline: z.string().max(160).optional(),
+  doctorDisplayName: z.string().max(160).optional(),
+  registrationNo: z.string().max(60).optional(),
+  logoLightAssetId: z.string().optional(),
+  logoDarkAssetId: z.string().optional(),
+  logoNeedsDarkChip: z.boolean().optional(),
   slotMinutes: z.number().int().min(5).max(120).default(15),
   weeklyHours: z.array(weeklyHourShape).max(50).default([]),
   overrides: z.array(overrideShape).max(120).default([]),
@@ -106,6 +117,10 @@ router.patch(
     if (!clinic) throw notFound('Clinic not found');
     Object.assign(clinic, req.body);
     await clinic.save();
+    // The identity resolver caches for a minute. Without this the person who
+    // just renamed the clinic is shown the old name back, which reads as the
+    // save having failed.
+    forgetClinicIdentity();
     res.json({ clinic: clinic.toPublic() });
   }),
 );

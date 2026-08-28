@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import multer from 'multer';
 import sharp from 'sharp';
+import { needsDarkChip } from '../services/logoLuminance.js';
 import { transcribeVoiceNote, transcodeToMp3 } from '../services/ai/transcribe.js';
 import path from 'node:path';
 import fs from 'node:fs/promises';
@@ -130,6 +131,7 @@ router.post(
         'meal_photo',
         'avatar',
         'signature',
+        'clinic_logo',
         'voice_note',
         'other',
       ]),
@@ -152,6 +154,8 @@ router.post(
     let height = null;
     let buffer = req.file.buffer;
     let mimeType = req.file.mimetype;
+    /// Set for a clinic logo: true when the artwork needs a dark ground.
+    let needsDark = false;
 
     // A signature is not a clinical photo: the paper it was written on has to
     // go, or it lands on the prescription as a grey rectangle.
@@ -164,6 +168,25 @@ router.post(
       mimeType = 'image/png';
       width = cut.width;
       height = cut.height;
+    } else if (req.body.kind === 'clinic_logo' && !isDocument && !isAudio) {
+      // A logo keeps its transparency, so PNG rather than WebP-with-a-white-box
+      // behind it — a mark that arrives cut out has to stay cut out or it lands
+      // on the letterhead as a rectangle.
+      //
+      // It is also measured rather than altered: artwork drawn for a dark
+      // letterhead is flagged so the app can paint a dark chip behind it.
+      // Inverting it instead would turn this clinic's teal orange, and the
+      // colour is the part of a logo that carries the brand.
+      const image = sharp(req.file.buffer, { failOn: 'none' }).rotate();
+      const meta = await image.metadata();
+      width = meta.width ?? null;
+      height = meta.height ?? null;
+      buffer = await image
+        .resize({ width: 1200, height: 1200, fit: 'inside', withoutEnlargement: true })
+        .png({ compressionLevel: 9 })
+        .toBuffer();
+      mimeType = 'image/png';
+      needsDark = await needsDarkChip(buffer).catch(() => false);
     } else if (!isDocument && !isAudio) {
       // Normalise to WebP: strips EXIF (which can carry GPS location of a
       // patient's home) and keeps clinical photos to a sane size.
@@ -239,6 +262,10 @@ router.post(
       // Returned so the client can send the spoken words as the message text,
       // which is what the assistant answers and what triage assesses.
       transcript: asset.transcript ?? null,
+      // Only meaningful for a clinic logo: the artwork was drawn for a dark
+      // background, so the app should paint a dark chip behind it rather than
+      // invert it. Measured on the pixels, not guessed from the file name.
+      needsDarkChip: needsDark,
       url: `/api/v1/uploads/${asset._id}/raw`,
       createdAt: asset.createdAt,
     });
