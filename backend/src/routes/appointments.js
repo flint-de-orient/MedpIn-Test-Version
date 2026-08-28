@@ -2,7 +2,7 @@ import { Router } from 'express';
 import dayjs from 'dayjs';
 import crypto from 'node:crypto';
 import { z } from 'zod';
-import { requireAuth, requireClinician } from '../middleware/auth.js';
+import { requireAuth, requireClinician, requireRole } from '../middleware/auth.js';
 import { validate, q } from '../middleware/validate.js';
 import { asyncHandler, notFound, badRequest } from '../middleware/errors.js';
 import { audit } from '../middleware/audit.js';
@@ -253,6 +253,88 @@ router.post(
     );
 
     res.status(201).json({ appointment: serialise(appointment) });
+  }),
+);
+
+/**
+ * Turn a request into a booking: give it a clinic and a time.
+ *
+ * The desk's own action, and the reason the request path exists. The doctor
+ * published his hours once; staff confirm inside them without asking him each
+ * time, and he learns of it when it lands in his day.
+ *
+ * Not reschedule-then-set-status. Reschedule validates the new time against
+ * `existing.clinic`, and a request has no clinic — so it would skip slot
+ * validation altogether and leave the appointment `requested` WITH a
+ * scheduledFor, which is precisely the state that holds a slot without being a
+ * booking. Both halves have to move together, and the slot has to be checked
+ * the same way a patient's own booking is.
+ */
+router.patch(
+  '/:id/confirm',
+  requireRole(ROLES.DOCTOR, ROLES.STAFF),
+  validate({
+    body: z.object({
+      clinicId: z.string(),
+      scheduledFor: z.coerce.date(),
+    }),
+  }),
+  audit('update', 'Appointment'),
+  asyncHandler(async (req, res) => {
+    const { clinicId, scheduledFor } = req.body;
+
+    const appointment = await Appointment.findById(req.params.id);
+    if (!appointment) throw notFound('Appointment not found');
+    if (appointment.status !== 'requested') {
+      throw badRequest('Only a request can be confirmed. Use reschedule to move a booking.');
+    }
+    if (dayjs(scheduledFor).isBefore(dayjs())) {
+      throw badRequest('Appointment time must be in the future');
+    }
+
+    const clinic = await Clinic.findOne({ _id: clinicId, isActive: true });
+    if (!clinic) throw badRequest('That clinic is not available');
+
+    // The same authority a patient booking goes through. A request confirmed
+    // onto a time the schedule does not offer is worse than one left pending:
+    // the patient is told to come at an hour the doctor is not there.
+    if (!(await isSlotBookable(clinic, scheduledFor))) {
+      throw badRequest('That time is not free. Please choose another.');
+    }
+
+    const slotStart = dayjs(scheduledFor);
+    const clash = await Appointment.findOne({
+      _id: { $ne: appointment._id },
+      clinic: clinic._id,
+      status: { $in: ACTIVE_STATUSES },
+      scheduledFor: {
+        $gte: slotStart.toDate(),
+        $lt: slotStart.add(clinic.slotMinutes ?? DEFAULT_SLOT_MINUTES, 'minute').toDate(),
+      },
+    });
+    if (clash) throw badRequest('That time has just been taken. Please choose another.');
+
+    appointment.clinic = clinic._id;
+    appointment.scheduledFor = scheduledFor;
+    appointment.durationMinutes = clinic.slotMinutes ?? DEFAULT_SLOT_MINUTES;
+    appointment.status = 'confirmed';
+    // The wish is spent. Keeping it would leave two dates on one row and no
+    // way to tell which one anybody should turn up for.
+    appointment.preferredFor = undefined;
+    await appointment.save();
+    await appointment.populate(POPULATE);
+
+    // The patient asked and is owed the answer; the doctor's day has changed.
+    await Promise.all([
+      notifyPatientOfAppointmentChange(appointment, 'confirmed').catch(() => {}),
+      notifyClinicOfAppointmentChange(
+        appointment,
+        appointment.patient?.name ?? 'A patient',
+        'booked',
+      ).catch(() => {}),
+    ]);
+
+    res.json({ appointment: serialise(appointment) });
   }),
 );
 

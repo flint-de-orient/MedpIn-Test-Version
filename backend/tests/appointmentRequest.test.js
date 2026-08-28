@@ -1,5 +1,6 @@
 import test, { describe } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 
 import { ACTIVE_STATUSES } from '../src/services/scheduling.js';
 import { Appointment } from '../src/models/Appointment.js';
@@ -56,5 +57,28 @@ describe('an appointment request', () => {
       status: 'confirmed',
     });
     await assert.rejects(() => confirmed.validate(), /scheduledFor/);
+  });
+
+  test('confirming a request is not reschedule-then-set-status', () => {
+    // Reschedule validates the new time against `existing.clinic`, and a
+    // request has no clinic — so that route would skip slot validation
+    // altogether and leave the appointment `requested` WITH a scheduledFor,
+    // which is exactly the state that holds a slot without being a booking.
+    //
+    // The confirm route has to move both halves together and check the slot
+    // the same way a patient's own booking is checked.
+    const src = readFileSync(
+      new URL('../src/routes/appointments.js', import.meta.url),
+      'utf8',
+    );
+    const at = src.indexOf("'/:id/confirm',");
+    assert.ok(at > -1, 'the confirm route must exist');
+    const block = src.slice(at, at + 2600);
+
+    assert.match(block, /status !== 'requested'/, 'only a request may be confirmed');
+    assert.match(block, /isSlotBookable/, 'the slot must be validated');
+    assert.match(block, /ACTIVE_STATUSES/, 'a clash must be guarded');
+    assert.match(block, /status = 'confirmed'/, 'the status must move with the time');
+    assert.match(block, /preferredFor = undefined/, 'the spent wish must be cleared');
   });
 });
