@@ -121,7 +121,7 @@ class ClinicianRepository {
         .whereType<Map<String, dynamic>>()
         .map(Appointment.fromJson)
         .toList()
-      ..sort((a, b) => a.scheduledFor.compareTo(b.scheduledFor));
+      ..sort((a, b) => a.sortKey.compareTo(b.sortKey));
   }
 
   /// The patient's own conversation, as the patient sees it.

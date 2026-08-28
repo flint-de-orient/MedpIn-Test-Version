@@ -56,22 +56,26 @@ class MyAppointmentsScreen extends ConsumerWidget {
               );
               final upcoming =
                   all
+                      // A request belongs under Upcoming even with no time on
+                      // it: the patient asked and is waiting for an answer.
                       .where(
                         (a) =>
                             a.isActive &&
-                            !a.scheduledFor.isBefore(startOfToday),
+                            (a.scheduledFor == null ||
+                                !a.scheduledFor!.isBefore(startOfToday)),
                       )
                       .toList()
-                    ..sort((a, b) => a.scheduledFor.compareTo(b.scheduledFor));
+                    ..sort((a, b) => a.sortKey.compareTo(b.sortKey));
               final past =
                   all
                       .where(
                         (a) =>
                             !(a.isActive &&
-                                !a.scheduledFor.isBefore(startOfToday)),
+                                (a.scheduledFor == null ||
+                                    !a.scheduledFor!.isBefore(startOfToday))),
                       )
                       .toList()
-                    ..sort((a, b) => b.scheduledFor.compareTo(a.scheduledFor));
+                    ..sort((a, b) => b.sortKey.compareTo(a.sortKey));
 
               return TabBarView(
                 children: [

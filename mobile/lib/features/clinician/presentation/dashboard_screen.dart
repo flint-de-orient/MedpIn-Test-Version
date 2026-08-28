@@ -115,9 +115,8 @@ class ClinicianDashboardScreen extends ConsumerWidget {
                 error: (_, _) => const Text('Could not load appointments'),
                 data: (paged) {
                   final items =
-                      paged.items.where((a) => !a.isCancelled).toList()..sort(
-                        (a, b) => a.scheduledFor.compareTo(b.scheduledFor),
-                      );
+                      paged.items.where((a) => !a.isCancelled).toList()
+                        ..sort((a, b) => a.sortKey.compareTo(b.sortKey));
                   if (items.isEmpty) {
                     return const _EmptyCard(
                       icon: Icons.event_available_outlined,

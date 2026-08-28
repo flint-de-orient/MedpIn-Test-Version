@@ -2,7 +2,8 @@
 class Appointment {
   const Appointment({
     required this.id,
-    required this.scheduledFor,
+    this.scheduledFor,
+    this.preferredFor,
     required this.status,
     required this.mode,
     this.durationMinutes = 15,
@@ -23,7 +24,24 @@ class Appointment {
   });
 
   final String id;
-  final DateTime scheduledFor;
+
+  /// When the appointment is — null while it is still only a request.
+  ///
+  /// A request carries no time: the patient asked for a day and the desk has
+  /// not yet assigned an hour. This used to fall back to DateTime.now() when
+  /// the server sent null, so a request rendered as though it were scheduled
+  /// for this very minute and could appear in today's list. An absent time has
+  /// to read as absent.
+  final DateTime? scheduledFor;
+
+  /// The day the patient asked for, on a request. Never a booking.
+  final DateTime? preferredFor;
+
+  /// True while this is a request rather than a booking.
+  bool get isRequest => status == 'requested' || scheduledFor == null;
+
+  /// The date to show for this row, whichever kind it is.
+  DateTime? get displayDate => scheduledFor ?? preferredFor;
 
   /// requested | confirmed | checked_in | in_consultation | completed |
   /// cancelled | no_show
@@ -53,7 +71,18 @@ class Appointment {
   bool get isTeleconsult => mode == 'teleconsult';
   bool get isCancelled => status == 'cancelled';
   bool get isCompleted => status == 'completed';
-  bool get isPast => scheduledFor.isBefore(DateTime.now());
+
+  /// A request is never past. It has no time to be past, and the desk has
+  /// still to answer it — filing it under history would lose it.
+  bool get isPast =>
+      scheduledFor != null && scheduledFor!.isBefore(DateTime.now());
+
+  /// The instant to sort this row by, requests included.
+  ///
+  /// A request sorts by the day it asked for, so it sits among the bookings it
+  /// is competing for rather than at one end of the list.
+  DateTime get sortKey =>
+      scheduledFor ?? preferredFor ?? DateTime.fromMillisecondsSinceEpoch(0);
 
   /// Whether the patient can still act on it (cancel / reschedule).
   bool get isActive =>
@@ -69,8 +98,9 @@ class Appointment {
     return Appointment(
       id: j['id']?.toString() ?? '',
       scheduledFor:
-          DateTime.tryParse(j['scheduledFor']?.toString() ?? '')?.toLocal() ??
-          DateTime.now(),
+          DateTime.tryParse(j['scheduledFor']?.toString() ?? '')?.toLocal(),
+      preferredFor:
+          DateTime.tryParse(j['preferredFor']?.toString() ?? '')?.toLocal(),
       status: j['status']?.toString() ?? 'requested',
       mode: j['mode']?.toString() ?? 'in_clinic',
       durationMinutes: (j['durationMinutes'] as num?)?.toInt() ?? 15,

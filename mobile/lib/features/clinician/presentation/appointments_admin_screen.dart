@@ -136,8 +136,8 @@ class _AppointmentsAdminScreenState
               final items = [...paged.items]..sort(
                 (a, b) =>
                     _ascending
-                        ? a.scheduledFor.compareTo(b.scheduledFor)
-                        : b.scheduledFor.compareTo(a.scheduledFor),
+                        ? a.sortKey.compareTo(b.sortKey)
+                        : b.sortKey.compareTo(a.sortKey),
               );
               if (items.isEmpty) {
                 return ListView(
@@ -329,7 +329,14 @@ class _ManageSheet extends StatelessWidget {
               style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
             ),
             Text(
-              '${DateFormat('EEE, d MMM · h:mm a').format(a.scheduledFor)}  ·  ${a.clinicName ?? ''}',
+              a.scheduledFor != null
+                  ? '${DateFormat('EEE, d MMM · h:mm a').format(a.scheduledFor!)}'
+                      '  ·  ${a.clinicName ?? ''}'
+                  // A request: the day they asked for, and no invented hour.
+                  : a.preferredFor != null
+                  ? 'Asked for ${DateFormat('EEE, d MMM').format(a.preferredFor!)}'
+                      '  ·  needs a time'
+                  : 'Needs a time',
               style: TextStyle(fontSize: 14, color: scheme.onSurfaceVariant),
             ),
             const SizedBox(height: AppSpacing.md),

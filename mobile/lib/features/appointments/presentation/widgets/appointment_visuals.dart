@@ -137,8 +137,12 @@ class AppointmentCard extends StatelessWidget {
                       ),
                       child: Column(
                         children: [
+                          // A request has no hour yet. Showing one would tell
+                          // the patient to arrive at a time nobody has agreed.
                           Text(
-                            DateFormat('h:mm').format(a.scheduledFor),
+                            a.scheduledFor == null
+                                ? '--'
+                                : DateFormat('h:mm').format(a.scheduledFor!),
                             style: TextStyle(
                               fontWeight: FontWeight.w800,
                               fontSize: 16,
@@ -146,7 +150,9 @@ class AppointmentCard extends StatelessWidget {
                             ),
                           ),
                           Text(
-                            DateFormat('a').format(a.scheduledFor),
+                            a.scheduledFor == null
+                                ? 'asked'
+                                : DateFormat('a').format(a.scheduledFor!),
                             style: TextStyle(
                               fontSize: 12,
                               color: color,
@@ -202,7 +208,10 @@ class AppointmentCard extends StatelessWidget {
                               ),
                               const SizedBox(width: 8),
                               Text(
-                                DateFormat('EEE, d MMM').format(a.scheduledFor),
+                                a.displayDate == null
+                                    ? 'Waiting for the clinic'
+                                    : '${DateFormat('EEE, d MMM').format(a.displayDate!)}'
+                                        '${a.isRequest ? ' · requested' : ''}',
                                 style: TextStyle(
                                   fontSize: 12,
                                   color: scheme.onSurfaceVariant,

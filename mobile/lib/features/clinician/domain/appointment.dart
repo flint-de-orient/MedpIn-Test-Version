@@ -9,7 +9,8 @@ class Appointment {
     required this.id,
     required this.patientId,
     required this.patientName,
-    required this.scheduledFor,
+    this.scheduledFor,
+    this.preferredFor,
     required this.status,
     required this.mode,
     this.reason,
@@ -19,7 +20,29 @@ class Appointment {
   final String id;
   final String patientId;
   final String patientName;
-  final DateTime scheduledFor;
+
+  /// When the appointment is — null while it is still only a request.
+  ///
+  /// A request carries no time: the patient asked for a day and the desk has
+  /// not yet assigned an hour. This used to fall back to DateTime.now() when
+  /// the server sent null, so a request rendered as though it were scheduled
+  /// for this very minute and could appear in today's list. An absent time has
+  /// to read as absent.
+  final DateTime? scheduledFor;
+
+  /// The day the patient asked for, on a request. Never a booking.
+  final DateTime? preferredFor;
+
+  /// True while this is a request rather than a booking.
+  bool get isRequest => status == 'requested' || scheduledFor == null;
+
+  /// The date to show for this row, whichever kind it is.
+  DateTime? get displayDate => scheduledFor ?? preferredFor;
+
+  /// The instant to sort by, requests included — they sort by the day asked
+  /// for, so they sit among the bookings they are competing for.
+  DateTime get sortKey =>
+      scheduledFor ?? preferredFor ?? DateTime.fromMillisecondsSinceEpoch(0);
 
   /// Raw status string from the API (one of APPOINTMENT_STATUS).
   final String status;
@@ -70,8 +93,9 @@ class Appointment {
       patientId: j['patientId']?.toString() ?? '',
       patientName: j['patientName']?.toString() ?? 'Patient',
       scheduledFor:
-          DateTime.tryParse(j['scheduledFor']?.toString() ?? '')?.toLocal() ??
-          DateTime.fromMillisecondsSinceEpoch(0),
+          DateTime.tryParse(j['scheduledFor']?.toString() ?? '')?.toLocal(),
+      preferredFor:
+          DateTime.tryParse(j['preferredFor']?.toString() ?? '')?.toLocal(),
       status: j['status']?.toString() ?? 'requested',
       mode: j['mode']?.toString() ?? 'in_clinic',
       reason:
