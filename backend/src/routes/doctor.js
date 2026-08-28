@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import dayjs from 'dayjs';
 import { z } from 'zod';
-import { requireAuth, requireClinician } from '../middleware/auth.js';
+import { requireAuth, requireClinician, requireDoctor } from '../middleware/auth.js';
 import { validate, q } from '../middleware/validate.js';
 import { asyncHandler, notFound, conflict, badRequest } from '../middleware/errors.js';
 import { audit } from '../middleware/audit.js';
@@ -1102,6 +1102,9 @@ router.post(
 
 router.post(
   '/alerts/:id/resolve',
+  // "This patient no longer needs a doctor" is a clinical judgement. The desk
+  // can see every alert and escalate one; closing it is not theirs.
+  requireDoctor,
   validate({ body: z.object({ notes: z.string().max(2000).optional() }) }),
   audit('update', 'ClinicalAlert'),
   asyncHandler(async (req, res) => {

@@ -1,11 +1,18 @@
 import { createApp } from './app.js';
 import { connectDb, disconnectDb } from './config/db.js';
+import { assertClinicContactConfigured } from './services/clinicContact.js';
 import { env } from './config/env.js';
 import { logger } from './config/logger.js';
 import { startMedicationReminderCron } from './services/medicationReminderCron.js';
 import { startPatientReminderCron } from './services/patientReminderCron.js';
 
 async function main() {
+  // Before anything can serve a request. A clinic number that was never set
+  // only reveals itself inside an emergency reply — the one place nobody tests
+  // and the worst place to be wrong. Refusing to boot moves that discovery from
+  // the patient to the deploy.
+  assertClinicContactConfigured();
+
   await connectDb();
 
   const app = createApp();

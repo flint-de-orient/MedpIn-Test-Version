@@ -30,6 +30,24 @@ export const requireClinician = requireRole(ROLES.DOCTOR, ROLES.STAFF);
 export const requireDietician = requireRole(ROLES.DIETICIAN);
 
 /**
+ * The doctor alone — for anything that is a clinical decision.
+ *
+ * `requireClinician` admits STAFF, which is right for registration, the
+ * appointment queue and the care inbox: that is what a front desk does. It is
+ * not right for prescribing, for changing what a patient takes, or for
+ * declaring a clinical alert resolved.
+ *
+ * Prescribing was the sharp end. The create route recorded `doctor:
+ * req.user._id`, so a prescription written by a receptionist stored *them* as
+ * the prescribing doctor and printed their name in that role on the PDF. That
+ * is not a permission slip, it is a false medical record.
+ *
+ * Resolving an alert is the same kind of act in a quieter way: "this patient no
+ * longer needs a doctor" is a judgement only a doctor can make.
+ */
+export const requireDoctor = requireRole(ROLES.DOCTOR);
+
+/**
  * Resolves which patient a request is operating on and enforces access.
  *
  * Patients may only ever touch their own record. Clinicians may act on any

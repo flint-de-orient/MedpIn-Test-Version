@@ -41,7 +41,17 @@ const schema = z.object({
   MAX_UPLOAD_MB: z.coerce.number().default(12),
 
   CLINIC_NAME: z.string().default('Dr. Amit Kumar Dey Clinic'),
-  CLINIC_EMERGENCY_PHONE: z.string().default('+91-0000000000'),
+  // The number a patient in an emergency is told to ring.
+  //
+  // It used to default to '+91-0000000000', and that placeholder is spoken
+  // straight to patients: the assistant's emergency and urgent replies tell
+  // them to call it, in all three languages. A deployment that forgot this line
+  // was handing someone with chest pain a fake number. The prescription PDF
+  // already refused to print a placeholder; the prompts never learned to.
+  //
+  // Empty by default now, and `clinicEmergencyPhone()` refuses to speak one
+  // that has not been set. Production is checked at boot besides.
+  CLINIC_EMERGENCY_PHONE: z.string().default(''),
   DOCTOR_DISPLAY_NAME: z.string().default('Dr. Amit Kumar Dey'),
 
   // Anyone who registers with this exact code becomes a dietician instead of a

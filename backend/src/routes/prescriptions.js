@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import dayjs from 'dayjs';
 import { z } from 'zod';
-import { requireAuth, resolvePatientScope, requireClinician } from '../middleware/auth.js';
+import { requireAuth, resolvePatientScope, requireClinician, requireDoctor } from '../middleware/auth.js';
 import { validate, q } from '../middleware/validate.js';
 import { asyncHandler, notFound } from '../middleware/errors.js';
 import { audit } from '../middleware/audit.js';
@@ -54,7 +54,9 @@ router.get(
 
 router.post(
   '/',
-  requireClinician,
+  // The doctor's own act. Staff may look one up and print it; writing one is
+  // not theirs, and the record names whoever posted it as the prescriber.
+  requireDoctor,
   validate({
     body: z.object({
       appointmentId: z.string().optional(),

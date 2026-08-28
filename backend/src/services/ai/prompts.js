@@ -1,4 +1,5 @@
 import { env } from '../../config/env.js';
+import { orCallClinic } from '../clinicContact.js';
 
 const LANGUAGE_NAME = { en: 'English', bn: 'Bengali (বাংলা)', hi: 'Hindi (हिन्दी)' };
 
@@ -88,8 +89,8 @@ If the photo is something else (a meal, a glucose meter, a lab report), describe
 ## Safety rules — these override everything above
 1. A clinical triage system has ALREADY assessed this message. Its verdict is authoritative.
 2. You may RAISE the urgency if the patient describes something more serious than the triage caught. You must NEVER downplay, soften, or argue against the verdict.
-3. If the verdict is EMERGENCY, your entire reply must do three things and nothing else: state plainly that this needs immediate medical attention, give the one or two safe things to do right now, and tell them to go to the nearest hospital or call ${env.CLINIC_EMERGENCY_PHONE} to reach ${env.DOCTOR_DISPLAY_NAME}'s clinic. Do not offer reassurance, do not suggest waiting, do not answer unrelated parts of the question.
-3b. If the verdict is URGENT, tell the patient plainly that this needs prompt attention and that they should contact ${env.DOCTOR_DISPLAY_NAME}'s clinic today on ${env.CLINIC_EMERGENCY_PHONE} — not wait for their next appointment. Give the one or two safe things to do meanwhile.
+3. If the verdict is EMERGENCY, your entire reply must do three things and nothing else: state plainly that this needs immediate medical attention, give the one or two safe things to do right now, and tell them to go to the nearest hospital${orCallClinic('en')}. Do not offer reassurance, do not suggest waiting, do not answer unrelated parts of the question.
+3b. If the verdict is URGENT, tell the patient plainly that this needs prompt attention and that they should contact ${env.DOCTOR_DISPLAY_NAME}'s clinic today${orCallClinic('en')} — not wait for their next appointment. Give the one or two safe things to do meanwhile.
 4. If the grounded knowledge below does not cover the question, say you do not have approved guidance on it and offer to escalate to ${env.DOCTOR_DISPLAY_NAME}. Do not fill the gap with general knowledge.
 5. Never repeat back another patient's data. Only the context provided below belongs to this patient.
 6. These symptoms mean "go to hospital now", never "monitor it" or "mention it at your next visit": chest pain or pressure; sudden breathlessness; sudden weakness, drooping face or slurred speech; sudden vision loss; a seizure or unresponsiveness; vomiting that stops a steroid-dependent patient keeping tablets down; fever with a racing heart in someone with thyroid disease; confusion or drowsiness with very high sugar; a black, discharging or foul-smelling foot wound.
@@ -133,21 +134,21 @@ export const FALLBACK_REPLIES = {
   emergency: {
     en: `This needs medical attention right now.
 
-• Please go to the nearest hospital emergency department immediately, or call ${env.CLINIC_EMERGENCY_PHONE}.
+• Please go to the nearest hospital emergency department immediately${orCallClinic('en')}.
 • Do not wait to see if it improves on its own.
 • If you can, ask someone to go with you and carry your medicine list.
 
 The clinic has been notified about this message.`,
     bn: `এই অবস্থায় এখনই চিকিৎসকের সাহায্য প্রয়োজন।
 
-• অনুগ্রহ করে এখনই নিকটতম হাসপাতালের জরুরি বিভাগে যান, অথবা ${env.CLINIC_EMERGENCY_PHONE} নম্বরে ফোন করুন।
+• অনুগ্রহ করে এখনই নিকটতম হাসপাতালের জরুরি বিভাগে যান${orCallClinic('bn')}।
 • নিজে থেকে ভালো হয়ে যায় কিনা দেখার জন্য অপেক্ষা করবেন না।
 • সম্ভব হলে কাউকে সঙ্গে নিয়ে যান এবং আপনার ওষুধের তালিকা সঙ্গে রাখুন।
 
 আপনার এই বার্তাটি সম্পর্কে ক্লিনিককে জানানো হয়েছে।`,
     hi: `इस स्थिति में तुरंत चिकित्सा सहायता की आवश्यकता है।
 
-• कृपया तुरंत नज़दीकी अस्पताल के आपातकालीन विभाग में जाएँ, या ${env.CLINIC_EMERGENCY_PHONE} पर कॉल करें।
+• कृपया तुरंत नज़दीकी अस्पताल के आपातकालीन विभाग में जाएँ${orCallClinic('hi')}।
 • यह अपने आप ठीक होगा या नहीं, यह देखने के लिए प्रतीक्षा न करें।
 • यदि संभव हो तो किसी को साथ ले जाएँ और अपनी दवाओं की सूची साथ रखें।
 
@@ -156,19 +157,19 @@ The clinic has been notified about this message.`,
   unavailable: {
     en: `I am not able to answer right now because the assistant service is temporarily unavailable.
 
-• If this is an emergency, go to the nearest hospital or call ${env.CLINIC_EMERGENCY_PHONE}.
+• If this is an emergency, go to the nearest hospital${orCallClinic('en')}.
 • Otherwise, please try again in a few minutes, or book an appointment with ${env.DOCTOR_DISPLAY_NAME}.
 
 Your message has been saved.`,
     bn: `এই মুহূর্তে আমি উত্তর দিতে পারছি না, কারণ সহকারী পরিষেবাটি সাময়িকভাবে বন্ধ আছে।
 
-• যদি এটি জরুরি অবস্থা হয়, নিকটতম হাসপাতালে যান অথবা ${env.CLINIC_EMERGENCY_PHONE} নম্বরে ফোন করুন।
+• যদি এটি জরুরি অবস্থা হয়, নিকটতম হাসপাতালে যান${orCallClinic('bn')}।
 • অন্যথায়, কয়েক মিনিট পরে আবার চেষ্টা করুন, অথবা ${env.DOCTOR_DISPLAY_NAME}-এর সঙ্গে অ্যাপয়েন্টমেন্ট নিন।
 
 আপনার বার্তাটি সংরক্ষণ করা হয়েছে।`,
     hi: `मैं इस समय उत्तर नहीं दे पा रहा हूँ, क्योंकि सहायक सेवा अस्थायी रूप से उपलब्ध नहीं है।
 
-• यदि यह आपातकालीन स्थिति है, तो नज़दीकी अस्पताल जाएँ या ${env.CLINIC_EMERGENCY_PHONE} पर कॉल करें।
+• यदि यह आपातकालीन स्थिति है, तो नज़दीकी अस्पताल जाएँ${orCallClinic('hi')}।
 • अन्यथा, कुछ मिनटों बाद पुनः प्रयास करें, या ${env.DOCTOR_DISPLAY_NAME} से अपॉइंटमेंट लें।
 
 आपका संदेश सुरक्षित रख लिया गया है।`,
