@@ -128,6 +128,19 @@ router.post(
 
     const profile = await PatientProfile.findOne({ user: req.patientId }).select('mealTimes').lean();
     const mealTimes = profile?.mealTimes;
+
+    // The letterhead, kept as a label. Never used to decide which medicines to
+    // keep: a list missing the drug another specialist added is more dangerous
+    // than a list carrying an unfamiliar name, because the interaction it hides
+    // is invisible until it does harm.
+    const p = parsed.prescriber ?? {};
+    const written = p.writtenOn ? new Date(p.writtenOn) : null;
+    const prescriber = {
+      name: p.name || undefined,
+      speciality: p.speciality || undefined,
+      clinic: p.clinic || undefined,
+      writtenOn: written && !Number.isNaN(written.getTime()) ? written : undefined,
+    };
     const created = [];
     for (const item of parsed.items) {
       if (!item?.name) continue;
@@ -147,6 +160,16 @@ router.post(
             endDate: item.durationDays ? dayjs().add(item.durationDays, 'day').toDate() : undefined,
             instructions: item.instructions,
             prescribedBy: req.user.role === 'patient' ? undefined : req.user._id,
+            // Marked as read off a photograph, not issued here.
+            //
+            // Without this a scanned medicine was indistinguishable from one
+            // the doctor wrote in the app: prescribedBy was null either way,
+            // and the tracker showed a cardiologist's tablet beside Dr. Dey's
+            // own with nothing to tell them apart. The doctor needs to see it —
+            // that is the point of a complete list — but needs to know it is
+            // not theirs before changing anything about it.
+            source: 'scan',
+            externalPrescriber: prescriber,
             isActive: true,
           },
         },
@@ -446,6 +469,18 @@ const serialise = (m) => ({
   // Present only when the brand list disagrees with what is stored.
   strengthExpected: m.strengthExpected ?? null,
   strengthComposition: m.strengthComposition ?? null,
+  // Where it came from, so the app can say so rather than presenting every
+  // medicine as though this clinic prescribed it.
+  source: m.source ?? 'clinic',
+  externalPrescriber:
+    m.externalPrescriber && (m.externalPrescriber.name || m.externalPrescriber.clinic)
+      ? {
+          name: m.externalPrescriber.name ?? null,
+          speciality: m.externalPrescriber.speciality ?? null,
+          clinic: m.externalPrescriber.clinic ?? null,
+          writtenOn: m.externalPrescriber.writtenOn ?? null,
+        }
+      : null,
 });
 
 const serialiseLog = (l) => ({

@@ -7,6 +7,8 @@ import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../l10n/gen/app_localizations.dart';
 import '../../auth/presentation/auth_controller.dart';
+import '../../home/domain/care_summary.dart';
+import '../../home/presentation/home_providers.dart';
 
 /// The clinical profile fields the backend supports on `PATCH /auth/me/profile`
 /// — height, diagnosis date, allergies, and an emergency contact. Weight is
@@ -190,6 +192,19 @@ class _HealthDetailsScreenState extends ConsumerState<HealthDetailsScreen> {
                 child: ListView(
                   padding: const EdgeInsets.all(AppSpacing.md),
                   children: [
+                    // What has been measured, before what can be typed.
+                    //
+                    // These are observations, not facts about the patient, and
+                    // that is why they are read-only. A blood pressure from
+                    // three weeks ago is not edited, it is superseded — and
+                    // making it a text field would let the history the trends
+                    // and the risk score are computed from be overwritten.
+                    //
+                    // BMI is never stored. It is weight over height squared,
+                    // and a stored copy drifts out of step with the two numbers
+                    // it came from the moment either changes.
+                    _MeasurementsCard(summary: ref.watch(careSummaryProvider)),
+                    const SizedBox(height: AppSpacing.lg),
                     _field(
                       controller: _height,
                       label: l10n.healthHeight,
@@ -302,6 +317,111 @@ class _HealthDetailsScreenState extends ConsumerState<HealthDetailsScreen> {
         // the guidance is needed BEFORE tapping, and an empty box with no
         // example reads as broken rather than optional.
         floatingLabelBehavior: FloatingLabelBehavior.always,
+      ),
+    );
+  }
+}
+
+/// The patient's latest measurements, and the diagnosis, both read-only.
+///
+/// Read from the same summary the Home tab uses rather than recomputed here:
+/// two places deriving a BMI is two places to disagree about somebody's weight.
+class _MeasurementsCard extends StatelessWidget {
+  const _MeasurementsCard({required this.summary});
+
+  final AsyncValue<CareSummary> summary;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final s = summary.valueOrNull?.profile;
+    if (s == null) return const SizedBox.shrink();
+
+    final rows = <(String, String)>[
+      if (s.weightKg != null) ('Weight', '${s.weightKg} kg'),
+      if (s.bmi != null) ('BMI', '${s.bmi}'),
+      if (s.bloodPressure != null)
+        (
+          'Blood pressure',
+          '${s.bloodPressure!.systolic}/${s.bloodPressure!.diastolic} mmHg',
+        ),
+    ];
+    // Glucose is deliberately absent: the Home tab already carries the latest
+    // reading with its trend, and a second copy here would be the same number
+    // in two places, going stale in one of them.
+    if (rows.isEmpty && s.conditionLabel == null)
+      return const SizedBox.shrink();
+
+    return Container(
+      padding: const EdgeInsets.all(AppSpacing.md),
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerLowest,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: scheme.outlineVariant.withValues(alpha: 0.6)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (s.conditionLabel != null) ...[
+            Row(
+              children: [
+                Icon(
+                  Icons.medical_information_outlined,
+                  size: 18,
+                  color: AppColors.accentOn(context),
+                ),
+                const SizedBox(width: AppSpacing.sm),
+                Expanded(
+                  child: Text(
+                    s.conditionLabel!,
+                    style: const TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 2),
+            // Said plainly, because a patient who thinks they chose this would
+            // wonder why they cannot change it. It follows the doctor's
+            // diagnosis at each consultation.
+            Text(
+              'Set by your doctor from your diagnosis',
+              style: TextStyle(fontSize: 12.5, color: scheme.onSurfaceVariant),
+            ),
+            if (rows.isNotEmpty) const Divider(height: AppSpacing.lg),
+          ],
+          for (final (label, value) in rows)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 6),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      label,
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: scheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ),
+                  Text(
+                    value,
+                    style: const TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          if (rows.isNotEmpty)
+            Text(
+              'Your most recent readings. Record a new one to update them.',
+              style: TextStyle(fontSize: 12.5, color: scheme.onSurfaceVariant),
+            ),
+        ],
       ),
     );
   }

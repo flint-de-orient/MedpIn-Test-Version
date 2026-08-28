@@ -73,6 +73,32 @@ const medicationSchema = new mongoose.Schema(
 
     prescribedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     prescription: { type: mongoose.Schema.Types.ObjectId, ref: 'Prescription' },
+
+    /// How this medicine got here.
+    ///
+    /// `clinic` means a clinician issued it through the app, and prescribedBy
+    /// names them. `scan` means the patient photographed a paper prescription —
+    /// possibly one this clinic never wrote. The two were indistinguishable:
+    /// a scanned medicine landed in the tracker with prescribedBy null, looking
+    /// exactly like one of the doctor's own, and the doctor had no way to tell
+    /// which of the medicines on the screen they were responsible for.
+    source: { type: String, enum: ['clinic', 'scan', 'manual'], default: 'clinic', index: true },
+
+    /// Who wrote the paper prescription, as read off the photograph.
+    ///
+    /// Unverified on purpose, and never used to decide anything. A doctor's
+    /// name on a prescription is handwriting, a stamp or a letterhead, and OCR
+    /// of it is not evidence — so it is carried as a label the reader can weigh
+    /// and never as a gate. In particular it does NOT filter the medicine out:
+    /// a list missing the steroid another doctor prescribed is more dangerous
+    /// than a list with an unfamiliar name on it, because raised glucose with
+    /// no visible cause is exactly what that omission produces.
+    externalPrescriber: {
+      name: { type: String, trim: true, maxlength: 160 },
+      speciality: { type: String, trim: true, maxlength: 120 },
+      clinic: { type: String, trim: true, maxlength: 160 },
+      writtenOn: Date,
+    },
     instructions: { type: String, maxlength: 600 },
   },
   { timestamps: true },

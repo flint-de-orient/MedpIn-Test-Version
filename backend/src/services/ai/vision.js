@@ -206,6 +206,18 @@ const PRESCRIPTION_SCHEMA = {
         required: ['name'],
       },
     },
+    // The letterhead, read as a label rather than as a decision. Everything
+    // here is optional: a handwritten slip with no letterhead is still a
+    // perfectly good prescription, and a guessed doctor is worse than none.
+    prescriber: {
+      type: 'object',
+      properties: {
+        name: { type: 'string' },
+        speciality: { type: 'string' },
+        clinic: { type: 'string' },
+        writtenOn: { type: 'string' },
+      },
+    },
     note: { type: 'string' },
   },
   required: ['readable', 'items'],
@@ -214,14 +226,23 @@ const PRESCRIPTION_SCHEMA = {
 export async function extractPrescription({ images }) {
   if (!images?.length) return null;
 
-  const system = `You transcribe photographs of medical prescriptions written by ${env.DOCTOR_DISPLAY_NAME}, a Consultant Diabetologist, into structured medicine data.
+  // Deliberately does NOT say whose prescription this is.
+  //
+  // It used to open "prescriptions written by Dr. ..., a Consultant
+  // Diabetologist", which is an assertion about the photograph rather than an
+  // instruction about reading it — and a patient photographs prescriptions from
+  // any doctor they have seen. Telling the model the author in advance biases
+  // what it expects to find, and is simply untrue for the cardiologist's slip.
+  const system = `You transcribe photographs of medical prescriptions into structured medicine data. The prescription may have been written by any doctor the patient has seen — do not assume a specialty.
 
 Strict rules:
 - Extract ONLY what is clearly legible. Never invent a medicine, dose, strength, or timing. If a field is not written, omit it.
 - "frequency" is how often per day. Keep the notation the prescription uses: Indian "1-0-1" (morning-noon-night), "1-1-1", "0-0-1", "1-0-1-0", or shorthand (OD, BD, TDS, QID) or words (once/twice/thrice daily).
 - "relationToMeal": before_meal (BF / before food / खाली পেটে), after_meal (AF / after food / খাবারের পরে), with_meal, or any.
 - "durationDays": the number of days if written, e.g. "x 5 days" -> 5, "1 week" -> 7.
-- Read only the medicine lines (usually after the ℞ / Rx symbol). Ignore the letterhead, patient details, diagnosis, general advice, and signature.
+- Read the medicine lines (usually after the ℞ / Rx symbol) for the items. Ignore patient details, diagnosis and general advice.
+- Also read the letterhead, if there is one, into "prescriber": the doctor's name, their speciality as printed, the clinic name, and the date written. Omit any of these you cannot read — a guessed doctor is worse than a blank one. This is recorded as a label so the patient and their doctors can see where a medicine came from; it never decides which medicines are kept.
+- Extract EVERY medicine on the prescription, whatever it is for. Never leave one out because it looks unrelated to diabetes: a complete list is what makes interactions visible, and the medicine another specialist added is the one most worth knowing about.
 - If the photo is blurry, is not a prescription, or the medicines cannot be read, set readable=false and items=[]. Do not guess to be helpful — a wrong medicine name is worse than none.`;
 
   const prompt = 'Extract every medicine from this prescription photograph as JSON. If it cannot be read, set readable=false and return no items.';
@@ -232,6 +253,7 @@ Strict rules:
   return {
     readable: json.readable !== false,
     items: Array.isArray(json.items) ? json.items : [],
+    prescriber: json.prescriber ?? null,
     note: json.note ?? null,
     modelVersion: result.modelVersion,
   };
