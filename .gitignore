@@ -70,3 +70,4 @@ mobile/android/*.jks
 mobile/android/*.keystore
 mobile/android/app/*.jks
 mobile/android/app/*.keystore
+.env.backup*
