@@ -2,6 +2,13 @@
 .env
 .env.local
 .env.*.local
+# Any copy of it, however it is named. `.env` alone was ignored while
+# `.env.backup.2026-08-28` was not, and a `git add -A` committed a file holding
+# the Mongo URI, both JWT secrets and the Gemini key.
+.env.backup*
+.env.bak
+.env.*.backup
+*.env.backup*
 *.pem
 *.key
 # Keep .env.example tracked (it carries no secrets); ignore every other .env.
