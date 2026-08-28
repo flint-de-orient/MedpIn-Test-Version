@@ -249,7 +249,7 @@ router.get(
         .sort({ createdAt: -1 })
         .skip(skip)
         .limit(limit)
-        .populate('sender', 'name avatarAssetId')
+        .populate('sender', 'name avatarAssetId role')
         .populate('replyTo', 'content role')
         .populate('attachments', 'kind mimeType transcript originalName sizeBytes')
         .lean(),
@@ -281,7 +281,7 @@ router.get(
         .sort({ seq: 1 })
         .skip(skip)
         .limit(limit)
-        .populate('sender', 'name avatarAssetId')
+        .populate('sender', 'name avatarAssetId role')
         .populate('replyTo', 'content role')
         .populate('attachments', 'kind mimeType transcript originalName sizeBytes')
         .lean(),
@@ -408,7 +408,7 @@ router.get(
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(limit)
-      .populate('sender', 'name avatarAssetId')
+      .populate('sender', 'name avatarAssetId role')
       .populate('replyTo', 'content role')
         .populate('attachments', 'kind mimeType transcript originalName sizeBytes')
       .lean();
@@ -532,7 +532,11 @@ router.post(
 
     res.status(201).json({
       sessionId: session._id,
-      message: { ...serialiseMessage(message), senderName: req.user.name },
+      message: {
+        ...serialiseMessage(message),
+        senderName: req.user.name,
+        senderRole: req.user.role,
+      },
     });
   }),
 );
@@ -561,7 +565,7 @@ router.get(
     })
       .sort({ seq: 1 })
       .limit(300)
-      .populate('sender', 'name avatarAssetId')
+      .populate('sender', 'name avatarAssetId role')
       .populate('attachments', 'kind mimeType transcript originalName sizeBytes')
       .lean();
 
@@ -1139,6 +1143,7 @@ function serialiseMessage(m) {
       seq: m.seq,
       role: m.role,
       senderName: m.sender && typeof m.sender === 'object' ? (m.sender.name ?? null) : null,
+      senderRole: m.sender && typeof m.sender === 'object' ? (m.sender.role ?? null) : null,
       deletedForEveryone: true,
       content: '',
       attachments: [],
@@ -1158,6 +1163,10 @@ function serialiseMessage(m) {
     deletedForEveryone: false,
     // Present on clinician turns once populated; null everywhere else.
     senderName: m.sender && typeof m.sender === 'object' ? (m.sender.name ?? null) : null,
+    // The role as well as the name. A patient reading "Priya Sharma" cannot
+    // tell the receptionist from the doctor, and the two say very different
+    // kinds of thing — one moves an appointment, the other changes a dose.
+    senderRole: m.sender && typeof m.sender === 'object' ? (m.sender.role ?? null) : null,
     // The clinician's or dietician's own photo, so the patient sees the person
     // who wrote to them rather than a role icon standing in for them.
     senderAvatarUrl:

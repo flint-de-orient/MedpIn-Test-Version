@@ -345,6 +345,7 @@ class ChatMessageBubble extends StatelessWidget {
               isDietician: message.isDietician,
               isUser: isUser,
               name: message.senderName,
+              senderRole: message.senderRole,
               avatarUrl: message.senderAvatarUrl,
               fallback: l10n.chatFromClinic,
             ),
@@ -658,6 +659,7 @@ class _SenderRow extends StatelessWidget {
     required this.isDietician,
     required this.isUser,
     required this.name,
+    required this.senderRole,
     required this.avatarUrl,
     required this.fallback,
   });
@@ -667,6 +669,9 @@ class _SenderRow extends StatelessWidget {
   final bool isDietician;
   final bool isUser;
   final String? name;
+
+  /// Which kind of person wrote it — `doctor`, `staff` or `dietician`.
+  final String? senderRole;
   final String? avatarUrl;
   final String fallback;
 
@@ -698,9 +703,21 @@ class _SenderRow extends StatelessWidget {
         Icons.restaurant_rounded,
         name == null ? 'Your dietician' : '$name · Dietician',
       ),
+      // A clinician turn is written by the doctor OR by the front desk, and
+      // until now both rendered as a bare name. A patient cannot be expected to
+      // know which of the clinic's people "Priya Sharma" is, and the difference
+      // decides whether they read a message as an instruction about their
+      // medicine or as an administrative note about a booking.
       _ when isClinician => (
-        Icons.medical_information_rounded,
-        name ?? fallback,
+        senderRole == 'staff'
+            ? Icons.support_agent_rounded
+            : Icons.medical_information_rounded,
+        switch ((name, senderRole)) {
+          (null, _) => fallback,
+          (final n, 'staff') => '$n · Clinic staff',
+          (final n, 'doctor') => '$n · Doctor',
+          (final n, _) => n!,
+        },
       ),
       // The patient's own words, read by a clinician.
       _ when isUser => (Icons.person_rounded, name ?? 'Patient'),
@@ -726,7 +743,7 @@ class _SenderRow extends StatelessWidget {
           // replied. The dietician does not: their photo and name are already
           // in this screen's header, so a second copy beside every message
           // only repeats it.
-          if (isClinician)
+          if (isClinician && senderRole != 'staff')
             UserAvatar(
               name: name ?? '',
               avatarUrl: avatarUrl,

@@ -99,6 +99,7 @@ class ChatMessage {
     this.citations,
     this.triage,
     this.senderName,
+    this.senderRole,
     this.senderAvatarUrl,
     this.pinned = false,
     this.deletedForEveryone = false,
@@ -175,6 +176,13 @@ class ChatMessage {
   /// Who wrote a `clinician` turn, e.g. "Dr. Amit Kumar Dey". Null otherwise.
   final String? senderName;
 
+  /// `doctor` | `staff` | `dietician`, when a person wrote this turn.
+  ///
+  /// The name alone is not enough. A patient reading "Priya Sharma" cannot tell
+  /// the receptionist from their doctor, and the two say very different kinds
+  /// of thing — one moves an appointment, the other changes a dose.
+  final String? senderRole;
+
   /// The clinician's or dietician's own photo, so a patient sees the person who
   /// wrote to them rather than a role icon standing in for them.
   final String? senderAvatarUrl;
@@ -218,6 +226,7 @@ class ChatMessage {
               ? null
               : DateTime.tryParse(json['createdAt'].toString()),
       senderName: json['senderName']?.toString(),
+      senderRole: json['senderRole']?.toString(),
       senderAvatarUrl: json['senderAvatarUrl']?.toString(),
       pinned: json['pinned'] == true,
       deletedForEveryone: json['deletedForEveryone'] == true,
@@ -306,6 +315,7 @@ class ChatMessage {
     citations: citations,
     triage: triage,
     senderName: senderName,
+    senderRole: senderRole,
     senderAvatarUrl: senderAvatarUrl,
     pinned: pinned,
     deletedForEveryone: deletedForEveryone,
@@ -331,6 +341,7 @@ class ChatMessage {
     citations: citations,
     triage: triage,
     senderName: senderName,
+    senderRole: senderRole,
     senderAvatarUrl: senderAvatarUrl,
     pinned: value,
     deletedForEveryone: deletedForEveryone,
@@ -355,6 +366,7 @@ class ChatMessage {
     isFallback: isFallback,
     createdAt: createdAt,
     senderName: senderName,
+    senderRole: senderRole,
     senderAvatarUrl: senderAvatarUrl,
     pinned: false,
     deletedForEveryone: true,
@@ -379,6 +391,7 @@ class ChatMessage {
       citations: citations ?? this.citations,
       triage: triage ?? this.triage,
       senderName: senderName,
+      senderRole: senderRole,
       senderAvatarUrl: senderAvatarUrl,
       attachmentPaths: attachmentPaths,
       voiceNotes: voiceNotes,
