@@ -16,6 +16,7 @@ class MediaAsset {
     this.height,
     this.url,
     this.transcript,
+    this.needsDarkChip = false,
   });
 
   final String id;
@@ -30,6 +31,14 @@ class MediaAsset {
   /// anything else. Sent on as the message text so the assistant answers what
   /// was actually said, and so triage assesses it.
   final String? transcript;
+
+  /// Clinic logos only: the artwork was drawn for a dark background.
+  ///
+  /// Measured server-side from the mean luminance of the non-transparent
+  /// pixels. The app paints such a mark on a dark chip rather than inverting
+  /// it — inversion is a per-channel complement and would turn a teal logo
+  /// orange, and colour is the part of a logo that carries the brand.
+  final bool needsDarkChip;
 
   factory MediaAsset.fromJson(Map<String, dynamic> json) => MediaAsset(
     id: json['id']?.toString() ?? '',
@@ -54,6 +63,7 @@ class UploadKind {
   static const String mealPhoto = 'meal_photo';
   static const String avatar = 'avatar';
   static const String signature = 'signature';
+  static const String clinicLogo = 'clinic_logo';
   static const String voiceNote = 'voice_note';
   static const String other = 'other';
 }
@@ -147,6 +157,7 @@ class UploadRepository {
   }
 }
 
-final Provider<UploadRepository> uploadRepositoryProvider = Provider<UploadRepository>((ref) {
-  return UploadRepository(ref.watch(apiClientProvider));
-});
+final Provider<UploadRepository> uploadRepositoryProvider =
+    Provider<UploadRepository>((ref) {
+      return UploadRepository(ref.watch(apiClientProvider));
+    });

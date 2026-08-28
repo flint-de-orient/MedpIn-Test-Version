@@ -8,6 +8,9 @@ import '../../../core/theme/app_spacing.dart';
 import '../../appointments/data/clinic_repository.dart';
 import '../../appointments/domain/clinic.dart';
 import '../../appointments/presentation/appointment_providers.dart';
+import '../../../shared/widgets/authed_image.dart';
+import '../../../shared/data/upload_repository.dart';
+import 'package:image_picker/image_picker.dart';
 
 const _weekOrder = [1, 2, 3, 4, 5, 6, 0]; // Mon … Sun
 const _dayNames = [
@@ -38,6 +41,16 @@ class _ClinicEditScreenState extends ConsumerState<ClinicEditScreen> {
   late final TextEditingController _city;
   late final TextEditingController _phone;
   late final TextEditingController _mapUrl;
+  late final TextEditingController _altPhone;
+  late final TextEditingController _tagline;
+  late final TextEditingController _doctorName;
+  late final TextEditingController _registrationNo;
+
+  /// The uploaded mark, and whether it needs a dark ground behind it.
+  String? _logoLightUrl;
+  String? _logoAssetId;
+  bool _logoNeedsDarkChip = false;
+  bool _uploadingLogo = false;
 
   int _slotMinutes = 15;
   bool _isActive = true;
@@ -56,6 +69,12 @@ class _ClinicEditScreenState extends ConsumerState<ClinicEditScreen> {
     _city = TextEditingController(text: c?.city ?? '');
     _phone = TextEditingController(text: c?.phone ?? '');
     _mapUrl = TextEditingController(text: c?.mapUrl ?? '');
+    _altPhone = TextEditingController(text: c?.altPhone ?? '');
+    _tagline = TextEditingController(text: c?.tagline ?? '');
+    _doctorName = TextEditingController(text: c?.doctorDisplayName ?? '');
+    _registrationNo = TextEditingController(text: c?.registrationNo ?? '');
+    _logoLightUrl = c?.logoLightUrl;
+    _logoNeedsDarkChip = c?.logoNeedsDarkChip ?? false;
     _slotMinutes = c?.slotMinutes ?? 15;
     _isActive = c?.isActive ?? true;
     _weekly = [...?c?.weeklyHours];
@@ -69,6 +88,10 @@ class _ClinicEditScreenState extends ConsumerState<ClinicEditScreen> {
     _city.dispose();
     _phone.dispose();
     _mapUrl.dispose();
+    _altPhone.dispose();
+    _tagline.dispose();
+    _doctorName.dispose();
+    _registrationNo.dispose();
     super.dispose();
   }
 
@@ -129,7 +152,15 @@ class _ClinicEditScreenState extends ConsumerState<ClinicEditScreen> {
       'addressLine': _address.text.trim(),
       'city': _city.text.trim(),
       'phone': _phone.text.trim(),
+      'altPhone': _altPhone.text.trim(),
       'mapUrl': _mapUrl.text.trim(),
+      'tagline': _tagline.text.trim(),
+      'doctorDisplayName': _doctorName.text.trim(),
+      'registrationNo': _registrationNo.text.trim(),
+      // Only when a new one was picked this session — sending null would clear
+      // a logo the doctor never touched.
+      if (_logoAssetId != null) 'logoLightAssetId': _logoAssetId,
+      if (_logoAssetId != null) 'logoNeedsDarkChip': _logoNeedsDarkChip,
       'slotMinutes': _slotMinutes,
       'weeklyHours': _weekly.map((w) => w.toJson()).toList(),
       'overrides': _overrides.map((o) => o.toJson()).toList(),
@@ -152,6 +183,55 @@ class _ClinicEditScreenState extends ConsumerState<ClinicEditScreen> {
     } on ApiException catch (e) {
       setState(() => _saving = false);
       messenger.showSnackBar(SnackBar(content: Text(e.message)));
+    }
+  }
+
+  /// Pick a logo, upload it, and remember what the server made of it.
+  ///
+  /// The artwork is never altered. The server measures the mean luminance of
+  /// the non-transparent pixels and says whether it was drawn for a dark
+  /// background; if it was, the app paints a dark chip behind it. Inverting it
+  /// instead would turn this clinic's teal orange, and colour is the part of a
+  /// logo that carries the brand.
+  Future<void> _pickLogo() async {
+    final messenger = ScaffoldMessenger.of(context);
+    final file = await ImagePicker().pickImage(
+      source: ImageSource.gallery,
+      imageQuality: 100,
+    );
+    if (file == null) return;
+
+    setState(() => _uploadingLogo = true);
+    try {
+      final asset = await ref
+          .read(uploadRepositoryProvider)
+          .uploadImage(
+            path: file.path,
+            filename: file.name,
+            kind: UploadKind.clinicLogo,
+          );
+      if (!mounted) return;
+      setState(() {
+        _logoAssetId = asset.id;
+        _logoLightUrl = asset.url;
+        _logoNeedsDarkChip = asset.needsDarkChip;
+      });
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(
+            asset.needsDarkChip
+                ? 'Logo added. It was drawn for a dark background, so it will '
+                    'be shown on a dark panel.'
+                : 'Logo added. Save to apply it.',
+          ),
+        ),
+      );
+    } catch (_) {
+      messenger.showSnackBar(
+        const SnackBar(content: Text('Could not upload the logo')),
+      );
+    } finally {
+      if (mounted) setState(() => _uploadingLogo = false);
     }
   }
 
@@ -251,6 +331,53 @@ class _ClinicEditScreenState extends ConsumerState<ClinicEditScreen> {
               ],
             ),
             const SizedBox(height: AppSpacing.md),
+            const SizedBox(height: AppSpacing.md),
+            TextFormField(
+              controller: _altPhone,
+              keyboardType: TextInputType.phone,
+              decoration: const InputDecoration(
+                labelText: 'Second phone',
+                helperText: 'Also shown to patients. Optional.',
+              ),
+            ),
+
+            const SizedBox(height: AppSpacing.lg),
+            const _BrandHeading(),
+            const SizedBox(height: AppSpacing.sm),
+            TextFormField(
+              controller: _tagline,
+              textCapitalization: TextCapitalization.words,
+              decoration: const InputDecoration(
+                labelText: 'Tagline',
+                helperText: 'The line under the name on the letterhead.',
+              ),
+            ),
+            const SizedBox(height: AppSpacing.md),
+            TextFormField(
+              controller: _doctorName,
+              textCapitalization: TextCapitalization.words,
+              decoration: const InputDecoration(
+                labelText: 'Doctor name as printed',
+                helperText: 'Not always the name on the account.',
+              ),
+            ),
+            const SizedBox(height: AppSpacing.md),
+            TextFormField(
+              controller: _registrationNo,
+              decoration: const InputDecoration(
+                labelText: 'Medical registration number',
+                helperText: 'Printed under the signature.',
+              ),
+            ),
+            const SizedBox(height: AppSpacing.md),
+            _LogoField(
+              url: _logoLightUrl,
+              needsDarkChip: _logoNeedsDarkChip,
+              busy: _uploadingLogo,
+              onPick: _pickLogo,
+            ),
+
+            const SizedBox(height: AppSpacing.lg),
             TextFormField(
               controller: _mapUrl,
               keyboardType: TextInputType.url,
@@ -467,6 +594,140 @@ class _DayEditor extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// Marks where the practical details end and the brand begins.
+class _BrandHeading extends StatelessWidget {
+  const _BrandHeading();
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'Brand',
+          style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800),
+        ),
+        const SizedBox(height: 2),
+        Text(
+          'What patients see: on the prescription letterhead, in the chat '
+          'header and on appointment confirmations.',
+          style: TextStyle(
+            fontSize: 12.5,
+            height: 1.35,
+            color: scheme.onSurfaceVariant,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// The clinic's mark, on the ground it was drawn for.
+class _LogoField extends StatelessWidget {
+  const _LogoField({
+    required this.url,
+    required this.needsDarkChip,
+    required this.busy,
+    required this.onPick,
+  });
+
+  final String? url;
+  final bool needsDarkChip;
+  final bool busy;
+  final VoidCallback onPick;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.all(AppSpacing.md),
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerLowest,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: scheme.outlineVariant.withValues(alpha: 0.6)),
+      ),
+      child: Row(
+        children: [
+          if (url != null)
+            Container(
+              width: 96,
+              height: 56,
+              padding: const EdgeInsets.all(6),
+              decoration: BoxDecoration(
+                // The chip, when the artwork needs one. White otherwise,
+                // because white is what the letterhead is.
+                color: needsDarkChip ? const Color(0xFF10202E) : Colors.white,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(
+                  color: scheme.outlineVariant.withValues(alpha: 0.6),
+                ),
+              ),
+              child: AuthedImage(
+                path: url!,
+                width: double.infinity,
+                height: double.infinity,
+                radius: 0,
+                fit: BoxFit.contain,
+                background: Colors.transparent,
+              ),
+            )
+          else
+            Container(
+              width: 96,
+              height: 56,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: scheme.surfaceContainerHigh,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Icon(Icons.image_outlined, color: scheme.onSurfaceVariant),
+            ),
+          const SizedBox(width: AppSpacing.md),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Clinic logo',
+                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  url == null
+                      ? 'A PNG with a transparent background works best.'
+                      : needsDarkChip
+                      ? 'Drawn for a dark background — shown on a dark panel so '
+                          'the colours stay right.'
+                      : 'Reads well on a light background.',
+                  style: TextStyle(
+                    fontSize: 12,
+                    height: 1.3,
+                    color: scheme.onSurfaceVariant,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          busy
+              ? const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 12),
+                child: SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+              )
+              : TextButton(
+                onPressed: onPick,
+                child: Text(url == null ? 'Add' : 'Change'),
+              ),
+        ],
       ),
     );
   }

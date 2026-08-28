@@ -75,7 +75,14 @@ class Clinic {
     this.addressLine,
     this.city,
     this.phone,
+    this.altPhone,
     this.mapUrl,
+    this.tagline,
+    this.doctorDisplayName,
+    this.registrationNo,
+    this.logoLightUrl,
+    this.logoDarkUrl,
+    this.logoNeedsDarkChip = false,
     this.slotMinutes = 15,
     this.weeklyHours = const [],
     this.overrides = const [],
@@ -88,12 +95,52 @@ class Clinic {
   final String? addressLine;
   final String? city;
   final String? phone;
+
+  /// A second line patients can ring. A clinic usually publishes more than one,
+  /// and somebody who cannot get through on the first should not have to hunt.
+  final String? altPhone;
   final String? mapUrl;
+
+  // ---- Brand ---------------------------------------------------------------
+  //
+  // What a patient meets: on the chat header, on the prescription letterhead,
+  // in an appointment confirmation. MedPin is the product; this is the clinic.
+
+  /// The line under the name — "Diabetes Obesity & Metabolic Clinic".
+  final String? tagline;
+
+  /// The doctor's name as it should be printed, which is not always the name on
+  /// their account.
+  final String? doctorDisplayName;
+
+  /// Printed under the signature on a prescription.
+  final String? registrationNo;
+
+  /// Two logos, never one inverted into the other.
+  ///
+  /// Inversion is a per-channel complement, so this clinic's teal comes back a
+  /// muddy orange — and colour is the part of a logo that carries the brand.
+  /// The app is light-only, so [logoLightUrl] is what it draws.
+  final String? logoLightUrl;
+  final String? logoDarkUrl;
+
+  /// The only artwork supplied was drawn for a dark background.
+  ///
+  /// Measured on upload from the mean luminance of the non-transparent pixels.
+  /// When true the app paints the mark on a dark chip rather than inverting it:
+  /// brand colours survive and it stays legible on a white card.
+  final bool logoNeedsDarkChip;
   final int slotMinutes;
   final List<WeeklyHour> weeklyHours;
   final List<ClinicOverride> overrides;
   final bool isActive;
   final int sortIndex;
+
+  /// Every number the clinic publishes, in the order it publishes them.
+  List<String> get phones => [
+    if (phone != null && phone!.isNotEmpty) phone!,
+    if (altPhone != null && altPhone!.isNotEmpty) altPhone!,
+  ];
 
   /// "DD-24, Salt Lake City · Kolkata" — a one-line location summary.
   String get locationLine {
@@ -110,7 +157,14 @@ class Clinic {
     addressLine: j['addressLine']?.toString(),
     city: j['city']?.toString(),
     phone: j['phone']?.toString(),
+    altPhone: j['altPhone']?.toString(),
     mapUrl: j['mapUrl']?.toString(),
+    tagline: j['tagline']?.toString(),
+    doctorDisplayName: j['doctorDisplayName']?.toString(),
+    registrationNo: j['registrationNo']?.toString(),
+    logoLightUrl: j['logoLightUrl']?.toString(),
+    logoDarkUrl: j['logoDarkUrl']?.toString(),
+    logoNeedsDarkChip: j['logoNeedsDarkChip'] == true,
     slotMinutes: (j['slotMinutes'] as num?)?.toInt() ?? 15,
     weeklyHours:
         (j['weeklyHours'] as List?)
