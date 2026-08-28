@@ -192,11 +192,18 @@ void main() {
       expect(find.text('+91'), findsOneWidget);
     });
 
-    testWidgets('offers the doctor a way to a password', (tester) async {
+    testWidgets('offers the doctor and the desk a way to a password', (
+      tester,
+    ) async {
       await tester.pumpWidget(harness(const LoginScreen()));
-      // Quiet, but present: the doctor is the one person who has a password
-      // and there has to be somewhere to type it.
-      expect(find.text('Doctor? Sign in with a password'), findsOneWidget);
+      // Quiet, but present, and it has to name BOTH. The link said "Doctor?"
+      // while the screen it opens said "For clinic staff accounts" — so a
+      // receptionist read the link, decided it was not for them, and the
+      // screen offered no other door.
+      expect(
+        find.text('Doctor or clinic staff? Sign in with a password'),
+        findsOneWidget,
+      );
     });
   });
 
