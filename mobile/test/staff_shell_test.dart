@@ -35,7 +35,9 @@ void main() {
     // The old helper was `role == 'doctor' || role == 'staff'`, and that single
     // `||` is what put a receptionist on the clinical Home.
     expect(
-      router.contains("bool _isDoctor(AuthState s) => s.user?.role == 'doctor';"),
+      router.contains(
+        "bool _isDoctor(AuthState s) => s.user?.role == 'doctor';",
+      ),
       isTrue,
     );
     expect(
@@ -74,5 +76,39 @@ void main() {
         reason: '"$his" is the doctor\'s, not the desk\'s',
       );
     }
+  });
+
+  test('every /staff path the app pushes is a route that exists', () {
+    // The failure this catches: a screen shared by the doctor and the desk
+    // pushing a hardcoded /clinician path. For the doctor it works; for staff
+    // the router bounces them back to Today and nothing says why, so the
+    // screen simply looks broken. Three of them did exactly that — the patient
+    // rows, the register button and the post-registration redirect.
+    final dart = Directory('lib')
+        .listSync(recursive: true)
+        .whereType<File>()
+        .where((f) => f.path.endsWith('.dart'));
+
+    final used = <String>{};
+    final pushed = RegExp(r"'(/staff/[^']*)'");
+    for (final f in dart) {
+      for (final m in pushed.allMatches(f.readAsStringSync())) {
+        // Normalise an interpolated id to the route's parameter form.
+        used.add(m.group(1)!.replaceAll(RegExp(r'\$\{[^}]*\}'), ':id'));
+      }
+    }
+
+    final router = File('lib/core/router/app_router.dart').readAsStringSync();
+    final declared =
+        RegExp(
+          r"path: '(/staff/[^']*)'",
+        ).allMatches(router).map((m) => m.group(1)!).toSet();
+
+    final missing = used.difference(declared);
+    expect(
+      missing,
+      isEmpty,
+      reason: 'these are pushed but have no route: $missing',
+    );
   });
 }

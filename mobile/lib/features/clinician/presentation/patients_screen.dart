@@ -14,6 +14,7 @@ import '../domain/clinician_models.dart';
 import 'clinician_providers.dart';
 import 'widgets/panel_ui.dart';
 import 'widgets/clinician_notification_sheet.dart';
+import '../../../core/router/area.dart';
 
 /// The clinician's inbox.
 ///
@@ -126,7 +127,7 @@ class _PatientsScreenState extends ConsumerState<PatientsScreen>
       backgroundColor: Colors.transparent,
       // Desk intake: register a walk-in patient without leaving the directory.
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => context.push('/clinician/patients/new'),
+        onPressed: () => context.push('${areaPrefix(ref)}/patients/new'),
         backgroundColor: AppColors.primary,
         foregroundColor: Colors.white,
         icon: const Icon(Icons.person_add_alt_1_rounded),
@@ -320,7 +321,7 @@ class _PatientsScreenState extends ConsumerState<PatientsScreen>
                                             patient: it,
                                             onTap:
                                                 () => context.push(
-                                                  '/clinician/patients/${it.id}/thread',
+                                                  '${areaPrefix(ref)}/patients/${it.id}/thread',
                                                   extra: it.name,
                                                 ),
                                           ),
@@ -398,7 +399,12 @@ class _InboxHeader extends ConsumerWidget {
           GestureDetector(
             // `go`, not `push`: Profile is one of this shell's own tabs, so
             // pushing it stacked a copy while the bar kept the old tab lit.
-            onTap: () => context.go('/clinician/more'),
+            onTap:
+                () => context.go(
+                  areaPrefix(ref) == '/staff'
+                      ? '/staff/profile'
+                      : '/clinician/more',
+                ),
             child: UserAvatar(
               name: user?.name ?? '',
               avatarUrl: user?.avatarUrl,

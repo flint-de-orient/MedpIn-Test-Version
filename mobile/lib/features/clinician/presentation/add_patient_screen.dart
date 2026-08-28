@@ -13,6 +13,7 @@ import 'clinician_providers.dart';
 import '../../auth/presentation/auth_controller.dart';
 import '../../auth/data/auth_repository.dart';
 import '../../../shared/widgets/otp_field.dart';
+import '../../../core/router/area.dart';
 
 /// The receptionist's patient-intake form. Registers a walk-in at the desk:
 /// mandatory demographics (name, age, gender, phone, address) plus an optional
@@ -245,10 +246,23 @@ class _AddPatientScreenState extends ConsumerState<AddPatientScreen> {
       // Replace the form with the freshly-created record, so Back lands on the
       // patient list rather than an empty form.
       if (id.isNotEmpty) {
-        context.pushReplacement(
-          '/clinician/patients/$id',
-          extra: _name.text.trim(),
-        );
+        // Where the two roles part company. The doctor lands on the record he
+        // has just opened, because his next act is clinical. The desk lands on
+        // the roll with the new patient in it: their next act is the next
+        // person at the counter, and a receptionist has no business being
+        // dropped into somebody's HbA1c history.
+        //
+        // Sending the desk to /clinician bounced them back to Today with the
+        // new patient nowhere in sight, which reads as the registration having
+        // failed.
+        if (areaPrefix(ref) == '/staff') {
+          context.pushReplacement('/staff/patients');
+        } else {
+          context.pushReplacement(
+            '/clinician/patients/$id',
+            extra: _name.text.trim(),
+          );
+        }
       } else {
         context.pop();
       }
