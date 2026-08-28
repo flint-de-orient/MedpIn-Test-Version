@@ -1207,14 +1207,15 @@ class AppLocalizationsHi extends AppLocalizations {
   String get authVerifyFirst => 'जारी रखने के लिए अपना फ़ोन नंबर सत्यापित करें';
 
   @override
-  String get authDoctorPasswordLink => 'डॉक्टर हैं? पासवर्ड से साइन इन करें';
+  String get authDoctorPasswordLink =>
+      'डॉक्टर या क्लिनिक स्टाफ़? पासवर्ड से साइन इन करें';
 
   @override
-  String get authDoctorPasswordTitle => 'डॉक्टर साइन-इन';
+  String get authDoctorPasswordTitle => 'क्लिनिक साइन-इन';
 
   @override
   String get authDoctorPasswordSubtitle =>
-      'क्लिनिक स्टाफ़ खातों के लिए। मरीज़ और आहार विशेषज्ञ SMS कोड से साइन इन करते हैं।';
+      'डॉक्टर और क्लिनिक स्टाफ़ के लिए। आप SMS कोड से भी साइन इन कर सकते हैं।';
 
   @override
   String get authUseOtpInstead => 'इसके बजाय SMS कोड से साइन इन करें';

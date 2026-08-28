@@ -2377,19 +2377,19 @@ abstract class AppLocalizations {
   /// Auth: authDoctorPasswordLink
   ///
   /// In en, this message translates to:
-  /// **'Doctor? Sign in with a password'**
+  /// **'Doctor or clinic staff? Sign in with a password'**
   String get authDoctorPasswordLink;
 
   /// Auth: authDoctorPasswordTitle
   ///
   /// In en, this message translates to:
-  /// **'Doctor sign-in'**
+  /// **'Clinic sign-in'**
   String get authDoctorPasswordTitle;
 
   /// Auth: authDoctorPasswordSubtitle
   ///
   /// In en, this message translates to:
-  /// **'For clinic staff accounts. Patients and dieticians sign in with a code sent by SMS.'**
+  /// **'For the doctor and clinic staff. You can also sign in with a code sent by SMS.'**
   String get authDoctorPasswordSubtitle;
 
   /// Auth: authUseOtpInstead

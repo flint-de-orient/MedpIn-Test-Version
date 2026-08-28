@@ -386,8 +386,8 @@
   "authRegisterTitleDietician": "পুষ্টিবিদ নিবন্ধন",
   "authRegisterTitlePatient": "রোগী নিবন্ধন",
   "authVerifyFirst": "চালিয়ে যেতে আপনার ফোন নম্বর যাচাই করুন",
-  "authDoctorPasswordLink": "ডাক্তার? পাসওয়ার্ড দিয়ে সাইন ইন করুন",
-  "authDoctorPasswordTitle": "ডাক্তার সাইন-ইন",
-  "authDoctorPasswordSubtitle": "ক্লিনিক কর্মীদের অ্যাকাউন্টের জন্য। রোগী ও পুষ্টিবিদরা SMS কোড দিয়ে সাইন ইন করেন।",
+  "authDoctorPasswordLink": "ডাক্তার বা ক্লিনিক কর্মী? পাসওয়ার্ড দিয়ে সাইন ইন করুন",
+  "authDoctorPasswordTitle": "ক্লিনিক সাইন-ইন",
+  "authDoctorPasswordSubtitle": "ডাক্তার ও ক্লিনিক কর্মীদের জন্য। আপনি SMS কোড দিয়েও সাইন ইন করতে পারেন।",
   "authUseOtpInstead": "পরিবর্তে SMS কোড দিয়ে সাইন ইন করুন"
 }

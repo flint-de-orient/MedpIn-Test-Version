@@ -527,15 +527,15 @@
   "@authVerifyFirst": {
     "description": "Auth: authVerifyFirst"
   },
-  "authDoctorPasswordLink": "Doctor? Sign in with a password",
+  "authDoctorPasswordLink": "Doctor or clinic staff? Sign in with a password",
   "@authDoctorPasswordLink": {
     "description": "Auth: authDoctorPasswordLink"
   },
-  "authDoctorPasswordTitle": "Doctor sign-in",
+  "authDoctorPasswordTitle": "Clinic sign-in",
   "@authDoctorPasswordTitle": {
     "description": "Auth: authDoctorPasswordTitle"
   },
-  "authDoctorPasswordSubtitle": "For clinic staff accounts. Patients and dieticians sign in with a code sent by SMS.",
+  "authDoctorPasswordSubtitle": "For the doctor and clinic staff. You can also sign in with a code sent by SMS.",
   "@authDoctorPasswordSubtitle": {
     "description": "Auth: authDoctorPasswordSubtitle"
   },

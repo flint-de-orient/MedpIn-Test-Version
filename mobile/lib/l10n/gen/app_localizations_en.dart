@@ -1207,14 +1207,15 @@ class AppLocalizationsEn extends AppLocalizations {
   String get authVerifyFirst => 'Verify your phone number to continue';
 
   @override
-  String get authDoctorPasswordLink => 'Doctor? Sign in with a password';
+  String get authDoctorPasswordLink =>
+      'Doctor or clinic staff? Sign in with a password';
 
   @override
-  String get authDoctorPasswordTitle => 'Doctor sign-in';
+  String get authDoctorPasswordTitle => 'Clinic sign-in';
 
   @override
   String get authDoctorPasswordSubtitle =>
-      'For clinic staff accounts. Patients and dieticians sign in with a code sent by SMS.';
+      'For the doctor and clinic staff. You can also sign in with a code sent by SMS.';
 
   @override
   String get authUseOtpInstead => 'Sign in with an SMS code instead';

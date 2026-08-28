@@ -386,8 +386,8 @@
   "authRegisterTitleDietician": "आहार विशेषज्ञ पंजीकरण",
   "authRegisterTitlePatient": "मरीज़ पंजीकरण",
   "authVerifyFirst": "जारी रखने के लिए अपना फ़ोन नंबर सत्यापित करें",
-  "authDoctorPasswordLink": "डॉक्टर हैं? पासवर्ड से साइन इन करें",
-  "authDoctorPasswordTitle": "डॉक्टर साइन-इन",
-  "authDoctorPasswordSubtitle": "क्लिनिक स्टाफ़ खातों के लिए। मरीज़ और आहार विशेषज्ञ SMS कोड से साइन इन करते हैं।",
+  "authDoctorPasswordLink": "डॉक्टर या क्लिनिक स्टाफ़? पासवर्ड से साइन इन करें",
+  "authDoctorPasswordTitle": "क्लिनिक साइन-इन",
+  "authDoctorPasswordSubtitle": "डॉक्टर और क्लिनिक स्टाफ़ के लिए। आप SMS कोड से भी साइन इन कर सकते हैं।",
   "authUseOtpInstead": "इसके बजाय SMS कोड से साइन इन करें"
 }

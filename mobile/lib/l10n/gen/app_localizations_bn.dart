@@ -1201,14 +1201,15 @@ class AppLocalizationsBn extends AppLocalizations {
   String get authVerifyFirst => 'চালিয়ে যেতে আপনার ফোন নম্বর যাচাই করুন';
 
   @override
-  String get authDoctorPasswordLink => 'ডাক্তার? পাসওয়ার্ড দিয়ে সাইন ইন করুন';
+  String get authDoctorPasswordLink =>
+      'ডাক্তার বা ক্লিনিক কর্মী? পাসওয়ার্ড দিয়ে সাইন ইন করুন';
 
   @override
-  String get authDoctorPasswordTitle => 'ডাক্তার সাইন-ইন';
+  String get authDoctorPasswordTitle => 'ক্লিনিক সাইন-ইন';
 
   @override
   String get authDoctorPasswordSubtitle =>
-      'ক্লিনিক কর্মীদের অ্যাকাউন্টের জন্য। রোগী ও পুষ্টিবিদরা SMS কোড দিয়ে সাইন ইন করেন।';
+      'ডাক্তার ও ক্লিনিক কর্মীদের জন্য। আপনি SMS কোড দিয়েও সাইন ইন করতে পারেন।';
 
   @override
   String get authUseOtpInstead => 'পরিবর্তে SMS কোড দিয়ে সাইন ইন করুন';
