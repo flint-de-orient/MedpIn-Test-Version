@@ -54,6 +54,9 @@ import '../../features/profile/presentation/notifications_screen.dart';
 import '../../features/profile/presentation/profile_screen.dart';
 import '../../features/shell/presentation/app_shell.dart';
 import '../../shared/providers/locale_provider.dart';
+import '../../features/staff/presentation/staff_profile_screen.dart';
+import '../../features/staff/presentation/staff_today_screen.dart';
+import '../../features/staff/presentation/staff_shell.dart';
 
 /// Bridges Riverpod state changes into something [GoRouter]'s
 /// `refreshListenable` can observe, so a login/logout or a first-time
@@ -70,8 +73,13 @@ class _RouterRefreshNotifier extends ChangeNotifier {
 /// screen is on top from outside the widget tree (a push message handler).
 final GlobalKey<NavigatorState> rootNavigatorKey = GlobalKey<NavigatorState>();
 
-bool _isClinician(AuthState s) =>
-    s.user?.role == 'doctor' || s.user?.role == 'staff';
+/// The doctor, and only the doctor.
+///
+/// Staff used to be counted here and landed in his panel: Live Triage on their
+/// Home, and his letterhead, professional details and signature on their
+/// Profile. None of that is a receptionist's, and two of them are his identity.
+bool _isDoctor(AuthState s) => s.user?.role == 'doctor';
+bool _isStaff(AuthState s) => s.user?.role == 'staff';
 bool _isDietician(AuthState s) => s.user?.role == 'dietician';
 
 String? _redirect(Ref ref, GoRouterState state) {
@@ -88,6 +96,7 @@ String? _redirect(Ref ref, GoRouterState state) {
   // the clinician app on Patients (the former Home/Dashboard tabs were removed).
   const home = '/home';
   const clinicianHome = '/clinician/dashboard';
+  const staffHome = '/staff/today';
   const dieticianHome = '/dietician/dashboard';
 
   // Everything under /login counts, not just /login itself. The doctor's
@@ -109,12 +118,16 @@ String? _redirect(Ref ref, GoRouterState state) {
     return isAuthRoute ? null : login;
   }
 
-  // Authenticated. Doctors and staff live in the clinician area; patients in
-  // the main app. Each is kept out of the other's tree.
+  // Authenticated. Four areas, one per role, and each kept out of the others'
+  // tree. Staff have their own now rather than borrowing the doctor's.
   final inClinicianArea = loc.startsWith('/clinician');
+  final inStaffArea = loc.startsWith('/staff');
   final inDieticianArea = loc.startsWith('/dietician');
-  if (_isClinician(authState)) {
+  if (_isDoctor(authState)) {
     return inClinicianArea ? null : clinicianHome;
+  }
+  if (_isStaff(authState)) {
+    return inStaffArea ? null : staffHome;
   }
   if (_isDietician(authState)) {
     return inDieticianArea ? null : dieticianHome;
@@ -310,6 +323,83 @@ final Provider<GoRouter> appRouterProvider = Provider<GoRouter>((ref) {
               patientId: state.pathParameters['id']!,
               patientName: state.extra as String?,
             ),
+      ),
+
+      // ---- The front desk ---------------------------------------------
+      //
+      // Staff had the doctor's four tabs. Their Home opened on Live Triage —
+      // HbA1c and clinical alerts, answering "who needs a doctor", which is
+      // not a question a receptionist should be deciding — and their Profile
+      // offered his letterhead, professional details and digital signature.
+      //
+      // These four are the desk's actual work: the day and who is waiting on
+      // an answer, the patient roll, the conversations, and the clinic's own
+      // record.
+      GoRoute(
+        path: '/staff/patients/new',
+        builder: (context, state) => const AddPatientScreen(),
+      ),
+      GoRoute(
+        path: '/staff/profile/edit',
+        builder: (context, state) => const EditProfileScreen(),
+      ),
+      GoRoute(
+        path: '/staff/clinics/new',
+        builder: (context, state) => const ClinicEditScreen(),
+      ),
+      GoRoute(
+        path: '/staff/clinics/:id',
+        builder:
+            (context, state) =>
+                ClinicEditScreen(clinic: state.extra as Clinic?),
+      ),
+      GoRoute(
+        path: '/staff/patients/:id/thread',
+        builder:
+            (context, state) => PatientThreadScreen(
+              patientId: state.pathParameters['id']!,
+              patientName: state.extra as String?,
+            ),
+      ),
+
+      StatefulShellRoute.indexedStack(
+        builder:
+            (context, state, navigationShell) =>
+                StaffShell(navigationShell: navigationShell),
+        branches: [
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
+                path: '/staff/today',
+                builder: (context, state) => const StaffTodayScreen(),
+              ),
+            ],
+          ),
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
+                path: '/staff/patients',
+                builder: (context, state) => const PatientsScreen(),
+              ),
+            ],
+          ),
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
+                path: '/staff/messages',
+                builder: (context, state) => const PatientsScreen(),
+              ),
+            ],
+          ),
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
+                path: '/staff/profile',
+                builder: (context, state) => const StaffProfileScreen(),
+              ),
+            ],
+          ),
+        ],
       ),
 
       StatefulShellRoute.indexedStack(

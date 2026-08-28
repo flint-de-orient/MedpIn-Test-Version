@@ -87,6 +87,27 @@ class AppointmentRepository {
 
   /// Clinician-only: advance the appointment's status (confirm, complete, …)
   /// and optionally attach consultation notes.
+  /// Turn a request into a booking: give it a clinic and a time.
+  ///
+  /// One call, not reschedule-then-set-status. Reschedule validates the time
+  /// against the appointment's existing clinic, and a request has none — so
+  /// that route would skip slot validation and leave the row `requested` with a
+  /// time on it, which is the state that holds a slot without being a booking.
+  Future<Appointment> confirmRequest(
+    String id, {
+    required String clinicId,
+    required DateTime scheduledFor,
+  }) async {
+    final json = await _client.patchJson(
+      '/appointments/$id/confirm',
+      body: {
+        'clinicId': clinicId,
+        'scheduledFor': scheduledFor.toUtc().toIso8601String(),
+      },
+    );
+    return Appointment.fromJson(json['appointment'] as Map<String, dynamic>);
+  }
+
   Future<Appointment> setStatus(
     String id,
     String status, {
