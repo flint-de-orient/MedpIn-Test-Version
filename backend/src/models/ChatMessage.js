@@ -30,6 +30,28 @@ const chatMessageSchema = new mongoose.Schema(
     editedAt: { type: Date, default: null },
     originalContent: { type: String, default: null, maxlength: 20000 },
 
+    /// Something the app can offer the reader to do, under this turn.
+    ///
+    /// One shape rather than a flag per feature: the first is an appointment
+    /// request recognised in what the patient wrote, and the next will not be
+    /// worth another column. `kind` says which card to draw and the rest is
+    /// that card's business.
+    ///
+    /// Nothing here has happened. It is an offer, and it stays an offer until
+    /// somebody taps it — which is what lets the detection behind it be
+    /// generous. See [services/triage/appointmentIntent.js].
+    action: {
+      kind: { type: String, enum: ['appointment_request'] },
+      /// The day the patient seems to have meant, or absent when they named
+      /// none. Absent is a real answer: "can I get an appointment?" says no
+      /// day, and the card asks for one rather than inventing tomorrow.
+      preferredFor: Date,
+      /// The hour they mentioned, in their own words — "around 4pm". Never
+      /// parsed into a slot: a request carries a day and no time, because the
+      /// desk offers times the doctor is actually free.
+      timePhrase: { type: String, maxlength: 40 },
+    },
+
     // --- assistant-turn metadata ---
     triage: {
       urgency: { type: String, enum: ['routine', 'advice', 'urgent', 'emergency'] },

@@ -7,6 +7,7 @@ import { generate, generateStream, AiUnavailableError } from './gemini.js';
 import { replyIsWrongLanguage } from './languageGuard.js';
 import { buildSystemPrompt, fallbackReply, languagePrimer, forceLanguageInstruction } from './prompts.js';
 import { raiseAlert } from '../alerts.js';
+import { detectAppointmentIntent } from '../triage/appointmentIntent.js';
 import { notifyClinicOfPatientMessage } from '../notifications.js';
 import { loadAssetsForAi } from '../../routes/uploads.js';
 import { resolveVoiceText } from '../voiceText.js';
@@ -179,6 +180,13 @@ export async function handlePatientMessage({ patientId, sessionId, text, languag
     });
     await ChatMessage.findByIdAndUpdate(userMessage._id, { alert: alert._id });
   }
+
+  // Did they ask to be seen?
+  //
+  // Detected from the patient's own words, before the model runs, so it works
+  // when Gemini does not — and so a sentence in Bengali is matched by rules a
+  // test can pin down rather than by a model's mood.
+  const appointment = detectAppointmentIntent(text);
 
   // And tell the clinic somebody wrote in.
   //
@@ -353,6 +361,24 @@ ${forceLanguageInstruction(language)}`,
     // Retrieval still uses the full set for grounding; this only trims what
     // the patient sees.
     citations: chunks.slice(0, 3).map((c) => ({ chunk: c._id, title: c.title, score: c.score })),
+    // Offered under the answer, not instead of it. The assistant still replies
+    // to what was asked; the card is the shortcut.
+    action: appointment
+      ? {
+          kind: 'appointment_request',
+          preferredFor: appointment.preferredFor ?? undefined,
+          timePhrase: appointment.timePhrase ?? undefined,
+        }
+      : undefined,
+    // Offered under the answer, not instead of it. The assistant still replies
+    // to what was asked; the card is the shortcut.
+    action: appointment
+      ? {
+          kind: 'appointment_request',
+          preferredFor: appointment.preferredFor ?? undefined,
+          timePhrase: appointment.timePhrase ?? undefined,
+        }
+      : undefined,
     modelVersion,
     latencyMs,
     tokenUsage: usage,
@@ -425,6 +451,10 @@ export async function* streamPatientMessage({ patientId, sessionId, text, langua
   // Populate so serialiseMessage can tell a voice note from a photo — otherwise
   // the just-sent recording renders as a broken image thumbnail.
   if (attachments.length) await userMessage.populate('attachments', 'kind mimeType transcript originalName sizeBytes');
+
+// Same detection as the non-streaming path, so a card appears whichever
+  // transport the app happened to use.
+  const appointment = detectAppointmentIntent(text);
 
   // Escalate BEFORE the first token â€” the clinic learns about a chest-pain
   // message whether or not any reply is ever generated.
@@ -638,6 +668,15 @@ function serialiseMessage(m) {
     seq: m.seq,
     role: m.role,
     content: m.content,
+    // An offer the app may draw under this turn. Null on every message that
+    // carries none, which is nearly all of them.
+    action: m.action?.kind
+      ? {
+          kind: m.action.kind,
+          preferredFor: m.action.preferredFor ?? null,
+          timePhrase: m.action.timePhrase ?? null,
+        }
+      : null,
     language: m.language,
     urgency: m.triage?.urgency ?? 'routine',
     isFallback: m.isFallback ?? false,

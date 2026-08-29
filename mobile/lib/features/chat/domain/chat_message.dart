@@ -110,6 +110,7 @@ class ChatMessage {
     this.attachmentPaths = const [],
     this.voiceNotes = const [],
     this.documents = const [],
+    this.action,
   });
 
   /// Recordings attached to this turn. Kept separate from [attachmentPaths]
@@ -118,6 +119,13 @@ class ChatMessage {
 
   /// Documents attached to this turn, rendered as file cards.
   final List<DocumentAttachment> documents;
+
+  /// Something the app offers the reader to do, under this turn.
+  ///
+  /// Null on nearly every message. The first — and so far only — kind is an
+  /// appointment request recognised in what the patient wrote. Nothing has
+  /// happened when this is set: it is an offer until somebody taps it.
+  final MessageAction? action;
 
   /// Kept at the top of the thread. A dosing instruction otherwise scrolls out
   /// of reach within a day.
@@ -215,6 +223,7 @@ class ChatMessage {
   factory ChatMessage.fromJson(Map<String, dynamic> json) {
     return ChatMessage(
       id: json['id']?.toString() ?? '',
+      action: MessageAction.fromJson(json['action']),
       seq: (json['seq'] as num?)?.toInt() ?? 0,
       role: json['role']?.toString() ?? 'assistant',
       content: json['content']?.toString() ?? '',
@@ -378,6 +387,13 @@ class ChatMessage {
     documents: const [],
   );
 
+  /// Every field, not the handful this happened to need.
+  ///
+  /// It listed fifteen of twenty-two, so copying a message to attach citations
+  /// quietly unpinned it, forgot it had been edited, dropped the turn it was
+  /// replying to and cleared the clinic's read mark. A copy that loses things
+  /// is worse than no copy: the loss shows up somewhere else entirely, long
+  /// after, as a pin that will not stay put.
   ChatMessage copyWith({List<Citation>? citations, Triage? triage}) {
     return ChatMessage(
       id: id,
@@ -393,9 +409,54 @@ class ChatMessage {
       senderName: senderName,
       senderRole: senderRole,
       senderAvatarUrl: senderAvatarUrl,
+      pinned: pinned,
+      deletedForEveryone: deletedForEveryone,
+      editedAt: editedAt,
+      replyToId: replyToId,
+      replyPreviewContent: replyPreviewContent,
+      seenByClinicAt: seenByClinicAt,
       attachmentPaths: attachmentPaths,
       voiceNotes: voiceNotes,
       documents: documents,
+      action: action,
+    );
+  }
+}
+
+/// An offer drawn under a message: a thing the reader may do next.
+///
+/// Deliberately one type rather than a field per feature. The clinic's first is
+/// an appointment request; whatever the second turns out to be will not be
+/// worth another shape.
+class MessageAction {
+  const MessageAction({required this.kind, this.preferredFor, this.timePhrase});
+
+  /// Which card to draw. Unknown kinds are dropped rather than rendered, so an
+  /// older app meeting a newer server shows the reply and no card, instead of
+  /// a broken box.
+  final String kind;
+
+  /// The day the patient seems to have meant, or null when they named none —
+  /// which is a real answer. "Can I get an appointment?" says no day, and the
+  /// card asks for one rather than inventing tomorrow.
+  final DateTime? preferredFor;
+
+  /// The hour they mentioned, in their own words: "around 4pm". Never parsed
+  /// into a slot — a request carries a day and no time, because the desk
+  /// offers the times the doctor is actually free.
+  final String? timePhrase;
+
+  static const _known = {'appointment_request'};
+
+  static MessageAction? fromJson(Object? raw) {
+    if (raw is! Map) return null;
+    final kind = raw['kind']?.toString();
+    if (kind == null || !_known.contains(kind)) return null;
+    return MessageAction(
+      kind: kind,
+      preferredFor:
+          DateTime.tryParse(raw['preferredFor']?.toString() ?? '')?.toLocal(),
+      timePhrase: raw['timePhrase']?.toString(),
     );
   }
 }

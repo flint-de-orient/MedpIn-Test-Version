@@ -1161,6 +1161,15 @@ function serialiseMessage(m) {
     seq: m.seq,
     role: m.role,
     deletedForEveryone: false,
+    // An offer the app may draw under this turn. Null on every message that
+    // carries none, which is nearly all of them.
+    action: m.action?.kind
+      ? {
+          kind: m.action.kind,
+          preferredFor: m.action.preferredFor ?? null,
+          timePhrase: m.action.timePhrase ?? null,
+        }
+      : null,
     // Present on clinician turns once populated; null everywhere else.
     senderName: m.sender && typeof m.sender === 'object' ? (m.sender.name ?? null) : null,
     // The role as well as the name. A patient reading "Priya Sharma" cannot

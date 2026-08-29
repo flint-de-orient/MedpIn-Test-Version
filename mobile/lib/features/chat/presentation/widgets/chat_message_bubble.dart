@@ -14,6 +14,7 @@ import 'emergency_card.dart';
 import 'urgent_card.dart';
 import 'voice_note_player.dart';
 import '../../../../shared/widgets/user_avatar.dart';
+import 'appointment_request_card.dart';
 
 /// Renders one turn. Assistant messages whose `urgency` is `emergency` or
 /// `urgent` bypass the normal bubble entirely and render inside the
@@ -547,6 +548,11 @@ class ChatMessageBubble extends StatelessWidget {
             // the assistant. None of them apply to something a doctor wrote,
             // and the disclaimer would actively misrepresent it.
             if (!isUser && !isClinician) ...[
+              // An offer the reader may act on, under the answer rather than
+              // instead of it. The assistant still replies to what was asked;
+              // this is the shortcut.
+              if (message.action?.kind == 'appointment_request')
+                AppointmentRequestCard(action: message.action!),
               if (message.citations != null && message.citations!.isNotEmpty)
                 CitationChips(
                   citations: message.citations!,

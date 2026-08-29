@@ -662,15 +662,14 @@ export async function notifyClinicOfTomorrowSchedule(appointments) {
   const doctors = await User.find({ role: ROLES.DOCTOR, isActive: true }).select('deviceTokens').lean();
   const tokens = doctors.flatMap((d) => d.deviceTokens ?? []);
 
-  if (!appointments.length) {
-    await deliver({
-      tokens,
-      title: 'Tomorrow: no appointments',
-      body: 'Your schedule is clear.',
-      data: { kind: 'schedule_digest', count: '0' },
-    });
-    return;
-  }
+  // Nothing tomorrow: say nothing.
+  //
+  // A push every night of a clinic's every closed day, saying that nothing is
+  // happening, is the notification that teaches someone to turn the rest of
+  // them off. A doctor learns a clear day by opening the app; he cannot learn
+  // a full one that way in time to do anything about it, which is the whole
+  // reason this exists.
+  if (!appointments.length) return { delivered: 0, skipped: 'empty' };
 
   const first = new Date(appointments[0].scheduledFor).toLocaleTimeString('en-IN', {
     hour: '2-digit',

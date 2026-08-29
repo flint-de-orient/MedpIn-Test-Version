@@ -2397,6 +2397,366 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Sign in with an SMS code instead'**
   String get authUseOtpInstead;
+
+  /// No description provided for @deskFrontDesk.
+  ///
+  /// In en, this message translates to:
+  /// **'Front desk'**
+  String get deskFrontDesk;
+
+  /// No description provided for @deskToday.
+  ///
+  /// In en, this message translates to:
+  /// **'Today'**
+  String get deskToday;
+
+  /// No description provided for @deskRegister.
+  ///
+  /// In en, this message translates to:
+  /// **'Register'**
+  String get deskRegister;
+
+  /// No description provided for @deskBooked.
+  ///
+  /// In en, this message translates to:
+  /// **'Booked'**
+  String get deskBooked;
+
+  /// No description provided for @deskWaiting.
+  ///
+  /// In en, this message translates to:
+  /// **'Waiting'**
+  String get deskWaiting;
+
+  /// No description provided for @deskUnread.
+  ///
+  /// In en, this message translates to:
+  /// **'Unread'**
+  String get deskUnread;
+
+  /// No description provided for @deskNoAppointments.
+  ///
+  /// In en, this message translates to:
+  /// **'No appointments'**
+  String get deskNoAppointments;
+
+  /// No description provided for @deskQuietDay.
+  ///
+  /// In en, this message translates to:
+  /// **'A quiet day. Walk-ins can be registered from the button below.'**
+  String get deskQuietDay;
+
+  /// No description provided for @deskWaitingForTimeCount.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 person is waiting for a time.} other{{count} people are waiting for a time.}}'**
+  String deskWaitingForTimeCount(int count);
+
+  /// No description provided for @deskAppointmentCount.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 appointment} other{{count} appointments}}'**
+  String deskAppointmentCount(int count);
+
+  /// No description provided for @deskNextAt.
+  ///
+  /// In en, this message translates to:
+  /// **'Next: {name} at {time}'**
+  String deskNextAt(String name, String time);
+
+  /// No description provided for @deskAllPassed.
+  ///
+  /// In en, this message translates to:
+  /// **'Everyone booked for today has been and gone.'**
+  String get deskAllPassed;
+
+  /// No description provided for @deskNothingBooked.
+  ///
+  /// In en, this message translates to:
+  /// **'Nothing booked today'**
+  String get deskNothingBooked;
+
+  /// No description provided for @deskNothingBookedBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Appointments confirmed for today appear here.'**
+  String get deskNothingBookedBody;
+
+  /// No description provided for @deskWaitingForTime.
+  ///
+  /// In en, this message translates to:
+  /// **'Waiting for a time'**
+  String get deskWaitingForTime;
+
+  /// No description provided for @deskNeedsAttention.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{Needs attention now} other{{count} need attention now}}'**
+  String deskNeedsAttention(int count);
+
+  /// No description provided for @deskGiveTime.
+  ///
+  /// In en, this message translates to:
+  /// **'Give a time'**
+  String get deskGiveTime;
+
+  /// No description provided for @deskDecline.
+  ///
+  /// In en, this message translates to:
+  /// **'Decline'**
+  String get deskDecline;
+
+  /// No description provided for @deskDeclineTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Decline this request?'**
+  String get deskDeclineTitle;
+
+  /// No description provided for @deskDeclineBody.
+  ///
+  /// In en, this message translates to:
+  /// **'The patient will be told the clinic could not offer a time. Message them first if there is a reason they should know.'**
+  String get deskDeclineBody;
+
+  /// No description provided for @deskKeepIt.
+  ///
+  /// In en, this message translates to:
+  /// **'Keep it'**
+  String get deskKeepIt;
+
+  /// No description provided for @deskPatientTold.
+  ///
+  /// In en, this message translates to:
+  /// **'The patient has been told.'**
+  String get deskPatientTold;
+
+  /// No description provided for @deskPatientFallback.
+  ///
+  /// In en, this message translates to:
+  /// **'Patient'**
+  String get deskPatientFallback;
+
+  /// No description provided for @deskCheckIn.
+  ///
+  /// In en, this message translates to:
+  /// **'Check in'**
+  String get deskCheckIn;
+
+  /// No description provided for @deskCheckedIn.
+  ///
+  /// In en, this message translates to:
+  /// **'Checked in'**
+  String get deskCheckedIn;
+
+  /// No description provided for @deskWithDoctor.
+  ///
+  /// In en, this message translates to:
+  /// **'With the doctor'**
+  String get deskWithDoctor;
+
+  /// No description provided for @deskVisitDone.
+  ///
+  /// In en, this message translates to:
+  /// **'Done'**
+  String get deskVisitDone;
+
+  /// No description provided for @deskNoShow.
+  ///
+  /// In en, this message translates to:
+  /// **'No show'**
+  String get deskNoShow;
+
+  /// No description provided for @deskConfirmed.
+  ///
+  /// In en, this message translates to:
+  /// **'Confirmed'**
+  String get deskConfirmed;
+
+  /// No description provided for @deskConfirmedFor.
+  ///
+  /// In en, this message translates to:
+  /// **'Confirmed for {when}'**
+  String deskConfirmedFor(String when);
+
+  /// No description provided for @deskChange.
+  ///
+  /// In en, this message translates to:
+  /// **'Change'**
+  String get deskChange;
+
+  /// No description provided for @deskAskedFor.
+  ///
+  /// In en, this message translates to:
+  /// **'for {when}'**
+  String deskAskedFor(String when);
+
+  /// No description provided for @deskAskedAgoMinutes.
+  ///
+  /// In en, this message translates to:
+  /// **'asked {n}m ago'**
+  String deskAskedAgoMinutes(int n);
+
+  /// No description provided for @deskAskedAgoHours.
+  ///
+  /// In en, this message translates to:
+  /// **'asked {n}h ago'**
+  String deskAskedAgoHours(int n);
+
+  /// No description provided for @deskAskedAgoDays.
+  ///
+  /// In en, this message translates to:
+  /// **'asked {n}d ago'**
+  String deskAskedAgoDays(int n);
+
+  /// No description provided for @deskCallPatient.
+  ///
+  /// In en, this message translates to:
+  /// **'Call {phone}'**
+  String deskCallPatient(String phone);
+
+  /// No description provided for @deskNoActiveClinic.
+  ///
+  /// In en, this message translates to:
+  /// **'No active clinic to book into. Add one in Profile.'**
+  String get deskNoActiveClinic;
+
+  /// No description provided for @deskNoFreeTimes.
+  ///
+  /// In en, this message translates to:
+  /// **'Nothing free on this day'**
+  String get deskNoFreeTimes;
+
+  /// No description provided for @deskTryAnotherDay.
+  ///
+  /// In en, this message translates to:
+  /// **'Try another day, or another clinic.'**
+  String get deskTryAnotherDay;
+
+  /// No description provided for @deskOnlyAvailable.
+  ///
+  /// In en, this message translates to:
+  /// **'Only times the doctor is actually available are offered.'**
+  String get deskOnlyAvailable;
+
+  /// No description provided for @deskCouldNotLoadTimes.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not load the times for this day.'**
+  String get deskCouldNotLoadTimes;
+
+  /// No description provided for @deskClinicStaff.
+  ///
+  /// In en, this message translates to:
+  /// **'Clinic staff'**
+  String get deskClinicStaff;
+
+  /// No description provided for @deskTheClinic.
+  ///
+  /// In en, this message translates to:
+  /// **'The clinic'**
+  String get deskTheClinic;
+
+  /// No description provided for @deskClinicDetails.
+  ///
+  /// In en, this message translates to:
+  /// **'Clinic details'**
+  String get deskClinicDetails;
+
+  /// No description provided for @deskClinicDetailsSub.
+  ///
+  /// In en, this message translates to:
+  /// **'Name, address, phones, logo and opening hours'**
+  String get deskClinicDetailsSub;
+
+  /// No description provided for @deskOpeningHours.
+  ///
+  /// In en, this message translates to:
+  /// **'Opening hours'**
+  String get deskOpeningHours;
+
+  /// No description provided for @deskThisAccount.
+  ///
+  /// In en, this message translates to:
+  /// **'This account'**
+  String get deskThisAccount;
+
+  /// No description provided for @deskYourDetails.
+  ///
+  /// In en, this message translates to:
+  /// **'Your details'**
+  String get deskYourDetails;
+
+  /// No description provided for @deskYourDetailsSub.
+  ///
+  /// In en, this message translates to:
+  /// **'Name, photo and contact'**
+  String get deskYourDetailsSub;
+
+  /// No description provided for @deskSignOut.
+  ///
+  /// In en, this message translates to:
+  /// **'Sign out'**
+  String get deskSignOut;
+
+  /// No description provided for @deskSignOutTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Sign out?'**
+  String get deskSignOutTitle;
+
+  /// No description provided for @deskSignOutBody.
+  ///
+  /// In en, this message translates to:
+  /// **'You will need the clinic number and the password, or a code sent by SMS, to sign in again.'**
+  String get deskSignOutBody;
+
+  /// No description provided for @deskStay.
+  ///
+  /// In en, this message translates to:
+  /// **'Stay'**
+  String get deskStay;
+
+  /// No description provided for @deskPhotoUpdated.
+  ///
+  /// In en, this message translates to:
+  /// **'Photo updated'**
+  String get deskPhotoUpdated;
+
+  /// No description provided for @deskTakePhoto.
+  ///
+  /// In en, this message translates to:
+  /// **'Take a photo'**
+  String get deskTakePhoto;
+
+  /// No description provided for @deskChooseFromGallery.
+  ///
+  /// In en, this message translates to:
+  /// **'Choose from gallery'**
+  String get deskChooseFromGallery;
+
+  /// No description provided for @deskAbout.
+  ///
+  /// In en, this message translates to:
+  /// **'About'**
+  String get deskAbout;
+
+  /// No description provided for @deskNoDeviceLock.
+  ///
+  /// In en, this message translates to:
+  /// **'This phone has no fingerprint or PIN set up.'**
+  String get deskNoDeviceLock;
+
+  /// No description provided for @deskAppLockSub.
+  ///
+  /// In en, this message translates to:
+  /// **'Ask for the phone’s fingerprint or PIN each time it opens'**
+  String get deskAppLockSub;
+
+  /// No description provided for @deskCouldNotUpdatePhoto.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not update the photo.'**
+  String get deskCouldNotUpdatePhoto;
 }
 
 class _AppLocalizationsDelegate

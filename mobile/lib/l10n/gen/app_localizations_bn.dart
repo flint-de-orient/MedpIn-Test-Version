@@ -1213,4 +1213,230 @@ class AppLocalizationsBn extends AppLocalizations {
 
   @override
   String get authUseOtpInstead => 'পরিবর্তে SMS কোড দিয়ে সাইন ইন করুন';
+
+  @override
+  String get deskFrontDesk => 'ফ্রন্ট ডেস্ক';
+
+  @override
+  String get deskToday => 'আজ';
+
+  @override
+  String get deskRegister => 'নতুন রোগী';
+
+  @override
+  String get deskBooked => 'বুক করা';
+
+  @override
+  String get deskWaiting => 'অপেক্ষায়';
+
+  @override
+  String get deskUnread => 'অপঠিত';
+
+  @override
+  String get deskNoAppointments => 'কোনো অ্যাপয়েন্টমেন্ট নেই';
+
+  @override
+  String get deskQuietDay =>
+      'আজ ফাঁকা দিন। নিচের বোতাম থেকে ওয়াক-ইন রোগী নথিভুক্ত করা যায়।';
+
+  @override
+  String deskWaitingForTimeCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count জন সময়ের অপেক্ষায় আছেন।',
+      one: '১ জন সময়ের অপেক্ষায় আছেন।',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String deskAppointmentCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$countটি অ্যাপয়েন্টমেন্ট',
+      one: '১টি অ্যাপয়েন্টমেন্ট',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String deskNextAt(String name, String time) {
+    return 'পরবর্তী: $name, $time';
+  }
+
+  @override
+  String get deskAllPassed => 'আজ যাঁদের বুক করা ছিল, সবার দেখা হয়ে গেছে।';
+
+  @override
+  String get deskNothingBooked => 'আজ কিছু বুক করা নেই';
+
+  @override
+  String get deskNothingBookedBody =>
+      'আজকের নিশ্চিত হওয়া অ্যাপয়েন্টমেন্ট এখানে দেখা যাবে।';
+
+  @override
+  String get deskWaitingForTime => 'সময়ের অপেক্ষায়';
+
+  @override
+  String deskNeedsAttention(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count জনকে এখনই দেখা দরকার',
+      one: 'এখনই দেখা দরকার',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get deskGiveTime => 'সময় দিন';
+
+  @override
+  String get deskDecline => 'ফিরিয়ে দিন';
+
+  @override
+  String get deskDeclineTitle => 'এই অনুরোধ ফিরিয়ে দেবেন?';
+
+  @override
+  String get deskDeclineBody =>
+      'রোগীকে জানানো হবে যে ক্লিনিক সময় দিতে পারেনি। কারণ জানানোর দরকার থাকলে আগে তাঁকে বার্তা পাঠান।';
+
+  @override
+  String get deskKeepIt => 'থাক';
+
+  @override
+  String get deskPatientTold => 'রোগীকে জানানো হয়েছে।';
+
+  @override
+  String get deskPatientFallback => 'রোগী';
+
+  @override
+  String get deskCheckIn => 'চেক ইন';
+
+  @override
+  String get deskCheckedIn => 'চেক ইন হয়েছে';
+
+  @override
+  String get deskWithDoctor => 'ডাক্তারের কাছে';
+
+  @override
+  String get deskVisitDone => 'হয়ে গেছে';
+
+  @override
+  String get deskNoShow => 'আসেননি';
+
+  @override
+  String get deskConfirmed => 'নিশ্চিত';
+
+  @override
+  String deskConfirmedFor(String when) {
+    return '$when-এ নিশ্চিত';
+  }
+
+  @override
+  String get deskChange => 'বদলান';
+
+  @override
+  String deskAskedFor(String when) {
+    return '$when-এর জন্য';
+  }
+
+  @override
+  String deskAskedAgoMinutes(int n) {
+    return '$n মিনিট আগে চেয়েছেন';
+  }
+
+  @override
+  String deskAskedAgoHours(int n) {
+    return '$n ঘণ্টা আগে চেয়েছেন';
+  }
+
+  @override
+  String deskAskedAgoDays(int n) {
+    return '$n দিন আগে চেয়েছেন';
+  }
+
+  @override
+  String deskCallPatient(String phone) {
+    return '$phone নম্বরে ফোন করুন';
+  }
+
+  @override
+  String get deskNoActiveClinic =>
+      'বুক করার মতো কোনো সক্রিয় ক্লিনিক নেই। প্রোফাইল থেকে একটি যোগ করুন।';
+
+  @override
+  String get deskNoFreeTimes => 'এই দিনে কোনো সময় খালি নেই';
+
+  @override
+  String get deskTryAnotherDay => 'অন্য দিন বা অন্য ক্লিনিক দেখুন।';
+
+  @override
+  String get deskOnlyAvailable =>
+      'ডাক্তার সত্যিই যখন থাকেন, কেবল সেই সময়গুলোই দেখানো হয়।';
+
+  @override
+  String get deskCouldNotLoadTimes => 'এই দিনের সময়গুলো আনা গেল না।';
+
+  @override
+  String get deskClinicStaff => 'ক্লিনিক কর্মী';
+
+  @override
+  String get deskTheClinic => 'ক্লিনিক';
+
+  @override
+  String get deskClinicDetails => 'ক্লিনিকের তথ্য';
+
+  @override
+  String get deskClinicDetailsSub => 'নাম, ঠিকানা, ফোন, লোগো ও খোলার সময়';
+
+  @override
+  String get deskOpeningHours => 'খোলার সময়';
+
+  @override
+  String get deskThisAccount => 'এই অ্যাকাউন্ট';
+
+  @override
+  String get deskYourDetails => 'আপনার তথ্য';
+
+  @override
+  String get deskYourDetailsSub => 'নাম, ছবি ও যোগাযোগ';
+
+  @override
+  String get deskSignOut => 'সাইন আউট';
+
+  @override
+  String get deskSignOutTitle => 'সাইন আউট করবেন?';
+
+  @override
+  String get deskSignOutBody =>
+      'আবার সাইন ইন করতে ক্লিনিকের নম্বর ও পাসওয়ার্ড, বা SMS-এ পাঠানো কোড লাগবে।';
+
+  @override
+  String get deskStay => 'থাকুন';
+
+  @override
+  String get deskPhotoUpdated => 'ছবি বদলে গেছে';
+
+  @override
+  String get deskTakePhoto => 'ছবি তুলুন';
+
+  @override
+  String get deskChooseFromGallery => 'গ্যালারি থেকে বাছুন';
+
+  @override
+  String get deskAbout => 'সম্পর্কে';
+
+  @override
+  String get deskNoDeviceLock =>
+      'এই ফোনে কোনো ফিঙ্গারপ্রিন্ট বা পিন সেট করা নেই।';
+
+  @override
+  String get deskAppLockSub =>
+      'প্রতিবার খোলার সময় ফোনের ফিঙ্গারপ্রিন্ট বা পিন চাইবে';
+
+  @override
+  String get deskCouldNotUpdatePhoto => 'ছবি বদলানো গেল না।';
 }

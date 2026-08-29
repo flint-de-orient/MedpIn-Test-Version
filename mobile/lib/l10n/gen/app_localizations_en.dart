@@ -1219,4 +1219,230 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get authUseOtpInstead => 'Sign in with an SMS code instead';
+
+  @override
+  String get deskFrontDesk => 'Front desk';
+
+  @override
+  String get deskToday => 'Today';
+
+  @override
+  String get deskRegister => 'Register';
+
+  @override
+  String get deskBooked => 'Booked';
+
+  @override
+  String get deskWaiting => 'Waiting';
+
+  @override
+  String get deskUnread => 'Unread';
+
+  @override
+  String get deskNoAppointments => 'No appointments';
+
+  @override
+  String get deskQuietDay =>
+      'A quiet day. Walk-ins can be registered from the button below.';
+
+  @override
+  String deskWaitingForTimeCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count people are waiting for a time.',
+      one: '1 person is waiting for a time.',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String deskAppointmentCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count appointments',
+      one: '1 appointment',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String deskNextAt(String name, String time) {
+    return 'Next: $name at $time';
+  }
+
+  @override
+  String get deskAllPassed => 'Everyone booked for today has been and gone.';
+
+  @override
+  String get deskNothingBooked => 'Nothing booked today';
+
+  @override
+  String get deskNothingBookedBody =>
+      'Appointments confirmed for today appear here.';
+
+  @override
+  String get deskWaitingForTime => 'Waiting for a time';
+
+  @override
+  String deskNeedsAttention(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count need attention now',
+      one: 'Needs attention now',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get deskGiveTime => 'Give a time';
+
+  @override
+  String get deskDecline => 'Decline';
+
+  @override
+  String get deskDeclineTitle => 'Decline this request?';
+
+  @override
+  String get deskDeclineBody =>
+      'The patient will be told the clinic could not offer a time. Message them first if there is a reason they should know.';
+
+  @override
+  String get deskKeepIt => 'Keep it';
+
+  @override
+  String get deskPatientTold => 'The patient has been told.';
+
+  @override
+  String get deskPatientFallback => 'Patient';
+
+  @override
+  String get deskCheckIn => 'Check in';
+
+  @override
+  String get deskCheckedIn => 'Checked in';
+
+  @override
+  String get deskWithDoctor => 'With the doctor';
+
+  @override
+  String get deskVisitDone => 'Done';
+
+  @override
+  String get deskNoShow => 'No show';
+
+  @override
+  String get deskConfirmed => 'Confirmed';
+
+  @override
+  String deskConfirmedFor(String when) {
+    return 'Confirmed for $when';
+  }
+
+  @override
+  String get deskChange => 'Change';
+
+  @override
+  String deskAskedFor(String when) {
+    return 'for $when';
+  }
+
+  @override
+  String deskAskedAgoMinutes(int n) {
+    return 'asked ${n}m ago';
+  }
+
+  @override
+  String deskAskedAgoHours(int n) {
+    return 'asked ${n}h ago';
+  }
+
+  @override
+  String deskAskedAgoDays(int n) {
+    return 'asked ${n}d ago';
+  }
+
+  @override
+  String deskCallPatient(String phone) {
+    return 'Call $phone';
+  }
+
+  @override
+  String get deskNoActiveClinic =>
+      'No active clinic to book into. Add one in Profile.';
+
+  @override
+  String get deskNoFreeTimes => 'Nothing free on this day';
+
+  @override
+  String get deskTryAnotherDay => 'Try another day, or another clinic.';
+
+  @override
+  String get deskOnlyAvailable =>
+      'Only times the doctor is actually available are offered.';
+
+  @override
+  String get deskCouldNotLoadTimes => 'Could not load the times for this day.';
+
+  @override
+  String get deskClinicStaff => 'Clinic staff';
+
+  @override
+  String get deskTheClinic => 'The clinic';
+
+  @override
+  String get deskClinicDetails => 'Clinic details';
+
+  @override
+  String get deskClinicDetailsSub =>
+      'Name, address, phones, logo and opening hours';
+
+  @override
+  String get deskOpeningHours => 'Opening hours';
+
+  @override
+  String get deskThisAccount => 'This account';
+
+  @override
+  String get deskYourDetails => 'Your details';
+
+  @override
+  String get deskYourDetailsSub => 'Name, photo and contact';
+
+  @override
+  String get deskSignOut => 'Sign out';
+
+  @override
+  String get deskSignOutTitle => 'Sign out?';
+
+  @override
+  String get deskSignOutBody =>
+      'You will need the clinic number and the password, or a code sent by SMS, to sign in again.';
+
+  @override
+  String get deskStay => 'Stay';
+
+  @override
+  String get deskPhotoUpdated => 'Photo updated';
+
+  @override
+  String get deskTakePhoto => 'Take a photo';
+
+  @override
+  String get deskChooseFromGallery => 'Choose from gallery';
+
+  @override
+  String get deskAbout => 'About';
+
+  @override
+  String get deskNoDeviceLock => 'This phone has no fingerprint or PIN set up.';
+
+  @override
+  String get deskAppLockSub =>
+      'Ask for the phone’s fingerprint or PIN each time it opens';
+
+  @override
+  String get deskCouldNotUpdatePhoto => 'Could not update the photo.';
 }

@@ -17,6 +17,7 @@ import '../../../core/theme/tokens.dart';
 import 'widgets/dashboard_sections.dart';
 import 'widgets/triage_queue.dart';
 import '../../../shared/widgets/clinic_brand.dart';
+import 'widgets/todays_clinic.dart';
 
 /// The doctor's home: the clinic at a glance — headline counts, what is on
 /// today, the alerts that need attention, the live triage queue, and the
@@ -151,7 +152,20 @@ class _ClinicianDashboardScreenState
                               updatedAt: _lastRefreshed,
                             ),
 
-                            // 2 and 3. What is queued up, and the nutrition
+                            // 2. The day itself.
+                            //
+                            // Under the triage queue, because a patient in
+                            // trouble outranks a diary — and above the
+                            // operational cards, because a doctor who does not
+                            // know who is coming at 11 cannot plan anything
+                            // below this line either. It was on no screen at
+                            // all: the desk filled his day and he found out by
+                            // navigating to Appointments, which is a thing you
+                            // do when you already suspect you have some.
+                            const SizedBox(height: T.s6),
+                            const TodaysClinic(),
+
+                            // 3 and 4. What is queued up, and the nutrition
                             // reviews. Side by side on a tablet, stacked on a
                             // phone: the design pairs them across one row, and
                             // a 2x2 tile grid next to a list of patients does
