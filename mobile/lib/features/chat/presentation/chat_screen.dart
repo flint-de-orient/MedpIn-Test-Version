@@ -24,6 +24,7 @@ import 'widgets/assistant_disclaimer_banner.dart';
 import 'widgets/generating_bubble.dart';
 import 'widgets/edit_message_sheet.dart';
 import '../../../core/push/chat_push_signal.dart';
+import '../../appointments/presentation/request_appointment_sheet.dart';
 
 class ChatScreen extends ConsumerStatefulWidget {
   const ChatScreen({super.key});
@@ -201,6 +202,26 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
   /// Deliberately not an in-app call: a patient who has stopped typing to ring
   /// the clinic is usually worried, and a normal phone call is the path that
   /// works with no data, no permissions and nothing to go wrong in between.
+  /// Ask the clinic for a time, and say plainly that it was asked for.
+  ///
+  /// The confirmation matters as much as the send. A request that vanishes
+  /// with no acknowledgement reads as one that failed, and the patient sends
+  /// another — which the server folds into the first, so they hear nothing
+  /// again.
+  Future<void> _requestAppointment() async {
+    final messenger = ScaffoldMessenger.of(context);
+    final sent = await showRequestAppointmentSheet(context);
+    if (!sent || !mounted) return;
+    messenger.showSnackBar(
+      const SnackBar(
+        content: Text(
+          'Request sent. The clinic will confirm a time and let you know.',
+        ),
+        duration: Duration(seconds: 4),
+      ),
+    );
+  }
+
   Future<void> _callClinic() async {
     final messenger = ScaffoldMessenger.of(context);
     final l10n = AppLocalizations.of(context);
@@ -331,6 +352,17 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
         // and call, a normal phone call is the thing that always works —
         // no data, no permissions, no app in the middle.
         actions: [
+          // Asking for a time, from the screen the thought occurs on.
+          //
+          // The booking screen exists, shows a real timetable, and most
+          // patients never open it. This is the shorter path — name a day, and
+          // the desk answers — and it belongs here because this is where a
+          // patient is already talking to the clinic.
+          IconButton(
+            tooltip: 'Request an appointment',
+            icon: const Icon(Icons.event_available_rounded),
+            onPressed: _requestAppointment,
+          ),
           IconButton(
             tooltip: l10n.chatCallClinic,
             icon: const Icon(Icons.call_rounded),

@@ -11,6 +11,7 @@ class Appointment {
     required this.patientName,
     this.scheduledFor,
     this.preferredFor,
+    this.preferredTime,
     required this.status,
     required this.mode,
     this.reason,
@@ -32,6 +33,13 @@ class Appointment {
 
   /// The day the patient asked for, on a request. Never a booking.
   final DateTime? preferredFor;
+
+  /// The hour the patient would like, 'HH:mm', or null for "any time".
+  ///
+  /// A wish and not a booking, which is why the desk sees it beside the
+  /// request rather than in a slot: it says which end of the day to look at
+  /// first, and nothing more.
+  final String? preferredTime;
 
   /// True while this is a request rather than a booking.
   bool get isRequest => status == 'requested' || scheduledFor == null;
@@ -96,6 +104,7 @@ class Appointment {
           DateTime.tryParse(j['scheduledFor']?.toString() ?? '')?.toLocal(),
       preferredFor:
           DateTime.tryParse(j['preferredFor']?.toString() ?? '')?.toLocal(),
+    preferredTime: j['preferredTime']?.toString(),
       status: j['status']?.toString() ?? 'requested',
       mode: j['mode']?.toString() ?? 'in_clinic',
       reason:

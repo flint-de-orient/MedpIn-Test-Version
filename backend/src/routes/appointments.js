@@ -184,6 +184,12 @@ router.post(
       // A day they have in mind. Required, because "sometime" gives the desk
       // nothing to work with and turns into a phone call anyway.
       preferredFor: z.coerce.date(),
+      // 'HH:mm'. Optional, because "any time on Tuesday" is a real answer and
+      // forcing an hour makes the patient invent one.
+      preferredTime: z
+        .string()
+        .regex(/^([01]\d|2[0-3]):[0-5]\d$/)
+        .optional(),
       mode: z.enum(['in_clinic', 'teleconsult']).default('in_clinic'),
       reason: z.string().max(600).optional(),
       patientId: z.string().optional(),
@@ -191,7 +197,7 @@ router.post(
   }),
   audit('create', 'Appointment'),
   asyncHandler(async (req, res) => {
-    const { preferredFor, mode, reason } = req.body;
+    const { preferredFor, preferredTime, mode, reason } = req.body;
 
     if (dayjs(preferredFor).isBefore(dayjs().startOf('day'))) {
       throw badRequest('Please choose a day that has not passed');
@@ -212,6 +218,10 @@ router.post(
     });
     if (existing) {
       existing.preferredFor = preferredFor;
+      // Assigned, not conditionally kept: a patient who asked again *without*
+      // a time has changed their mind about the time, and leaving the old one
+      // would have the desk working from a wish that was withdrawn.
+      existing.preferredTime = preferredTime ?? undefined;
       if (reason) existing.reason = reason;
       existing.mode = mode;
       await existing.save();
@@ -228,6 +238,7 @@ router.post(
       // time written here would hold that slot against everyone — including the
       // desk trying to confirm this very request at a different hour.
       preferredFor,
+      preferredTime,
       mode,
       reason,
       status: 'requested',
@@ -321,6 +332,7 @@ router.patch(
     // The wish is spent. Keeping it would leave two dates on one row and no
     // way to tell which one anybody should turn up for.
     appointment.preferredFor = undefined;
+    appointment.preferredTime = undefined;
     await appointment.save();
     await appointment.populate(POPULATE);
 
@@ -623,6 +635,7 @@ function serialise(a) {
     // separate from scheduledFor so nothing reading the schedule mistakes a
     // wish for a booking.
     preferredFor: a.preferredFor ?? null,
+    preferredTime: a.preferredTime ?? null,
     durationMinutes: a.durationMinutes,
     mode: a.mode,
     status: a.status,

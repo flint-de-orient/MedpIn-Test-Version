@@ -2,34 +2,37 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
-import '../../../../core/network/api_exception.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_spacing.dart';
-import '../../../appointments/data/appointment_repository.dart';
-import '../../../appointments/presentation/appointment_providers.dart';
+import '../../../appointments/presentation/request_appointment_sheet.dart';
 import '../../../auth/presentation/auth_controller.dart';
 import '../../domain/chat_message.dart';
 
-/// "Can I see the doctor on Tuesday?" — answered, and acted on.
+/// "Can I see the doctor on Tuesday?" — noticed, and offered a shortcut.
 ///
-/// The patient already talks to the clinic here, so this is where they ask for
-/// appointments. Before this, the assistant said it could not book anything and
-/// the sentence went nowhere: the desk's "Waiting for a time" queue could only
-/// be fed from a booking screen most patients never open.
+/// The patient already talks to the clinic in this thread, so it is where they
+/// ask for appointments. Before this the assistant replied that it could not
+/// book anything, and the sentence went nowhere: the desk's "Waiting for a
+/// time" queue could only be fed from a screen most patients never open.
 ///
-/// ---- Why a card and not a booking --------------------------------------
+/// ---- Why it opens the sheet rather than sending ---------------------------
 ///
-/// Tapping this creates a *request*, not an appointment. The desk gives the
-/// time, from the hours the doctor actually keeps. That is not a limitation
-/// worked around — it is the point: a patient who books themselves into a slot
-/// the doctor is not in has been told something false by their clinic's app.
+/// This drew its own day picker and posted the request itself, which made two
+/// implementations of one act — and the sheet is the better of them: it has the
+/// quick-day chips, the optional hour, and the note the desk reads. A second,
+/// thinner copy of a form is how the two drift until they disagree about what a
+/// request even contains.
 ///
-/// ---- Why the day is shown, and changeable ------------------------------
+/// So the card is a prompt, and the sheet is the form. The day read out of the
+/// patient's sentence is carried in as a prefill, which is the whole value of
+/// having noticed.
 ///
-/// The day is read out of the patient's own sentence, and "কাল" means both
-/// yesterday and tomorrow. So it is printed in full where they cannot miss it,
-/// and one tap changes it. A guess that is visible and correctable is a
-/// different thing from a guess that is silently acted on.
+/// ---- Why noticing is allowed to be wrong ----------------------------------
+///
+/// Nothing is created here. A false positive is a card somebody ignores, and a
+/// misread day is one they change in the sheet before sending. That is what
+/// lets the detection behind it be generous — the alternative, creating
+/// requests from sentences, puts phantoms on the desk's queue.
 class AppointmentRequestCard extends ConsumerStatefulWidget {
   const AppointmentRequestCard({super.key, required this.action});
 
@@ -42,62 +45,24 @@ class AppointmentRequestCard extends ConsumerStatefulWidget {
 
 class _AppointmentRequestCardState
     extends ConsumerState<AppointmentRequestCard> {
-  DateTime? _day;
-  bool _sending = false;
   bool _sent = false;
 
-  @override
-  void initState() {
-    super.initState();
-    _day = widget.action.preferredFor;
-  }
-
-  Future<void> _pickDay() async {
-    final now = DateTime.now();
-    final picked = await showDatePicker(
-      context: context,
-      initialDate: _day ?? now.add(const Duration(days: 1)),
-      firstDate: DateTime(now.year, now.month, now.day),
-      lastDate: now.add(const Duration(days: 120)),
-    );
-    if (picked != null) setState(() => _day = picked);
-  }
-
-  Future<void> _send() async {
-    final day = _day;
-    if (day == null || _sending) return;
-
-    setState(() => _sending = true);
+  Future<void> _open() async {
     final messenger = ScaffoldMessenger.of(context);
-    try {
-      await ref
-          .read(appointmentRepositoryProvider)
-          .requestAppointment(
-            preferredFor: day,
-            // Their own words, not a parsed hour. The desk reads this beside
-            // the request and offers a time near it if one is free.
-            reason:
-                widget.action.timePhrase == null
-                    ? ''
-                    : 'Asked for around ${widget.action.timePhrase}',
-          );
-      ref.invalidate(myAppointmentsProvider);
-      if (mounted) setState(() => _sent = true);
-    } catch (e) {
-      messenger.showSnackBar(
-        SnackBar(
-          content: Text(
-            e is ApiException
-                ? e.message
-                : 'Could not send the request. Please try again.',
-          ),
+    final sent = await showRequestAppointmentSheet(
+      context,
+      initialDay: widget.action.preferredFor,
+    );
+    if (!sent || !mounted) return;
+    setState(() => _sent = true);
+    messenger.showSnackBar(
+      const SnackBar(
+        content: Text(
+          'Request sent. The clinic will confirm a time and let you know.',
         ),
-      );
-    } finally {
-      // In the `finally`: a narrow catch that misses leaves the button
-      // spinning with no way back except leaving the screen.
-      if (mounted) setState(() => _sending = false);
-    }
+        duration: Duration(seconds: 4),
+      ),
+    );
   }
 
   @override
@@ -107,9 +72,8 @@ class _AppointmentRequestCardState
     // The patient's card, on the patient's screen.
     //
     // The doctor's chat-review opens these same threads with these same
-    // bubbles, and the request endpoint takes the patient from the caller's
-    // own account — so a clinician tapping this would either fail or, worse,
-    // request an appointment with the doctor for the doctor.
+    // bubbles, and a request takes its patient from the caller's own account —
+    // so a clinician tapping this would be asking to see the doctor himself.
     if (ref.watch(authControllerProvider).user?.role != 'patient') {
       return const SizedBox.shrink();
     }
@@ -126,9 +90,9 @@ class _AppointmentRequestCardState
             const SizedBox(width: 8),
             Expanded(
               child: Text(
-                // Sent, not booked. Saying "booked" here would be the app
-                // promising something only the clinic can give.
-                'Request sent. The clinic will give you a time.',
+                // Sent, not booked. Saying "booked" here would have the app
+                // promise something only the clinic can give.
+                'Request sent. The clinic will reply with a time.',
                 style: TextStyle(
                   fontSize: 13,
                   height: 1.35,
@@ -142,12 +106,12 @@ class _AppointmentRequestCardState
       );
     }
 
-    final day = _day;
-    final when =
-        day == null
-            ? 'No day chosen yet'
-            : DateFormat('EEEE, d MMM').format(day);
+    final day = widget.action.preferredFor;
     final time = widget.action.timePhrase;
+    final detail = [
+      if (day != null) DateFormat('EEEE, d MMM').format(day),
+      if (time != null) 'around $time',
+    ].join(' · ');
 
     return _Shell(
       child: Column(
@@ -163,53 +127,30 @@ class _AppointmentRequestCardState
               const SizedBox(width: 8),
               const Expanded(
                 child: Text(
-                  'Request an appointment',
+                  'Ask for an appointment',
                   style: TextStyle(fontSize: 14, fontWeight: FontWeight.w800),
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 6),
-          InkWell(
-            onTap: _sending ? null : _pickDay,
-            borderRadius: BorderRadius.circular(8),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 4),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      time == null ? when : '$when  ·  around $time',
-                      style: TextStyle(
-                        fontSize: 13,
-                        height: 1.35,
-                        fontWeight: FontWeight.w600,
-                        color:
-                            day == null
-                                ? scheme.onSurfaceVariant
-                                : scheme.onSurface,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 6),
-                  Text(
-                    day == null ? 'Choose a day' : 'Change',
-                    style: const TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w700,
-                      color: AppColors.primary,
-                    ),
-                  ),
-                ],
+          if (detail.isNotEmpty) ...[
+            const SizedBox(height: 4),
+            Text(
+              detail,
+              style: TextStyle(
+                fontSize: 12.5,
+                height: 1.3,
+                fontWeight: FontWeight.w600,
+                color: scheme.onSurfaceVariant,
               ),
             ),
-          ),
+          ],
           const SizedBox(height: AppSpacing.sm),
           SizedBox(
             width: double.infinity,
-            height: 40,
+            height: 38,
             child: FilledButton(
-              onPressed: _sending || day == null ? null : _send,
+              onPressed: _open,
               style: FilledButton.styleFrom(
                 backgroundColor: AppColors.primary,
                 foregroundColor: Colors.white,
@@ -217,29 +158,11 @@ class _AppointmentRequestCardState
                   borderRadius: BorderRadius.circular(10),
                 ),
               ),
-              child:
-                  _sending
-                      ? const SizedBox(
-                        width: 18,
-                        height: 18,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2.2,
-                          color: Colors.white,
-                        ),
-                      )
-                      : const Text(
-                        'Send request',
-                        style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
+              child: const Text(
+                'Request an appointment',
+                style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700),
+              ),
             ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            'The clinic will reply with a time.',
-            style: TextStyle(fontSize: 11.5, color: scheme.onSurfaceVariant),
           ),
         ],
       ),

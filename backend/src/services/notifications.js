@@ -658,6 +658,76 @@ export async function notifyPatientOfAppointmentChange(appointment, change, reas
  * Caller supplies the appointments so this stays a pure transport function and
  * the scheduling query lives with the rest of the scheduling logic.
  */
+/**
+ * One appointment, tomorrow — told to the patient and to the doctor.
+ *
+ * Separate from the doctor's evening digest, and not a duplicate of it. The
+ * digest is the shape of a day, for planning: "six tomorrow, first at 10:30".
+ * This is a single appointment with a name and an hour on it, and the patient
+ * gets it — which the digest never could, because a list of everyone coming
+ * tomorrow is not something one patient may read.
+ *
+ * In the patient's language. A reminder nobody can read is one they miss.
+ */
+const VISIT_TOMORROW = {
+  en: {
+    title: 'Appointment tomorrow',
+    body: (when) => `You are booked with the doctor tomorrow at ${when}.`,
+  },
+  bn: {
+    title: 'আগামীকাল অ্যাপয়েন্টমেন্ট',
+    body: (when) => `আগামীকাল ${when}-এ ডাক্তারের সঙ্গে আপনার সময় নির্ধারিত আছে।`,
+  },
+  hi: {
+    title: 'कल अपॉइंटमेंट है',
+    body: (when) => `कल ${when} बजे डॉक्टर के साथ आपका समय तय है।`,
+  },
+};
+
+export async function notifyVisitTomorrow(appointment, { patient, doctorTokens = [] } = {}) {
+  const at = appointment.scheduledFor;
+  if (!at) return { delivered: 0 };
+
+  const when = new Date(at).toLocaleTimeString('en-IN', {
+    hour: '2-digit',
+    minute: '2-digit',
+    timeZone: 'Asia/Kolkata',
+  });
+
+  const sent = [];
+
+  const patientTokens = patient?.deviceTokens ?? [];
+  if (patientTokens.length) {
+    const copy = VISIT_TOMORROW[patient?.language] ?? VISIT_TOMORROW.en;
+    sent.push(
+      deliver({
+        tokens: patientTokens,
+        title: copy.title,
+        body: copy.body(when),
+        data: { kind: 'appointment_tomorrow', appointmentId: appointment._id.toString() },
+      }),
+    );
+  }
+
+  if (doctorTokens.length) {
+    sent.push(
+      deliver({
+        tokens: doctorTokens,
+        title: `Tomorrow ${when}: ${patient?.name ?? 'a patient'}`,
+        body: 'Appointment confirmed for tomorrow.',
+        data: {
+          kind: 'appointment_tomorrow',
+          appointmentId: appointment._id.toString(),
+          patientId: String(appointment.patient?._id ?? appointment.patient ?? ''),
+        },
+      }),
+    );
+  }
+
+  const results = await Promise.all(sent);
+  return { delivered: results.reduce((n, r) => n + (r?.delivered ?? 0), 0) };
+}
+
 export async function notifyClinicOfTomorrowSchedule(appointments) {
   const doctors = await User.find({ role: ROLES.DOCTOR, isActive: true }).select('deviceTokens').lean();
   const tokens = doctors.flatMap((d) => d.deviceTokens ?? []);

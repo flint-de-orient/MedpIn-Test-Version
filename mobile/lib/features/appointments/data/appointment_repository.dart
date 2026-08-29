@@ -94,12 +94,24 @@ class AppointmentRepository {
   /// the patient who would rather say "Tuesday" than read a timetable.
   Future<Appointment> requestAppointment({
     required DateTime preferredFor,
+    /// 'HH:mm', or null for "any time" — which is a real answer, and the one
+    /// most patients mean. The desk still picks from the doctor's real hours;
+    /// this only says which end of the day to look at first.
+    String? preferredTime,
     String reason = '',
   }) async {
     final json = await _client.postJson(
       '/appointments/request',
       body: {
-        'preferredFor': preferredFor.toUtc().toIso8601String(),
+        // Date only, at local midnight. Sending the instant would shift the
+        // day across the timezone boundary for anyone asking late at night.
+        'preferredFor':
+            DateTime(
+              preferredFor.year,
+              preferredFor.month,
+              preferredFor.day,
+            ).toIso8601String(),
+        if (preferredTime != null) 'preferredTime': preferredTime,
         if (reason.isNotEmpty) 'reason': reason,
       },
     );

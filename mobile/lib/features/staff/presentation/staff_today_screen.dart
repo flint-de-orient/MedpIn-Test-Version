@@ -714,7 +714,15 @@ class _RequestCardState extends ConsumerState<_RequestCard> {
                     Text(
                       [
                         if (a.preferredFor != null)
-                          'for ${DateFormat('EEE, d MMM').format(a.preferredFor!)}',
+                          // The hour goes on the same line as the day, because
+                          // "Tuesday, evening" is one answer to one question.
+                          // Absent when they said any time — which is most of
+                          // them, and printing "any time" would be noise on
+                          // every row.
+                          [
+                            'for ${DateFormat('EEE, d MMM').format(a.preferredFor!)}',
+                            if (a.preferredTime != null) a.preferredTime!,
+                          ].join(', '),
                         if (waited.isNotEmpty) waited,
                       ].join('   '),
                       maxLines: 1,

@@ -44,6 +44,26 @@ const appointmentSchema = new mongoose.Schema(
     /// commitment, and nothing that reads the schedule should ever mistake it
     /// for one.
     preferredFor: { type: Date },
+
+    /// The time of day the patient would like, as 'HH:mm', or absent.
+    ///
+    /// A wish, not a booking — which is why it is a separate field from
+    /// `scheduledFor` and never becomes one by itself. The desk still picks
+    /// from the hours the doctor actually keeps; this only tells them which
+    /// end of the day to look at first, so a patient who said "evening" is not
+    /// offered nine in the morning.
+    ///
+    /// Cleared with `preferredFor` when the appointment is confirmed: two
+    /// times on one row, one of them imaginary, is how somebody turns up at
+    /// the wrong hour.
+    preferredTime: { type: String, match: /^([01]\d|2[0-3]):[0-5]\d$/ },
+
+    /// Set when the day-before reminder has gone out, so it goes out once.
+    ///
+    /// On the appointment rather than in the cron's memory: a process restart
+    /// must not re-remind fifty patients, and a reminder that never sends
+    /// because a restart lost the flag is worse still.
+    remindedAt: { type: Date },
     durationMinutes: { type: Number, default: 15, min: 5, max: 120 },
 
     status: { type: String, enum: APPOINTMENT_STATUS, default: 'requested', index: true },

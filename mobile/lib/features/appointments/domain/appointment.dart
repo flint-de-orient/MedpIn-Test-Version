@@ -4,6 +4,7 @@ class Appointment {
     required this.id,
     this.scheduledFor,
     this.preferredFor,
+    this.preferredTime,
     required this.status,
     required this.mode,
     this.durationMinutes = 15,
@@ -36,6 +37,18 @@ class Appointment {
 
   /// The day the patient asked for, on a request. Never a booking.
   final DateTime? preferredFor;
+
+  /// The hour the patient would like, 'HH:mm', or null for "any time".
+  ///
+  /// A wish, not a booking. The desk sees it beside the request and picks from
+  /// the hours the doctor actually keeps; it only says which end of the day to
+  /// look at first.
+  ///
+  /// Carried on both Appointment models — this one and the clinician's — which
+  /// is a duplication worth naming: two classes with one name is already a
+  /// trap (see todays_clinic.dart), and every field added to one and not the
+  /// other widens it.
+  final String? preferredTime;
 
   /// True while this is a request rather than a booking.
   bool get isRequest => status == 'requested' || scheduledFor == null;
@@ -101,6 +114,7 @@ class Appointment {
           DateTime.tryParse(j['scheduledFor']?.toString() ?? '')?.toLocal(),
       preferredFor:
           DateTime.tryParse(j['preferredFor']?.toString() ?? '')?.toLocal(),
+      preferredTime: j['preferredTime']?.toString(),
       status: j['status']?.toString() ?? 'requested',
       mode: j['mode']?.toString() ?? 'in_clinic',
       durationMinutes: (j['durationMinutes'] as num?)?.toInt() ?? 15,

@@ -15,23 +15,38 @@ import 'appointment_providers.dart';
 /// want to read a timetable — "can I see him on Tuesday?" — and it is the shape
 /// most people actually ask in.
 ///
-/// It asks for a day and a reason and nothing else. A patient who is deciding
-/// between four o'clock and half past is using the other flow; this one exists
-/// because they are not.
+/// A day, an hour if they have one in mind, and why.
+///
+/// The hour is optional and stays optional. It was left out entirely at first,
+/// reasoning that a patient deciding between four and half past would use the
+/// slot picker — which is true of the patient who knows the clinic's hours, and
+/// not of the one who simply cannot come before six. "Evening if possible" is
+/// the commonest thing a receptionist is told on the phone, and there was
+/// nowhere to say it.
+///
+/// It never becomes a booking. The desk picks from the hours the doctor
+/// actually keeps; this only says which end of the day to look at first.
 ///
 /// Returns true when a request was sent.
-Future<bool> showRequestAppointmentSheet(BuildContext context) async {
+Future<bool> showRequestAppointmentSheet(
+  BuildContext context, {
+  /// Prefilled when the caller already knows the day — the assistant having
+  /// recognised "can I come on Tuesday?" in the thread.
+  DateTime? initialDay,
+}) async {
   final sent = await showModalBottomSheet<bool>(
     context: context,
     isScrollControlled: true,
     showDragHandle: true,
-    builder: (ctx) => const _RequestSheet(),
+    builder: (ctx) => _RequestSheet(initialDay: initialDay),
   );
   return sent == true;
 }
 
 class _RequestSheet extends ConsumerStatefulWidget {
-  const _RequestSheet();
+  const _RequestSheet({this.initialDay});
+
+  final DateTime? initialDay;
 
   @override
   ConsumerState<_RequestSheet> createState() => _RequestSheetState();
@@ -40,8 +55,15 @@ class _RequestSheet extends ConsumerStatefulWidget {
 class _RequestSheetState extends ConsumerState<_RequestSheet> {
   final _reason = TextEditingController();
   DateTime? _day;
+  TimeOfDay? _time;
   bool _sending = false;
   String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _day = widget.initialDay;
+  }
 
   @override
   void dispose() {
@@ -57,6 +79,11 @@ class _RequestSheetState extends ConsumerState<_RequestSheet> {
     final today = DateTime(now.year, now.month, now.day);
     return [for (var i = 0; i < 5; i++) today.add(Duration(days: i))];
   }
+
+  /// True for one of the three broad chips, so the "pick a time" chip shows a
+  /// clock rather than repeating "Morning" back at the reader.
+  bool _isPreset(TimeOfDay t) =>
+      (t.hour == 10 || t.hour == 14 || t.hour == 18) && t.minute == 0;
 
   String _label(DateTime d) {
     final now = DateTime.now();
@@ -133,6 +160,55 @@ class _RequestSheetState extends ConsumerState<_RequestSheet> {
 
             const SizedBox(height: AppSpacing.lg),
             const Text(
+              'Any particular time?',
+              style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
+            ),
+            const SizedBox(height: AppSpacing.sm),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                // The default, and it is selectable rather than merely implied:
+                // "any time" is the answer most people mean, and it should be
+                // something they can choose on purpose.
+                ChoiceChip(
+                  label: const Text('Any time'),
+                  selected: _time == null,
+                  onSelected: (_) => setState(() => _time = null),
+                ),
+                // Three broad ones, because that is how it is said out loud.
+                // Nobody rings a clinic asking for 10:00; they ask for morning.
+                for (final slot in const [
+                  ('Morning', TimeOfDay(hour: 10, minute: 0)),
+                  ('Afternoon', TimeOfDay(hour: 14, minute: 0)),
+                  ('Evening', TimeOfDay(hour: 18, minute: 0)),
+                ])
+                  ChoiceChip(
+                    label: Text(slot.$1),
+                    selected: _time == slot.$2,
+                    onSelected: (_) => setState(() => _time = slot.$2),
+                  ),
+                ActionChip(
+                  avatar: const Icon(Icons.schedule_rounded, size: 15),
+                  label: Text(
+                    _time != null && !_isPreset(_time!)
+                        ? _time!.format(context)
+                        : 'Pick a time',
+                  ),
+                  onPressed: () async {
+                    final picked = await showTimePicker(
+                      context: context,
+                      initialTime:
+                          _time ?? const TimeOfDay(hour: 11, minute: 0),
+                    );
+                    if (picked != null) setState(() => _time = picked);
+                  },
+                ),
+              ],
+            ),
+
+            const SizedBox(height: AppSpacing.lg),
+            const Text(
               'What is it about?',
               style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
             ),
@@ -197,7 +273,15 @@ class _RequestSheetState extends ConsumerState<_RequestSheet> {
     try {
       await ref
           .read(appointmentRepositoryProvider)
-          .requestAppointment(preferredFor: _day!, reason: _reason.text.trim());
+          .requestAppointment(
+            preferredFor: _day!,
+            preferredTime:
+                _time == null
+                    ? null
+                    : '${_time!.hour.toString().padLeft(2, '0')}:'
+                        '${_time!.minute.toString().padLeft(2, '0')}',
+            reason: _reason.text.trim(),
+          );
       // The patient's own list should show it straight away — a request that
       // does not appear anywhere reads as one that was not sent.
       ref.invalidate(myAppointmentsProvider);
