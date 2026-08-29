@@ -1,0 +1,37 @@
+# Line endings, decided by the repository rather than by whoever cloned it.
+#
+# Without this, `core.autocrlf` decides — and it is per-machine. A Windows
+# checkout with autocrlf=true writes CRLF into every file, a Linux one writes
+# LF, and the same commit is two different byte streams depending on who looked.
+#
+# That is normally invisible. It stopped being invisible when a test read a
+# source file and searched it for a pattern written with \n: on the Windows
+# checkout the file held \r\n, the search matched nothing, and the test reported
+# "no route registered at /settings" for a route that was plainly there. Seven
+# tests failed that way, all of them false, and a suite that cries wolf is worse
+# than no suite — the next failure gets waved through too.
+#
+# LF everywhere, then. Git normalises on commit and checks out unchanged, so the
+# bytes a test reads are the bytes that were written.
+* text=auto eol=lf
+
+# Binaries git must never touch. A keystore or a PNG with a byte "corrected"
+# from 0x0D to 0x0D0A is a keystore or a PNG that no longer works.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.webp binary
+*.ico binary
+*.ttf binary
+*.otf binary
+*.jks binary
+*.keystore binary
+*.pdf binary
+*.mp3 binary
+*.m4a binary
+*.apk binary
+*.aab binary
+
+# Windows scripts genuinely need CRLF; cmd.exe will not run them otherwise.
+*.bat text eol=crlf
+*.cmd text eol=crlf
