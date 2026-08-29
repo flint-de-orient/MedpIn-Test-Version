@@ -10,6 +10,13 @@ import '../../auth/presentation/auth_controller.dart';
 import '../../../shared/widgets/error_view.dart';
 import '../../../shared/data/upload_repository.dart';
 import 'package:image_picker/image_picker.dart';
+import '../../profile/presentation/widgets/theme_selector.dart';
+import '../../profile/presentation/widgets/profile_section.dart';
+import '../../../shared/widgets/language_picker.dart';
+import '../../../shared/providers/app_lock_provider.dart';
+import '../../../shared/providers/locale_provider.dart';
+import '../../../shared/providers/theme_provider.dart';
+import '../../../core/config/app_config.dart';
 
 /// The desk's own settings.
 ///
@@ -99,6 +106,58 @@ class _StaffProfileScreenState extends ConsumerState<StaffProfileScreen> {
     } finally {
       if (mounted) setState(() => _uploadingAvatar = false);
     }
+  }
+
+  Future<void> _changeLanguage(String code) async {
+    await ref.read(localeControllerProvider.notifier).setLanguage(code);
+    ref.read(authControllerProvider.notifier).updateLocalUserLanguage(code);
+    // Best-effort: the interface has already switched, and the account copy
+    // only decides what the assistant answers in when a client omits it.
+    try {
+      await ref.read(authRepositoryProvider).updateMe(language: code);
+    } catch (_) {
+      // Non-fatal — the local preference still applies.
+    }
+  }
+
+  Future<void> _toggleAppLock(bool enable) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final controller = ref.read(appLockProvider.notifier);
+    const unavailable = 'This phone has no fingerprint or PIN set up.';
+
+    if (enable) {
+      if (!await controller.canUse()) {
+        messenger.showSnackBar(const SnackBar(content: Text(unavailable)));
+        return;
+      }
+      final ok = await controller.enable('Unlock MedPin');
+      if (!ok) {
+        messenger.showSnackBar(const SnackBar(content: Text(unavailable)));
+      }
+    } else {
+      await controller.disable();
+    }
+  }
+
+  Future<void> _showAbout() async {
+    final scheme = Theme.of(context).colorScheme;
+    await showDialog<void>(
+      context: context,
+      builder:
+          (ctx) => AlertDialog(
+            title: Text(AppConfig.appName),
+            content: Text(
+              'Version ${AppConfig.appVersion}',
+              style: TextStyle(fontSize: 14, color: scheme.onSurfaceVariant),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('Close'),
+              ),
+            ],
+          ),
+    );
   }
 
   @override
@@ -199,19 +258,48 @@ class _StaffProfileScreenState extends ConsumerState<StaffProfileScreen> {
             ),
             const SizedBox(height: AppSpacing.lg),
 
-            _Group(
-              title: 'The clinic',
+            // Appearance and language first, then what this account is,
+            // then what it can reach.
+            //
+            // Shaped like the patient's profile because it is the same kind of
+            // screen and a reader should not have to learn it twice — but not
+            // a copy of it. Glucose units, health details and lab reports are a
+            // patient's; medication reminders are a patient's; "call the
+            // clinic" is absurd on the account that answers the phone. What is
+            // left is what a desk actually has.
+            if (kDarkThemeEnabled) ...[
+              const _SectionLabel('Appearance'),
+              const ThemeSelector(),
+              const SizedBox(height: AppSpacing.lg),
+            ],
+
+            ProfileSection(
+              label: 'Language',
               children: [
-                _Tile(
+                Padding(
+                  padding: const EdgeInsets.all(AppSpacing.md),
+                  child: LanguagePicker(
+                    selected: ref.watch(localeControllerProvider)?.languageCode,
+                    onChanged: _changeLanguage,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: AppSpacing.lg),
+
+            ProfileSection(
+              label: 'The clinic',
+              children: [
+                ProfileRow(
                   icon: Icons.storefront_outlined,
                   title: primary?.name ?? 'Clinic details',
-                  // One tile, because there was one destination.
+                  // One row, because there is one destination.
                   //
                   // "Clinic details" and "Opening hours" pushed the same route
-                  // — the same Edit clinic screen, which holds both. Two
-                  // rows onto one screen is the lie the Patients and Messages
-                  // tabs told: whoever taps both learns the list is not
-                  // describing what sits behind it.
+                  // — the same Edit clinic screen, which holds both. Two rows
+                  // onto one screen is the lie the Patients and Messages tabs
+                  // told: whoever taps both learns the list is not describing
+                  // what sits behind it.
                   subtitle:
                       primary == null
                           ? 'Name, address, phones, logo and opening hours'
@@ -221,6 +309,7 @@ class _StaffProfileScreenState extends ConsumerState<StaffProfileScreen> {
                             if (primary.city != null) primary.city!,
                             'Opening hours',
                           ].join('  ·  '),
+                  showDivider: false,
                   onTap:
                       () =>
                           primary == null
@@ -232,16 +321,66 @@ class _StaffProfileScreenState extends ConsumerState<StaffProfileScreen> {
                 ),
               ],
             ),
+            const SizedBox(height: AppSpacing.lg),
 
-            const SizedBox(height: AppSpacing.md),
-            _Group(
-              title: 'This account',
+            ProfileSection(
+              label: 'This account',
               children: [
-                _Tile(
+                ProfileRow(
                   icon: Icons.badge_outlined,
                   title: 'Your details',
                   subtitle: 'Name, photo and contact',
+                  showDivider: false,
                   onTap: () => context.push('/staff/profile/edit'),
+                ),
+              ],
+            ),
+            const SizedBox(height: AppSpacing.lg),
+
+            // Security matters more here than anywhere else in the app: this
+            // is the one account that lives on a shared handset, left on a
+            // counter, in reach of whoever is standing at it.
+            const _SectionLabel('Security'),
+            Container(
+              decoration: BoxDecoration(
+                color: scheme.surface,
+                borderRadius: BorderRadius.circular(AppSpacing.cardRadius),
+                border: Border.all(color: scheme.outlineVariant),
+              ),
+              clipBehavior: Clip.antiAlias,
+              child: SwitchListTile.adaptive(
+                value: ref.watch(appLockProvider).enabled,
+                onChanged: _toggleAppLock,
+                activeThumbColor: AppColors.primary,
+                secondary: const Icon(
+                  Icons.lock_outline_rounded,
+                  color: AppColors.primary,
+                ),
+                title: const Text(
+                  'Lock the app',
+                  style: TextStyle(fontSize: 16),
+                ),
+                subtitle: const Text(
+                  'Ask for the phone\'s fingerprint or PIN each time it opens',
+                  style: TextStyle(fontSize: 14),
+                ),
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: AppSpacing.md,
+                  vertical: 4,
+                ),
+              ),
+            ),
+            const SizedBox(height: AppSpacing.lg),
+
+            ProfileSection(
+              label: 'About',
+              children: [
+                ProfileRow(
+                  icon: Icons.info_outline_rounded,
+                  title: 'About ${AppConfig.appName}',
+                  value: 'v${AppConfig.appVersion}',
+                  showDivider: false,
+                  onTap: _showAbout,
                 ),
               ],
             ),
@@ -294,80 +433,25 @@ class _StaffProfileScreenState extends ConsumerState<StaffProfileScreen> {
   }
 }
 
-class _Group extends StatelessWidget {
-  const _Group({required this.title, required this.children});
+/// A group heading, the same shape the patient's profile uses.
+class _SectionLabel extends StatelessWidget {
+  const _SectionLabel(this.text);
 
-  final String title;
-  final List<Widget> children;
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Padding(
-          padding: const EdgeInsets.only(left: 4, bottom: 6),
-          child: Text(
-            title.toUpperCase(),
-            style: TextStyle(
-              fontSize: 11.5,
-              fontWeight: FontWeight.w700,
-              letterSpacing: 0.6,
-              color: scheme.onSurfaceVariant,
-            ),
-          ),
-        ),
-        Container(
-          decoration: BoxDecoration(
-            color: scheme.surfaceContainerLowest,
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(
-              color: scheme.outlineVariant.withValues(alpha: 0.5),
-            ),
-          ),
-          clipBehavior: Clip.antiAlias,
-          child: Column(children: children),
-        ),
-      ],
-    );
-  }
-}
-
-class _Tile extends StatelessWidget {
-  const _Tile({
-    required this.icon,
-    required this.title,
-    required this.subtitle,
-    required this.onTap,
-  });
-
-  final IconData icon;
-  final String title;
-  final String subtitle;
-  final VoidCallback onTap;
+  final String text;
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    return ListTile(
-      onTap: onTap,
-      leading: Icon(icon, color: AppColors.primary),
-      title: Text(
-        title,
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-        style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
-      ),
-      subtitle: Text(
-        subtitle,
-        maxLines: 2,
-        overflow: TextOverflow.ellipsis,
-        style: TextStyle(fontSize: 12.5, color: scheme.onSurfaceVariant),
-      ),
-      trailing: Icon(
-        Icons.chevron_right_rounded,
-        color: scheme.onSurfaceVariant,
+    return Padding(
+      padding: const EdgeInsets.only(left: 4, bottom: AppSpacing.sm),
+      child: Text(
+        text.toUpperCase(),
+        style: TextStyle(
+          fontSize: 14,
+          fontWeight: FontWeight.w600,
+          letterSpacing: 0.8,
+          color: scheme.onSurfaceVariant,
+        ),
       ),
     );
   }
