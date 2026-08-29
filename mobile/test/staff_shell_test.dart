@@ -71,6 +71,34 @@ void main() {
     expect(router.contains("path: '/staff/messages'"), isFalse);
   });
 
+  test('no two profile tiles push the same screen', () {
+    // "Clinic details" and "Opening hours" both pushed /staff/clinics/:id —
+    // the same Edit clinic screen, which holds both. It is the lie the
+    // Patients and Messages tabs told, one screen along.
+    final profile =
+        File(
+          'lib/features/staff/presentation/staff_profile_screen.dart',
+        ).readAsStringSync();
+    // Two per tile — one branch for a clinic that exists, one for creating
+    // the first. Four means the second tile is back.
+    expect(
+      "'/staff/clinics/".allMatches(profile).length,
+      2,
+      reason: 'more than one tile opens the clinic editor',
+    );
+  });
+
+  test('the desk can change its own photo', () {
+    // The doctor's profile uploads an avatar, the dietician's does, the
+    // patient's does. This one drew the picture and offered no way to set it,
+    // so the account was stuck with an initial for good.
+    final profile =
+        File(
+          'lib/features/staff/presentation/staff_profile_screen.dart',
+        ).readAsStringSync();
+    expect(profile.contains('UploadKind.avatar'), isTrue);
+  });
+
   test('the desk can open a patient record', () {
     // There was no /staff/patients/:id, so every route to a patient pushed
     // /clinician/... — which the redirect bounces staff out of. Finishing a

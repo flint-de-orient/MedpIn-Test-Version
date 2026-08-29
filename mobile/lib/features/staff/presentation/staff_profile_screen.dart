@@ -230,19 +230,6 @@ class _StaffProfileScreenState extends ConsumerState<StaffProfileScreen> {
                                 extra: primary,
                               ),
                 ),
-                _Tile(
-                  icon: Icons.schedule_rounded,
-                  title: 'Opening hours',
-                  subtitle: 'When the doctor is available to be booked',
-                  onTap:
-                      () =>
-                          primary == null
-                              ? context.push('/staff/clinics/new')
-                              : context.push(
-                                '/staff/clinics/${primary.id}',
-                                extra: primary,
-                              ),
-                ),
               ],
             ),
 
