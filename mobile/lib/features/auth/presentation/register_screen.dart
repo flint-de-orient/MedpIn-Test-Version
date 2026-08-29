@@ -84,12 +84,23 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
   // ---- invite code ---------------------------------------------------------
 
   bool _checkingInvite = false;
-  bool _inviteVerified = false;
   String? _inviteError;
 
-  /// The one thing that decides which form this is. Set only by the server
-  /// accepting a code — never by anything the reader typed on its own.
-  bool get _isDietician => _inviteVerified;
+  /// The role the accepted code opens, or null while none has been accepted.
+  ///
+  /// The one thing that decides which form this is, and it comes from the
+  /// server — never from anything the reader typed. The server decides again
+  /// from the code itself when the account is made, so a client that lied here
+  /// would only have lied to itself about which fields to show.
+  String? _invitedRole;
+
+  bool get _inviteVerified => _invitedRole != null;
+
+  /// True for a dietician OR a receptionist: neither has a diabetes record, so
+  /// neither is asked for one.
+  bool get _isClinicRole => _invitedRole != null;
+
+  String get _roleLabel => _invitedRole == 'staff' ? 'Front desk' : 'Dietician';
 
   @override
   void dispose() {
@@ -223,13 +234,15 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
       _inviteError = null;
     });
     try {
-      await ref.read(authRepositoryProvider).validateInviteCode(code);
+      final role = await ref
+          .read(authRepositoryProvider)
+          .validateInviteCode(code);
       if (!mounted) return;
-      setState(() => _inviteVerified = true);
+      setState(() => _invitedRole = role);
     } on Object {
       if (!mounted) return;
       setState(() {
-        _inviteVerified = false;
+        _invitedRole = null;
         _inviteError = l10n.authInviteInvalid;
       });
     } finally {
@@ -239,7 +252,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
 
   void _clearInvite() {
     setState(() {
-      _inviteVerified = false;
+      _invitedRole = null;
       _inviteError = null;
       _inviteController.clear();
     });
@@ -278,39 +291,40 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
           // none of it, and sending it would have the server store a diabetes
           // record against a clinician.
           dateOfBirth:
-              _isDietician || _dateOfBirth == null
+              _isClinicRole || _dateOfBirth == null
                   ? null
                   : '${_dateOfBirth!.year.toString().padLeft(4, '0')}-'
                       '${_dateOfBirth!.month.toString().padLeft(2, '0')}-'
                       '${_dateOfBirth!.day.toString().padLeft(2, '0')}',
-          gender: _isDietician ? null : _gender,
+          gender: _isClinicRole ? null : _gender,
           address:
-              _isDietician || _addressController.text.trim().isEmpty
+              _isClinicRole || _addressController.text.trim().isEmpty
                   ? null
                   : _addressController.text.trim(),
           heightCm:
-              _isDietician
+              _isClinicRole
                   ? null
                   : double.tryParse(_heightController.text.trim()),
           weightKg:
-              _isDietician
+              _isClinicRole
                   ? null
                   : double.tryParse(_weightController.text.trim()),
           systolic:
-              _isDietician
+              _isClinicRole
                   ? null
                   : int.tryParse(_systolicController.text.trim()),
           diastolic:
-              _isDietician
+              _isClinicRole
                   ? null
                   : int.tryParse(_diastolicController.text.trim()),
           pulse:
-              _isDietician ? null : int.tryParse(_pulseController.text.trim()),
-          spo2: _isDietician ? null : int.tryParse(_spo2Controller.text.trim()),
+              _isClinicRole ? null : int.tryParse(_pulseController.text.trim()),
+          spo2:
+              _isClinicRole ? null : int.tryParse(_spo2Controller.text.trim()),
           glucoseMgDl:
-              _isDietician ? null : int.tryParse(_sugarController.text.trim()),
+              _isClinicRole ? null : int.tryParse(_sugarController.text.trim()),
           complaints:
-              _isDietician || _complaintsController.text.trim().isEmpty
+              _isClinicRole || _complaintsController.text.trim().isEmpty
                   ? null
                   : _complaintsController.text.trim(),
           inviteCode: _inviteVerified ? _inviteController.text.trim() : null,
@@ -396,12 +410,15 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                       ScreenHeading(
                         // Names itself once it knows what it is. Before the
                         // code is validated there is nothing to claim.
+                        // Named for the role the code opened, so a
+                        // receptionist is not told they are registering as a
+                        // dietician.
                         title:
-                            _isDietician
-                                ? l10n.authRegisterTitleDietician
+                            _isClinicRole
+                                ? '$_roleLabel registration'
                                 : l10n.authRegisterTitle,
                         subtitle:
-                            _isDietician ? null : l10n.authRegisterSubtitle,
+                            _isClinicRole ? null : l10n.authRegisterSubtitle,
                       ),
 
                       // No section heading over either of these. Each holds
@@ -469,7 +486,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                         ),
 
                         // ---- patient-only from here ------------------------
-                        if (!_isDietician) ...[
+                        if (!_isClinicRole) ...[
                           _section('About you'),
 
                           // A plain InkWell cannot participate in Form

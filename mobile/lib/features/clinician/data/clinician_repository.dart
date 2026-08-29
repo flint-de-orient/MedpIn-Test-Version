@@ -11,6 +11,7 @@ import '../domain/clinician_models.dart';
 import '../domain/knowledge_chunk.dart';
 import '../domain/patient_summary.dart';
 import '../../../shared/widgets/notification_list_sheet.dart';
+import '../domain/staff_member.dart';
 
 /// Talks to `/doctor/*` — the clinician (doctor + staff) API: dashboard
 /// overview, the patient directory, and clinical-alert triage.
@@ -304,6 +305,59 @@ class ClinicianRepository {
       name: json['name']?.toString() ?? '',
     );
   }
+
+  // ---- the front desk -------------------------------------------------------
+
+  /// The clinic's staff accounts, with every number that can sign into each.
+  Future<List<StaffMember>> staff() async {
+    final json = await _client.getJson('/doctor/staff');
+    return ((json['items'] as List?) ?? const [])
+        .whereType<Map<String, dynamic>>()
+        .map(StaffMember.fromJson)
+        .toList();
+  }
+
+  /// Creates a front-desk account. A password is optional — staff can sign in
+  /// with a texted code like anyone else, and one is only worth setting for a
+  /// shared handset that stays on the counter.
+  Future<StaffMember> createStaff({
+    required String name,
+    required String phone,
+    String? password,
+  }) async {
+    final json = await _client.postJson(
+      '/doctor/staff',
+      body: {
+        'name': name,
+        'phone': phone,
+        if (password != null && password.isNotEmpty) 'password': password,
+      },
+    );
+    return StaffMember(
+      id: json['id']?.toString() ?? '',
+      name: json['name']?.toString() ?? name,
+      phone: json['phone']?.toString() ?? phone,
+    );
+  }
+
+  /// Closes a front-desk account. Deactivated rather than deleted, so what
+  /// they did stays on the audit trail.
+  Future<void> removeStaff(String id) => _client.delete('/doctor/staff/$id');
+
+  /// The current staff invite code, or null when none has been issued.
+  Future<String?> staffInvite() async {
+    final json = await _client.getJson('/doctor/staff-invite');
+    return json['code']?.toString();
+  }
+
+  /// Issues a fresh code, replacing whatever is current.
+  Future<String> generateStaffInvite() async {
+    final json = await _client.postJson('/doctor/staff-invite/generate');
+    return json['code']?.toString() ?? '';
+  }
+
+  /// Revokes the code entirely, so nobody can register with it.
+  Future<void> revokeStaffInvite() => _client.delete('/doctor/staff-invite');
 
   /// Assign the patient's dietician and food-log review cadence. A null
   /// [dieticianId] unassigns; a null [reviewIntervalDays] clears the cadence.

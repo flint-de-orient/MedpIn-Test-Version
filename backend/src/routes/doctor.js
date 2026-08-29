@@ -1728,6 +1728,148 @@ router.patch(
   }),
 );
 
+/** The clinic's front-desk accounts. */
+router.get(
+  '/staff',
+  requireDoctor,
+  asyncHandler(async (req, res) => {
+    const items = await User.find({ role: ROLES.STAFF, isActive: true })
+      .select('name phone avatarAssetId altPhones lastLoginAt')
+      .sort({ name: 1 })
+      .lean();
+    res.json({
+      items: items.map((d) => ({
+        id: String(d._id),
+        name: d.name,
+        phone: d.phone,
+        // A desk often has two lines on one account. The doctor should see
+        // both, because "who can sign into this" is the question this list
+        // exists to answer.
+        altPhones: d.altPhones ?? [],
+        avatarUrl: d.avatarAssetId ? `/api/v1/uploads/${d.avatarAssetId}/raw` : null,
+        lastLoginAt: d.lastLoginAt ?? null,
+      })),
+    });
+  }),
+);
+
+/**
+ * Create a front-desk account.
+ *
+ * The doctor's own act: staff can see every patient in the clinic, so who gets
+ * an account is not a decision for the desk to make about itself.
+ */
+router.post(
+  '/staff',
+  requireDoctor,
+  validate({
+    body: z.object({
+      name: z.string().trim().min(2).max(120),
+      // Normalised to E.164 first: a number stored as bare digits is an
+      // account whose owner can never sign in, because login sends +91.
+      phone: z
+        .string()
+        .trim()
+        .transform(toE164)
+        .pipe(z.string().regex(/^\+?[1-9]\d{7,14}$/, 'Enter a valid phone number')),
+      // Optional. Staff can sign in with a texted code like everyone else; a
+      // password is for the shared handset that stays on the counter, where
+      // waiting for an SMS on somebody's personal phone is not workable.
+      password: z.string().min(8, 'At least 8 characters').max(128).optional(),
+    }),
+  }),
+  audit('create', 'User'),
+  asyncHandler(async (req, res) => {
+    const { name, phone, password } = req.body;
+    if (await User.phoneTaken(phone)) {
+      throw conflict('An account with this phone number already exists');
+    }
+    const user = new User({
+      name,
+      phone,
+      role: ROLES.STAFF,
+      consent: {
+        termsAcceptedAt: new Date(),
+        dataProcessingAcceptedAt: new Date(),
+        aiDisclaimerAcceptedAt: new Date(),
+      },
+    });
+    if (password) await user.setPassword(password);
+    await user.save();
+    res.status(201).json({ id: String(user._id), name: user.name, phone: user.phone });
+  }),
+);
+
+/** Close a front-desk account. Deactivated, never deleted: their actions stay
+ * on the audit trail and a removed user would orphan them. */
+router.delete(
+  '/staff/:id',
+  requireDoctor,
+  audit('update', 'User'),
+  asyncHandler(async (req, res) => {
+    const user = await User.findOne({ _id: req.params.id, role: ROLES.STAFF });
+    if (!user) throw notFound('No such staff account');
+    user.isActive = false;
+    await user.save();
+    res.status(204).end();
+  }),
+);
+
+/** The clinic's staff invite code, so a receptionist can self-register. */
+router.get(
+  '/staff-invite',
+  requireDoctor,
+  asyncHandler(async (req, res) => {
+    const settings = await getClinicSettings();
+    res.json({ code: settings.staffInviteCode || null });
+  }),
+);
+
+/**
+ * Issues a fresh staff invite code, replacing whatever is current.
+ *
+ * Rotating is the whole point: the code travels over WhatsApp, and once it has
+ * reached the wrong person the only remedy is to make it stop working. It
+ * matters more here than for a dietician — this code opens an account that can
+ * see every patient in the clinic.
+ */
+router.post(
+  '/staff-invite/generate',
+  requireDoctor,
+  audit('update', 'ClinicSettings'),
+  asyncHandler(async (req, res) => {
+    // Unambiguous alphabet: no O/0, no I/1/L. The code is read aloud and typed
+    // by hand, and a 0 mistaken for an O is a support call.
+    const ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+    const code = Array.from(
+      { length: 8 },
+      () => ALPHABET[Math.floor(Math.random() * ALPHABET.length)],
+    ).join('');
+
+    await ClinicSettings.findOneAndUpdate(
+      { key: 'clinic' },
+      { $set: { staffInviteCode: code }, $setOnInsert: { key: 'clinic' } },
+      { upsert: true, new: true, setDefaultsOnInsert: true },
+    );
+    res.json({ code });
+  }),
+);
+
+/** Revokes the staff invite code entirely. */
+router.delete(
+  '/staff-invite',
+  requireDoctor,
+  audit('update', 'ClinicSettings'),
+  asyncHandler(async (req, res) => {
+    await ClinicSettings.findOneAndUpdate(
+      { key: 'clinic' },
+      { $set: { staffInviteCode: null }, $setOnInsert: { key: 'clinic' } },
+      { upsert: true, new: true, setDefaultsOnInsert: true },
+    );
+    res.status(204).end();
+  }),
+);
+
 /** Create a dietician account the doctor can then assign to patients. */
 router.post(
   '/dieticians',

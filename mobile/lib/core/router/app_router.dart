@@ -57,6 +57,7 @@ import '../../shared/providers/locale_provider.dart';
 import '../../features/staff/presentation/staff_profile_screen.dart';
 import '../../features/staff/presentation/staff_today_screen.dart';
 import '../../features/staff/presentation/staff_shell.dart';
+import '../../features/clinician/presentation/staff_accounts_screen.dart';
 
 /// Bridges Riverpod state changes into something [GoRouter]'s
 /// `refreshListenable` can observe, so a login/logout or a first-time
@@ -210,6 +211,14 @@ final Provider<GoRouter> appRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/clinician/dieticians',
         builder: (context, state) => const DieticiansScreen(),
+      ),
+      // Adding a receptionist used to mean a shell on the server and a seed
+      // script. In practice that means the clinic waits for whoever knows how,
+      // and shares an existing login until then — which is how an audit trail
+      // stops being able to answer who did something.
+      GoRoute(
+        path: '/clinician/staff',
+        builder: (context, state) => const StaffAccountsScreen(),
       ),
       GoRoute(
         path: '/clinician/feedback',

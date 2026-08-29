@@ -93,13 +93,17 @@ class AuthRepository {
     return json['phoneToken'] as String;
   }
 
-  /// Check an invite code before the form is submitted.
+  /// The role an invite code opens: `dietician` or `staff`.
   ///
-  /// Throws when it is not valid. The server checks it again at registration —
-  /// this call only exists so the form can switch to dietician fields the
-  /// moment the code is accepted.
-  Future<void> validateInviteCode(String code) async {
-    await _client.postJson('/auth/invite/validate', body: {'code': code});
+  /// Throws when the code is not valid. The server decides the role from the
+  /// code again at registration, so this answer only exists so the form can
+  /// ask for the right fields — it is never what makes the account.
+  Future<String> validateInviteCode(String code) async {
+    final json = await _client.postJson(
+      '/auth/invite/validate',
+      body: {'code': code},
+    );
+    return json['role']?.toString() ?? 'dietician';
   }
 
   Future<AuthResult> register({

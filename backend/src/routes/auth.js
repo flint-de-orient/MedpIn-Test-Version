@@ -76,11 +76,29 @@ const registerSchema = z.object({
  * here, pressing Generate would mint a code that self-registration then
  * refused — a rotate button that quietly breaks the thing it rotates.
  */
-async function isValidDieticianInvite(code) {
-  if (!code) return false;
+/**
+ * The role a typed code opens, or null when it opens nothing.
+ *
+ * Two separate codes, and the code decides which role it makes — not the
+ * caller. A single shared code would mean the client had to say what it was
+ * registering as, which is exactly the decision an edited APK would lie about.
+ *
+ * The dietician code falls back to the env var for a clinic that has never
+ * rotated one, so existing deployments keep working. There is no fallback for
+ * staff: a front-desk account can see every patient in the clinic, and a
+ * default that ships in the source is not a credential.
+ */
+async function roleForInvite(code) {
+  if (!code) return null;
   const settings = await getClinicSettings();
-  const active = settings.dieticianInviteCode || env.DIETICIAN_INVITE_CODE;
-  return Boolean(active) && code === active;
+
+  const dietician = settings.dieticianInviteCode || env.DIETICIAN_INVITE_CODE;
+  if (dietician && code === dietician) return ROLES.DIETICIAN;
+
+  const staff = settings.staffInviteCode;
+  if (staff && code === staff) return ROLES.STAFF;
+
+  return null;
 }
 
 // A code request costs the clinic an SMS and costs whoever owns the number
@@ -198,9 +216,12 @@ router.post(
   authLimiter,
   validate({ body: z.object({ code: z.string().trim().min(1).max(64) }) }),
   asyncHandler(async (req, res) => {
-    const valid = await isValidDieticianInvite(req.body.code);
-    if (!valid) throw badRequest('That invite code is not valid or has expired.');
-    res.json({ valid: true, role: ROLES.DIETICIAN });
+    const role = await roleForInvite(req.body.code);
+    if (!role) throw badRequest('That invite code is not valid or has expired.');
+    // The role travels back so the form can ask for the right fields. It is
+    // decided again at registration from the code itself, so this answer is a
+    // courtesy to the UI and never the gate.
+    res.json({ valid: true, role });
   }),
 );
 
@@ -228,13 +249,14 @@ router.post(
     // here, pressing Generate would mint a code that self-registration then
     // refused — a rotate button that quietly breaks the thing it rotates.
     // The role is decided here, from the code, and never read off the
-    // request. An APK can be edited to post `role: 'dietician'`; it cannot
-    // produce a code it does not have.
-    const isDietician = await isValidDieticianInvite(inviteCode);
-    if (inviteCode && !isDietician) {
+    // request. An APK can be edited to post `role: 'staff'`; it cannot produce
+    // a code it does not have.
+    const invitedRole = await roleForInvite(inviteCode);
+    if (inviteCode && !invitedRole) {
       throw badRequest('That invite code is not valid or has expired.');
     }
-    const role = isDietician ? ROLES.DIETICIAN : ROLES.PATIENT;
+    const role = invitedRole ?? ROLES.PATIENT;
+    const isDietician = role === ROLES.DIETICIAN;
 
     const user = new User({
       name,
@@ -258,8 +280,9 @@ router.post(
     // password nobody uses is a credential to lose.
     await user.save();
 
-    // Only patients get a clinical profile; a dietician has no diabetes record.
-    if (!isDietician) {
+    // Only patients get a clinical profile. Neither a dietician nor a
+    // receptionist has a diabetes record.
+    if (role === ROLES.PATIENT) {
       const doctor = await User.findOne({ role: ROLES.DOCTOR }).select('_id').lean();
       const { heightCm, weightKg, systolic, diastolic, pulse, spo2, glucoseMgDl, complaints } = req.body;
       await PatientProfile.create({

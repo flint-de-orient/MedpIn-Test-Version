@@ -548,6 +548,12 @@ class _ClinicianMoreScreenState extends ConsumerState<ClinicianMoreScreen> {
                 onTap: () => context.push('/clinician/dieticians'),
               ),
               ProfileRow(
+                icon: Icons.badge_outlined,
+                title: 'Front desk',
+                subtitle: 'Staff accounts and the invite code',
+                onTap: () => context.push('/clinician/staff'),
+              ),
+              ProfileRow(
                 icon: Icons.ios_share_rounded,
                 title: 'Export data',
                 subtitle: 'Patients, alerts and figures as CSV or JSON',
