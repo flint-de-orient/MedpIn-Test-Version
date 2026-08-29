@@ -896,12 +896,24 @@ class _PhoneVerification extends StatelessWidget {
             children: [
               TextButton(
                 onPressed: busy ? null : onChangeNumber,
+                style: TextButton.styleFrom(
+                  minimumSize: const Size(0, AppSpacing.minTapTarget),
+                ),
                 child: const Text('Wrong number?'),
               ),
-              const Spacer(),
-              FilledButton(
-                onPressed: busy ? null : onVerify,
-                child: const Text('Confirm'),
+              const SizedBox(width: AppSpacing.sm),
+              // Expanded and an explicit minimum, for the reason the whole
+              // app has to keep relearning: the theme gives every FilledButton
+              // a minimum width of infinity, and a Spacer beside one gets
+              // nothing.
+              Expanded(
+                child: FilledButton(
+                  onPressed: busy ? null : onVerify,
+                  style: FilledButton.styleFrom(
+                    minimumSize: const Size(0, AppSpacing.minTapTarget),
+                  ),
+                  child: const Text('Confirm'),
+                ),
               ),
             ],
           ),

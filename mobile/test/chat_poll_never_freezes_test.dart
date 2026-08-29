@@ -1,5 +1,4 @@
 import 'package:akd_care/core/network/api_client.dart';
-import 'package:akd_care/core/network/api_exception.dart';
 import 'package:akd_care/core/storage/secure_store.dart';
 import 'package:akd_care/features/chat/data/chat_repository.dart';
 import 'package:akd_care/features/chat/domain/chat_message.dart';

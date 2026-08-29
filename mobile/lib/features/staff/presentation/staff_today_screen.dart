@@ -125,28 +125,45 @@ class _DeskHeader extends ConsumerWidget {
     final scheme = Theme.of(context).colorScheme;
     final user = ref.watch(authControllerProvider).user;
     return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
       children: [
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
             children: [
               Text(
                 DateFormat('EEEE, d MMMM').format(DateTime.now()),
-                style: TextStyle(fontSize: 13, color: scheme.onSurfaceVariant),
+                style: TextStyle(
+                  fontSize: 13,
+                  height: 1.3,
+                  fontWeight: FontWeight.w500,
+                  color: scheme.onSurfaceVariant,
+                ),
               ),
               const SizedBox(height: 2),
               Text(
                 user?.name ?? 'Front desk',
+                maxLines: 2,
                 style: const TextStyle(
                   fontSize: 22,
+                  height: 1.2,
                   fontWeight: FontWeight.w800,
                 ),
               ),
             ],
           ),
         ),
+        const SizedBox(width: AppSpacing.md),
         // Registering a walk-in is the thing a desk does most, so it is on the
         // screen rather than behind a tab.
+        //
+        // The size is set here, not inherited. AppTheme gives every
+        // FilledButton `minimumSize: Size.fromHeight(52)` — which is
+        // `Size(double.infinity, 52)`, a minimum *width* of infinity. That is
+        // right for a button that owns its row and ruinous for one sharing
+        // it: this button took the whole width and the date and desk name
+        // beside it rendered one character per line, running down the screen.
         FilledButton.icon(
           onPressed: () => context.push('/staff/patients/new'),
           icon: const Icon(Icons.person_add_alt_1_rounded, size: 18),
@@ -154,6 +171,11 @@ class _DeskHeader extends ConsumerWidget {
           style: FilledButton.styleFrom(
             backgroundColor: AppColors.primary,
             foregroundColor: Colors.white,
+            minimumSize: const Size(0, AppSpacing.minTapTarget),
+            padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(AppSpacing.buttonRadius),
+            ),
           ),
         ),
       ],
@@ -312,30 +334,48 @@ class _RequestCardState extends ConsumerState<_RequestCard> {
             ),
           ],
           const SizedBox(height: AppSpacing.sm),
+          // The same trap as the header, and worse here: a Row of
+          // [TextButton, Spacer, FilledButton] where the filled one demands
+          // infinite width leaves nothing for the Spacer, and an overflowing
+          // Row drops its last child without a word — so "Give a time", the
+          // only action on this card that matters, was the one at risk of not
+          // being drawn at all.
           Row(
             children: [
               TextButton(
                 onPressed: _busy ? null : _decline,
                 style: TextButton.styleFrom(
                   foregroundColor: scheme.onSurfaceVariant,
+                  minimumSize: const Size(0, AppSpacing.minTapTarget),
                 ),
                 child: const Text('Decline'),
               ),
-              const Spacer(),
-              FilledButton.icon(
-                onPressed: _busy ? null : _pickTime,
-                icon:
-                    _busy
-                        ? const SizedBox(
-                          width: 15,
-                          height: 15,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                        : const Icon(Icons.event_available_rounded, size: 18),
-                label: const Text('Give a time'),
-                style: FilledButton.styleFrom(
-                  backgroundColor: AppColors.primary,
-                  foregroundColor: Colors.white,
+              const SizedBox(width: AppSpacing.sm),
+              // Expanded rather than a Spacer: the action takes the room that
+              // is left instead of competing for it, and a longer label in
+              // Hindi or Bengali makes the button wider, never the row.
+              Expanded(
+                child: FilledButton.icon(
+                  onPressed: _busy ? null : _pickTime,
+                  icon:
+                      _busy
+                          ? const SizedBox(
+                            width: 15,
+                            height: 15,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                          : const Icon(Icons.event_available_rounded, size: 18),
+                  label: const Text('Give a time'),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: AppColors.primary,
+                    foregroundColor: Colors.white,
+                    minimumSize: const Size(0, AppSpacing.minTapTarget),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(
+                        AppSpacing.buttonRadius,
+                      ),
+                    ),
+                  ),
                 ),
               ),
             ],
