@@ -23,6 +23,7 @@ import 'widgets/scan_prescription_sheet.dart';
 import 'widgets/mark_dose_sheet.dart';
 import 'widgets/medication_slot_tile.dart';
 import '../domain/strength.dart';
+import '../../../shared/widgets/clinic_brand.dart';
 
 /// The patient's medicines: the windows their reminders fire in, what they are
 /// currently prescribed, and today's outstanding doses.
@@ -362,26 +363,8 @@ class _BrandHeader extends StatelessWidget {
       // that makes the whole screen look like a form.
       child: Row(
         children: [
-          Image.asset(
-            'assets/brand/medpin_emblem.png',
-            height: 30,
-            errorBuilder:
-                (_, _, _) => Icon(
-                  Icons.medication_rounded,
-                  size: 26,
-                  color: AppColors.accentOn(context),
-                ),
-          ),
-          const SizedBox(width: 8),
-          Text(
-            'MedPin',
-            style: TextStyle(
-              fontSize: 20,
-              fontWeight: FontWeight.w800,
-              color: AppColors.accentOn(context),
-            ),
-          ),
-          const Spacer(),
+          const Expanded(child: ClinicWordmark(maxWidth: 210)),
+          const SizedBox(width: AppSpacing.sm),
           IconButton(
             tooltip: 'Notifications',
             onPressed: () => context.push('/profile/notifications'),

@@ -7,6 +7,8 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../../core/router/area.dart';
+
 import '../../medications/domain/med_shorthand.dart';
 import '../domain/lab_catalog.dart';
 
@@ -861,7 +863,13 @@ class _PatientProfileScreenState extends ConsumerState<PatientProfileScreen> {
 
 // ---- Header ---------------------------------------------------------------
 
-class _ProfileHeader extends StatelessWidget {
+/// The face, the pills and the four ways onward.
+///
+/// A [ConsumerWidget] only so it can ask [areaPrefix] where it is. The doctor
+/// and the front desk share this screen, and its buttons used to push
+/// `/clinician/...` outright — which the router bounces staff out of, landing
+/// them on a blank Today with nothing said about why.
+class _ProfileHeader extends ConsumerWidget {
   const _ProfileHeader({required this.patient});
 
   final PatientSummary patient;
@@ -880,7 +888,8 @@ class _ProfileHeader extends StatelessWidget {
   };
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final area = areaPrefix(ref);
     final p = patient;
     final scheme = Theme.of(context).colorScheme;
     final band = p.riskBand ?? 'low';
@@ -1059,7 +1068,7 @@ class _ProfileHeader extends StatelessWidget {
                 label: 'Message',
                 onTap:
                     () => context.push(
-                      '/clinician/patients/${p.id}/thread',
+                      '$area/patients/${p.id}/thread',
                       extra: p.name,
                     ),
               ),
@@ -1073,36 +1082,44 @@ class _ProfileHeader extends StatelessWidget {
                 label: 'Prescriptions',
                 onTap:
                     () => context.push(
-                      '/clinician/patients/${p.id}/prescriptions',
+                      '$area/patients/${p.id}/prescriptions',
                       extra: p.name,
                     ),
               ),
             ],
           ),
-          const SizedBox(height: AppSpacing.sm),
-          SizedBox(
-            width: double.infinity,
-            child: FilledButton.icon(
-              onPressed:
-                  () => context.push(
-                    '/clinician/patients/${p.id}/consult',
-                    extra: p.name,
+          // The doctor's own act, so the desk is not offered it.
+          //
+          // Not hidden to keep a secret — the server refuses a prescription
+          // posted by staff whatever the app draws. Hidden because a button
+          // that always fails is worse than no button, and the consult screen
+          // ends in prescribing.
+          if (area != '/staff') ...[
+            const SizedBox(height: AppSpacing.sm),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                onPressed:
+                    () => context.push(
+                      '$area/patients/${p.id}/consult',
+                      extra: p.name,
+                    ),
+                style: FilledButton.styleFrom(
+                  backgroundColor: AppColors.primary,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
                   ),
-              style: FilledButton.styleFrom(
-                backgroundColor: AppColors.primary,
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(vertical: 16),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
+                ),
+                icon: const Icon(Icons.medical_services_outlined, size: 20),
+                label: const Text(
+                  'Start consultation',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
                 ),
               ),
-              icon: const Icon(Icons.medical_services_outlined, size: 20),
-              label: const Text(
-                'Start consultation',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
-              ),
             ),
-          ),
+          ],
           if ((p.chiefComplaint ?? '').trim().isNotEmpty) ...[
             const SizedBox(height: AppSpacing.md),
             Material(

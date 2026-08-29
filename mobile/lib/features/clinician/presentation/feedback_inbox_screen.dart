@@ -8,6 +8,7 @@ import '../../../core/theme/app_spacing.dart';
 import '../../../shared/providers/core_providers.dart';
 import '../../../shared/widgets/user_avatar.dart';
 import '../../auth/presentation/auth_controller.dart';
+import '../../../shared/widgets/clinic_brand.dart';
 
 /// What patients have said about the clinic and about the app.
 ///
@@ -208,26 +209,8 @@ class _BrandHeader extends StatelessWidget {
             onPressed: () => context.pop(),
             icon: Icon(Icons.arrow_back_rounded, color: scheme.onSurface),
           ),
-          Image.asset(
-            'assets/brand/medpin_emblem.png',
-            height: 28,
-            errorBuilder:
-                (_, _, _) => Icon(
-                  Icons.rate_review_rounded,
-                  size: 24,
-                  color: AppColors.accentOn(context),
-                ),
-          ),
-          const SizedBox(width: 8),
-          Text(
-            'MedPin',
-            style: TextStyle(
-              fontSize: 20,
-              fontWeight: FontWeight.w800,
-              color: AppColors.accentOn(context),
-            ),
-          ),
-          const Spacer(),
+          const Expanded(child: ClinicWordmark(height: 28, maxWidth: 180)),
+          const SizedBox(width: AppSpacing.sm),
           UserAvatar(
             name: name,
             avatarUrl: avatarUrl,

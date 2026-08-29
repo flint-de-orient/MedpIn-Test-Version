@@ -13,6 +13,7 @@ import '../domain/chat_review.dart';
 import 'clinician_providers.dart';
 import 'widgets/panel_ui.dart';
 import 'widgets/clinician_notification_sheet.dart';
+import '../../../shared/widgets/clinic_brand.dart';
 
 /// The doctor's Nutrition tab: every dietician↔patient conversation as an inbox,
 /// built to read exactly like the Patients tab — a brand header carrying the
@@ -332,26 +333,8 @@ class _InboxHeader extends ConsumerWidget {
       ),
       child: Row(
         children: [
-          Image.asset(
-            'assets/brand/medpin_emblem.png',
-            height: 30,
-            errorBuilder:
-                (_, _, _) => Icon(
-                  Icons.forum_rounded,
-                  size: 26,
-                  color: AppColors.accentOn(context),
-                ),
-          ),
-          const SizedBox(width: 8),
-          Text(
-            'MedPin',
-            style: TextStyle(
-              fontSize: 20,
-              fontWeight: FontWeight.w800,
-              color: AppColors.accentOn(context),
-            ),
-          ),
-          const Spacer(),
+          const Expanded(child: ClinicWordmark(maxWidth: 210)),
+          const SizedBox(width: AppSpacing.sm),
           PanelNotificationBell(
             onTap: () => showClinicianNotifications(context),
           ),

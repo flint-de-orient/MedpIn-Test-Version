@@ -16,6 +16,7 @@ import 'widgets/clinician_notification_sheet.dart';
 import '../../../core/theme/tokens.dart';
 import 'widgets/dashboard_sections.dart';
 import 'widgets/triage_queue.dart';
+import '../../../shared/widgets/clinic_brand.dart';
 
 /// The doctor's home: the clinic at a glance — headline counts, what is on
 /// today, the alerts that need attention, the live triage queue, and the
@@ -267,36 +268,10 @@ class _DashboardHeader extends ConsumerWidget {
         children: [
           Row(
             children: [
-              Image.asset(
-                'assets/brand/medpin_emblem.png',
-                height: 34,
-                errorBuilder:
-                    (_, _, _) => const Icon(
-                      Icons.forum_rounded,
-                      size: 28,
-                      color: T.primary,
-                    ),
+              const Expanded(
+                child: ClinicWordmark(subtitle: 'Doctor Panel', maxWidth: 210),
               ),
               const SizedBox(width: T.s2),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    'MedPin',
-                    style: T.display.copyWith(
-                      fontSize: 21,
-                      letterSpacing: -0.5,
-                      color: T.primary,
-                    ),
-                  ),
-                  Text(
-                    'Doctor Panel',
-                    style: T.small.copyWith(color: T.inkMuted),
-                  ),
-                ],
-              ),
-              const Spacer(),
               PanelNotificationBell(
                 onTap: () => showClinicianNotifications(context),
               ),

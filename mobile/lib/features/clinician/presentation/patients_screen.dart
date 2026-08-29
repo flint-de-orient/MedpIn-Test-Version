@@ -15,6 +15,7 @@ import 'clinician_providers.dart';
 import 'widgets/panel_ui.dart';
 import 'widgets/clinician_notification_sheet.dart';
 import '../../../core/router/area.dart';
+import '../../../shared/widgets/clinic_brand.dart';
 
 /// The clinician's inbox.
 ///
@@ -125,14 +126,23 @@ class _PatientsScreenState extends ConsumerState<PatientsScreen>
       // screen and the navigation bar alike. An opaque page here left a
       // visible band of ground around the pill and nowhere else.
       backgroundColor: Colors.transparent,
-      // Desk intake: register a walk-in patient without leaving the directory.
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => context.push('${areaPrefix(ref)}/patients/new'),
-        backgroundColor: AppColors.primary,
-        foregroundColor: Colors.white,
-        icon: const Icon(Icons.person_add_alt_1_rounded),
-        label: const Text('Add patient'),
-      ),
+      // The doctor registers from here, because this is where they notice
+      // somebody missing from the roll.
+      //
+      // The desk does not: registering is the front desk's whole morning, so
+      // it lives on Today where the queue is. Offering it in both places put
+      // two buttons for one act two tabs apart, and a receptionist who used
+      // the other one could not tell whether they had made a second record.
+      floatingActionButton:
+          areaPrefix(ref) == '/staff'
+              ? null
+              : FloatingActionButton.extended(
+                onPressed: () => context.push('${areaPrefix(ref)}/patients/new'),
+                backgroundColor: AppColors.primary,
+                foregroundColor: Colors.white,
+                icon: const Icon(Icons.person_add_alt_1_rounded),
+                label: const Text('Add patient'),
+              ),
       body: SafeArea(
         bottom: false,
         child: Column(
@@ -371,27 +381,11 @@ class _InboxHeader extends ConsumerWidget {
       ),
       child: Row(
         children: [
-          // The app's own emblem, not a generic medical cross.
-          Image.asset(
-            'assets/brand/medpin_emblem.png',
-            height: 30,
-            errorBuilder:
-                (_, _, _) => Icon(
-                  Icons.forum_rounded,
-                  size: 26,
-                  color: AppColors.accentOn(context),
-                ),
-          ),
-          const SizedBox(width: 8),
-          Text(
-            'MedPin',
-            style: TextStyle(
-              fontSize: 20,
-              fontWeight: FontWeight.w800,
-              color: AppColors.accentOn(context),
-            ),
-          ),
-          const Spacer(),
+          // The clinic this app belongs to, not the app. See
+          // [ClinicWordmark] for why the logo replaces the name rather than
+          // sitting beside it.
+          const Expanded(child: ClinicWordmark(maxWidth: 210)),
+          const SizedBox(width: AppSpacing.sm),
           PanelNotificationBell(
             onTap: () => showClinicianNotifications(context),
           ),

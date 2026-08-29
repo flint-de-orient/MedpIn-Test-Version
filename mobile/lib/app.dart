@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'core/config/app_config.dart';
@@ -132,13 +133,37 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
       // locked. `child` is the router's current page.
       builder: (context, child) {
         final mq = MediaQuery.of(context);
+        // The phone's own bars, told what kind of app this is.
+        //
+        // The app is light-only, and nothing here said so to the system. On a
+        // handset set to dark mode Android picks its icon colours from the
+        // system theme rather than from the page, so the clock and the battery
+        // came back white — on a white status bar. Invisible, on every screen,
+        // for every user whose phone is in dark mode. The clinic's own phones
+        // are, which is why the screenshots have a black bar along the bottom.
+        //
+        // Stated rather than inherited: this app has one appearance, so it
+        // declares it instead of asking. See [kDarkThemeEnabled] for why there
+        // is only one to declare.
         // One uniform, slightly-smaller text size across the whole app. Trimmed
         // ~13% and capped at 1.0 so a device set to large fonts can't blow the
         // layout up, while staying comfortably readable (not tiny).
         final scale = (mq.textScaler.scale(1) * 0.87).clamp(0.83, 1.0);
-        return MediaQuery(
-          data: mq.copyWith(textScaler: TextScaler.linear(scale)),
-          child: AppLockGate(child: child ?? const SizedBox.shrink()),
+        return AnnotatedRegion<SystemUiOverlayStyle>(
+          value: const SystemUiOverlayStyle(
+            statusBarColor: Colors.transparent,
+            // "Dark" here names the icons, not the bar: dark markings, for a
+            // light ground behind them.
+            statusBarIconBrightness: Brightness.dark,
+            statusBarBrightness: Brightness.light, // iOS spells it the other way
+            systemNavigationBarColor: Colors.white,
+            systemNavigationBarIconBrightness: Brightness.dark,
+            systemNavigationBarDividerColor: Color(0x14000000),
+          ),
+          child: MediaQuery(
+            data: mq.copyWith(textScaler: TextScaler.linear(scale)),
+            child: AppLockGate(child: child ?? const SizedBox.shrink()),
+          ),
         );
       },
     );

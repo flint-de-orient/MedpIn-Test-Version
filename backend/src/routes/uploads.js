@@ -2,6 +2,8 @@ import { Router } from 'express';
 import multer from 'multer';
 import sharp from 'sharp';
 import { needsDarkChip } from '../services/logoLuminance.js';
+import { removeFlatBackground } from '../services/logoBackground.js';
+import { Clinic } from '../models/Clinic.js';
 import { transcribeVoiceNote, transcodeToMp3 } from '../services/ai/transcribe.js';
 import path from 'node:path';
 import fs from 'node:fs/promises';
@@ -177,14 +179,24 @@ router.post(
       // letterhead is flagged so the app can paint a dark chip behind it.
       // Inverting it instead would turn this clinic's teal orange, and the
       // colour is the part of a logo that carries the brand.
-      const image = sharp(req.file.buffer, { failOn: 'none' }).rotate();
+      //
+      // The ground goes first, when there is one to remove. What a clinic
+      // actually has is the mark on the white rectangle the printer sent, and
+      // that rectangle lands on the letterhead as a visible box. See
+      // [services/logoBackground.js] for what it declines to touch.
+      const cut = await removeFlatBackground(req.file.buffer);
+      const image = sharp(cut.buffer, { failOn: 'none' }).rotate();
       const meta = await image.metadata();
-      width = meta.width ?? null;
-      height = meta.height ?? null;
       buffer = await image
         .resize({ width: 1200, height: 1200, fit: 'inside', withoutEnlargement: true })
         .png({ compressionLevel: 9 })
         .toBuffer();
+      // Measured after the resize, not from `meta`: trimming the transparent
+      // margin changes the dimensions, and a stored size that does not match
+      // the stored bytes is a box drawn at the wrong shape.
+      const cutMeta = await sharp(buffer).metadata();
+      width = cutMeta.width ?? meta.width ?? null;
+      height = cutMeta.height ?? meta.height ?? null;
       mimeType = 'image/png';
       needsDark = await needsDarkChip(buffer).catch(() => false);
     } else if (!isDocument && !isAudio) {
@@ -305,6 +317,23 @@ router.get(
       allowed = await User.exists({
         avatarAssetId: asset._id,
         role: { $ne: ROLES.PATIENT },
+      });
+    }
+
+    // The clinic's own logo is readable by anyone signed in.
+    //
+    // A brand is public by definition — it is on the letterhead of the
+    // prescription the patient carries home, and on the confirmation they were
+    // sent. Without this the patient's app asks for it, gets a 403 and draws
+    // the fallback, so the one panel that most needs to say which clinic this
+    // is would be the only one that could not.
+    //
+    // Matched on a clinic actually referencing the asset, not on
+    // `kind === 'clinic_logo'`: the kind is what an uploader asked for, and
+    // this is a question about what the clinic published.
+    if (!allowed) {
+      allowed = await Clinic.exists({
+        $or: [{ logoLightAssetId: asset._id }, { logoDarkAssetId: asset._id }],
       });
     }
 

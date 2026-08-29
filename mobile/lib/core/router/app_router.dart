@@ -378,6 +378,18 @@ final Provider<GoRouter> appRouterProvider = Provider<GoRouter>((ref) {
             (context, state) =>
                 PatientProfileScreen(patientId: state.pathParameters['id']!),
       ),
+      // Reading one is the desk's job — reprinting a prescription for a
+      // patient who lost theirs is most of what a front desk is asked for.
+      // Writing one is not, and the server refuses a POST from staff whatever
+      // this app draws.
+      GoRoute(
+        path: '/staff/patients/:id/prescriptions',
+        builder:
+            (context, state) => PrescriptionListScreen(
+              patientId: state.pathParameters['id']!,
+              patientName: state.extra as String?,
+            ),
+      ),
       GoRoute(
         path: '/staff/patients/:id/thread',
         builder:

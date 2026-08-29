@@ -7,6 +7,8 @@ import 'package:image_picker/image_picker.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../core/router/area.dart';
+
 import '../../../core/network/api_exception.dart';
 import '../../../shared/data/upload_repository.dart';
 import '../../../core/theme/app_colors.dart';
@@ -564,9 +566,12 @@ class _PatientThreadScreenState extends ConsumerState<PatientThreadScreen> {
           button: true,
           label: 'Open ${_patientName ?? 'patient'} record',
           child: InkWell(
+            // The prefix, not a literal: this header is the front desk's only
+            // way into a record, and `/clinician/...` is an area the router
+            // bounces staff straight out of — onto a blank Today.
             onTap:
                 () => context.push(
-                  '/clinician/patients/${widget.patientId}',
+                  '${areaPrefix(ref)}/patients/${widget.patientId}',
                   extra: _patientName,
                 ),
             child: Row(

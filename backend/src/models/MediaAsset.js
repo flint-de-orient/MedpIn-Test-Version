@@ -21,6 +21,11 @@ const mediaAssetSchema = new mongoose.Schema(
         'avatar',
         // A doctor's handwritten signature image, embedded into prescription PDFs.
         'signature',
+        // The clinic's own mark, drawn on every panel header and on the
+        // prescription letterhead. Kept out of `avatar` on purpose: an avatar
+        // belongs to a person and is cropped to a circle, and a wordmark
+        // cropped to a circle is unreadable.
+        'clinic_logo',
         // A recording the patient spoke instead of typing. Kept as uploaded so
         // the clinic hears exactly what was said, tone included.
         'voice_note',

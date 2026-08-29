@@ -4,7 +4,6 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import '../../../core/theme/tokens.dart';
-import '../../../shared/widgets/app_logo.dart';
 import '../../../shared/widgets/authed_image.dart';
 import '../../../shared/widgets/edge_fade.dart';
 import '../../../shared/widgets/auto_refresh.dart';
@@ -15,6 +14,7 @@ import '../domain/diet_models.dart';
 import 'dietician_providers.dart';
 import 'widgets/dietician_bell.dart';
 import 'widgets/nutrition_sparkline.dart';
+import '../../../shared/widgets/clinic_brand.dart';
 
 /// The dietician's day in one screen.
 ///
@@ -145,30 +145,13 @@ class _BrandHeader extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(T.s4, T.s2, T.s4, T.s2),
       child: Row(
         children: [
-          // AppLogo, not a path: the widget exists so a change of artwork is a
-          // one-file edit, and the path this originally guessed at did not
-          // exist — it silently rendered the fallback icon instead.
-          const AppLogo(size: 34),
-          const SizedBox(width: T.s2),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                'MedPin',
-                style: T.title.copyWith(color: T.primary, height: 1.1),
-              ),
-              Text(
-                'Dietician Panel',
-                style: T.label.copyWith(
-                  letterSpacing: 0,
-                  fontWeight: FontWeight.w500,
-                  color: T.inkMuted,
-                ),
-              ),
-            ],
+          const Expanded(
+            child: ClinicWordmark(
+              subtitle: 'Dietician Panel',
+              maxWidth: 210,
+            ),
           ),
-          const Spacer(),
+          const SizedBox(width: T.s2),
           const DieticianBell(),
           const SizedBox(width: T.s3),
           // Just the avatar. The name, the role and a dropdown chevron all

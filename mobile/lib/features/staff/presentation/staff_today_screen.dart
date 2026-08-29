@@ -13,9 +13,10 @@ import '../../appointments/domain/appointment.dart';
 import '../../appointments/domain/clinic.dart';
 import '../../appointments/presentation/appointment_providers.dart';
 import '../../auth/presentation/auth_controller.dart';
+import '../../clinician/presentation/clinician_providers.dart';
 import '../../clinician/presentation/widgets/panel_ui.dart';
-import '../../../shared/widgets/authed_image.dart';
 import '../../clinician/presentation/widgets/clinician_notification_sheet.dart';
+import '../../../shared/widgets/clinic_brand.dart';
 
 /// The front desk's day.
 ///
@@ -99,6 +100,20 @@ class _StaffTodayScreenState extends ConsumerState<StaffTodayScreen> {
             ),
             children: [
               const _DeskHeader(),
+              const SizedBox(height: AppSpacing.md),
+
+              // The shape of the patient's home screen, for the same reason it
+              // has that shape: one card that answers "what is happening", a
+              // rail of numbers under it, then the lists.
+              //
+              // A quiet morning used to render as a single empty box on a page
+              // of nothing, which reads as an app that has failed rather than
+              // a day that has not started. The hero and the rail are true on
+              // an empty day too — no appointments is a fact about the day,
+              // and the desk still wants the other two numbers.
+              _DayHero(today: today, requests: requests),
+              const SizedBox(height: AppSpacing.md),
+              _DeskRail(today: today, requests: requests),
               const SizedBox(height: AppSpacing.lg),
 
               if (requests.isNotEmpty) ...[
@@ -144,13 +159,12 @@ class _DeskHeader extends ConsumerWidget {
     // the desk's commonest job, but a header is for saying where you are and
     // what is waiting — and a filled button in one takes the whole width from
     // whatever it shares the row with.
-    final clinic = ref.watch(deskClinicProvider).valueOrNull;
-    final logoUrl = clinic?.logoLightUrl;
+    final clinic = ref.watch(brandClinicProvider).valueOrNull;
 
     return Row(
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        _ClinicMark(url: logoUrl, name: clinic?.name ?? user?.name ?? 'Clinic'),
+        ClinicMark(clinic: clinic),
         const SizedBox(width: AppSpacing.md),
         Expanded(
           child: Column(
@@ -190,49 +204,248 @@ class _DeskHeader extends ConsumerWidget {
   }
 }
 
-/// The clinic's logo, or its initial when it has none.
+/// What is happening today, in one card.
 ///
-/// Falls back rather than showing an empty box: a clinic that has not uploaded
-/// artwork yet still has a name, and a blank square in the corner of every
-/// screen reads as something that failed to load.
-class _ClinicMark extends StatelessWidget {
-  const _ClinicMark({required this.url, required this.name});
+/// Modelled on the patient's home hero, and for the same reason: the first
+/// thing on a screen should answer the question the person opened it with. For
+/// a receptionist at nine in the morning that question is "how busy am I, and
+/// who is first".
+///
+/// Drawn rather than photographed. The patient's card carries a photograph
+/// because it is the app greeting someone; this one is a working surface that
+/// several people share a login to, and a stock photo behind the day's numbers
+/// is decoration a desk has to read past.
+class _DayHero extends StatelessWidget {
+  const _DayHero({required this.today, required this.requests});
 
-  final String? url;
-  final String name;
+  final List<Appointment> today;
+  final List<Appointment> requests;
 
   @override
   Widget build(BuildContext context) {
-    const size = 44.0;
-    if (url == null || url!.isEmpty) {
-      return Container(
-        width: size,
-        height: size,
-        alignment: Alignment.center,
-        decoration: BoxDecoration(
-          color: AppColors.primary.withValues(alpha: 0.10),
-          borderRadius: BorderRadius.circular(AppSpacing.cardRadius),
+    final now = DateTime.now();
+    // The next one still to come, not the first of the day: at four in the
+    // afternoon the morning's list is history, and a desk told "next: 9:30 AM"
+    // has been told something false.
+    final upcoming =
+        today.where((a) => (a.scheduledFor ?? now).isAfter(now)).toList()
+          ..sort((a, b) => a.sortKey.compareTo(b.sortKey));
+    final next = upcoming.firstOrNull;
+
+    final String headline;
+    final String detail;
+    if (today.isEmpty) {
+      headline = 'No appointments';
+      detail =
+          requests.isEmpty
+              ? 'A quiet day. Walk-ins can be registered from the button below.'
+              : '${requests.length} ${requests.length == 1 ? 'person is' : 'people are'} waiting for a time.';
+    } else if (next?.scheduledFor != null) {
+      headline =
+          today.length == 1 ? '1 appointment' : '${today.length} appointments';
+      final at = DateFormat('h:mm a').format(next!.scheduledFor!);
+      detail = 'Next: ${next.patientName ?? 'Patient'} at $at';
+    } else {
+      headline =
+          today.length == 1 ? '1 appointment' : '${today.length} appointments';
+      detail = 'Everyone booked for today has been and gone.';
+    }
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(AppSpacing.md),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(AppSpacing.cardRadius + 4),
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFF2C5BE0), Color(0xFF0B2C86)],
         ),
-        child: Text(
-          name.trim().isEmpty ? 'C' : name.trim()[0].toUpperCase(),
-          style: const TextStyle(
-            fontSize: 18,
-            fontWeight: FontWeight.w800,
-            color: AppColors.primary,
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x2E003399),
+            blurRadius: 20,
+            offset: Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  'TODAY',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 1.2,
+                    color: Colors.white.withValues(alpha: 0.72),
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  headline,
+                  style: const TextStyle(
+                    fontSize: 26,
+                    height: 1.1,
+                    fontWeight: FontWeight.w800,
+                    color: Colors.white,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  detail,
+                  style: TextStyle(
+                    fontSize: 13,
+                    height: 1.35,
+                    fontWeight: FontWeight.w500,
+                    color: Colors.white.withValues(alpha: 0.86),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: AppSpacing.sm),
+          Icon(
+            today.isEmpty
+                ? Icons.wb_sunny_outlined
+                : Icons.event_available_rounded,
+            size: 34,
+            color: Colors.white.withValues(alpha: 0.32),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Three numbers the desk is asked for all day.
+///
+/// Unread is counted across the whole roll rather than shown per patient: the
+/// question a receptionist is answering is "is anyone waiting on us", and that
+/// is a total. Tapping it opens the inbox, where the per-patient answer is.
+class _DeskRail extends ConsumerWidget {
+  const _DeskRail({required this.today, required this.requests});
+
+  final List<Appointment> today;
+  final List<Appointment> requests;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    // Already fetched for the Patients tab, so this reads the cache rather
+    // than making a second round trip. Null while it loads, and drawn as an em
+    // dash: "0 unread" that turns into 4 a second later is worse than saying
+    // it does not know yet.
+    final roll =
+        ref
+            .watch(
+              patientsProvider((riskBand: null, search: null, sort: 'recent')),
+            )
+            .valueOrNull;
+    final unread =
+        roll == null
+            ? null
+            : roll.items.fold<int>(0, (n, p) => n + p.unreadCount);
+
+    return Row(
+      children: [
+        Expanded(
+          child: _RailTile(
+            icon: Icons.event_note_rounded,
+            label: 'Booked',
+            value: '${today.length}',
+            tone: AppColors.primary,
           ),
         ),
-      );
-    }
-    return ClipRRect(
+        const SizedBox(width: AppSpacing.sm),
+        Expanded(
+          child: _RailTile(
+            icon: Icons.hourglass_bottom_rounded,
+            label: 'Waiting',
+            value: '${requests.length}',
+            tone: requests.isEmpty ? AppColors.primary : AppColors.warning,
+          ),
+        ),
+        const SizedBox(width: AppSpacing.sm),
+        Expanded(
+          child: _RailTile(
+            icon: Icons.mark_chat_unread_outlined,
+            label: 'Unread',
+            value: unread == null ? '—' : '$unread',
+            tone: (unread ?? 0) > 0 ? AppColors.danger : AppColors.primary,
+            // `go`, not `push`: Patients is one of this shell's own tabs, and
+            // pushing it stacks a copy while the bar keeps Today lit.
+            onTap: () => context.go('/staff/patients'),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _RailTile extends StatelessWidget {
+  const _RailTile({
+    required this.icon,
+    required this.label,
+    required this.value,
+    required this.tone,
+    this.onTap,
+  });
+
+  final IconData icon;
+  final String label;
+  final String value;
+  final Color tone;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Material(
+      color: Colors.white,
       borderRadius: BorderRadius.circular(AppSpacing.cardRadius),
-      child: AuthedImage(
-        path: url!,
-        width: size,
-        height: size,
-        radius: AppSpacing.cardRadius,
-        // A logo is cut out, so it sits on the page rather than on a plate.
-        background: Colors.transparent,
-        fit: BoxFit.contain,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(AppSpacing.cardRadius),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(
+            horizontal: 12,
+            vertical: AppSpacing.sm,
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, size: 18, color: tone),
+              const SizedBox(height: 6),
+              Text(
+                value,
+                maxLines: 1,
+                style: TextStyle(
+                  fontSize: 22,
+                  height: 1.05,
+                  fontWeight: FontWeight.w800,
+                  color: tone,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: scheme.onSurfaceVariant,
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
