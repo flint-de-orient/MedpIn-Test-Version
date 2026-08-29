@@ -23,6 +23,7 @@ import 'clinician_providers.dart';
 import 'widgets/clinician_visuals.dart';
 import 'widgets/sparkline.dart';
 import '../../../core/theme/tokens.dart';
+import '../../../core/router/area.dart';
 
 /// The read side of a patient: health score, adherence, glucose control, HbA1c
 /// history, test reports, recent alerts, the dietician's review cadence, and
@@ -1152,7 +1153,12 @@ class _DieticianSection extends ConsumerWidget {
     // only when there's a choice to make (or to undo an existing restriction).
     final dieticianCount =
         ref.watch(clinicDieticiansProvider).valueOrNull?.length ?? 0;
-    final canRestrict = restricted || dieticianCount >= 2;
+    // Who covers a patient — and, in a clinic with two dieticians, who may see
+    // them at all — is a clinical and an access decision. The server refuses it
+    // from a desk account now; the button goes too, so the desk is not offered
+    // a control that ends in a red toast.
+    final canRestrict =
+        (restricted || dieticianCount >= 2) && areaPrefix(ref) != '/staff';
 
     return Container(
       padding: const EdgeInsets.all(AppSpacing.md),

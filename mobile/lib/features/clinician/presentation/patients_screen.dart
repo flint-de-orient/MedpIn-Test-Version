@@ -384,7 +384,7 @@ class _InboxHeader extends ConsumerWidget {
           // The clinic this app belongs to, not the app. See
           // [ClinicWordmark] for why the logo replaces the name rather than
           // sitting beside it.
-          const Expanded(child: ClinicWordmark(maxWidth: 210)),
+          const Expanded(child: ClinicWordmark()),
           const SizedBox(width: AppSpacing.sm),
           PanelNotificationBell(
             onTap: () => showClinicianNotifications(context),

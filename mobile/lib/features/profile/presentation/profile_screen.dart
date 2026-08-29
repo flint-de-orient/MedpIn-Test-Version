@@ -1,5 +1,3 @@
-import 'dart:ui' show ImageFilter;
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -17,10 +15,8 @@ import '../../../shared/data/upload_repository.dart';
 import '../../../shared/providers/app_lock_provider.dart';
 import '../../../shared/providers/locale_provider.dart';
 import '../../../shared/providers/preferences_provider.dart';
-import '../../../shared/widgets/fullscreen_photo.dart';
-import '../../../shared/widgets/user_avatar.dart';
+import '../../../shared/widgets/profile_photo_header.dart';
 import '../../appointments/data/clinic_repository.dart';
-import '../../auth/domain/user.dart';
 import '../../auth/presentation/auth_controller.dart';
 import 'widgets/profile_section.dart';
 import 'widgets/theme_selector.dart';
@@ -333,11 +329,12 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                   boxShadow: T.e1,
                 ),
                 child: HeroSurface(
-                  child: _Header(
+                  child: ProfilePhotoHeader(
                     user: user,
                     accent: accent,
                     uploading: _uploadingAvatar,
                     onEditPhoto: _uploadingAvatar ? null : _changeAvatar,
+                    roleLabel: l10n.profilePatient,
                   ),
                 ),
               ),
@@ -558,147 +555,3 @@ class _SectionLabel extends StatelessWidget {
   }
 }
 
-class _Header extends StatelessWidget {
-  const _Header({
-    required this.user,
-    required this.accent,
-    required this.uploading,
-    required this.onEditPhoto,
-  });
-
-  final AppUser? user;
-  final Color accent;
-  final bool uploading;
-  final VoidCallback? onEditPhoto;
-
-  @override
-  Widget build(BuildContext context) {
-    final l10n = AppLocalizations.of(context);
-    final scheme = Theme.of(context).colorScheme;
-    final name = user?.name ?? '';
-
-    return Column(
-      children: [
-        Semantics(
-          button: true,
-          label: l10n.profileChangePhoto,
-          child: GestureDetector(
-            onTap: onEditPhoto,
-            // Hold to view the photo full-screen (only when one is set).
-            onLongPress:
-                user?.avatarUrl != null
-                    ? () => FullscreenPhoto.show(context, user!.avatarUrl)
-                    : null,
-            child: Stack(
-              children: [
-                // A white ring and a soft shadow. Against a pale tinted
-                // band the photo's own edge was the only thing separating it
-                // from the background, so it sat *in* the band rather than on
-                // it — the single biggest reason this header looked flat.
-                Container(
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    border: Border.all(color: Colors.white, width: 3),
-                    boxShadow: const [
-                      BoxShadow(
-                        color: Color(0x1F0B1B3A),
-                        blurRadius: 16,
-                        offset: Offset(0, 6),
-                      ),
-                    ],
-                  ),
-                  child: UserAvatar(
-                    name: name,
-                    avatarUrl: user?.avatarUrl,
-                    accent: accent,
-                    size: 96,
-                  ),
-                ),
-                // Dim + spinner while the new photo is uploading.
-                if (uploading)
-                  Positioned.fill(
-                    child: ClipOval(
-                      child: ColoredBox(
-                        color: Colors.black.withValues(alpha: 0.45),
-                        child: const Center(
-                          child: SizedBox(
-                            width: 24,
-                            height: 26,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2.6,
-                              color: Colors.white,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                // Camera badge in the corner.
-                // Frosted rather than a solid blue disc. At 96px the badge
-                // is the second-brightest thing in the header and it was
-                // winning against the face; a real backdrop blur keeps it
-                // legible over whatever the photo puts behind it without
-                // shouting. This is one of the two places in the app where a
-                // blur has something detailed to work on and earns its cost.
-                Positioned(
-                  right: 2,
-                  bottom: 2,
-                  child: ClipOval(
-                    child: BackdropFilter(
-                      filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
-                      child: Container(
-                        padding: const EdgeInsets.all(6),
-                        decoration: BoxDecoration(
-                          color: const Color(
-                            0xFF0B1B3A,
-                          ).withValues(alpha: 0.55),
-                          shape: BoxShape.circle,
-                          border: Border.all(
-                            color: Colors.white.withValues(alpha: 0.55),
-                            width: 1.2,
-                          ),
-                        ),
-                        child: const Icon(
-                          Icons.photo_camera_rounded,
-                          size: 15,
-                          color: Colors.white,
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-        const SizedBox(height: AppSpacing.md),
-        Text(
-          name,
-          textAlign: TextAlign.center,
-          style: T.title.copyWith(fontSize: 22, fontWeight: FontWeight.w800),
-        ),
-        const SizedBox(height: 2),
-        Text(
-          user?.phone ?? '',
-          style: TextStyle(fontSize: 14, color: scheme.onSurfaceVariant),
-        ),
-        const SizedBox(height: AppSpacing.sm),
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-          decoration: BoxDecoration(
-            color: scheme.surfaceContainerHighest,
-            borderRadius: BorderRadius.circular(20),
-          ),
-          child: Text(
-            l10n.profilePatient,
-            style: TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w600,
-              color: scheme.onSurfaceVariant,
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-}

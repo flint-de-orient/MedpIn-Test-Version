@@ -12,11 +12,12 @@ import '../../appointments/data/clinic_repository.dart';
 import '../../appointments/domain/appointment.dart';
 import '../../appointments/domain/clinic.dart';
 import '../../appointments/presentation/appointment_providers.dart';
-import '../../auth/presentation/auth_controller.dart';
 import '../../clinician/presentation/clinician_providers.dart';
 import '../../clinician/presentation/widgets/panel_ui.dart';
 import '../../clinician/presentation/widgets/clinician_notification_sheet.dart';
 import '../../../shared/widgets/clinic_brand.dart';
+import '../../../shared/widgets/auto_refresh.dart';
+import '../../../shared/widgets/notification_list_sheet.dart';
 
 /// The front desk's day.
 ///
@@ -54,10 +55,20 @@ class _StaffTodayScreenState extends ConsumerState<StaffTodayScreen> {
     );
   }
 
-  Future<void> _refresh() async {
+  /// Everything this screen counts, not just the two lists it draws.
+  ///
+  /// The rail counted unread off the patient roll and the bell counted it off
+  /// the notification endpoint, and only the appointment queries were ever
+  /// invalidated. A receptionist who opened every thread, read every message
+  /// and came back still saw "2 Unread" — a number from before they started,
+  /// with no way to clear it short of restarting the app.
+  void _reload(WidgetRef ref) {
     ref.invalidate(appointmentDiaryProvider(_requests));
     ref.invalidate(appointmentDiaryProvider(_today));
+    ref.invalidate(clinicianNotificationsProvider);
   }
+
+  Future<void> _refresh() async => _reload(ref);
 
   @override
   Widget build(BuildContext context) {
@@ -87,58 +98,75 @@ class _StaffTodayScreenState extends ConsumerState<StaffTodayScreen> {
         icon: const Icon(Icons.person_add_alt_1_rounded),
         label: const Text('Register'),
       ),
-      body: SafeArea(
-        bottom: false,
-        child: RefreshIndicator(
-          onRefresh: _refresh,
-          child: ListView(
-            padding: const EdgeInsets.fromLTRB(
-              AppSpacing.md,
-              AppSpacing.sm,
-              AppSpacing.md,
-              96,
-            ),
-            children: [
-              const _DeskHeader(),
-              const SizedBox(height: AppSpacing.md),
+      // Reading a message happens on another screen, and the desk leaves this
+      // one and comes back all day. AutoRefresh re-reads on a timer while the
+      // screen is up and again the moment the app resumes, so the counts here
+      // are never older than the last time anyone looked at them.
+      body: AutoRefresh(
+        onTick: _reload,
+        child: SafeArea(
+          bottom: false,
+          child: RefreshIndicator(
+            onRefresh: _refresh,
+            child: ListView(
+              padding: const EdgeInsets.fromLTRB(
+                AppSpacing.md,
+                AppSpacing.sm,
+                AppSpacing.md,
+                96,
+              ),
+              children: [
+                const _DeskHeader(),
+                const SizedBox(height: AppSpacing.md),
 
-              // The shape of the patient's home screen, for the same reason it
-              // has that shape: one card that answers "what is happening", a
-              // rail of numbers under it, then the lists.
-              //
-              // A quiet morning used to render as a single empty box on a page
-              // of nothing, which reads as an app that has failed rather than
-              // a day that has not started. The hero and the rail are true on
-              // an empty day too — no appointments is a fact about the day,
-              // and the desk still wants the other two numbers.
-              _DayHero(today: today, requests: requests),
-              const SizedBox(height: AppSpacing.md),
-              _DeskRail(today: today, requests: requests),
-              const SizedBox(height: AppSpacing.lg),
+                // The shape of the patient's home screen, for the same reason it
+                // has that shape: one card that answers "what is happening", a
+                // rail of numbers under it, then the lists.
+                //
+                // A quiet morning used to render as a single empty box on a page
+                // of nothing, which reads as an app that has failed rather than
+                // a day that has not started. The hero and the rail are true on
+                // an empty day too — no appointments is a fact about the day,
+                // and the desk still wants the other two numbers.
+                // Above everything, when there is one.
+                //
+                // A patient writing "I have chest pain" already pushes to this
+                // handset — the desk is on that fan-out deliberately, because the
+                // receptionist is the person physically present and what happens
+                // next is fetching the doctor or ringing the patient back. The
+                // push arrived, and the screen behind it said "No appointments"
+                // with nothing anywhere about the emergency.
+                const _EmergencyStrip(),
 
-              if (requests.isNotEmpty) ...[
-                _SectionTitle(
-                  'Waiting for a time',
-                  count: requests.length,
-                  tone: AppColors.warning,
-                ),
-                const SizedBox(height: AppSpacing.sm),
-                for (final a in requests)
-                  _RequestCard(appointment: a, onConfirmed: _refresh),
+                _DayHero(today: today, requests: requests),
+                const SizedBox(height: AppSpacing.md),
+                _DeskRail(today: today, requests: requests),
                 const SizedBox(height: AppSpacing.lg),
-              ],
 
-              _SectionTitle('Today', count: today.length),
-              const SizedBox(height: AppSpacing.sm),
-              if (today.isEmpty)
-                const _Empty(
-                  icon: Icons.event_available_outlined,
-                  title: 'Nothing booked today',
-                  body: 'Appointments confirmed for today appear here.',
-                )
-              else
-                for (final a in today) _DayRow(appointment: a),
-            ],
+                if (requests.isNotEmpty) ...[
+                  _SectionTitle(
+                    'Waiting for a time',
+                    count: requests.length,
+                    tone: AppColors.warning,
+                  ),
+                  const SizedBox(height: AppSpacing.sm),
+                  for (final a in requests)
+                    _RequestCard(appointment: a, onConfirmed: _refresh),
+                  const SizedBox(height: AppSpacing.lg),
+                ],
+
+                _SectionTitle('Today', count: today.length),
+                const SizedBox(height: AppSpacing.sm),
+                if (today.isEmpty)
+                  const _Empty(
+                    icon: Icons.event_available_outlined,
+                    title: 'Nothing booked today',
+                    body: 'Appointments confirmed for today appear here.',
+                  )
+                else
+                  for (final a in today) _DayRow(appointment: a),
+              ],
+            ),
           ),
         ),
       ),
@@ -152,20 +180,20 @@ class _DeskHeader extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final scheme = Theme.of(context).colorScheme;
-    final user = ref.watch(authControllerProvider).user;
-    // The clinic's own mark, the day, and the bell.
+    // The day, then whose clinic this is, then the bell.
     //
     // Register used to sit here, and is now the button in the corner. It is
     // the desk's commonest job, but a header is for saying where you are and
     // what is waiting — and a filled button in one takes the whole width from
     // whatever it shares the row with.
-    final clinic = ref.watch(brandClinicProvider).valueOrNull;
-
+    //
+    // The mark and the name come from [ClinicWordmark], the same widget every
+    // other panel uses. This drew its own square mark beside its own copy of
+    // the name, which is how the name ended up wrapped to two truncated lines
+    // next to a logo squeezed into 44 points.
     return Row(
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        ClinicMark(clinic: clinic),
-        const SizedBox(width: AppSpacing.md),
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -180,26 +208,134 @@ class _DeskHeader extends ConsumerWidget {
                   color: scheme.onSurfaceVariant,
                 ),
               ),
-              const SizedBox(height: 2),
-              Text(
-                clinic?.name ?? user?.name ?? 'Front desk',
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  fontSize: 20,
-                  height: 1.2,
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
+              const SizedBox(height: 4),
+              const ClinicWordmark(subtitle: 'Front desk'),
             ],
           ),
         ),
         const SizedBox(width: AppSpacing.sm),
-        // The same bell the doctor has. What reaches it differs by role —
-        // the desk is told about requests and messages, not about a patient's
+        // The same bell the doctor has. What reaches it differs by role — the
+        // desk is told about requests and messages, not about a patient's
         // HbA1c — but the control is one control.
         PanelNotificationBell(onTap: () => showClinicianNotifications(context)),
       ],
+    );
+  }
+}
+
+/// Open emergencies, at the top of the desk's day.
+///
+/// Only urgent and emergency severities reach a staff account — the server
+/// filters, see `DESK_ALERTS`. So everything drawn here is something a
+/// receptionist can act on in the next minute, and the row leads to the thread
+/// because that is where the call button is.
+///
+/// Nothing is drawn when there is nothing. An empty "Emergencies" heading on a
+/// quiet morning is a heading that stops being read by the time it matters.
+class _EmergencyStrip extends ConsumerWidget {
+  const _EmergencyStrip();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final view = ref.watch(clinicianNotificationsProvider).valueOrNull;
+    final urgent =
+        (view?.items ?? const <PanelNotification>[])
+            .where((i) => i.kind == 'urgent')
+            .toList();
+    if (urgent.isEmpty) return const SizedBox.shrink();
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: AppSpacing.md),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                Icons.emergency_rounded,
+                size: 18,
+                color: AppColors.dangerOn(context),
+              ),
+              const SizedBox(width: 6),
+              Text(
+                urgent.length == 1
+                    ? 'Needs attention now'
+                    : '${urgent.length} need attention now',
+                style: TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w800,
+                  color: AppColors.dangerOn(context),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: AppSpacing.sm),
+          for (final a in urgent)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Material(
+                color: AppColors.dangerBgOn(context),
+                borderRadius: BorderRadius.circular(AppSpacing.cardRadius),
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(AppSpacing.cardRadius),
+                  onTap:
+                      a.patientId.isEmpty
+                          ? null
+                          : () => context.push(
+                            '/staff/patients/${a.patientId}/thread',
+                            extra: a.patientName,
+                          ),
+                  child: Padding(
+                    padding: const EdgeInsets.all(AppSpacing.sm),
+                    child: Row(
+                      children: [
+                        UserAvatar(
+                          name: a.patientName,
+                          avatarUrl: a.avatarUrl,
+                          accent: AppColors.dangerOn(context),
+                          size: 40,
+                        ),
+                        const SizedBox(width: AppSpacing.sm),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                a.patientName,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w800,
+                                ),
+                              ),
+                              Text(
+                                a.text,
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  height: 1.3,
+                                  fontWeight: FontWeight.w600,
+                                  color: AppColors.dangerOn(context),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        Icon(
+                          Icons.chevron_right_rounded,
+                          color: AppColors.dangerOn(context),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
     );
   }
 }
@@ -336,20 +472,17 @@ class _DeskRail extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    // Already fetched for the Patients tab, so this reads the cache rather
-    // than making a second round trip. Null while it loads, and drawn as an em
-    // dash: "0 unread" that turns into 4 a second later is worse than saying
-    // it does not know yet.
-    final roll =
-        ref
-            .watch(
-              patientsProvider((riskBand: null, search: null, sort: 'recent')),
-            )
-            .valueOrNull;
-    final unread =
-        roll == null
-            ? null
-            : roll.items.fold<int>(0, (n, p) => n + p.unreadCount);
+    // The same number the bell is counting, from the same endpoint.
+    //
+    // This used to sum `unreadCount` across the patient roll — a different
+    // query, cached separately, that nothing invalidated when a message was
+    // read. The tile and the bell could disagree by a wide margin while sitting
+    // two inches apart, and the tile was usually the stale one.
+    //
+    // Null while it loads, and drawn as an em dash: "0 unread" that turns into
+    // 4 a second later is worse than admitting it does not know yet.
+    final counts = ref.watch(clinicianNotificationsProvider).valueOrNull;
+    final unread = counts?.messages;
 
     return Row(
       children: [
@@ -567,7 +700,7 @@ class _RequestCardState extends ConsumerState<_RequestCard> {
                         if (a.preferredFor != null)
                           'for ${DateFormat('EEE, d MMM').format(a.preferredFor!)}',
                         if (_waited.isNotEmpty) _waited,
-                      ].join(' · '),
+                      ].join('   '),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(

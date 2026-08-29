@@ -363,7 +363,7 @@ class _BrandHeader extends StatelessWidget {
       // that makes the whole screen look like a form.
       child: Row(
         children: [
-          const Expanded(child: ClinicWordmark(maxWidth: 210)),
+          const Expanded(child: ClinicWordmark()),
           const SizedBox(width: AppSpacing.sm),
           IconButton(
             tooltip: 'Notifications',

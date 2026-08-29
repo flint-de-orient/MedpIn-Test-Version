@@ -141,7 +141,12 @@ final knowledgeProvider = FutureProvider.autoDispose
     });
 
 /// Everything waiting for the doctor, for the bell and its sheet.
-final clinicianNotificationsProvider =
-    FutureProvider.autoDispose<({int unread, List<PanelNotification> items})>(
-      (ref) => ref.watch(clinicianRepositoryProvider).notifications(),
-    );
+final clinicianNotificationsProvider = FutureProvider.autoDispose<
+  ({
+    int unread,
+    int messages,
+    int alerts,
+    int requests,
+    List<PanelNotification> items,
+  })
+>((ref) => ref.watch(clinicianRepositoryProvider).notifications());

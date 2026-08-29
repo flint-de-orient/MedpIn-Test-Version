@@ -4,7 +4,6 @@ import 'package:go_router/go_router.dart';
 
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
-import '../../../shared/widgets/user_avatar.dart';
 import '../../appointments/presentation/appointment_providers.dart';
 import '../../auth/presentation/auth_controller.dart';
 import '../../../shared/widgets/error_view.dart';
@@ -12,11 +11,10 @@ import '../../../shared/data/upload_repository.dart';
 import 'package:image_picker/image_picker.dart';
 import '../../profile/presentation/widgets/theme_selector.dart';
 import '../../profile/presentation/widgets/profile_section.dart';
-import '../../../shared/widgets/language_picker.dart';
 import '../../../shared/providers/app_lock_provider.dart';
-import '../../../shared/providers/locale_provider.dart';
 import '../../../shared/providers/theme_provider.dart';
 import '../../../core/config/app_config.dart';
+import '../../../shared/widgets/profile_photo_header.dart';
 
 /// The desk's own settings.
 ///
@@ -108,18 +106,6 @@ class _StaffProfileScreenState extends ConsumerState<StaffProfileScreen> {
     }
   }
 
-  Future<void> _changeLanguage(String code) async {
-    await ref.read(localeControllerProvider.notifier).setLanguage(code);
-    ref.read(authControllerProvider.notifier).updateLocalUserLanguage(code);
-    // Best-effort: the interface has already switched, and the account copy
-    // only decides what the assistant answers in when a client omits it.
-    try {
-      await ref.read(authRepositoryProvider).updateMe(language: code);
-    } catch (_) {
-      // Non-fatal — the local preference still applies.
-    }
-  }
-
   Future<void> _toggleAppLock(bool enable) async {
     final messenger = ScaffoldMessenger.of(context);
     final controller = ref.read(appLockProvider.notifier);
@@ -179,82 +165,20 @@ class _StaffProfileScreenState extends ConsumerState<StaffProfileScreen> {
             96,
           ),
           children: [
-            Row(
-              children: [
-                Semantics(
-                  button: true,
-                  label: 'Change profile photo',
-                  child: GestureDetector(
-                    onTap: _uploadingAvatar ? null : _changeAvatar,
-                    child: Stack(
-                      alignment: Alignment.center,
-                      children: [
-                        UserAvatar(
-                          name: user?.name ?? '',
-                          avatarUrl: user?.avatarUrl,
-                          accent: AppColors.primary,
-                          size: 56,
-                        ),
-                        if (_uploadingAvatar)
-                          const SizedBox(
-                            width: 22,
-                            height: 22,
-                            child: CircularProgressIndicator(strokeWidth: 2.4),
-                          )
-                        else
-                          // A small camera badge on the corner, because an
-                          // avatar that happens to be tappable looks exactly
-                          // like one that is not.
-                          Positioned(
-                            right: 0,
-                            bottom: 0,
-                            child: Container(
-                              padding: const EdgeInsets.all(3),
-                              decoration: BoxDecoration(
-                                color: AppColors.primary,
-                                shape: BoxShape.circle,
-                                border: Border.all(
-                                  color: scheme.surface,
-                                  width: 2,
-                                ),
-                              ),
-                              child: const Icon(
-                                Icons.photo_camera_rounded,
-                                size: 12,
-                                color: Colors.white,
-                              ),
-                            ),
-                          ),
-                      ],
-                    ),
-                  ),
-                ),
-                const SizedBox(width: AppSpacing.md),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        user?.name ?? '',
-                        style: const TextStyle(
-                          fontSize: 19,
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
-                      Text(
-                        // Named for the desk rather than the person, because
-                        // that is what this account is: the line, not whoever
-                        // is holding it this afternoon.
-                        'Clinic staff · ${user?.phone ?? ''}',
-                        style: TextStyle(
-                          fontSize: 13,
-                          color: scheme.onSurfaceVariant,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
+            // The same photograph block the patient's profile has, because it
+            // is the same screen answering the same question. This had grown a
+            // smaller, plainer copy — a 56px avatar in a row, no ring, no
+            // shadow, a hard blue dot for a badge — which was not wrong so much
+            // as a second thing to learn.
+            ProfilePhotoHeader(
+              user: user,
+              accent: AppColors.primary,
+              uploading: _uploadingAvatar,
+              onEditPhoto: _uploadingAvatar ? null : _changeAvatar,
+              // Named for the desk rather than the person, because that is what
+              // this account is: the line, not whoever is holding it this
+              // afternoon.
+              roleLabel: 'Clinic staff',
             ),
             const SizedBox(height: AppSpacing.lg),
 
@@ -273,19 +197,24 @@ class _StaffProfileScreenState extends ConsumerState<StaffProfileScreen> {
               const SizedBox(height: AppSpacing.lg),
             ],
 
-            ProfileSection(
-              label: 'Language',
-              children: [
-                Padding(
-                  padding: const EdgeInsets.all(AppSpacing.md),
-                  child: LanguagePicker(
-                    selected: ref.watch(localeControllerProvider)?.languageCode,
-                    onChanged: _changeLanguage,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: AppSpacing.lg),
+            // No language picker here, deliberately.
+            //
+            // It was offered and it did almost nothing. Every screen on the
+            // clinic side of this app — Today, the care inbox, the patient
+            // record, this profile — is written in English in the source, not
+            // through the localisations. Choosing বাংলা switched the app locale
+            // and changed the date format and the odd system dialog, and left
+            // all fifty-nine strings on the desk's own two screens exactly
+            // where they were. A control that appears to do something and does
+            // not is worse than no control: the reader concludes the app is
+            // broken, which is the correct conclusion.
+            //
+            // The patient app is fully translated (en/bn/hi) and keeps its
+            // picker. Translating the clinic panels is real work — the strings
+            // have to be extracted and then rendered by someone who knows the
+            // clinical vocabulary in Bengali and Hindi, and a half-translated
+            // medical interface is worse than an English one. When that is
+            // done, this comes back.
 
             ProfileSection(
               label: 'The clinic',
@@ -305,10 +234,10 @@ class _StaffProfileScreenState extends ConsumerState<StaffProfileScreen> {
                           ? 'Name, address, phones, logo and opening hours'
                           : [
                             if (primary.phones.isNotEmpty)
-                              primary.phones.join(' · '),
+                              primary.phones.join('   '),
                             if (primary.city != null) primary.city!,
                             'Opening hours',
-                          ].join('  ·  '),
+                          ].join('    '),
                   showDivider: false,
                   onTap:
                       () =>

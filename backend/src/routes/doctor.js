@@ -59,7 +59,7 @@ let analyticsCache = { key: null, at: 0, data: null };
 // ---------------------------------------------------------------------------
 
 /**
- * Everything waiting for the doctor, newest first.
+ * Everything waiting, newest first — and it is not the same list for everyone.
  *
  * The bell used to count clinical alerts alone, while the overview endpoint was
  * already computing three other things a doctor is waiting on — unread care
@@ -68,8 +68,31 @@ let analyticsCache = { key: null, at: 0, data: null };
  * zero while patients waited for a reply. A bell that means "alerts only" but
  * looks like "everything" is a bell that gets misread.
  *
- * Ordered by what should be answered first: alerts, then the messages behind
- * them, then flagged reviews, which keep.
+ * The front desk then inherited that same list wholesale, which was wrong in
+ * both directions.
+ *
+ * Wrong to give them the clinical-review queue: a conversation flagged for
+ * review is a quality check on the assistant's answers, it keeps for days, and
+ * its only destination is a screen that does not exist in the desk's half of
+ * the app. Each row was a tap onto a blank page and a number on a badge the
+ * desk could never clear, which is how a bell teaches people to stop looking.
+ *
+ * Wrong to have then taken emergencies away with them. When a patient writes
+ * "I have chest pain", the push already goes to the desk as well as the doctor
+ * — deliberately, and it is the right call: the receptionist is the person
+ * physically present, and what happens next is someone fetching the doctor,
+ * ringing the patient back or calling an ambulance. A bell that stayed silent
+ * about the one thing on it that cannot wait would be worse than the noisy one.
+ *
+ * So severity decides, not role alone. The desk gets what somebody has to act
+ * on now — urgent and emergency alerts, unread messages, and appointment
+ * requests waiting for a time. It does not get the routine clinical backlog.
+ * (Requests are most of what a front desk does all day and were in no
+ * notification list at all.)
+ *
+ * Ordered by what should be answered first. For the doctor: alerts, then the
+ * messages behind them, then flagged reviews, which keep. For the desk:
+ * requests, because somebody is waiting on an answer, then messages.
  */
 router.get(
   '/notifications',
@@ -80,18 +103,32 @@ router.get(
       avatarUrl: u?.avatarAssetId ? `/api/v1/uploads/${u.avatarAssetId}/raw` : null,
     });
 
-    const [alerts, sessions, flagged] = await Promise.all([
-      ClinicalAlert.find({ status: 'open' })
+    // Clinical work, and whether this caller does any.
+    const isDesk = req.user.role === ROLES.STAFF;
+
+    const [alerts, sessions, flagged, requests] = await Promise.all([
+      ClinicalAlert.find(isDesk ? DESK_ALERTS : { status: 'open' })
         .sort({ createdAt: -1 })
         .limit(30)
         .populate('patient', 'name avatarAssetId')
         .lean(),
       ChatSession.find({ isArchived: false }).select('_id kind patient').lean(),
-      ChatSession.find({ flaggedForReview: true, isArchived: false })
-        .sort({ lastMessageAt: -1 })
-        .limit(20)
-        .populate('patient', 'name avatarAssetId')
-        .lean(),
+      isDesk
+        ? []
+        : ChatSession.find({ flaggedForReview: true, isArchived: false })
+            .sort({ lastMessageAt: -1 })
+            .limit(20)
+            .populate('patient', 'name avatarAssetId')
+            .lean(),
+      // Never filtered by date. A request from last Tuesday that nobody
+      // answered is more urgent than one from this morning, not less.
+      isDesk
+        ? Appointment.find({ status: 'requested' })
+            .sort({ createdAt: -1 })
+            .limit(30)
+            .populate('patient', 'name avatarAssetId')
+            .lean()
+        : [],
     ]);
 
     const kindBySession = new Map(sessions.map((x) => [String(x._id), x.kind ?? 'care']));
@@ -133,7 +170,32 @@ router.get(
         at: f.lastMessageAt ?? null,
         unread: false,
       })),
+      ...requests.map((a) => ({
+        id: `request-${String(a._id)}`,
+        kind: 'request',
+        ...face(a.patient),
+        // The day they asked for, and no time — a request carries a preferred
+        // date only. Printing a time for it would tell the desk the patient
+        // chose an hour they never chose.
+        text: a.preferredFor
+          ? `Asked for ${new Date(a.preferredFor).toLocaleDateString('en-IN', {
+              day: 'numeric',
+              month: 'short',
+              timeZone: 'Asia/Kolkata',
+            })}`
+          : 'Asked for an appointment',
+        at: a.createdAt,
+        unread: true,
+      })),
     ];
+
+    // Requests first for the desk: alerts are the doctor's ordering, and with
+    // none in this list the messages would otherwise sit above the one thing
+    // somebody is actively waiting on.
+    if (isDesk) {
+      const rank = (i) => (i.kind === 'request' ? 0 : 1);
+      items.sort((x, y) => rank(x) - rank(y));
+    }
 
     // Counted, not measured off the rendered list.
     //
@@ -145,18 +207,24 @@ router.get(
     //
     // These are the same three quantities the badge sums, queried directly, so
     // the bell and the sheet it opens can never say different things.
-    const [alertTotal, unreadTotal, flaggedTotal] = await Promise.all([
-      ClinicalAlert.countDocuments({ status: 'open' }),
+    const [alertTotal, unreadTotal, flaggedTotal, requestTotal] = await Promise.all([
+      ClinicalAlert.countDocuments(isDesk ? DESK_ALERTS : { status: 'open' }),
       ChatMessage.countDocuments({ role: 'user', seenByClinicAt: null }),
-      ChatSession.countDocuments({ flaggedForReview: true, isArchived: false }),
+      isDesk ? 0 : ChatSession.countDocuments({ flaggedForReview: true, isArchived: false }),
+      isDesk ? Appointment.countDocuments({ status: 'requested' }) : 0,
     ]);
 
     res.json({
-      unread: alertTotal + unreadTotal + flaggedTotal,
+      unread: alertTotal + unreadTotal + flaggedTotal + requestTotal,
       // What the list itself holds, so the client can say "showing 60 of 84"
       // rather than silently truncating.
       shown: Math.min(items.length, 60),
-      counts: { alerts: alertTotal, messages: unreadTotal, flagged: flaggedTotal },
+      counts: {
+        alerts: alertTotal,
+        messages: unreadTotal,
+        flagged: flaggedTotal,
+        requests: requestTotal,
+      },
       items: items.slice(0, 60),
     });
   }),
@@ -1090,8 +1158,42 @@ router.get(
   }),
 );
 
+/**
+ * The open alerts a front desk is shown.
+ *
+ * Severity, not role. Everything here is something a receptionist can do
+ * something about in the next minute: fetch the doctor, ring the patient back,
+ * call an ambulance. A moderate alert about a fortnight of high readings is
+ * real clinical work and none of it is theirs.
+ */
+const DESK_ALERTS = { status: 'open', severity: { $in: ['urgent', 'emergency'] } };
+
+/**
+ * ---- What the front desk may not do ---------------------------------------
+ *
+ * Every route in this file sat behind `requireClinician`, which admits STAFF.
+ * That is right for the desk's actual work — registering a walk-in, taking a
+ * height and weight, reading the care inbox, clearing message badges — and it
+ * was quietly wrong for everything else in here.
+ *
+ * A front-desk account could reassign a patient's dietician (which, in a clinic
+ * with two, decides who may see that patient at all), edit and approve the
+ * knowledge base the assistant answers patients from, post into a review thread
+ * under the clinician's name, issue the dietician invite code, create dietician
+ * accounts, and change clinic settings. None of that is a receptionist's job
+ * and none of it was refused.
+ *
+ * It was never a deliberate grant. `requireClinician` is the file-level guard
+ * and STAFF arrived later, so each of these inherited an audience written
+ * before that role existed. The `/staff` routes added afterwards were
+ * doctor-only from the start; these are now brought in line with them.
+ *
+ * Nothing the doctor could do has changed — `requireDoctor` is a subset.
+ */
 router.post(
   '/alerts/:id/acknowledge',
+  // Triage, not admin: saying an alert has been seen is a clinical claim.
+  requireDoctor,
   audit('update', 'ClinicalAlert'),
   asyncHandler(async (req, res) => {
     const alert = await acknowledgeAlert(req.params.id, req.user._id);
@@ -1378,6 +1480,8 @@ router.get(
 
 router.post(
   '/chat-review/:sessionId/reviewed',
+  // Declaring a conversation clinically reviewed is the doctor's judgement.
+  requireDoctor,
   asyncHandler(async (req, res) => {
     const session = await ChatSession.findByIdAndUpdate(
       req.params.sessionId,
@@ -1397,6 +1501,10 @@ router.post(
  */
 router.post(
   '/chat-review/:sessionId/message',
+  // This posts into the thread AS the clinician. A receptionist's words
+  // arriving under the doctor's name is not a permission slip, it is a
+  // false record of who gave the advice.
+  requireDoctor,
   validate({
     body: z
       .object({
@@ -1460,6 +1568,9 @@ const knowledgeSchema = z.object({
 
 router.get(
   '/knowledge',
+  // The knowledge base is what the assistant answers patients from.
+  // Editing it changes clinical advice given at scale, unattended.
+  requireDoctor,
   validate({
     query: pageParams.and(
       z.object({
@@ -1500,6 +1611,8 @@ router.post(
 
 router.patch(
   '/knowledge/:id',
+  // See POST /knowledge.
+  requireDoctor,
   validate({ body: knowledgeSchema.partial() }),
   asyncHandler(async (req, res) => {
     const chunk = await KnowledgeChunk.findById(req.params.id);
@@ -1526,6 +1639,8 @@ router.patch(
 
 router.post(
   '/knowledge/:id/approve',
+  // Approval is the step that puts a passage in front of patients.
+  requireDoctor,
   requireClinician,
   asyncHandler(async (req, res) => {
     const chunk = await KnowledgeChunk.findById(req.params.id).select('+embedding');
@@ -1547,6 +1662,8 @@ router.post(
 
 router.post(
   '/knowledge/:id/retire',
+  // See POST /knowledge.
+  requireDoctor,
   asyncHandler(async (req, res) => {
     const chunk = await KnowledgeChunk.findByIdAndUpdate(req.params.id, { status: 'retired' }, { new: true });
     if (!chunk) throw notFound('Knowledge entry not found');
@@ -1626,6 +1743,8 @@ const serialiseChunk = (c) => ({
 /** Dieticians the doctor can assign a patient to. */
 router.get(
   '/dieticians',
+  // Creating a clinical account outright.
+  requireDoctor,
   asyncHandler(async (req, res) => {
     const items = await User.find({ role: ROLES.DIETICIAN, isActive: true })
       .select('name phone avatarAssetId')
@@ -1670,6 +1789,9 @@ router.get(
  */
 router.post(
   '/dietician-invite/generate',
+  // Minting clinical staff. Same rule the staff invite already follows:
+  // a desk that can issue an invite is a desk that can let anyone in.
+  requireDoctor,
   audit('update', 'ClinicSettings'),
   asyncHandler(async (req, res) => {
     // Unambiguous alphabet: no O/0, no I/1/L. The code is read aloud and typed
@@ -1698,6 +1820,8 @@ router.post(
  */
 router.get(
   '/settings',
+  // Clinic-wide configuration, including the invite code above.
+  requireDoctor,
   asyncHandler(async (req, res) => {
     const settings = await getClinicSettings();
     res.json({ dietReviewIntervalDays: settings.dietReviewIntervalDays });
@@ -1913,6 +2037,10 @@ router.post(
  */
 router.patch(
   '/patients/:id/dietician',
+  // Who provides a patient's nutrition care, and — when a clinic has more
+  // than one — which dietician may see them at all. That is a clinical
+  // decision and an access-control one, and the desk was making both.
+  requireDoctor,
   validate({
     body: z.object({
       dieticianId: z.string().nullable().optional(),

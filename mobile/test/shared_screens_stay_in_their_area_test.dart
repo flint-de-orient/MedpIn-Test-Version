@@ -32,6 +32,10 @@ void main() {
     'lib/features/clinician/presentation/patient_profile_screen.dart',
     'lib/features/clinician/presentation/prescription_list_screen.dart',
     'lib/features/clinician/presentation/add_patient_screen.dart',
+    // Not a route, but reachable from the desk's own header on every tab —
+    // and every row in it was a literal, so the bell counted and each tap
+    // landed on a blank page.
+    'lib/features/clinician/presentation/widgets/clinician_notification_sheet.dart',
   ];
 
   for (final path in shared) {

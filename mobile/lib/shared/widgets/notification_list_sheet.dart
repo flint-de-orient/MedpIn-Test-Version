@@ -100,6 +100,10 @@ class NotificationListSheet extends StatelessWidget {
   /// and no messages gave the doctor a button that visibly did nothing: every
   /// row stayed tinted and the badge did not move. It is offered only when
   /// there is something it can honestly clear.
+  ///
+  /// Not appointment requests either: those clear when the desk gives the
+  /// patient a time, which is a decision, not a side effect of glancing at a
+  /// list.
   static const _clearableKinds = {'message', 'nutrition'};
 
   Iterable<PanelNotification> get _clearable =>
@@ -270,6 +274,10 @@ class _Row extends StatelessWidget {
       'urgent' => (Icons.priority_high_rounded, AppColors.dangerOn(context)),
       'alert' => (Icons.warning_amber_rounded, AppColors.warningOn(context)),
       'review' => (Icons.flag_rounded, AppColors.warningOn(context)),
+      // Somebody is waiting on an answer, so it is tinted like the other
+      // things that are waiting — but not red, which is reserved for a
+      // patient who may be unwell.
+      'request' => (Icons.event_available_rounded, AppColors.warningOn(context)),
       'nutrition' => (Icons.restaurant_rounded, accent),
       'plan' => (Icons.assignment_outlined, accent),
       _ => (Icons.chat_bubble_rounded, accent),

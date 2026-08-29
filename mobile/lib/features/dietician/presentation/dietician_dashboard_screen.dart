@@ -146,10 +146,7 @@ class _BrandHeader extends StatelessWidget {
       child: Row(
         children: [
           const Expanded(
-            child: ClinicWordmark(
-              subtitle: 'Dietician Panel',
-              maxWidth: 210,
-            ),
+            child: ClinicWordmark(subtitle: 'Dietician Panel'),
           ),
           const SizedBox(width: T.s2),
           const DieticianBell(),

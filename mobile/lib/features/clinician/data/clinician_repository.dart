@@ -16,12 +16,33 @@ import '../domain/staff_member.dart';
 /// Talks to `/doctor/*` — the clinician (doctor + staff) API: dashboard
 /// overview, the patient directory, and clinical-alert triage.
 class ClinicianRepository {
-  /// Everything waiting for the doctor: open alerts, unread patient messages
-  /// across both threads, and conversations flagged for review.
-  Future<({int unread, List<PanelNotification> items})> notifications() async {
+  /// Everything waiting: open alerts, unread patient messages across both
+  /// threads, conversations flagged for review, and — for the front desk —
+  /// appointment requests. What arrives depends on the role; the server
+  /// decides, see `GET /doctor/notifications`.
+  ///
+  /// The per-kind counts come back alongside the list because the list is
+  /// capped at sixty and other screens need the true totals. The desk's Today
+  /// rail used to reach for a different endpoint to count unread messages,
+  /// which is how a tile and a bell two inches apart came to disagree.
+  Future<
+    ({
+      int unread,
+      int messages,
+      int alerts,
+      int requests,
+      List<PanelNotification> items,
+    })
+  >
+  notifications() async {
     final json = await _client.getJson('/doctor/notifications');
+    final counts = json['counts'] as Map<String, dynamic>? ?? const {};
+    int at(String k) => (counts[k] as num?)?.toInt() ?? 0;
     return (
       unread: (json['unread'] as num?)?.toInt() ?? 0,
+      messages: at('messages'),
+      alerts: at('alerts'),
+      requests: at('requests'),
       items:
           (json['items'] as List? ?? const [])
               .whereType<Map<String, dynamic>>()

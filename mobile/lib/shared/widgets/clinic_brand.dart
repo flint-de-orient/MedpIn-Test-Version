@@ -6,7 +6,7 @@ import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_spacing.dart';
 import '../../features/appointments/data/clinic_repository.dart';
 import '../../features/appointments/domain/clinic.dart';
-import 'authed_image.dart';
+import 'authed_image.dart' show AuthedImage, imageAuthHeaderProvider;
 
 /// The clinic's identity, wherever a panel says who it belongs to.
 ///
@@ -108,140 +108,175 @@ class ClinicMark extends StatelessWidget {
   }
 }
 
-/// The clinic's name across the top of a panel.
+/// The clinic's mark and its name, across the top of a panel.
 ///
-/// When the clinic has a logo, the logo is all that is drawn — and that is the
-/// point rather than an omission. Clinic artwork is nearly always a wordmark:
-/// this one literally reads "Dr. Dey's · Diabetes Obesity & Metabolic Clinic".
-/// Setting the name beside it prints the name twice, and in a row that also
-/// holds a bell and a face there is not width for one copy, let alone two.
+/// Both, always — which is a correction. This first drew the logo *instead* of
+/// the name, on the reasoning that clinic artwork is usually a wordmark and
+/// printing the name beside one prints it twice. That reasoning is sound and
+/// the premise was wrong: the mark this clinic actually uploaded is the
+/// symbol alone, no words in it at all. So the header showed a small abstract
+/// shape and nothing that said whose clinic this was.
 ///
-/// With no logo the name is the wordmark, wrapped to two lines. With no clinic
-/// at all — a fresh install, an offline first run — the app's own emblem stands
-/// in, because a header with nothing in the corner looks broken.
+/// A logo that happens to contain its own name is not worth detecting. It
+/// costs a repeated word; guessing wrong costs the clinic its name on every
+/// screen.
+///
+/// The logo is sized by height only. Giving it a fixed width and asking
+/// [BoxFit.contain] to fill it centres a square mark inside a wide box, which
+/// is where the gap down the left of the header came from — the image was
+/// doing exactly what it was told, in a box that was the wrong shape. Height
+/// alone lets a square mark be square and a wordmark be wide.
 class ClinicWordmark extends ConsumerWidget {
   const ClinicWordmark({
     super.key,
     this.subtitle,
     this.height = 34,
-    this.maxWidth = 200,
+    this.maxLogoWidth = 92,
   });
 
-  /// A line under the mark: "Doctor Panel", "Front desk".
+  /// A line under the name: "Doctor Panel", "Front desk".
   final String? subtitle;
 
-  /// How tall the logo may be drawn.
+  /// How tall the logo is drawn.
   final double height;
 
-  /// How much of the row the mark may claim before the bell and the face.
-  final double maxWidth;
+  /// How wide a very wide wordmark may get before the name is squeezed.
+  final double maxLogoWidth;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final scheme = Theme.of(context).colorScheme;
     final clinic = ref.watch(brandClinicProvider).valueOrNull;
     final logo = clinic?.logoLightUrl;
-    final sub =
-        subtitle == null
-            ? null
-            : Text(
-              subtitle!,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                fontSize: 12,
-                height: 1.2,
-                fontWeight: FontWeight.w500,
-                color: scheme.onSurfaceVariant,
-              ),
-            );
-
-    Widget wrap(Widget mark) {
-      if (sub == null) return mark;
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: [mark, const SizedBox(height: 2), sub],
-      );
-    }
-
-    if (logo != null && logo.isNotEmpty) {
-      final dark = clinic?.logoNeedsDarkChip ?? false;
-      Widget image = AuthedImage(
-        path: logo,
-        // Wide rather than square: a wordmark is a long thin thing, and a
-        // square box either shrinks it to nothing or crops the words off it.
-        width: maxWidth,
-        height: height,
-        radius: 0,
-        background: Colors.transparent,
-        fit: BoxFit.contain,
-      );
-      if (dark) {
-        image = Container(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-          decoration: BoxDecoration(
-            color: const Color(0xFF0E1526),
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: image,
-        );
-      }
-      return ConstrainedBox(
-        constraints: BoxConstraints(maxWidth: maxWidth),
-        child: wrap(
-          Align(alignment: Alignment.centerLeft, child: image),
-        ),
-      );
-    }
-
     final name = (clinic?.name ?? '').trim();
-    if (name.isEmpty) {
-      // No clinic yet. The product's own mark, which is the honest answer to
-      // "whose app is this" when nobody has told it about a clinic.
-      return wrap(
-        Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Image.asset(
-              'assets/brand/medpin_emblem.png',
-              height: height * 0.88,
-              errorBuilder:
-                  (_, _, _) => Icon(
-                    Icons.forum_rounded,
-                    size: height * 0.76,
-                    color: AppColors.accentOn(context),
+
+    // No clinic yet — a fresh install, or the list still loading. The product's
+    // own mark stands in, because a header with an empty corner reads as
+    // something that failed rather than something not yet configured.
+    final hasClinic = name.isNotEmpty || (logo != null && logo.isNotEmpty);
+
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (logo != null && logo.isNotEmpty)
+          _Logo(
+            url: logo,
+            height: height,
+            maxWidth: maxLogoWidth,
+            needsDarkChip: clinic?.logoNeedsDarkChip ?? false,
+          )
+        else
+          Image.asset(
+            'assets/brand/medpin_emblem.png',
+            height: height * 0.86,
+            errorBuilder:
+                (_, _, _) => Icon(
+                  Icons.forum_rounded,
+                  size: height * 0.74,
+                  color: AppColors.accentOn(context),
+                ),
+          ),
+        const SizedBox(width: 8),
+        Flexible(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                hasClinic ? name : AppConfig.appName,
+                // Two lines, because this clinic's name is nine words long and
+                // one line of it is "Dr. Dey's Diabetes Obesity & Metabolic…".
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 15,
+                  height: 1.15,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: -0.2,
+                  color: AppColors.accentOn(context),
+                ),
+              ),
+              if (subtitle != null)
+                Text(
+                  subtitle!,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 11.5,
+                    height: 1.25,
+                    fontWeight: FontWeight.w500,
+                    color: scheme.onSurfaceVariant,
                   ),
-            ),
-            const SizedBox(width: 8),
-            Text(
-              AppConfig.appName,
-              style: TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.w800,
+                ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// The logo bitmap, sized by height and left-aligned.
+///
+/// Drawn with [Image.network] rather than [AuthedImage] because that widget
+/// fixes both dimensions of its box, which is exactly what cannot be done
+/// here: the aspect ratio belongs to whatever the clinic uploaded, and only it
+/// knows whether that is a square symbol or a long wordmark.
+class _Logo extends ConsumerWidget {
+  const _Logo({
+    required this.url,
+    required this.height,
+    required this.maxWidth,
+    required this.needsDarkChip,
+  });
+
+  final String url;
+  final double height;
+  final double maxWidth;
+  final bool needsDarkChip;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final headers = ref.watch(imageAuthHeaderProvider).valueOrNull;
+
+    // A fixed box only while the bytes are on their way, so the row does not
+    // jump when they land.
+    if (headers == null) return SizedBox(width: height, height: height);
+
+    Widget image = ConstrainedBox(
+      constraints: BoxConstraints(maxWidth: maxWidth, maxHeight: height),
+      child: Image.network(
+        '${AppConfig.apiOrigin}$url',
+        headers: headers,
+        height: height,
+        fit: BoxFit.contain,
+        alignment: Alignment.centerLeft,
+        errorBuilder:
+            (_, _, _) => SizedBox(
+              width: height,
+              height: height,
+              child: Icon(
+                Icons.local_hospital_rounded,
+                size: height * 0.7,
                 color: AppColors.accentOn(context),
               ),
             ),
-          ],
-        ),
-      );
-    }
-
-    return ConstrainedBox(
-      constraints: BoxConstraints(maxWidth: maxWidth),
-      child: wrap(
-        Text(
-          name,
-          maxLines: 2,
-          overflow: TextOverflow.ellipsis,
-          style: TextStyle(
-            fontSize: 17,
-            height: 1.15,
-            fontWeight: FontWeight.w800,
-            color: AppColors.accentOn(context),
-          ),
-        ),
       ),
     );
+
+    // Artwork drawn for a dark letterhead gets a dark ground rather than being
+    // inverted: inversion is a per-channel complement, so this clinic's teal
+    // would come back orange, and the colour is what a logo carries.
+    if (needsDarkChip) {
+      image = Container(
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+        decoration: BoxDecoration(
+          color: const Color(0xFF0E1526),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: image,
+      );
+    }
+    return image;
   }
 }

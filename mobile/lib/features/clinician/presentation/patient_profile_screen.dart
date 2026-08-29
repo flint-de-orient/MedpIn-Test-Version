@@ -330,6 +330,9 @@ class _PatientProfileScreenState extends ConsumerState<PatientProfileScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // The front desk opens this same screen. Everything below the read side of
+    // the record is the doctor writing, and none of it is theirs.
+    final isDesk = areaPrefix(ref) == '/staff';
     final async = ref.watch(patientSummaryProvider(widget.patientId));
 
     return Scaffold(
@@ -390,469 +393,492 @@ class _PatientProfileScreenState extends ConsumerState<PatientProfileScreen> {
                   ),
                   const SizedBox(height: AppSpacing.lg),
 
-                  // The one filled surface on the record. Everything above it is
-                  // read-only — who this patient is and how they are doing — and
-                  // everything below it is the doctor writing. The colour marks
-                  // that boundary, so the eye lands on the point of the visit
-                  // rather than on another grey heading among grey headings.
-                  PanelFeatureCard(
-                    padding: const EdgeInsets.fromLTRB(
-                      AppSpacing.md,
-                      AppSpacing.md,
-                      AppSpacing.md,
-                      AppSpacing.md,
-                    ),
-                    child: Row(
-                      children: [
-                        Container(
-                          width: 40,
-                          height: 40,
-                          decoration: BoxDecoration(
-                            color: Colors.white.withValues(alpha: 0.16),
-                            borderRadius: BorderRadius.circular(12),
+                  // Hidden from the front desk, all of it.
+                  //
+                  // The server already refuses a prescription posted by staff,
+                  // so this is not what keeps the record safe — it is what
+                  // stops the desk being shown a consultation form, filling it
+                  // in, pressing Send and being told no at the end. Assigning
+                  // the dietician is refused server-side now too, for the same
+                  // reason it should never have been offered: in a clinic with
+                  // two, that assignment decides who may see the patient.
+                  //
+                  // What the desk keeps is the whole read side above, plus
+                  // call, message and the prescription list — which is what a
+                  // receptionist is actually asked for all day.
+                  if (!isDesk) ...[
+                    // The one filled surface on the record. Everything above it is
+                    // read-only — who this patient is and how they are doing — and
+                    // everything below it is the doctor writing. The colour marks
+                    // that boundary, so the eye lands on the point of the visit
+                    // rather than on another grey heading among grey headings.
+                    PanelFeatureCard(
+                      padding: const EdgeInsets.fromLTRB(
+                        AppSpacing.md,
+                        AppSpacing.md,
+                        AppSpacing.md,
+                        AppSpacing.md,
+                      ),
+                      child: Row(
+                        children: [
+                          Container(
+                            width: 40,
+                            height: 40,
+                            decoration: BoxDecoration(
+                              color: Colors.white.withValues(alpha: 0.16),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: const Icon(
+                              Icons.edit_document,
+                              size: 21,
+                              color: Colors.white,
+                            ),
                           ),
-                          child: const Icon(
-                            Icons.edit_document,
-                            size: 21,
-                            color: Colors.white,
-                          ),
-                        ),
-                        const SizedBox(width: AppSpacing.md),
-                        const Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                'Clinical Actions',
-                                style: TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.w800,
-                                  letterSpacing: -0.2,
+                          const SizedBox(width: AppSpacing.md),
+                          const Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Clinical Actions',
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w800,
+                                    letterSpacing: -0.2,
+                                  ),
                                 ),
-                              ),
-                              SizedBox(height: 0),
-                              Text(
-                                'Draft and send a new prescription.',
-                                style: TextStyle(
-                                  color: Color(0xCCFFFFFF),
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w500,
+                                SizedBox(height: 0),
+                                Text(
+                                  'Draft and send a new prescription.',
+                                  style: TextStyle(
+                                    color: Color(0xCCFFFFFF),
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: AppSpacing.md),
+
+                    _ActionCard(
+                      icon: Icons.assignment_outlined,
+                      title: 'Medication',
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          // What the patient is already on, before the box for what to
+                          // add. Prescribing without it is prescribing blind — a repeat
+                          // or an interaction is invisible until the patient reports it.
+                          _CurrentMedicines(patientId: widget.patientId),
+                          _Collapsible(
+                            title: 'Add medication',
+                            subtitle: 'Prescribe a new medicine',
+                            icon: Icons.add_circle_outline_rounded,
+                            children: [
+                              for (var i = 0; i < _meds.length; i++)
+                                _MedFields(
+                                  draft: _meds[i],
+                                  onChanged: () => setState(() {}),
+                                  onRemove:
+                                      _meds.length > 1
+                                          ? () => setState(
+                                            () => _meds.removeAt(i).dispose(),
+                                          )
+                                          : null,
+                                ),
+                              Align(
+                                alignment: Alignment.centerLeft,
+                                child: TextButton.icon(
+                                  style: TextButton.styleFrom(
+                                    padding: EdgeInsets.zero,
+                                    foregroundColor: AppColors.primary,
+                                  ),
+                                  onPressed:
+                                      () => setState(
+                                        () => _meds.add(_MedDraft()),
+                                      ),
+                                  icon: const Icon(
+                                    Icons.add_circle_outline_rounded,
+                                    size: 20,
+                                  ),
+                                  label: const Text(
+                                    'Add another medication',
+                                    style: TextStyle(
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
                                 ),
                               ),
                             ],
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: AppSpacing.md),
+                    const SizedBox(height: AppSpacing.md),
 
-                  _ActionCard(
-                    icon: Icons.assignment_outlined,
-                    title: 'Medication',
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        // What the patient is already on, before the box for what to
-                        // add. Prescribing without it is prescribing blind — a repeat
-                        // or an interaction is invisible until the patient reports it.
-                        _CurrentMedicines(patientId: widget.patientId),
-                        _Collapsible(
-                          title: 'Add medication',
-                          subtitle: 'Prescribe a new medicine',
-                          icon: Icons.add_circle_outline_rounded,
-                          children: [
-                            for (var i = 0; i < _meds.length; i++)
-                              _MedFields(
-                                draft: _meds[i],
-                                onChanged: () => setState(() {}),
-                                onRemove:
-                                    _meds.length > 1
-                                        ? () => setState(
-                                          () => _meds.removeAt(i).dispose(),
-                                        )
-                                        : null,
-                              ),
-                            Align(
-                              alignment: Alignment.centerLeft,
-                              child: TextButton.icon(
-                                style: TextButton.styleFrom(
-                                  padding: EdgeInsets.zero,
-                                  foregroundColor: AppColors.primary,
-                                ),
-                                onPressed:
-                                    () =>
-                                        setState(() => _meds.add(_MedDraft())),
-                                icon: const Icon(
-                                  Icons.add_circle_outline_rounded,
-                                  size: 20,
-                                ),
-                                label: const Text(
-                                  'Add another medication',
-                                  style: TextStyle(
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: AppSpacing.md),
-
-                  _ActionCard(
-                    icon: Icons.biotech_outlined,
-                    title: 'Lab Tests',
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        // Already ordered, and already come back. Without these the
-                        // doctor re-ordered tests that were outstanding and could not
-                        // see the report the patient had already uploaded.
-                        _TestHistory(summary: p),
-                        _Collapsible(
-                          title: 'Add tests',
-                          subtitle: 'Order from the catalog or type your own',
-                          icon: Icons.add_circle_outline_rounded,
-                          children: [
-                            // Now a real search. It used to be an add-only
-                            // control — the comment here said a magnifier
-                            // "would promise a lookup that does not exist" —
-                            // so a doctor typing "ldl" got nothing and added a
-                            // duplicate custom test the catalog already
-                            // covered as Lipid Profile. Free text still works;
-                            // it is just no longer the only thing that does.
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: _LabSearchField(
-                                    controller: _labSearch,
-                                    onPanelPicked: (panel) {
-                                      setState(() {
-                                        _selectedTests.add(panel.name);
-                                        _labSearch.clear();
-                                      });
-                                    },
-                                    onSubmitted: _addCustomTest,
-                                  ),
-                                ),
-                                const SizedBox(width: AppSpacing.sm),
-                                IconButton.filledTonal(
-                                  onPressed: _addCustomTest,
-                                  icon: const Icon(Icons.add_rounded),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: AppSpacing.sm),
-                            // Whole-catalog controls. Ordering every panel at
-                            // once is not usually good medicine, so "Select
-                            // all" is offered but never the default — what it
-                            // is really for is the annual review, where the
-                            // alternative is fourteen taps.
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: Text(
-                                    _selectedTests.isEmpty
-                                        ? 'No tests selected'
-                                        : '${_selectedTests.length} selected',
-                                    style: TextStyle(
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.w600,
-                                      color:
-                                          Theme.of(
-                                            context,
-                                          ).colorScheme.onSurfaceVariant,
-                                    ),
-                                  ),
-                                ),
-                                _TestBulkAction(
-                                  label: 'Select all',
-                                  onTap: () => setState(_selectAllTests),
-                                ),
-                                if (_selectedTests.isNotEmpty) ...[
-                                  const SizedBox(width: AppSpacing.sm),
-                                  _TestBulkAction(
-                                    label: 'Clear',
-                                    onTap: () => setState(_selectedTests.clear),
-                                  ),
-                                ],
-                              ],
-                            ),
-                            const SizedBox(height: AppSpacing.sm),
-                            // The diabetes lab catalog, grouped by category. The doctor
-                            // orders at the PANEL level; each panel's sub-tests are shown
-                            // beneath the selection so "what the report includes" is clear.
-                            for (final entry
-                                in labCatalogByCategory().entries) ...[
-                              Padding(
-                                padding: const EdgeInsets.only(
-                                  top: 0,
-                                  bottom: 4,
-                                ),
-                                child: Row(
-                                  children: [
-                                    Expanded(
-                                      child: Text(
-                                        entry.key.toUpperCase(),
-                                        style: TextStyle(
-                                          fontSize: 12,
-                                          fontWeight: FontWeight.w700,
-                                          letterSpacing: 0.5,
-                                          color:
-                                              Theme.of(
-                                                context,
-                                              ).colorScheme.onSurfaceVariant,
-                                        ),
-                                      ),
-                                    ),
-                                    // Per category, because this is the one
-                                    // that gets used: "all the lipids" is a
-                                    // real clinical thought, "everything in
-                                    // the catalog" mostly is not.
-                                    _TestBulkAction(
-                                      label:
-                                          _categoryFullySelected(entry.value)
-                                              ? 'Clear'
-                                              : 'Select all',
-                                      onTap:
-                                          () => setState(
-                                            () => _toggleCategory(entry.value),
-                                          ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              Wrap(
-                                spacing: AppSpacing.sm,
-                                runSpacing: AppSpacing.sm,
+                    _ActionCard(
+                      icon: Icons.biotech_outlined,
+                      title: 'Lab Tests',
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          // Already ordered, and already come back. Without these the
+                          // doctor re-ordered tests that were outstanding and could not
+                          // see the report the patient had already uploaded.
+                          _TestHistory(summary: p),
+                          _Collapsible(
+                            title: 'Add tests',
+                            subtitle: 'Order from the catalog or type your own',
+                            icon: Icons.add_circle_outline_rounded,
+                            children: [
+                              // Now a real search. It used to be an add-only
+                              // control — the comment here said a magnifier
+                              // "would promise a lookup that does not exist" —
+                              // so a doctor typing "ldl" got nothing and added a
+                              // duplicate custom test the catalog already
+                              // covered as Lipid Profile. Free text still works;
+                              // it is just no longer the only thing that does.
+                              Row(
                                 children: [
-                                  for (final panel in entry.value)
-                                    _TestChip(
-                                      label: panel.name,
-                                      selected: _selectedTests.contains(
-                                        panel.name,
-                                      ),
-                                      onTap:
-                                          () => setState(() {
-                                            if (!_selectedTests.remove(
-                                              panel.name,
-                                            ))
-                                              _selectedTests.add(panel.name);
-                                          }),
+                                  Expanded(
+                                    child: _LabSearchField(
+                                      controller: _labSearch,
+                                      onPanelPicked: (panel) {
+                                        setState(() {
+                                          _selectedTests.add(panel.name);
+                                          _labSearch.clear();
+                                        });
+                                      },
+                                      onSubmitted: _addCustomTest,
                                     ),
+                                  ),
+                                  const SizedBox(width: AppSpacing.sm),
+                                  IconButton.filledTonal(
+                                    onPressed: _addCustomTest,
+                                    icon: const Icon(Icons.add_rounded),
+                                  ),
                                 ],
                               ),
                               const SizedBox(height: AppSpacing.sm),
-                            ],
-                            if (_customTests.isNotEmpty)
-                              Wrap(
-                                spacing: AppSpacing.sm,
-                                runSpacing: AppSpacing.sm,
+                              // Whole-catalog controls. Ordering every panel at
+                              // once is not usually good medicine, so "Select
+                              // all" is offered but never the default — what it
+                              // is really for is the annual review, where the
+                              // alternative is fourteen taps.
+                              Row(
                                 children: [
-                                  for (final test in _customTests)
-                                    _TestChip(
-                                      label: test,
-                                      selected: _selectedTests.contains(test),
-                                      onTap:
-                                          () => setState(() {
-                                            if (!_selectedTests.remove(test))
-                                              _selectedTests.add(test);
-                                          }),
+                                  Expanded(
+                                    child: Text(
+                                      _selectedTests.isEmpty
+                                          ? 'No tests selected'
+                                          : '${_selectedTests.length} selected',
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w600,
+                                        color:
+                                            Theme.of(
+                                              context,
+                                            ).colorScheme.onSurfaceVariant,
+                                      ),
                                     ),
+                                  ),
+                                  _TestBulkAction(
+                                    label: 'Select all',
+                                    onTap: () => setState(_selectAllTests),
+                                  ),
+                                  if (_selectedTests.isNotEmpty) ...[
+                                    const SizedBox(width: AppSpacing.sm),
+                                    _TestBulkAction(
+                                      label: 'Clear',
+                                      onTap:
+                                          () => setState(_selectedTests.clear),
+                                    ),
+                                  ],
                                 ],
                               ),
-                            // Sub-tests under each selected panel, as pills of
-                            // the same shape the rest of this card uses. Run
-                            // together as "A · B · C" behind a name and a
-                            // colon, they read as one long test name rather
-                            // than as the six things the panel measures.
-                            for (final t in _selectedTests)
-                              if ((labPanelFor(t)?.analytes ?? const [])
-                                  .isNotEmpty)
+                              const SizedBox(height: AppSpacing.sm),
+                              // The diabetes lab catalog, grouped by category. The doctor
+                              // orders at the PANEL level; each panel's sub-tests are shown
+                              // beneath the selection so "what the report includes" is clear.
+                              for (final entry
+                                  in labCatalogByCategory().entries) ...[
                                 Padding(
-                                  padding: const EdgeInsets.only(top: 6),
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
+                                  padding: const EdgeInsets.only(
+                                    top: 0,
+                                    bottom: 4,
+                                  ),
+                                  child: Row(
                                     children: [
-                                      Text(
-                                        '$t includes',
-                                        style: TextStyle(
-                                          fontSize: 12,
-                                          fontWeight: FontWeight.w700,
-                                          color:
-                                              Theme.of(
-                                                context,
-                                              ).colorScheme.onSurfaceVariant,
+                                      Expanded(
+                                        child: Text(
+                                          entry.key.toUpperCase(),
+                                          style: TextStyle(
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.w700,
+                                            letterSpacing: 0.5,
+                                            color:
+                                                Theme.of(
+                                                  context,
+                                                ).colorScheme.onSurfaceVariant,
+                                          ),
                                         ),
                                       ),
-                                      const SizedBox(height: 4),
-                                      Wrap(
-                                        spacing: 6,
-                                        runSpacing: 4,
-                                        children: [
-                                          for (final a
-                                              in labPanelFor(t)!.analytes)
-                                            _StatusPill(
-                                              label: a,
-                                              color:
-                                                  Theme.of(context)
-                                                      .colorScheme
-                                                      .onSurfaceVariant,
+                                      // Per category, because this is the one
+                                      // that gets used: "all the lipids" is a
+                                      // real clinical thought, "everything in
+                                      // the catalog" mostly is not.
+                                      _TestBulkAction(
+                                        label:
+                                            _categoryFullySelected(entry.value)
+                                                ? 'Clear'
+                                                : 'Select all',
+                                        onTap:
+                                            () => setState(
+                                              () =>
+                                                  _toggleCategory(entry.value),
                                             ),
-                                        ],
                                       ),
                                     ],
                                   ),
                                 ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: AppSpacing.md),
-
-                  _ActionCard(
-                    icon: Icons.edit_note_rounded,
-                    title: 'Clinical Advice',
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        // Previous diagnoses + advice for this patient, tap to reuse —
-                        // the reference the Clinical Advice card was missing (Medication
-                        // has "currently on", Lab Tests has its history; this is the
-                        // equivalent for advice).
-                        _PreviousAdvice(
-                          patientId: widget.patientId,
-                          onReuseDiagnosis:
-                              (t) => setState(() => _diagnosis.text = t),
-                          onReuseAdvice:
-                              (t) => setState(() => _advice.text = t),
-                        ),
-                        const _FieldLabel('Diagnosis'),
-                        const SizedBox(height: 4),
-                        TextField(
-                          controller: _diagnosis,
-                          minLines: 1,
-                          maxLines: 4,
-                          maxLength: 600,
-                          textCapitalization: TextCapitalization.sentences,
-                          decoration: const InputDecoration(
-                            hintText:
-                                'e.g. Type 2 DM, Hypertension (one per line)',
-                            counterText: '',
-                          ),
-                        ),
-                        const SizedBox(height: AppSpacing.sm),
-                        const _FieldLabel('General advice'),
-                        const SizedBox(height: 4),
-                        TextField(
-                          controller: _advice,
-                          minLines: 3,
-                          maxLines: 8,
-                          maxLength: 2000,
-                          textCapitalization: TextCapitalization.sentences,
-                          decoration: const InputDecoration(
-                            hintText:
-                                'Diet, lifestyle and general instructions...',
-                            counterText: '',
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: AppSpacing.md),
-
-                  _ActionCard(
-                    icon: Icons.calendar_month_outlined,
-                    title: 'Follow-up',
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const _FieldLabel('Next Visit'),
-                        const SizedBox(height: 4),
-                        _DateField(
-                          date: _followUp,
-                          onTap: _pickFollowUp,
-                          onClear: () => setState(() => _followUp = null),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: AppSpacing.lg),
-
-                  // Two actions, one line. Draft is the quieter of the pair — a
-                  // tonal fill against the brand one — because sending is what a
-                  // consultation is for and saving is the escape hatch when the
-                  // doctor is interrupted mid-form.
-                  Row(
-                    children: [
-                      Expanded(
-                        child: SizedBox(
-                          height: AppSpacing.minTapTarget + 12,
-                          child: FilledButton.tonalIcon(
-                            onPressed: _saving ? null : _saveDraft,
-                            style: FilledButton.styleFrom(
-                              backgroundColor: AppColors.accentSoftOn(context),
-                              foregroundColor: AppColors.accentOn(context),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                            ),
-                            icon: const Icon(
-                              Icons.bookmark_outline_rounded,
-                              size: 20,
-                            ),
-                            label: const Text(
-                              'Save draft',
-                              style: TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: AppSpacing.sm),
-                      Expanded(
-                        child: SizedBox(
-                          height: AppSpacing.minTapTarget + 12,
-                          child: FilledButton.icon(
-                            onPressed: _saving ? null : _send,
-                            style: FilledButton.styleFrom(
-                              backgroundColor: AppColors.primary,
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                            ),
-                            icon:
-                                _saving
-                                    ? const SizedBox(
-                                      width: 20,
-                                      height: 20,
-                                      child: CircularProgressIndicator(
-                                        strokeWidth: 2.4,
-                                        color: Colors.white,
+                                Wrap(
+                                  spacing: AppSpacing.sm,
+                                  runSpacing: AppSpacing.sm,
+                                  children: [
+                                    for (final panel in entry.value)
+                                      _TestChip(
+                                        label: panel.name,
+                                        selected: _selectedTests.contains(
+                                          panel.name,
+                                        ),
+                                        onTap:
+                                            () => setState(() {
+                                              if (!_selectedTests.remove(
+                                                panel.name,
+                                              ))
+                                                _selectedTests.add(panel.name);
+                                            }),
                                       ),
-                                    )
-                                    : const Icon(Icons.send_rounded, size: 20),
-                            label: const Text(
-                              'Send',
-                              style: TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.w700,
+                                  ],
+                                ),
+                                const SizedBox(height: AppSpacing.sm),
+                              ],
+                              if (_customTests.isNotEmpty)
+                                Wrap(
+                                  spacing: AppSpacing.sm,
+                                  runSpacing: AppSpacing.sm,
+                                  children: [
+                                    for (final test in _customTests)
+                                      _TestChip(
+                                        label: test,
+                                        selected: _selectedTests.contains(test),
+                                        onTap:
+                                            () => setState(() {
+                                              if (!_selectedTests.remove(test))
+                                                _selectedTests.add(test);
+                                            }),
+                                      ),
+                                  ],
+                                ),
+                              // Sub-tests under each selected panel, as pills of
+                              // the same shape the rest of this card uses. Run
+                              // together as "A · B · C" behind a name and a
+                              // colon, they read as one long test name rather
+                              // than as the six things the panel measures.
+                              for (final t in _selectedTests)
+                                if ((labPanelFor(t)?.analytes ?? const [])
+                                    .isNotEmpty)
+                                  Padding(
+                                    padding: const EdgeInsets.only(top: 6),
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          '$t includes',
+                                          style: TextStyle(
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.w700,
+                                            color:
+                                                Theme.of(
+                                                  context,
+                                                ).colorScheme.onSurfaceVariant,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 4),
+                                        Wrap(
+                                          spacing: 6,
+                                          runSpacing: 4,
+                                          children: [
+                                            for (final a
+                                                in labPanelFor(t)!.analytes)
+                                              _StatusPill(
+                                                label: a,
+                                                color:
+                                                    Theme.of(context)
+                                                        .colorScheme
+                                                        .onSurfaceVariant,
+                                              ),
+                                          ],
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: AppSpacing.md),
+
+                    _ActionCard(
+                      icon: Icons.edit_note_rounded,
+                      title: 'Clinical Advice',
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          // Previous diagnoses + advice for this patient, tap to reuse —
+                          // the reference the Clinical Advice card was missing (Medication
+                          // has "currently on", Lab Tests has its history; this is the
+                          // equivalent for advice).
+                          _PreviousAdvice(
+                            patientId: widget.patientId,
+                            onReuseDiagnosis:
+                                (t) => setState(() => _diagnosis.text = t),
+                            onReuseAdvice:
+                                (t) => setState(() => _advice.text = t),
+                          ),
+                          const _FieldLabel('Diagnosis'),
+                          const SizedBox(height: 4),
+                          TextField(
+                            controller: _diagnosis,
+                            minLines: 1,
+                            maxLines: 4,
+                            maxLength: 600,
+                            textCapitalization: TextCapitalization.sentences,
+                            decoration: const InputDecoration(
+                              hintText:
+                                  'e.g. Type 2 DM, Hypertension (one per line)',
+                              counterText: '',
+                            ),
+                          ),
+                          const SizedBox(height: AppSpacing.sm),
+                          const _FieldLabel('General advice'),
+                          const SizedBox(height: 4),
+                          TextField(
+                            controller: _advice,
+                            minLines: 3,
+                            maxLines: 8,
+                            maxLength: 2000,
+                            textCapitalization: TextCapitalization.sentences,
+                            decoration: const InputDecoration(
+                              hintText:
+                                  'Diet, lifestyle and general instructions...',
+                              counterText: '',
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: AppSpacing.md),
+
+                    _ActionCard(
+                      icon: Icons.calendar_month_outlined,
+                      title: 'Follow-up',
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const _FieldLabel('Next Visit'),
+                          const SizedBox(height: 4),
+                          _DateField(
+                            date: _followUp,
+                            onTap: _pickFollowUp,
+                            onClear: () => setState(() => _followUp = null),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: AppSpacing.lg),
+
+                    // Two actions, one line. Draft is the quieter of the pair — a
+                    // tonal fill against the brand one — because sending is what a
+                    // consultation is for and saving is the escape hatch when the
+                    // doctor is interrupted mid-form.
+                    Row(
+                      children: [
+                        Expanded(
+                          child: SizedBox(
+                            height: AppSpacing.minTapTarget + 12,
+                            child: FilledButton.tonalIcon(
+                              onPressed: _saving ? null : _saveDraft,
+                              style: FilledButton.styleFrom(
+                                backgroundColor: AppColors.accentSoftOn(
+                                  context,
+                                ),
+                                foregroundColor: AppColors.accentOn(context),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                              ),
+                              icon: const Icon(
+                                Icons.bookmark_outline_rounded,
+                                size: 20,
+                              ),
+                              label: const Text(
+                                'Save draft',
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w700,
+                                ),
                               ),
                             ),
                           ),
                         ),
-                      ),
-                    ],
-                  ),
+                        const SizedBox(width: AppSpacing.sm),
+                        Expanded(
+                          child: SizedBox(
+                            height: AppSpacing.minTapTarget + 12,
+                            child: FilledButton.icon(
+                              onPressed: _saving ? null : _send,
+                              style: FilledButton.styleFrom(
+                                backgroundColor: AppColors.primary,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                              ),
+                              icon:
+                                  _saving
+                                      ? const SizedBox(
+                                        width: 20,
+                                        height: 20,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2.4,
+                                          color: Colors.white,
+                                        ),
+                                      )
+                                      : const Icon(
+                                        Icons.send_rounded,
+                                        size: 20,
+                                      ),
+                              label: const Text(
+                                'Send',
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
                 ],
               ),
         ),

@@ -209,7 +209,7 @@ class _BrandHeader extends StatelessWidget {
             onPressed: () => context.pop(),
             icon: Icon(Icons.arrow_back_rounded, color: scheme.onSurface),
           ),
-          const Expanded(child: ClinicWordmark(height: 28, maxWidth: 180)),
+          const Expanded(child: ClinicWordmark(height: 28, maxLogoWidth: 72)),
           const SizedBox(width: AppSpacing.sm),
           UserAvatar(
             name: name,

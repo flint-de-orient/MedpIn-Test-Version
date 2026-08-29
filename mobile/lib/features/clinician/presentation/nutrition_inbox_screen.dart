@@ -333,7 +333,7 @@ class _InboxHeader extends ConsumerWidget {
       ),
       child: Row(
         children: [
-          const Expanded(child: ClinicWordmark(maxWidth: 210)),
+          const Expanded(child: ClinicWordmark()),
           const SizedBox(width: AppSpacing.sm),
           PanelNotificationBell(
             onTap: () => showClinicianNotifications(context),

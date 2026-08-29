@@ -6,8 +6,10 @@ import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/utils/auth_validators.dart';
 import '../../../l10n/gen/app_localizations.dart';
-import '../../../shared/widgets/user_avatar.dart';
 import '../../auth/presentation/auth_controller.dart';
+import 'package:image_picker/image_picker.dart';
+import '../../../shared/widgets/profile_photo_header.dart';
+import '../../../shared/data/upload_repository.dart';
 
 /// Edits the fields `PATCH /auth/me` accepts.
 ///
@@ -30,6 +32,7 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
   DateTime? _dateOfBirth;
   String? _gender;
   bool _isSaving = false;
+  bool _uploadingAvatar = false;
   AutovalidateMode _autovalidateMode = AutovalidateMode.disabled;
 
   @override
@@ -42,6 +45,72 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
     _dateOfBirth = user?.dateOfBirth;
     _gender = user?.gender;
   }
+
+  /// Pick a photo, upload it as an `avatar` asset, then point the account at
+  /// it.
+  ///
+  /// The screen showed the photograph and offered no way to change it: a 96px
+  /// face with nothing to tap and no badge suggesting there was. Changing it
+  /// was possible only from the profile tab behind this one, which is the
+  /// screen a reader has just left in order to edit their details.
+  Future<void> _changeAvatar() async {
+    final source = await _pickSource();
+    if (source == null) return;
+
+    final picked = await ImagePicker().pickImage(
+      source: source,
+      // Generous, because the server re-encodes anyway; small enough that a
+      // clinic phone on a slow line is not uploading eight megabytes.
+      maxWidth: 1600,
+      maxHeight: 1600,
+      imageQuality: 88,
+    );
+    if (picked == null || !mounted) return;
+
+    setState(() => _uploadingAvatar = true);
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      final asset = await ref
+          .read(uploadRepositoryProvider)
+          .uploadImage(
+            path: picked.path,
+            filename: picked.name,
+            kind: UploadKind.avatar,
+          );
+      final user = await ref
+          .read(authRepositoryProvider)
+          .updateMe(avatarAssetId: asset.id);
+      ref.read(authControllerProvider.notifier).replaceUser(user);
+    } catch (_) {
+      messenger.showSnackBar(
+        const SnackBar(content: Text('Could not update the photo.')),
+      );
+    } finally {
+      if (mounted) setState(() => _uploadingAvatar = false);
+    }
+  }
+
+  Future<ImageSource?> _pickSource() => showModalBottomSheet<ImageSource>(
+    context: context,
+    builder:
+        (ctx) => SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: const Icon(Icons.photo_camera_outlined),
+                title: const Text('Take a photo'),
+                onTap: () => Navigator.pop(ctx, ImageSource.camera),
+              ),
+              ListTile(
+                leading: const Icon(Icons.photo_library_outlined),
+                title: const Text('Choose from gallery'),
+                onTap: () => Navigator.pop(ctx, ImageSource.gallery),
+              ),
+            ],
+          ),
+        ),
+  );
 
   @override
   void dispose() {
@@ -111,7 +180,6 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final accent = isDark ? AppColors.primaryDark : AppColors.primary;
     final user = ref.watch(authControllerProvider).user;
-    final name = user?.name ?? '';
     // Only a patient carries clinical intake on their account. Defaulting to
     // patient keeps the screen unchanged for the role it was written for if
     // the user has not loaded yet.
@@ -165,17 +233,14 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
           padding: const EdgeInsets.all(AppSpacing.md),
           children: [
             const SizedBox(height: AppSpacing.sm),
-            // UserAvatar, not a hand-rolled initial disc: this screen drew its
-            // own and so never showed the photo the user had set — on either
-            // panel, since both share it. UserAvatar already handles the bearer
-            // token these owner-protected images need.
-            Center(
-              child: UserAvatar(
-                name: name,
-                avatarUrl: user?.avatarUrl,
-                accent: accent,
-                size: 96,
-              ),
+            // The same block the profile tab uses, so the face, the ring and
+            // the camera badge are one widget and not three near-copies.
+            ProfilePhotoHeader(
+              user: user,
+              accent: accent,
+              uploading: _uploadingAvatar,
+              onEditPhoto: _uploadingAvatar ? null : _changeAvatar,
+              roleLabel: isPatient ? l10n.profilePatient : 'Clinic staff',
             ),
             const SizedBox(height: AppSpacing.xl),
             Container(

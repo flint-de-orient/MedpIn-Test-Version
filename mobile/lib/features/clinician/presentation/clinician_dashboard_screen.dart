@@ -269,7 +269,7 @@ class _DashboardHeader extends ConsumerWidget {
           Row(
             children: [
               const Expanded(
-                child: ClinicWordmark(subtitle: 'Doctor Panel', maxWidth: 210),
+                child: ClinicWordmark(subtitle: 'Doctor Panel'),
               ),
               const SizedBox(width: T.s2),
               PanelNotificationBell(
