@@ -7,6 +7,9 @@ import '../../../core/theme/app_spacing.dart';
 import '../../../shared/widgets/user_avatar.dart';
 import '../../appointments/presentation/appointment_providers.dart';
 import '../../auth/presentation/auth_controller.dart';
+import '../../../shared/widgets/error_view.dart';
+import '../../../shared/data/upload_repository.dart';
+import 'package:image_picker/image_picker.dart';
 
 /// The desk's own settings.
 ///
@@ -20,11 +23,86 @@ import '../../auth/presentation/auth_controller.dart';
 /// changing is exactly the sort of thing reception knows about first, and
 /// making the doctor do it is how a wrong number stays on a letterhead for a
 /// year.
-class StaffProfileScreen extends ConsumerWidget {
+class StaffProfileScreen extends ConsumerStatefulWidget {
   const StaffProfileScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<StaffProfileScreen> createState() => _StaffProfileScreenState();
+}
+
+class _StaffProfileScreenState extends ConsumerState<StaffProfileScreen> {
+  bool _uploadingAvatar = false;
+
+  /// Change the photo on this account.
+  ///
+  /// Every other panel already had this — the doctor's, the dietician's and
+  /// the patient's all upload an avatar from their own profile. The desk's
+  /// showed the picture and offered no way to set one, so the account was
+  /// stuck with an initial for good.
+  Future<void> _changeAvatar() async {
+    final messenger = ScaffoldMessenger.of(context);
+
+    final source = await showModalBottomSheet<ImageSource>(
+      context: context,
+      showDragHandle: true,
+      builder:
+          (ctx) => SafeArea(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                ListTile(
+                  leading: const Icon(Icons.photo_camera_outlined),
+                  title: const Text('Take a photo'),
+                  onTap: () => Navigator.pop(ctx, ImageSource.camera),
+                ),
+                ListTile(
+                  leading: const Icon(Icons.photo_library_outlined),
+                  title: const Text('Choose from gallery'),
+                  onTap: () => Navigator.pop(ctx, ImageSource.gallery),
+                ),
+                const SizedBox(height: AppSpacing.sm),
+              ],
+            ),
+          ),
+    );
+    if (source == null) return;
+
+    final file = await ImagePicker().pickImage(
+      source: source,
+      maxWidth: 1024,
+      maxHeight: 1024,
+      imageQuality: 85,
+    );
+    if (file == null) return;
+
+    setState(() => _uploadingAvatar = true);
+    try {
+      final asset = await ref
+          .read(uploadRepositoryProvider)
+          .uploadImage(
+            path: file.path,
+            filename: file.name,
+            kind: UploadKind.avatar,
+          );
+      final updated = await ref
+          .read(authRepositoryProvider)
+          .updateMe(avatarAssetId: asset.id);
+      ref.read(authControllerProvider.notifier).replaceUser(updated);
+      messenger.showSnackBar(const SnackBar(content: Text('Photo updated')));
+    } catch (e) {
+      // The reason, not just the fact — a picture too large and an expired
+      // session are different problems with different answers.
+      if (!mounted) return;
+      messenger.showSnackBar(
+        SnackBar(content: Text(ErrorView.messageFor(context, e))),
+      );
+    } finally {
+      if (mounted) setState(() => _uploadingAvatar = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final user = ref.watch(authControllerProvider).user;
     final clinics = ref.watch(clinicsProvider).valueOrNull ?? const [];
@@ -44,11 +122,53 @@ class StaffProfileScreen extends ConsumerWidget {
           children: [
             Row(
               children: [
-                UserAvatar(
-                  name: user?.name ?? '',
-                  avatarUrl: user?.avatarUrl,
-                  accent: AppColors.primary,
-                  size: 56,
+                Semantics(
+                  button: true,
+                  label: 'Change profile photo',
+                  child: GestureDetector(
+                    onTap: _uploadingAvatar ? null : _changeAvatar,
+                    child: Stack(
+                      alignment: Alignment.center,
+                      children: [
+                        UserAvatar(
+                          name: user?.name ?? '',
+                          avatarUrl: user?.avatarUrl,
+                          accent: AppColors.primary,
+                          size: 56,
+                        ),
+                        if (_uploadingAvatar)
+                          const SizedBox(
+                            width: 22,
+                            height: 22,
+                            child: CircularProgressIndicator(strokeWidth: 2.4),
+                          )
+                        else
+                          // A small camera badge on the corner, because an
+                          // avatar that happens to be tappable looks exactly
+                          // like one that is not.
+                          Positioned(
+                            right: 0,
+                            bottom: 0,
+                            child: Container(
+                              padding: const EdgeInsets.all(3),
+                              decoration: BoxDecoration(
+                                color: AppColors.primary,
+                                shape: BoxShape.circle,
+                                border: Border.all(
+                                  color: scheme.surface,
+                                  width: 2,
+                                ),
+                              ),
+                              child: const Icon(
+                                Icons.photo_camera_rounded,
+                                size: 12,
+                                color: Colors.white,
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
                 ),
                 const SizedBox(width: AppSpacing.md),
                 Expanded(
@@ -85,13 +205,21 @@ class StaffProfileScreen extends ConsumerWidget {
                 _Tile(
                   icon: Icons.storefront_outlined,
                   title: primary?.name ?? 'Clinic details',
+                  // One tile, because there was one destination.
+                  //
+                  // "Clinic details" and "Opening hours" pushed the same route
+                  // — the same Edit clinic screen, which holds both. Two
+                  // rows onto one screen is the lie the Patients and Messages
+                  // tabs told: whoever taps both learns the list is not
+                  // describing what sits behind it.
                   subtitle:
                       primary == null
-                          ? 'Name, address, phone numbers and logo'
+                          ? 'Name, address, phones, logo and opening hours'
                           : [
                             if (primary.phones.isNotEmpty)
                               primary.phones.join(' · '),
                             if (primary.city != null) primary.city!,
+                            'Opening hours',
                           ].join('  ·  '),
                   onTap:
                       () =>

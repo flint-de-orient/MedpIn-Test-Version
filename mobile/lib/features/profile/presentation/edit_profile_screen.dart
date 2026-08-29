@@ -112,6 +112,10 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
     final accent = isDark ? AppColors.primaryDark : AppColors.primary;
     final user = ref.watch(authControllerProvider).user;
     final name = user?.name ?? '';
+    // Only a patient carries clinical intake on their account. Defaulting to
+    // patient keeps the screen unchanged for the role it was written for if
+    // the user has not loaded yet.
+    final isPatient = (user?.role ?? 'patient') == 'patient';
 
     return Scaffold(
       appBar: AppBar(
@@ -274,78 +278,88 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
                                   : l10n.authInvalidEmail,
                     ),
                   ),
-                  _Divider(scheme: scheme),
-                  InkWell(
-                    onTap: _pickDateOfBirth,
-                    child: _Field(
-                      label: l10n.authDateOfBirthLabel,
-                      trailing: Icon(
-                        Icons.calendar_today_outlined,
-                        size: 18,
-                        color: accent,
-                      ),
-                      child: Text(
-                        _dateOfBirth == null
-                            ? '—'
-                            : '${_dateOfBirth!.day.toString().padLeft(2, '0')}/'
-                                '${_dateOfBirth!.month.toString().padLeft(2, '0')}/'
-                                '${_dateOfBirth!.year}',
-                        style: const TextStyle(fontSize: 16),
-                      ),
-                    ),
-                  ),
-                  _Divider(scheme: scheme),
-                  _Field(
-                    label: l10n.authGenderLabel,
-                    child: DropdownButtonHideUnderline(
-                      child: DropdownButton<String>(
-                        value: _gender,
-                        isExpanded: true,
-                        isDense: true,
-                        hint: Text(
-                          '—',
-                          style: TextStyle(color: scheme.onSurfaceVariant),
+                  // Date of birth, sex and address, for a patient only.
+                  //
+                  // This screen is "Your details" on all four panels. Those
+                  // three are clinical intake — they are on the record because
+                  // a doctor reads them, and they mean nothing on a reception,
+                  // dietician or doctor account. A desk asked for its own date
+                  // of birth is a desk wondering which of the two people who
+                  // share the shift it is meant to enter.
+                  if (isPatient) ...[
+                    _Divider(scheme: scheme),
+                    InkWell(
+                      onTap: _pickDateOfBirth,
+                      child: _Field(
+                        label: l10n.authDateOfBirthLabel,
+                        trailing: Icon(
+                          Icons.calendar_today_outlined,
+                          size: 18,
+                          color: accent,
                         ),
-                        items: [
-                          DropdownMenuItem(
-                            value: 'male',
-                            child: Text(l10n.authGenderMale),
-                          ),
-                          DropdownMenuItem(
-                            value: 'female',
-                            child: Text(l10n.authGenderFemale),
-                          ),
-                          DropdownMenuItem(
-                            value: 'other',
-                            child: Text(l10n.authGenderOther),
-                          ),
-                        ],
-                        onChanged: (v) => setState(() => _gender = v),
+                        child: Text(
+                          _dateOfBirth == null
+                              ? '—'
+                              : '${_dateOfBirth!.day.toString().padLeft(2, '0')}/'
+                                  '${_dateOfBirth!.month.toString().padLeft(2, '0')}/'
+                                  '${_dateOfBirth!.year}',
+                          style: const TextStyle(fontSize: 16),
+                        ),
                       ),
                     ),
-                  ),
-                  _Divider(scheme: scheme),
-                  _Field(
-                    label: 'Address',
-                    child: TextFormField(
-                      controller: _addressController,
-                      textCapitalization: TextCapitalization.sentences,
-                      minLines: 1,
-                      maxLines: 3,
-                      style: const TextStyle(fontSize: 16),
-                      decoration: const InputDecoration(
-                        border: InputBorder.none,
-                        enabledBorder: InputBorder.none,
-                        focusedBorder: InputBorder.none,
-                        errorBorder: InputBorder.none,
-                        focusedErrorBorder: InputBorder.none,
-                        filled: false,
-                        isDense: true,
-                        contentPadding: EdgeInsets.zero,
-                        hintText: 'House, street, area, city, PIN',
+                    _Divider(scheme: scheme),
+                    _Field(
+                      label: l10n.authGenderLabel,
+                      child: DropdownButtonHideUnderline(
+                        child: DropdownButton<String>(
+                          value: _gender,
+                          isExpanded: true,
+                          isDense: true,
+                          hint: Text(
+                            '—',
+                            style: TextStyle(color: scheme.onSurfaceVariant),
+                          ),
+                          items: [
+                            DropdownMenuItem(
+                              value: 'male',
+                              child: Text(l10n.authGenderMale),
+                            ),
+                            DropdownMenuItem(
+                              value: 'female',
+                              child: Text(l10n.authGenderFemale),
+                            ),
+                            DropdownMenuItem(
+                              value: 'other',
+                              child: Text(l10n.authGenderOther),
+                            ),
+                          ],
+                          onChanged: (v) => setState(() => _gender = v),
+                        ),
                       ),
                     ),
-                  ),
+                    _Divider(scheme: scheme),
+                    _Field(
+                      label: 'Address',
+                      child: TextFormField(
+                        controller: _addressController,
+                        textCapitalization: TextCapitalization.sentences,
+                        minLines: 1,
+                        maxLines: 3,
+                        style: const TextStyle(fontSize: 16),
+                        decoration: const InputDecoration(
+                          border: InputBorder.none,
+                          enabledBorder: InputBorder.none,
+                          focusedBorder: InputBorder.none,
+                          errorBorder: InputBorder.none,
+                          focusedErrorBorder: InputBorder.none,
+                          filled: false,
+                          isDense: true,
+                          contentPadding: EdgeInsets.zero,
+                          hintText: 'House, street, area, city, PIN',
+                        ),
+                      ),
+                    ),
+                  ],
                 ],
               ),
             ),

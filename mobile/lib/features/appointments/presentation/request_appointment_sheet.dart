@@ -202,11 +202,27 @@ class _RequestSheetState extends ConsumerState<_RequestSheet> {
       // does not appear anywhere reads as one that was not sent.
       ref.invalidate(myAppointmentsProvider);
       if (mounted) Navigator.pop(context, true);
+      return;
     } on ApiException catch (e) {
-      setState(() {
-        _sending = false;
-        _error = e.message;
-      });
+      if (mounted) setState(() => _error = e.message);
+    } catch (e) {
+      // Anything that is not an ApiException — a payload in a shape the parser
+      // did not expect, a connection dropped mid-request. The narrow catch let
+      // those escape, and with no finally the sheet was left with _sending
+      // raised: the Send button greyed out for good, on a sheet that had said
+      // nothing about why. "The request does not work" is what that looks
+      // like from the outside.
+      if (mounted) {
+        setState(
+          () =>
+              _error =
+                  'Could not send the request. Please check your connection '
+                  'and try again.',
+        );
+      }
+    } finally {
+      // Released on every path, including the ones nobody thought of.
+      if (mounted) setState(() => _sending = false);
     }
   }
 }
