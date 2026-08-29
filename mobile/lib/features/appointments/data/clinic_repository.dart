@@ -77,3 +77,15 @@ final FutureProvider<String> clinicPhoneProvider = FutureProvider<String>((
   }
   return AppConfig.clinicPhoneNumber;
 });
+
+/// The clinic this desk belongs to.
+///
+/// A single-clinic install is the common case, so the first one is the one.
+/// Read rather than assumed: the header shows the clinic's own mark and name,
+/// and inventing either would put someone else's clinic on the screen.
+final FutureProvider<Clinic?> deskClinicProvider = FutureProvider<Clinic?>((
+  ref,
+) async {
+  final clinics = await ref.watch(clinicRepositoryProvider).list();
+  return clinics.isEmpty ? null : clinics.first;
+});

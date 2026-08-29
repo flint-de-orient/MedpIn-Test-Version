@@ -53,11 +53,12 @@ class StaffShell extends StatelessWidget {
               selectedIcon: Icons.groups_rounded,
               label: 'Patients',
             ),
-            GlassNavItem(
-              icon: Icons.forum_outlined,
-              selectedIcon: Icons.forum_rounded,
-              label: 'Messages',
-            ),
+            // No "Messages" tab. It and "Patients" both opened the same
+            // PatientsScreen — two labels for one screen, which is worse than
+            // one label, because a reader who taps both learns the app is
+            // lying about what it has. That screen already lists the
+            // conversations; when the desk needs an inbox of its own it can
+            // have a real one.
             GlassNavItem(
               icon: Icons.person_outline_rounded,
               selectedIcon: Icons.person_rounded,

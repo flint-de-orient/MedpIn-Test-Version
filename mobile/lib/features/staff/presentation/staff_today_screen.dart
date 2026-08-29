@@ -13,6 +13,9 @@ import '../../appointments/domain/appointment.dart';
 import '../../appointments/domain/clinic.dart';
 import '../../appointments/presentation/appointment_providers.dart';
 import '../../auth/presentation/auth_controller.dart';
+import '../../clinician/presentation/widgets/panel_ui.dart';
+import '../../../shared/widgets/authed_image.dart';
+import '../../clinician/presentation/widgets/clinician_notification_sheet.dart';
 
 /// The front desk's day.
 ///
@@ -72,6 +75,17 @@ class _StaffTodayScreenState extends ConsumerState<StaffTodayScreen> {
 
     return Scaffold(
       backgroundColor: Colors.transparent,
+      // Registering a walk-in is the desk's commonest job, so it stays one tap
+      // away — as a button that owns its own corner rather than one crammed
+      // into the header, where it took the whole width and left the date and
+      // the clinic name a column of single letters.
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: () => context.push('/staff/patients/new'),
+        backgroundColor: AppColors.primary,
+        foregroundColor: Colors.white,
+        icon: const Icon(Icons.person_add_alt_1_rounded),
+        label: const Text('Register'),
+      ),
       body: SafeArea(
         bottom: false,
         child: RefreshIndicator(
@@ -124,9 +138,20 @@ class _DeskHeader extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final scheme = Theme.of(context).colorScheme;
     final user = ref.watch(authControllerProvider).user;
+    // The clinic's own mark, the day, and the bell.
+    //
+    // Register used to sit here, and is now the button in the corner. It is
+    // the desk's commonest job, but a header is for saying where you are and
+    // what is waiting — and a filled button in one takes the whole width from
+    // whatever it shares the row with.
+    final clinic = ref.watch(deskClinicProvider).valueOrNull;
+    final logoUrl = clinic?.logoLightUrl;
+
     return Row(
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
+        _ClinicMark(url: logoUrl, name: clinic?.name ?? user?.name ?? 'Clinic'),
+        const SizedBox(width: AppSpacing.md),
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -143,10 +168,11 @@ class _DeskHeader extends ConsumerWidget {
               ),
               const SizedBox(height: 2),
               Text(
-                user?.name ?? 'Front desk',
+                clinic?.name ?? user?.name ?? 'Front desk',
                 maxLines: 2,
+                overflow: TextOverflow.ellipsis,
                 style: const TextStyle(
-                  fontSize: 22,
+                  fontSize: 20,
                   height: 1.2,
                   fontWeight: FontWeight.w800,
                 ),
@@ -154,31 +180,60 @@ class _DeskHeader extends ConsumerWidget {
             ],
           ),
         ),
-        const SizedBox(width: AppSpacing.md),
-        // Registering a walk-in is the thing a desk does most, so it is on the
-        // screen rather than behind a tab.
-        //
-        // The size is set here, not inherited. AppTheme gives every
-        // FilledButton `minimumSize: Size.fromHeight(52)` — which is
-        // `Size(double.infinity, 52)`, a minimum *width* of infinity. That is
-        // right for a button that owns its row and ruinous for one sharing
-        // it: this button took the whole width and the date and desk name
-        // beside it rendered one character per line, running down the screen.
-        FilledButton.icon(
-          onPressed: () => context.push('/staff/patients/new'),
-          icon: const Icon(Icons.person_add_alt_1_rounded, size: 18),
-          label: const Text('Register'),
-          style: FilledButton.styleFrom(
-            backgroundColor: AppColors.primary,
-            foregroundColor: Colors.white,
-            minimumSize: const Size(0, AppSpacing.minTapTarget),
-            padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(AppSpacing.buttonRadius),
-            ),
+        const SizedBox(width: AppSpacing.sm),
+        // The same bell the doctor has. What reaches it differs by role —
+        // the desk is told about requests and messages, not about a patient's
+        // HbA1c — but the control is one control.
+        PanelNotificationBell(onTap: () => showClinicianNotifications(context)),
+      ],
+    );
+  }
+}
+
+/// The clinic's logo, or its initial when it has none.
+///
+/// Falls back rather than showing an empty box: a clinic that has not uploaded
+/// artwork yet still has a name, and a blank square in the corner of every
+/// screen reads as something that failed to load.
+class _ClinicMark extends StatelessWidget {
+  const _ClinicMark({required this.url, required this.name});
+
+  final String? url;
+  final String name;
+
+  @override
+  Widget build(BuildContext context) {
+    const size = 44.0;
+    if (url == null || url!.isEmpty) {
+      return Container(
+        width: size,
+        height: size,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: AppColors.primary.withValues(alpha: 0.10),
+          borderRadius: BorderRadius.circular(AppSpacing.cardRadius),
+        ),
+        child: Text(
+          name.trim().isEmpty ? 'C' : name.trim()[0].toUpperCase(),
+          style: const TextStyle(
+            fontSize: 18,
+            fontWeight: FontWeight.w800,
+            color: AppColors.primary,
           ),
         ),
-      ],
+      );
+    }
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(AppSpacing.cardRadius),
+      child: AuthedImage(
+        path: url!,
+        width: size,
+        height: size,
+        radius: AppSpacing.cardRadius,
+        // A logo is cut out, so it sits on the page rather than on a plate.
+        background: Colors.transparent,
+        fit: BoxFit.contain,
+      ),
     );
   }
 }

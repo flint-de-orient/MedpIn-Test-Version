@@ -11,6 +11,7 @@ import '../../appointments/presentation/appointment_providers.dart';
 import '../../../shared/widgets/authed_image.dart';
 import '../../../shared/data/upload_repository.dart';
 import 'package:image_picker/image_picker.dart';
+import '../../../shared/widgets/error_view.dart';
 
 const _weekOrder = [1, 2, 3, 4, 5, 6, 0]; // Mon … Sun
 const _dayNames = [
@@ -226,9 +227,19 @@ class _ClinicEditScreenState extends ConsumerState<ClinicEditScreen> {
           ),
         ),
       );
-    } catch (_) {
+    } catch (e) {
+      // The reason, not just the fact.
+      //
+      // "Could not upload the logo" was all this said, for a picture too
+      // large, a format the server will not take, an expired session and a
+      // dead network alike — four different things to do about it, and no way
+      // to tell which one you were looking at.
+      if (!mounted) return;
       messenger.showSnackBar(
-        const SnackBar(content: Text('Could not upload the logo')),
+        SnackBar(
+          content: Text(ErrorView.messageFor(context, e)),
+          duration: const Duration(seconds: 6),
+        ),
       );
     } finally {
       if (mounted) setState(() => _uploadingLogo = false);

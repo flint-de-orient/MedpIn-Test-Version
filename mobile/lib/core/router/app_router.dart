@@ -353,6 +353,22 @@ final Provider<GoRouter> appRouterProvider = Provider<GoRouter>((ref) {
             (context, state) =>
                 ClinicEditScreen(clinic: state.extra as Clinic?),
       ),
+      // The desk opens a patient the same way the doctor does.
+      //
+      // There was no such route, so every path to a patient record — finishing
+      // a registration, tapping a name — pushed `/clinician/patients/:id`,
+      // which the redirect bounces staff straight out of. What the receptionist
+      // got was a white screen and nothing saying why.
+      //
+      // The screen is safe to share: the server refuses prescribing and alert
+      // resolution for staff whatever the app draws, and a front desk that
+      // cannot look up the patient in front of it cannot do its job.
+      GoRoute(
+        path: '/staff/patients/:id',
+        builder:
+            (context, state) =>
+                PatientProfileScreen(patientId: state.pathParameters['id']!),
+      ),
       GoRoute(
         path: '/staff/patients/:id/thread',
         builder:
@@ -379,14 +395,6 @@ final Provider<GoRouter> appRouterProvider = Provider<GoRouter>((ref) {
             routes: [
               GoRoute(
                 path: '/staff/patients',
-                builder: (context, state) => const PatientsScreen(),
-              ),
-            ],
-          ),
-          StatefulShellBranch(
-            routes: [
-              GoRoute(
-                path: '/staff/messages',
                 builder: (context, state) => const PatientsScreen(),
               ),
             ],

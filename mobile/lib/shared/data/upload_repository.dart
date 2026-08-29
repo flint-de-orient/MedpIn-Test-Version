@@ -49,6 +49,11 @@ class MediaAsset {
     height: (json['height'] as num?)?.toInt(),
     url: json['url']?.toString(),
     transcript: json['transcript']?.toString(),
+    // Was never read. The field was added with a default of false and this
+    // factory left alone, so the server's verdict was discarded on arrival and
+    // a logo drawn for a dark letterhead was always treated as if it were not
+    // — silently, because false is also the ordinary answer.
+    needsDarkChip: json['needsDarkChip'] == true,
   );
 }
 

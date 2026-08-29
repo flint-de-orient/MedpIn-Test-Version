@@ -47,14 +47,40 @@ void main() {
     );
   });
 
-  test('the desk shell offers the four tabs it should', () {
+  test('the desk shell offers the three tabs it should', () {
     final shell =
         File(
           'lib/features/staff/presentation/staff_shell.dart',
         ).readAsStringSync();
-    for (final tab in ['Today', 'Patients', 'Messages', 'Profile']) {
+    for (final tab in ['Today', 'Patients', 'Profile']) {
       expect(shell.contains("label: '$tab'"), isTrue, reason: 'missing $tab');
     }
+  });
+
+  test('there is no second tab onto the same screen', () {
+    // "Messages" and "Patients" both routed to PatientsScreen. Two labels for
+    // one screen is worse than one label: a reader who taps both learns the
+    // navigation is not telling the truth about what the app has.
+    final shell =
+        File(
+          'lib/features/staff/presentation/staff_shell.dart',
+        ).readAsStringSync();
+    expect(shell.contains("label: 'Messages'"), isFalse);
+
+    final router = File('lib/core/router/app_router.dart').readAsStringSync();
+    expect(router.contains("path: '/staff/messages'"), isFalse);
+  });
+
+  test('the desk can open a patient record', () {
+    // There was no /staff/patients/:id, so every route to a patient pushed
+    // /clinician/... — which the redirect bounces staff out of. Finishing a
+    // registration left the receptionist looking at a white screen.
+    final router = File('lib/core/router/app_router.dart').readAsStringSync();
+    expect(
+      router.contains("path: '/staff/patients/:id'"),
+      isTrue,
+      reason: 'the desk has nowhere to open a patient',
+    );
   });
 
   test('the desk profile does not carry the doctor\'s identity', () {

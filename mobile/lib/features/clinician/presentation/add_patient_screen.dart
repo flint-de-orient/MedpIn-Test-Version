@@ -255,14 +255,15 @@ class _AddPatientScreenState extends ConsumerState<AddPatientScreen> {
         // Sending the desk to /clinician bounced them back to Today with the
         // new patient nowhere in sight, which reads as the registration having
         // failed.
-        if (areaPrefix(ref) == '/staff') {
-          context.pushReplacement('/staff/patients');
-        } else {
-          context.pushReplacement(
-            '/clinician/patients/$id',
-            extra: _name.text.trim(),
-          );
-        }
+        // Both roles land on the record they just created. The desk used to
+        // be dropped on the patient list instead, because /clinician was the
+        // only patient route that existed and staff are bounced out of it —
+        // so the one thing they had just made was the one thing they could
+        // not see. There is a /staff/patients/:id now.
+        context.pushReplacement(
+          '${areaPrefix(ref)}/patients/$id',
+          extra: _name.text.trim(),
+        );
       } else {
         context.pop();
       }
