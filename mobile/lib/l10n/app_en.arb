@@ -542,5 +542,138 @@
   "authUseOtpInstead": "Sign in with an SMS code instead",
   "@authUseOtpInstead": {
     "description": "Auth: authUseOtpInstead"
-  }
+  },
+  "deskFrontDesk": "Front desk",
+  "deskToday": "Today",
+  "deskRegister": "Register",
+  "deskBooked": "Booked",
+  "deskWaiting": "Waiting",
+  "deskUnread": "Unread",
+  "deskNoAppointments": "No appointments",
+  "deskQuietDay": "A quiet day. Walk-ins can be registered from the button below.",
+  "deskWaitingForTimeCount": "{count, plural, =1{1 person is waiting for a time.} other{{count} people are waiting for a time.}}",
+  "@deskWaitingForTimeCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "deskAppointmentCount": "{count, plural, =1{1 appointment} other{{count} appointments}}",
+  "@deskAppointmentCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "deskNextAt": "Next: {name} at {time}",
+  "@deskNextAt": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "deskAllPassed": "Everyone booked for today has been and gone.",
+  "deskNothingBooked": "Nothing booked today",
+  "deskNothingBookedBody": "Appointments confirmed for today appear here.",
+  "deskWaitingForTime": "Waiting for a time",
+  "deskNeedsAttention": "{count, plural, =1{Needs attention now} other{{count} need attention now}}",
+  "@deskNeedsAttention": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "deskGiveTime": "Give a time",
+  "deskDecline": "Decline",
+  "deskDeclineTitle": "Decline this request?",
+  "deskDeclineBody": "The patient will be told the clinic could not offer a time. Message them first if there is a reason they should know.",
+  "deskKeepIt": "Keep it",
+  "deskPatientTold": "The patient has been told.",
+  "deskPatientFallback": "Patient",
+  "deskCheckIn": "Check in",
+  "deskCheckedIn": "Checked in",
+  "deskWithDoctor": "With the doctor",
+  "deskVisitDone": "Done",
+  "deskNoShow": "No show",
+  "deskConfirmed": "Confirmed",
+  "deskConfirmedFor": "Confirmed for {when}",
+  "@deskConfirmedFor": {
+    "placeholders": {
+      "when": {
+        "type": "String"
+      }
+    }
+  },
+  "deskChange": "Change",
+  "deskAskedFor": "for {when}",
+  "@deskAskedFor": {
+    "placeholders": {
+      "when": {
+        "type": "String"
+      }
+    }
+  },
+  "deskAskedAgoMinutes": "asked {n}m ago",
+  "@deskAskedAgoMinutes": {
+    "placeholders": {
+      "n": {
+        "type": "int"
+      }
+    }
+  },
+  "deskAskedAgoHours": "asked {n}h ago",
+  "@deskAskedAgoHours": {
+    "placeholders": {
+      "n": {
+        "type": "int"
+      }
+    }
+  },
+  "deskAskedAgoDays": "asked {n}d ago",
+  "@deskAskedAgoDays": {
+    "placeholders": {
+      "n": {
+        "type": "int"
+      }
+    }
+  },
+  "deskCallPatient": "Call {phone}",
+  "@deskCallPatient": {
+    "placeholders": {
+      "phone": {
+        "type": "String"
+      }
+    }
+  },
+  "deskNoActiveClinic": "No active clinic to book into. Add one in Profile.",
+  "deskNoFreeTimes": "Nothing free on this day",
+  "deskTryAnotherDay": "Try another day, or another clinic.",
+  "deskOnlyAvailable": "Only times the doctor is actually available are offered.",
+  "deskCouldNotLoadTimes": "Could not load the times for this day.",
+  "deskClinicStaff": "Clinic staff",
+  "deskTheClinic": "The clinic",
+  "deskClinicDetails": "Clinic details",
+  "deskClinicDetailsSub": "Name, address, phones, logo and opening hours",
+  "deskOpeningHours": "Opening hours",
+  "deskThisAccount": "This account",
+  "deskYourDetails": "Your details",
+  "deskYourDetailsSub": "Name, photo and contact",
+  "deskSignOut": "Sign out",
+  "deskSignOutTitle": "Sign out?",
+  "deskSignOutBody": "You will need the clinic number and the password, or a code sent by SMS, to sign in again.",
+  "deskStay": "Stay",
+  "deskPhotoUpdated": "Photo updated",
+  "deskTakePhoto": "Take a photo",
+  "deskChooseFromGallery": "Choose from gallery",
+  "deskAbout": "About",
+  "deskNoDeviceLock": "This phone has no fingerprint or PIN set up.",
+  "deskAppLockSub": "Ask for the phone’s fingerprint or PIN each time it opens",
+  "deskCouldNotUpdatePhoto": "Could not update the photo."
 }

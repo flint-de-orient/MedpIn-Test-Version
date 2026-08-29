@@ -14,12 +14,19 @@ import '../../../shared/providers/core_providers.dart';
 import '../../medications/domain/strength.dart';
 import '../domain/clinician_models.dart';
 import 'clinician_providers.dart';
+import 'package:file_picker/file_picker.dart';
+import 'package:image_picker/image_picker.dart';
+import '../../../shared/data/upload_repository.dart';
+import '../../../core/network/api_exception.dart';
+import '../data/clinician_repository.dart';
+import '../../../shared/widgets/authed_image.dart';
+import '../../../shared/widgets/fullscreen_photo.dart';
 
 /// The patient's prescriptions, latest first — each a dated card with a summary
 /// (diagnosis, medicine count, tests, follow-up), expandable to the full
 /// prescription, with actions to open the server-generated PDF in the phone's
 /// viewer or send it on.
-class PrescriptionListScreen extends ConsumerWidget {
+class PrescriptionListScreen extends ConsumerStatefulWidget {
   const PrescriptionListScreen({
     super.key,
     required this.patientId,
@@ -30,7 +37,131 @@ class PrescriptionListScreen extends ConsumerWidget {
   final String? patientName;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<PrescriptionListScreen> createState() =>
+      _PrescriptionListScreenState();
+}
+
+class _PrescriptionListScreenState
+    extends ConsumerState<PrescriptionListScreen> {
+  bool _filing = false;
+
+  String get patientId => widget.patientId;
+  String? get patientName => widget.patientName;
+
+  /// Photograph the paper, or pick a PDF of it.
+  ///
+  /// Both, because both happen. A prescription written at the desk is
+  /// photographed; one the doctor typed elsewhere and sent over arrives as a
+  /// PDF, and telling the receptionist to photograph their own screen is how
+  /// an unreadable record gets into a patient's file.
+  Future<void> _file() async {
+    final choice = await showModalBottomSheet<String>(
+      context: context,
+      builder:
+          (ctx) => SafeArea(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                ListTile(
+                  leading: const Icon(Icons.photo_camera_outlined),
+                  title: const Text('Photograph the prescription'),
+                  onTap: () => Navigator.pop(ctx, 'camera'),
+                ),
+                ListTile(
+                  leading: const Icon(Icons.photo_library_outlined),
+                  title: const Text('Choose a photo'),
+                  onTap: () => Navigator.pop(ctx, 'gallery'),
+                ),
+                ListTile(
+                  leading: const Icon(Icons.picture_as_pdf_outlined),
+                  title: const Text('Choose a PDF'),
+                  onTap: () => Navigator.pop(ctx, 'pdf'),
+                ),
+              ],
+            ),
+          ),
+    );
+    if (choice == null || !mounted) return;
+
+    String? path;
+    String? filename;
+    if (choice == 'pdf') {
+      final picked = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: const ['pdf'],
+      );
+      path = picked?.files.single.path;
+      filename = picked?.files.single.name;
+    } else {
+      final shot = await ImagePicker().pickImage(
+        source: choice == 'camera' ? ImageSource.camera : ImageSource.gallery,
+        // Bigger than a clinical photo needs to be, on purpose: this is
+        // handwriting that has to stay legible after the server re-encodes it.
+        maxWidth: 2400,
+        maxHeight: 2400,
+        imageQuality: 92,
+      );
+      path = shot?.path;
+      filename = shot?.name;
+    }
+    if (path == null || filename == null || !mounted) return;
+
+    // The date on the paper, not the date it was filed. During the pilot a
+    // week's prescriptions are photographed in one sitting, and stamping them
+    // all with today would put every visit on the wrong day.
+    final issued = await showDatePicker(
+      context: context,
+      initialDate: DateTime.now(),
+      firstDate: DateTime.now().subtract(const Duration(days: 730)),
+      lastDate: DateTime.now(),
+      helpText: 'Date on the prescription',
+    );
+    if (issued == null || !mounted) return;
+
+    setState(() => _filing = true);
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      final asset = await ref
+          .read(uploadRepositoryProvider)
+          .uploadImage(
+            path: path,
+            filename: filename,
+            kind: UploadKind.prescriptionPdf,
+            // Owned by the patient, or the patient's own app gets a 403 on the
+            // one document they most want to open.
+            patientId: patientId,
+          );
+      await ref
+          .read(clinicianRepositoryProvider)
+          .fileScannedPrescription(
+            patientId: patientId,
+            assetId: asset.id,
+            issuedOn: issued,
+          );
+      ref.invalidate(patientPrescriptionsProvider(patientId));
+      messenger.showSnackBar(
+        const SnackBar(content: Text('Prescription filed.')),
+      );
+    } catch (e) {
+      // Caught wide, not just ApiException: a file picked from a cloud
+      // provider can fail on read, and the busy flag has to come down either
+      // way or the button stays dead until the screen is left.
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(
+            e is ApiException
+                ? 'Could not file it. ${e.message}'
+                : 'Could not file it. Please try again.',
+          ),
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _filing = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final async = ref.watch(patientPrescriptionsProvider(patientId));
 
@@ -53,6 +184,23 @@ class PrescriptionListScreen extends ConsumerWidget {
                     ),
                   ),
                 ),
+      ),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: _filing ? null : _file,
+        backgroundColor: AppColors.primary,
+        foregroundColor: Colors.white,
+        icon:
+            _filing
+                ? const SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2.2,
+                    color: Colors.white,
+                  ),
+                )
+                : const Icon(Icons.note_add_outlined),
+        label: Text(_filing ? 'Filing…' : 'Add prescription'),
       ),
       body: RefreshIndicator(
         onRefresh:
@@ -136,26 +284,28 @@ class _PrescriptionCardState extends ConsumerState<_PrescriptionCard> {
   /// Split out of the open so sharing does not download a second copy — a
   /// prescription is immutable once issued, so whatever is on disk is current.
   Future<String?> _fetchPdf() async {
-    final url = widget.rx.pdfUrl;
+    // Whichever document this prescription is. A composed one has a PDF
+    // generated from its items; a filed paper one has the photograph, and
+    // nothing to generate a PDF from.
+    final url = widget.rx.documentUrl;
     if (url == null || url.isEmpty) return null;
     final dir = await getTemporaryDirectory();
-    final name = '${widget.rx.referenceNo ?? widget.rx.id}.pdf'.replaceAll(
-      RegExp(r'[^\w.\-]'),
-      '_',
-    );
+    final name =
+        '${widget.rx.referenceNo ?? widget.rx.id}.${widget.rx.documentExtension}'
+            .replaceAll(RegExp(r'[^\w.\-]'), '_');
     final cached = File('${dir.path}/rx_${url.hashCode}_$name');
     if (!await cached.exists() || await cached.length() == 0) {
       final bytes = await ref
           .read(apiClientProvider)
           .getBytes('${AppConfig.apiOrigin}$url');
-      if (bytes.isEmpty) throw Exception('empty pdf download');
+      if (bytes.isEmpty) throw Exception('empty document download');
       await cached.writeAsBytes(bytes, flush: true);
     }
     return cached.path;
   }
 
   Future<void> _open() async {
-    if (_busy || widget.rx.pdfUrl == null) return;
+    if (_busy || widget.rx.documentUrl == null) return;
     final messenger = ScaffoldMessenger.of(context);
     setState(() => _busy = true);
     try {
@@ -164,7 +314,12 @@ class _PrescriptionCardState extends ConsumerState<_PrescriptionCard> {
       final res = await OpenFilex.open(path);
       if (res.type != ResultType.done) {
         messenger.showSnackBar(
-          const SnackBar(content: Text('No app on this phone can open a PDF')),
+          SnackBar(
+            content: Text(
+              'No app on this phone can open a '
+              '${widget.rx.documentExtension.toUpperCase()} file',
+            ),
+          ),
         );
       }
     } catch (_) {
@@ -177,7 +332,7 @@ class _PrescriptionCardState extends ConsumerState<_PrescriptionCard> {
   }
 
   Future<void> _share() async {
-    if (_busy || widget.rx.pdfUrl == null) return;
+    if (_busy || widget.rx.documentUrl == null) return;
     final messenger = ScaffoldMessenger.of(context);
     setState(() => _busy = true);
     try {
@@ -253,7 +408,9 @@ class _PrescriptionCardState extends ConsumerState<_PrescriptionCard> {
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Icon(
-                  Icons.receipt_long_rounded,
+                  rx.isScanned
+                      ? Icons.document_scanner_outlined
+                      : Icons.receipt_long_rounded,
                   color: AppColors.primary,
                   size: 22,
                 ),
@@ -294,12 +451,46 @@ class _PrescriptionCardState extends ConsumerState<_PrescriptionCard> {
             ),
           ],
           const SizedBox(height: 4),
-          _line(
-            context,
-            Icons.medication_outlined,
-            '${rx.itemCount} ${rx.itemCount == 1 ? 'medicine' : 'medicines'}'
-            '${rx.labTestsAdvised.isNotEmpty ? '  ·  ${rx.labTestsAdvised.length} test${rx.labTestsAdvised.length == 1 ? '' : 's'} advised' : ''}',
-          ),
+          // A scanned prescription has no machine-readable items, so the
+          // medicine count would read "0 medicines" — which is not "none
+          // prescribed", it is "nobody typed them in". Saying so is the whole
+          // difference between an empty record and an unread one.
+          if (rx.isScanned)
+            _line(
+              context,
+              Icons.photo_outlined,
+              rx.uploadedByName == null
+                  ? 'Written on paper · filed from a photo'
+                  : 'Written on paper · filed by ${rx.uploadedByName}',
+            )
+          else
+            _line(
+              context,
+              Icons.medication_outlined,
+              '${rx.itemCount} ${rx.itemCount == 1 ? 'medicine' : 'medicines'}'
+              '${rx.labTestsAdvised.isNotEmpty ? '  ·  ${rx.labTestsAdvised.length} test${rx.labTestsAdvised.length == 1 ? '' : 's'} advised' : ''}',
+            ),
+          // The page itself, right here. The desk photographs it and then has
+          // to know it photographed the right one, and a patient asking "what
+          // did he give me" wants to look at the paper, not download it.
+          if (rx.isScanned &&
+              rx.scanUrl != null &&
+              !(rx.scanMimeType ?? '').contains('pdf')) ...[
+            const SizedBox(height: AppSpacing.sm),
+            GestureDetector(
+              onTap: () => FullscreenPhoto.show(context, rx.scanUrl),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(10),
+                child: AuthedImage(
+                  path: rx.scanUrl!,
+                  width: double.infinity,
+                  height: 160,
+                  radius: 10,
+                  fit: BoxFit.cover,
+                ),
+              ),
+            ),
+          ],
           if (rx.followUpOn != null) ...[
             const SizedBox(height: 4),
             _line(
@@ -350,7 +541,7 @@ class _PrescriptionCardState extends ConsumerState<_PrescriptionCard> {
             children: [
               Expanded(
                 child: FilledButton.icon(
-                  onPressed: _busy || rx.pdfUrl == null ? null : _open,
+                  onPressed: _busy || rx.documentUrl == null ? null : _open,
                   style: FilledButton.styleFrom(
                     minimumSize: const Size.fromHeight(46),
                     backgroundColor: AppColors.primary,
@@ -380,7 +571,7 @@ class _PrescriptionCardState extends ConsumerState<_PrescriptionCard> {
               const SizedBox(width: AppSpacing.sm),
               Expanded(
                 child: OutlinedButton.icon(
-                  onPressed: _busy || rx.pdfUrl == null ? null : _share,
+                  onPressed: _busy || rx.documentUrl == null ? null : _share,
                   style: OutlinedButton.styleFrom(
                     minimumSize: const Size.fromHeight(46),
                     foregroundColor: AppColors.primary,

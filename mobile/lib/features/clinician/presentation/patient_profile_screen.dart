@@ -27,6 +27,8 @@ import 'widgets/panel_ui.dart';
 import 'patient_detail_screen.dart' show PatientRecordSections;
 import '../../medications/domain/strength.dart';
 import '../../../shared/widgets/strength_field.dart';
+import '../../../shared/widgets/surfaces.dart';
+import '../domain/clinician_models.dart';
 
 /// The doctor's working screen for one patient: who they are at the top, and
 /// everything the doctor might do about it underneath.
@@ -392,6 +394,16 @@ class _PatientProfileScreenState extends ConsumerState<PatientProfileScreen> {
                     patientId: widget.patientId,
                   ),
                   const SizedBox(height: AppSpacing.lg),
+
+                  // The desk's half of this screen.
+                  //
+                  // Everything below is what a receptionist is asked for while
+                  // the doctor is with someone else: what he last gave this
+                  // patient, and a weight taken at the desk before they go in.
+                  if (isDesk) ...[
+                    _DeskCare(patientId: widget.patientId),
+                    const SizedBox(height: AppSpacing.lg),
+                  ],
 
                   // Hidden from the front desk, all of it.
                   //
@@ -2713,4 +2725,516 @@ class _LabSearchFieldState extends State<_LabSearchField> {
       },
     );
   }
+}
+
+/// What the doctor last gave this patient, and a place to put a weight.
+///
+/// The desk sees this where the doctor sees the prescribing form. It is the
+/// same question from the other side of the counter: a receptionist is asked
+/// "what did he give me" and "am I due back" a dozen times a day, and until
+/// now the answer lived behind a button marked Prescriptions that nobody
+/// thought to press.
+///
+/// Read-only throughout except the vitals sheet. Height and weight are
+/// measured at the desk before the patient goes in — that is where the scale
+/// is — and the server has always accepted them from a staff account.
+class _DeskCare extends ConsumerWidget {
+  const _DeskCare({required this.patientId});
+
+  final String patientId;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final scheme = Theme.of(context).colorScheme;
+    final meds =
+        ref.watch(patientMedicationsProvider(patientId)).valueOrNull ??
+        const <Medication>[];
+    final active = meds.where((m) => m.isActive).toList();
+    final rxs =
+        ref.watch(patientPrescriptionsProvider(patientId)).valueOrNull ??
+        const <PrescriptionSummary>[];
+    final latest = rxs.isEmpty ? null : rxs.first;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SectionCard(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(
+                    Icons.medication_outlined,
+                    size: 18,
+                    color: AppColors.primary,
+                  ),
+                  const SizedBox(width: 8),
+                  const Expanded(
+                    child: Text(
+                      'What the doctor prescribed',
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ),
+                  if (latest?.issuedOn != null)
+                    Text(
+                      DateFormat('d MMM yyyy').format(latest!.issuedOn!),
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: scheme.onSurfaceVariant,
+                      ),
+                    ),
+                ],
+              ),
+              const SizedBox(height: AppSpacing.sm),
+
+              if (active.isEmpty && latest == null)
+                Text(
+                  'Nothing recorded yet.',
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: scheme.onSurfaceVariant,
+                  ),
+                )
+              else ...[
+                // Medicines, each with the date it was started — "since when"
+                // is half of what the question means.
+                for (final m in active)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 6),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Padding(
+                          padding: const EdgeInsets.only(top: 5),
+                          child: Container(
+                            width: 5,
+                            height: 5,
+                            decoration: BoxDecoration(
+                              color: AppColors.primary,
+                              shape: BoxShape.circle,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            [
+                              m.name,
+                              if (m.strength.isNotEmpty) m.strength,
+                              if (m.dose.isNotEmpty) m.dose,
+                            ].join('  '),
+                            style: const TextStyle(
+                              fontSize: 14,
+                              height: 1.35,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                        if (m.startDate != null)
+                          Text(
+                            'from ${DateFormat('d MMM').format(m.startDate!)}',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: scheme.onSurfaceVariant,
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+
+                // A prescription written on paper has no typed medicines, so
+                // an empty list above means "not entered", never "none". The
+                // clinic's pilot runs entirely this way.
+                if (active.isEmpty && (latest?.isScanned ?? false))
+                  Text(
+                    'Written on paper — open the prescription to read it.',
+                    style: TextStyle(
+                      fontSize: 13,
+                      height: 1.35,
+                      color: scheme.onSurfaceVariant,
+                    ),
+                  ),
+
+                if (latest != null && latest.labTestsAdvised.isNotEmpty) ...[
+                  const SizedBox(height: AppSpacing.sm),
+                  _DeskLine(
+                    icon: Icons.science_outlined,
+                    label: 'Tests advised',
+                    value: latest.labTestsAdvised.join(', '),
+                  ),
+                ],
+                if (latest?.generalAdvice != null &&
+                    latest!.generalAdvice!.trim().isNotEmpty) ...[
+                  const SizedBox(height: 6),
+                  _DeskLine(
+                    icon: Icons.tips_and_updates_outlined,
+                    label: 'Advice',
+                    value: latest.generalAdvice!.trim(),
+                  ),
+                ],
+                if (latest?.followUpOn != null) ...[
+                  const SizedBox(height: 6),
+                  _DeskLine(
+                    icon: Icons.event_outlined,
+                    label: 'Next visit',
+                    value: DateFormat(
+                      'EEEE, d MMM yyyy',
+                    ).format(latest!.followUpOn!),
+                  ),
+                ],
+              ],
+
+              const SizedBox(height: AppSpacing.md),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  // The prefix, not a literal. This block only draws for the
+                  // desk, so the literal would have worked — and would have
+                  // been one more place to miss when the doctor's panel
+                  // eventually shares it.
+                  onPressed:
+                      () => context.push(
+                        '${areaPrefix(ref)}/patients/$patientId/prescriptions',
+                      ),
+                  icon: const Icon(Icons.description_outlined, size: 18),
+                  label: const Text('All prescriptions'),
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: AppSpacing.md),
+        SectionCard(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(
+                    Icons.monitor_weight_outlined,
+                    size: 18,
+                    color: AppColors.primary,
+                  ),
+                  const SizedBox(width: 8),
+                  const Expanded(
+                    child: Text(
+                      'Measurements',
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'Height, weight and blood pressure taken at the desk. They go '
+                'into the patient\'s record and their trend graphs.',
+                style: TextStyle(
+                  fontSize: 13,
+                  height: 1.35,
+                  color: scheme.onSurfaceVariant,
+                ),
+              ),
+              const SizedBox(height: AppSpacing.sm),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton.icon(
+                  onPressed: () => _DeskVitalsSheet.show(context, patientId),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: AppColors.primary,
+                    foregroundColor: Colors.white,
+                  ),
+                  icon: const Icon(Icons.add_rounded, size: 20),
+                  label: const Text('Record measurements'),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _DeskLine extends StatelessWidget {
+  const _DeskLine({
+    required this.icon,
+    required this.label,
+    required this.value,
+  });
+
+  final IconData icon;
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(top: 2),
+          child: Icon(icon, size: 15, color: scheme.onSurfaceVariant),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: RichText(
+            text: TextSpan(
+              style: TextStyle(
+                fontSize: 13,
+                height: 1.35,
+                color: scheme.onSurface,
+              ),
+              children: [
+                TextSpan(
+                  text: '$label  ',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w700,
+                    color: scheme.onSurfaceVariant,
+                  ),
+                ),
+                TextSpan(text: value),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Height, weight and blood pressure, taken at the desk.
+///
+/// The server has always accepted these from a staff account, and deliberately:
+/// the scale and the cuff are at the counter, the measurement happens before
+/// the patient goes in, and making the doctor re-enter it is how a consultation
+/// starts three minutes late. It was simply never offered anywhere a
+/// receptionist could reach.
+///
+/// Every field is optional and nothing is written for one left blank — a desk
+/// that only had time for a weight should be able to record only a weight
+/// rather than inventing the rest.
+class _DeskVitalsSheet extends ConsumerStatefulWidget {
+  const _DeskVitalsSheet({required this.patientId});
+
+  final String patientId;
+
+  static Future<void> show(BuildContext context, String patientId) =>
+      showModalBottomSheet<void>(
+        context: context,
+        isScrollControlled: true,
+        backgroundColor: Colors.transparent,
+        builder: (_) => _DeskVitalsSheet(patientId: patientId),
+      );
+
+  @override
+  ConsumerState<_DeskVitalsSheet> createState() => _DeskVitalsSheetState();
+}
+
+class _DeskVitalsSheetState extends ConsumerState<_DeskVitalsSheet> {
+  final _height = TextEditingController();
+  final _weight = TextEditingController();
+  final _waist = TextEditingController();
+  final _systolic = TextEditingController();
+  final _diastolic = TextEditingController();
+  final _pulse = TextEditingController();
+  final _glucose = TextEditingController();
+  bool _saving = false;
+
+  @override
+  void dispose() {
+    for (final c in [
+      _height,
+      _weight,
+      _waist,
+      _systolic,
+      _diastolic,
+      _pulse,
+      _glucose,
+    ]) {
+      c.dispose();
+    }
+    super.dispose();
+  }
+
+  double? _dbl(TextEditingController c) => double.tryParse(c.text.trim());
+  int? _int(TextEditingController c) => int.tryParse(c.text.trim());
+
+  bool get _anything => [
+    _height,
+    _weight,
+    _waist,
+    _systolic,
+    _diastolic,
+    _pulse,
+    _glucose,
+  ].any((c) => c.text.trim().isNotEmpty);
+
+  Future<void> _save() async {
+    if (!_anything || _saving) return;
+    setState(() => _saving = true);
+    final messenger = ScaffoldMessenger.of(context);
+    final navigator = Navigator.of(context);
+    try {
+      await ref
+          .read(clinicianRepositoryProvider)
+          .recordConsultVitals(
+            patientId: widget.patientId,
+            heightCm: _dbl(_height),
+            weightKg: _dbl(_weight),
+            waistCm: _dbl(_waist),
+            systolic: _int(_systolic),
+            diastolic: _int(_diastolic),
+            pulse: _int(_pulse),
+            glucoseMgDl: _int(_glucose),
+          );
+      ref.invalidate(patientSummaryProvider(widget.patientId));
+      navigator.pop();
+      messenger.showSnackBar(
+        const SnackBar(content: Text('Measurements recorded.')),
+      );
+    } catch (e) {
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(
+            e is ApiException ? e.message : 'Could not save. Please try again.',
+          ),
+        ),
+      );
+    } finally {
+      // In the `finally`, not after the call: a narrow catch that misses leaves
+      // the button spinning for good, and the sheet cannot be dismissed out of
+      // that state without losing what was typed.
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Padding(
+      padding: EdgeInsets.only(
+        bottom: MediaQuery.of(context).viewInsets.bottom,
+      ),
+      child: Container(
+        decoration: BoxDecoration(
+          color: scheme.surface,
+          borderRadius: const BorderRadius.vertical(
+            top: Radius.circular(AppSpacing.cardRadius + 8),
+          ),
+        ),
+        padding: const EdgeInsets.fromLTRB(
+          AppSpacing.md,
+          AppSpacing.sm,
+          AppSpacing.md,
+          AppSpacing.md,
+        ),
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: Container(
+                  width: 38,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: scheme.outlineVariant,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+              const SizedBox(height: AppSpacing.md),
+              const Text(
+                'Record measurements',
+                style: TextStyle(fontSize: 19, fontWeight: FontWeight.w800),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                'Fill in only what you measured.',
+                style: TextStyle(fontSize: 13, color: scheme.onSurfaceVariant),
+              ),
+              const SizedBox(height: AppSpacing.md),
+              Row(
+                children: [
+                  Expanded(child: _num(_height, 'Height', 'cm')),
+                  const SizedBox(width: AppSpacing.sm),
+                  Expanded(child: _num(_weight, 'Weight', 'kg')),
+                ],
+              ),
+              const SizedBox(height: AppSpacing.sm),
+              Row(
+                children: [
+                  Expanded(child: _num(_waist, 'Waist', 'cm')),
+                  const SizedBox(width: AppSpacing.sm),
+                  Expanded(child: _num(_pulse, 'Pulse', '/min')),
+                ],
+              ),
+              const SizedBox(height: AppSpacing.sm),
+              Row(
+                children: [
+                  Expanded(child: _num(_systolic, 'BP systolic', 'mmHg')),
+                  const SizedBox(width: AppSpacing.sm),
+                  Expanded(child: _num(_diastolic, 'BP diastolic', 'mmHg')),
+                ],
+              ),
+              const SizedBox(height: AppSpacing.sm),
+              _num(_glucose, 'Glucose', 'mg/dL'),
+              const SizedBox(height: AppSpacing.lg),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed:
+                          _saving ? null : () => Navigator.of(context).pop(),
+                      child: const Text('Cancel'),
+                    ),
+                  ),
+                  const SizedBox(width: AppSpacing.sm),
+                  // Expanded, not bare: the theme gives filled buttons a
+                  // minimum width of infinity, and one of those in a Row
+                  // collapses whatever it shares the row with to nothing.
+                  Expanded(
+                    child: FilledButton(
+                      onPressed: _saving ? null : _save,
+                      style: FilledButton.styleFrom(
+                        backgroundColor: AppColors.primary,
+                        foregroundColor: Colors.white,
+                      ),
+                      child:
+                          _saving
+                              ? const SizedBox(
+                                width: 20,
+                                height: 20,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2.4,
+                                  color: Colors.white,
+                                ),
+                              )
+                              : const Text('Save'),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _num(TextEditingController c, String label, String unit) => TextField(
+    controller: c,
+    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+    onChanged: (_) => setState(() {}),
+    decoration: InputDecoration(labelText: label, suffixText: unit),
+  );
 }

@@ -223,6 +223,54 @@ export async function notifyClinicStaff(alert) {
   await ClinicalAlert.findByIdAndUpdate(alert._id, { notifiedStaffAt: new Date() });
 }
 
+/**
+ * A patient has written into the care thread.
+ *
+ * This did not exist, and its absence was the whole of "no notifications come
+ * to the clinic panel". A patient message raised a push only when triage
+ * escalated it — so a chest-pain message reached the desk in seconds and
+ * "doctor, my sugar was 340 this morning" reached nobody at all. The in-app
+ * bell counted it, which only helps somebody already holding the phone.
+ *
+ * To the doctor and the desk both. The desk answers the routine ones and knows
+ * when to walk the phone over; the doctor is the one who can actually answer a
+ * clinical question, and neither can pick it up without being told.
+ *
+ * Skipped when an alert already fired for the same message: two buzzes for one
+ * sentence, seconds apart, is how a clinic learns to swipe this app away.
+ */
+export async function notifyClinicOfPatientMessage(patientId, text, { escalated = false } = {}) {
+  if (escalated) return { delivered: 0, skipped: 'alerted' };
+
+  // Looked up here rather than taken as an argument. The one caller has a
+  // patient context that does not carry a name, and threading one through for
+  // this would be a change to the assistant's context object to suit a push.
+  const patient = await User.findById(patientId).select('name').lean();
+
+  const staff = await User.find({
+    role: { $in: [ROLES.DOCTOR, ROLES.STAFF] },
+    isActive: true,
+  })
+    .select('deviceTokens')
+    .lean();
+
+  const tokens = staff.flatMap((s) => s.deviceTokens ?? []);
+  if (!tokens.length) return { delivered: 0 };
+
+  const body = (text ?? '').trim();
+  return deliver({
+    tokens,
+    title: `Message from ${patient?.name || 'a patient'}`,
+    // Truncated rather than sent whole: a notification is a summons, and the
+    // full text belongs behind the tap, on a screen that marks it read.
+    body: body.length > 160 ? `${body.slice(0, 157)}…` : body || 'Sent an attachment',
+    data: {
+      kind: 'patient_message',
+      patientId: patientId.toString(),
+    },
+  });
+}
+
 export async function notifyPatient(patientId, alert) {
   const patient = await User.findById(patientId).select('deviceTokens language').lean();
   if (!patient) return;

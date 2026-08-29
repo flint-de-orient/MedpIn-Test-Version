@@ -10,6 +10,8 @@ import { Medication } from '../models/Medication.js';
 import { notifyPatientOfPrescription } from '../services/notifications.js';
 import { buildSchedule } from '../services/medicationSchedule.js';
 import { PatientProfile } from '../models/PatientProfile.js';
+import { MediaAsset } from '../models/MediaAsset.js';
+import { User, ROLES } from '../models/User.js';
 import { ensurePrescriptionPdf } from '../services/prescriptionPdf.js';
 import { paged, pageParams } from '../utils/pagination.js';
 
@@ -33,7 +35,14 @@ router.get(
     const { page, limit, skip } = q(req);
     const filter = { patient: req.patientId };
     const [items, total] = await Promise.all([
-      Prescription.find(filter).sort({ issuedOn: -1 }).skip(skip).limit(limit).populate('doctor', 'name').lean(),
+      Prescription.find(filter)
+        .sort({ issuedOn: -1 })
+        .skip(skip)
+        .limit(limit)
+        .populate('doctor', 'name')
+        .populate('uploadedBy', 'name')
+        .populate('scanFile', 'mimeType')
+        .lean(),
       Prescription.countDocuments(filter),
     ]);
     res.json(paged(items.map(serialise), { page, limit, total }));
@@ -46,6 +55,8 @@ router.get(
   asyncHandler(async (req, res) => {
     const p = await Prescription.findOne({ _id: req.params.id, patient: req.patientId })
       .populate('doctor', 'name')
+      .populate('uploadedBy', 'name')
+      .populate('scanFile', 'mimeType')
       .lean();
     if (!p) throw notFound('Prescription not found');
     res.json({ prescription: serialise(p) });
@@ -200,6 +211,18 @@ router.get(
 function serialise(p) {
   return {
     id: p._id,
+    source: p.source ?? 'composed',
+    // A scanned prescription is read by opening the image, so the client needs
+    // the asset directly rather than the generated-PDF route, which has
+    // nothing to generate from.
+    scanUrl: p.scanFile ? `/api/v1/uploads/${p.scanFile._id ?? p.scanFile}/raw` : null,
+    // The client needs to know what it is about to open. A photographed
+    // prescription comes back as WebP (the upload path re-encodes images, which
+    // is also what strips the GPS coordinates out of it); one supplied as a PDF
+    // stays a PDF. Saving it to disk under the wrong extension is how a phone
+    // ends up with no app that will open the file.
+    scanMimeType: p.scanFile?.mimeType ?? null,
+    uploadedByName: p.uploadedBy?.name ?? null,
     referenceNo: p.referenceNo,
     issuedOn: p.issuedOn,
     validUntil: p.validUntil ?? null,
@@ -214,5 +237,69 @@ function serialise(p) {
     pdfUrl: `/api/v1/patients/${p.patient}/prescriptions/${p._id}/pdf`,
   };
 }
+
+/**
+ * File a paper prescription against a patient.
+ *
+ * The clinic's pilot runs on paper: the doctor writes fifty prescriptions by
+ * hand and the desk photographs each one. Without this the app has a
+ * prescription list that stays empty for every patient in the pilot, and a
+ * patient asking "what did he give me" has nothing to look at.
+ *
+ * `requireClinician`, so the front desk may do it — and that is not a
+ * contradiction of prescribing being doctor-only. Writing a prescription and
+ * filing one the doctor already wrote and signed are different acts. The
+ * record keeps them apart: `doctor` is whose prescription it is, `uploadedBy`
+ * is who put it in the system, and `source: 'scanned'` says the medicines were
+ * never typed, so nothing downstream reads the empty `items` as a patient on
+ * no medication.
+ */
+router.post(
+  '/scan',
+  requireClinician,
+  validate({
+    body: z.object({
+      assetId: z.string(),
+      issuedOn: z.coerce.date().optional(),
+      note: z.string().max(1000).optional(),
+    }),
+  }),
+  audit('create', 'Prescription'),
+  asyncHandler(async (req, res) => {
+    const asset = await MediaAsset.findOne({
+      _id: req.body.assetId,
+      deletedAt: null,
+    });
+    if (!asset) throw notFound('That file was not found');
+
+    // The doctor whose prescription this is. Single-doctor clinic today; the
+    // lookup rather than a constant is what keeps a second one possible.
+    const doctor = await User.findOne({ role: ROLES.DOCTOR, isActive: true })
+      .select('_id')
+      .lean();
+    if (!doctor) throw notFound('No doctor account to file this against');
+
+    const created = await Prescription.create({
+      patient: req.patientId,
+      doctor: doctor._id,
+      referenceNo: await nextReference(),
+      // The date on the paper, when the desk knows it. A prescription filed a
+      // week late and stamped today would put the visit on the wrong day in
+      // every list that sorts by it.
+      issuedOn: req.body.issuedOn ?? new Date(),
+      source: 'scanned',
+      scanFile: asset._id,
+      uploadedBy: req.user._id,
+      generalAdvice: req.body.note?.trim() || undefined,
+    });
+
+    const full = await Prescription.findById(created._id)
+      .populate('doctor', 'name')
+      .populate('uploadedBy', 'name')
+      .populate('scanFile', 'mimeType')
+      .lean();
+    res.status(201).json({ prescription: serialise(full) });
+  }),
+);
 
 export default router;

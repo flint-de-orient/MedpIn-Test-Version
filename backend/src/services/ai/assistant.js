@@ -7,6 +7,7 @@ import { generate, generateStream, AiUnavailableError } from './gemini.js';
 import { replyIsWrongLanguage } from './languageGuard.js';
 import { buildSystemPrompt, fallbackReply, languagePrimer, forceLanguageInstruction } from './prompts.js';
 import { raiseAlert } from '../alerts.js';
+import { notifyClinicOfPatientMessage } from '../notifications.js';
 import { loadAssetsForAi } from '../../routes/uploads.js';
 import { resolveVoiceText } from '../voiceText.js';
 import { logger } from '../../config/logger.js';
@@ -178,6 +179,18 @@ export async function handlePatientMessage({ patientId, sessionId, text, languag
     });
     await ChatMessage.findByIdAndUpdate(userMessage._id, { alert: alert._id });
   }
+
+  // And tell the clinic somebody wrote in.
+  //
+  // After the escalation above, and told about it: an urgent message has
+  // already pushed as an alert, and a second notification for the same
+  // sentence is noise on a phone the desk is trying to work from.
+  //
+  // Fire-and-forget. The message is saved; a push that fails must not fail the
+  // patient's send.
+  notifyClinicOfPatientMessage(patientId, text, {
+    escalated: alert != null,
+  }).catch(() => {});
 
   // A clinician is holding this conversation, or has switched the assistant
   // off for it. Everything above still ran — the message is saved and the

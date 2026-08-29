@@ -15,6 +15,9 @@ import '../../../shared/providers/app_lock_provider.dart';
 import '../../../shared/providers/theme_provider.dart';
 import '../../../core/config/app_config.dart';
 import '../../../shared/widgets/profile_photo_header.dart';
+import '../../../l10n/gen/app_localizations.dart';
+import '../../../shared/widgets/language_picker.dart';
+import '../../../shared/providers/locale_provider.dart';
 
 /// The desk's own settings.
 ///
@@ -57,12 +60,14 @@ class _StaffProfileScreenState extends ConsumerState<StaffProfileScreen> {
               children: [
                 ListTile(
                   leading: const Icon(Icons.photo_camera_outlined),
-                  title: const Text('Take a photo'),
+                  title: Text(AppLocalizations.of(context).deskTakePhoto),
                   onTap: () => Navigator.pop(ctx, ImageSource.camera),
                 ),
                 ListTile(
                   leading: const Icon(Icons.photo_library_outlined),
-                  title: const Text('Choose from gallery'),
+                  title: Text(
+                    AppLocalizations.of(context).deskChooseFromGallery,
+                  ),
                   onTap: () => Navigator.pop(ctx, ImageSource.gallery),
                 ),
                 const SizedBox(height: AppSpacing.sm),
@@ -93,7 +98,9 @@ class _StaffProfileScreenState extends ConsumerState<StaffProfileScreen> {
           .read(authRepositoryProvider)
           .updateMe(avatarAssetId: asset.id);
       ref.read(authControllerProvider.notifier).replaceUser(updated);
-      messenger.showSnackBar(const SnackBar(content: Text('Photo updated')));
+      messenger.showSnackBar(
+        SnackBar(content: Text(AppLocalizations.of(context).deskPhotoUpdated)),
+      );
     } catch (e) {
       // The reason, not just the fact — a picture too large and an expired
       // session are different problems with different answers.
@@ -106,19 +113,33 @@ class _StaffProfileScreenState extends ConsumerState<StaffProfileScreen> {
     }
   }
 
+  Future<void> _changeLanguage(String code) async {
+    await ref.read(localeControllerProvider.notifier).setLanguage(code);
+    ref.read(authControllerProvider.notifier).updateLocalUserLanguage(code);
+    // Best-effort. The interface has already switched; the account copy only
+    // decides what the assistant answers in when a client omits it.
+    try {
+      await ref.read(authRepositoryProvider).updateMe(language: code);
+    } catch (_) {
+      // Non-fatal — the local preference still applies.
+    }
+  }
+
   Future<void> _toggleAppLock(bool enable) async {
     final messenger = ScaffoldMessenger.of(context);
     final controller = ref.read(appLockProvider.notifier);
-    const unavailable = 'This phone has no fingerprint or PIN set up.';
+    final unavailable = AppLocalizations.of(context).deskNoDeviceLock;
 
     if (enable) {
       if (!await controller.canUse()) {
-        messenger.showSnackBar(const SnackBar(content: Text(unavailable)));
+        messenger.showSnackBar(SnackBar(content: Text(unavailable)));
         return;
       }
-      final ok = await controller.enable('Unlock MedPin');
+      final ok = await controller.enable(
+        AppLocalizations.of(context).appLockPrompt,
+      );
       if (!ok) {
-        messenger.showSnackBar(const SnackBar(content: Text(unavailable)));
+        messenger.showSnackBar(SnackBar(content: Text(unavailable)));
       }
     } else {
       await controller.disable();
@@ -139,7 +160,7 @@ class _StaffProfileScreenState extends ConsumerState<StaffProfileScreen> {
             actions: [
               TextButton(
                 onPressed: () => Navigator.pop(ctx),
-                child: const Text('Close'),
+                child: Text(AppLocalizations.of(context).commonClose),
               ),
             ],
           ),
@@ -148,6 +169,7 @@ class _StaffProfileScreenState extends ConsumerState<StaffProfileScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     final scheme = Theme.of(context).colorScheme;
     final user = ref.watch(authControllerProvider).user;
     final clinics = ref.watch(clinicsProvider).valueOrNull ?? const [];
@@ -178,7 +200,7 @@ class _StaffProfileScreenState extends ConsumerState<StaffProfileScreen> {
               // Named for the desk rather than the person, because that is what
               // this account is: the line, not whoever is holding it this
               // afternoon.
-              roleLabel: 'Clinic staff',
+              roleLabel: l10n.deskClinicStaff,
             ),
             const SizedBox(height: AppSpacing.lg),
 
@@ -192,36 +214,41 @@ class _StaffProfileScreenState extends ConsumerState<StaffProfileScreen> {
             // clinic" is absurd on the account that answers the phone. What is
             // left is what a desk actually has.
             if (kDarkThemeEnabled) ...[
-              const _SectionLabel('Appearance'),
+              _SectionLabel(l10n.profileAppearance),
               const ThemeSelector(),
               const SizedBox(height: AppSpacing.lg),
             ],
 
-            // No language picker here, deliberately.
+            // The picker, and now something for it to change.
             //
-            // It was offered and it did almost nothing. Every screen on the
-            // clinic side of this app — Today, the care inbox, the patient
-            // record, this profile — is written in English in the source, not
-            // through the localisations. Choosing বাংলা switched the app locale
-            // and changed the date format and the odd system dialog, and left
-            // all fifty-nine strings on the desk's own two screens exactly
-            // where they were. A control that appears to do something and does
-            // not is worse than no control: the reader concludes the app is
-            // broken, which is the correct conclusion.
+            // It was here, doing almost nothing, because every screen on the
+            // clinic side was written in English in the source rather than
+            // through the localisations — so বাংলা switched the app locale, moved
+            // the date format, and left every visible word where it was.
             //
-            // The patient app is fully translated (en/bn/hi) and keeps its
-            // picker. Translating the clinic panels is real work — the strings
-            // have to be extracted and then rendered by someone who knows the
-            // clinical vocabulary in Bengali and Hindi, and a half-translated
-            // medical interface is worse than an English one. When that is
-            // done, this comes back.
+            // The desk's own screens are through the localisations now, dates
+            // included. What is still English is the care inbox the middle tab
+            // opens, which is shared with the doctor's panel and comes next.
+            ProfileSection(
+              label: l10n.profileLanguage,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.all(AppSpacing.md),
+                  child: LanguagePicker(
+                    selected: ref.watch(localeControllerProvider)?.languageCode,
+                    onChanged: _changeLanguage,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: AppSpacing.lg),
 
             ProfileSection(
-              label: 'The clinic',
+              label: l10n.deskTheClinic,
               children: [
                 ProfileRow(
                   icon: Icons.storefront_outlined,
-                  title: primary?.name ?? 'Clinic details',
+                  title: primary?.name ?? l10n.deskClinicDetails,
                   // One row, because there is one destination.
                   //
                   // "Clinic details" and "Opening hours" pushed the same route
@@ -231,12 +258,12 @@ class _StaffProfileScreenState extends ConsumerState<StaffProfileScreen> {
                   // what sits behind it.
                   subtitle:
                       primary == null
-                          ? 'Name, address, phones, logo and opening hours'
+                          ? l10n.deskClinicDetailsSub
                           : [
                             if (primary.phones.isNotEmpty)
                               primary.phones.join('   '),
                             if (primary.city != null) primary.city!,
-                            'Opening hours',
+                            l10n.deskOpeningHours,
                           ].join('    '),
                   showDivider: false,
                   onTap:
@@ -253,12 +280,12 @@ class _StaffProfileScreenState extends ConsumerState<StaffProfileScreen> {
             const SizedBox(height: AppSpacing.lg),
 
             ProfileSection(
-              label: 'This account',
+              label: l10n.deskThisAccount,
               children: [
                 ProfileRow(
                   icon: Icons.badge_outlined,
-                  title: 'Your details',
-                  subtitle: 'Name, photo and contact',
+                  title: l10n.deskYourDetails,
+                  subtitle: l10n.deskYourDetailsSub,
                   showDivider: false,
                   onTap: () => context.push('/staff/profile/edit'),
                 ),
@@ -269,7 +296,7 @@ class _StaffProfileScreenState extends ConsumerState<StaffProfileScreen> {
             // Security matters more here than anywhere else in the app: this
             // is the one account that lives on a shared handset, left on a
             // counter, in reach of whoever is standing at it.
-            const _SectionLabel('Security'),
+            _SectionLabel(l10n.profileSecurity),
             Container(
               decoration: BoxDecoration(
                 color: scheme.surface,
@@ -285,13 +312,13 @@ class _StaffProfileScreenState extends ConsumerState<StaffProfileScreen> {
                   Icons.lock_outline_rounded,
                   color: AppColors.primary,
                 ),
-                title: const Text(
-                  'Lock the app',
-                  style: TextStyle(fontSize: 16),
+                title: Text(
+                  l10n.profileAppLock,
+                  style: const TextStyle(fontSize: 16),
                 ),
-                subtitle: const Text(
-                  'Ask for the phone\'s fingerprint or PIN each time it opens',
-                  style: TextStyle(fontSize: 14),
+                subtitle: Text(
+                  l10n.deskAppLockSub,
+                  style: const TextStyle(fontSize: 14),
                 ),
                 contentPadding: const EdgeInsets.symmetric(
                   horizontal: AppSpacing.md,
@@ -302,11 +329,11 @@ class _StaffProfileScreenState extends ConsumerState<StaffProfileScreen> {
             const SizedBox(height: AppSpacing.lg),
 
             ProfileSection(
-              label: 'About',
+              label: l10n.deskAbout,
               children: [
                 ProfileRow(
                   icon: Icons.info_outline_rounded,
-                  title: 'About ${AppConfig.appName}',
+                  title: l10n.profileAbout,
                   value: 'v${AppConfig.appVersion}',
                   showDivider: false,
                   onTap: _showAbout,
@@ -320,7 +347,7 @@ class _StaffProfileScreenState extends ConsumerState<StaffProfileScreen> {
             OutlinedButton.icon(
               onPressed: () => _confirmSignOut(context, ref),
               icon: const Icon(Icons.logout_rounded, size: 18),
-              label: const Text('Sign out'),
+              label: Text(l10n.deskSignOut),
               style: OutlinedButton.styleFrom(
                 foregroundColor: AppColors.danger,
                 side: BorderSide(
@@ -340,20 +367,17 @@ class _StaffProfileScreenState extends ConsumerState<StaffProfileScreen> {
       context: context,
       builder:
           (ctx) => AlertDialog(
-            title: const Text('Sign out?'),
-            content: const Text(
-              'You will need the clinic number and the password, or a code sent '
-              'by SMS, to sign in again.',
-            ),
+            title: Text(AppLocalizations.of(context).deskSignOutTitle),
+            content: Text(AppLocalizations.of(context).deskSignOutBody),
             actions: [
               TextButton(
                 onPressed: () => Navigator.pop(ctx, false),
-                child: const Text('Stay'),
+                child: Text(AppLocalizations.of(context).deskStay),
               ),
               TextButton(
                 style: TextButton.styleFrom(foregroundColor: AppColors.danger),
                 onPressed: () => Navigator.pop(ctx, true),
-                child: const Text('Sign out'),
+                child: Text(AppLocalizations.of(context).deskSignOut),
               ),
             ],
           ),

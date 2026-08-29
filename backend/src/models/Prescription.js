@@ -44,6 +44,37 @@ const prescriptionSchema = new mongoose.Schema(
 
     pdfFile: { type: mongoose.Schema.Types.ObjectId, ref: 'MediaAsset' },
 
+    /// How this prescription came to exist.
+    ///
+    /// `composed` is one written in the app: the doctor filled the consult
+    /// form, the items below are structured, and the PDF is generated from
+    /// them. `scanned` is a photograph or PDF of a paper prescription the
+    /// doctor wrote by hand, filed afterwards by whoever was at the desk.
+    ///
+    /// The clinic runs its pilot on paper, so for the first fifty patients
+    /// every prescription is the second kind. Recording which is which matters
+    /// more than it looks: a scanned one has no machine-readable medicines, so
+    /// nothing downstream — reminders, interaction checks, adherence — may
+    /// treat its empty `items` as "this patient is on nothing".
+    source: {
+      type: String,
+      enum: ['composed', 'scanned'],
+      default: 'composed',
+      index: true,
+    },
+
+    /// The photograph or PDF, for a `scanned` prescription.
+    scanFile: { type: mongoose.Schema.Types.ObjectId, ref: 'MediaAsset' },
+
+    /// Who filed it, when that is not the prescriber.
+    ///
+    /// `doctor` stays the doctor whose prescription it is — their name is on
+    /// the paper and it belongs on the record. This says a receptionist put it
+    /// into the system, which is a different claim and has to be a separate
+    /// field: collapsing the two would either credit the desk with prescribing
+    /// or record the doctor as having used an app they never opened.
+    uploadedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+
     supersedes: { type: mongoose.Schema.Types.ObjectId, ref: 'Prescription' },
     isActive: { type: Boolean, default: true, index: true },
   },

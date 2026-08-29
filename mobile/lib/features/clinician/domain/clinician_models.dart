@@ -294,6 +294,10 @@ class PrescriptionSummary {
     this.medicines = const [],
     this.items = const [],
     this.pdfUrl,
+    this.source = 'composed',
+    this.scanUrl,
+    this.scanMimeType,
+    this.uploadedByName,
   });
 
   final String id;
@@ -319,10 +323,49 @@ class PrescriptionSummary {
   /// Relative path to the downloadable PDF (`/api/v1/.../prescriptions/:id/pdf`).
   final String? pdfUrl;
 
+  /// `composed` — written in the app, with structured medicines behind it.
+  /// `scanned` — a photograph or PDF of a paper prescription, filed later.
+  ///
+  /// The clinic's pilot runs on paper, so for its first fifty patients every
+  /// prescription is the second kind. The distinction is not cosmetic: a
+  /// scanned one has no machine-readable items, so an empty medicine list on
+  /// it means "not typed in", never "this patient is on nothing".
+  final String source;
+
+  bool get isScanned => source == 'scanned';
+
+  /// The photograph or PDF itself, for a scanned prescription.
+  final String? scanUrl;
+
+  /// Who filed it, when that is not the prescriber — a receptionist, usually.
+  final String? uploadedByName;
+
+  /// What the scan actually is: `image/webp` for a photograph (the upload path
+  /// re-encodes images, which is also what strips the GPS coordinates of the
+  /// patient's home out of it), `application/pdf` for one supplied as a PDF.
+  final String? scanMimeType;
+
+  /// The document this prescription *is* — generated for one written in the
+  /// app, the scan for one written on paper. Every reader wants whichever
+  /// exists, and only this class knows which that is.
+  String? get documentUrl => isScanned ? scanUrl : pdfUrl;
+
+  /// The extension the document must be saved under. A phone opens a file by
+  /// its name, so a WebP written to disk as `.pdf` finds no app that will
+  /// take it.
+  String get documentExtension =>
+      !isScanned || (scanMimeType ?? '').contains('pdf')
+          ? 'pdf'
+          : (scanMimeType ?? 'image/webp').split('/').last;
+
   factory PrescriptionSummary.fromJson(
     Map<String, dynamic> j,
   ) => PrescriptionSummary(
     id: j['id']?.toString() ?? '',
+    source: j['source']?.toString() ?? 'composed',
+    scanUrl: j['scanUrl']?.toString(),
+    scanMimeType: j['scanMimeType']?.toString(),
+    uploadedByName: j['uploadedByName']?.toString(),
     referenceNo: j['referenceNo']?.toString(),
     issuedOn: DateTime.tryParse(j['issuedOn']?.toString() ?? '')?.toLocal(),
     doctorName: j['doctorName']?.toString(),

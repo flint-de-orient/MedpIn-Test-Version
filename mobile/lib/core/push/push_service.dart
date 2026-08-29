@@ -153,9 +153,23 @@ class PushService {
       }
       return;
     }
+    // The area this account is allowed into.
+    //
+    // Everything here pushed `/clinician/...` outright, so on a front-desk
+    // phone every notification that did arrive was a tap onto a blank page —
+    // the router bounces staff out of that tree. Half of "notifications do not
+    // work for the clinic panel" was notifications that worked and then went
+    // nowhere.
+    final area = user.role == 'staff' ? '/staff' : '/clinician';
+
     final patientId = data['patientId']?.toString();
     if (patientId != null && patientId.isNotEmpty) {
-      router.push('/clinician/patients/$patientId/thread');
+      router.push('$area/patients/$patientId/thread');
+    } else if (area == '/staff') {
+      // No alerts screen on the desk's side, and there should not be —
+      // resolving an alert is a clinical act. Today is where a receptionist
+      // can actually do something about what they were just told.
+      router.go('/staff/today');
     } else {
       router.push('/clinician/alerts');
     }

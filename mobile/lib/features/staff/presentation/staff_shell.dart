@@ -3,6 +3,9 @@ import 'package:go_router/go_router.dart';
 
 import '../../../shared/widgets/glass_nav_bar.dart';
 import '../../../shared/widgets/glass_surface.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../appointments/presentation/appointment_providers.dart';
+import '../../clinician/presentation/clinician_providers.dart';
 
 /// The front desk's app: Today · Patients · Messages · Profile.
 ///
@@ -21,24 +24,40 @@ import '../../../shared/widgets/glass_surface.dart';
 /// Prescribing and closing a clinical alert are refused by the server for this
 /// role, not merely hidden here — a screen that is absent is a convenience, and
 /// a guard that is absent is a false medical record.
-class StaffShell extends StatelessWidget {
+class StaffShell extends ConsumerWidget {
   const StaffShell({super.key, required this.navigationShell});
 
   final StatefulNavigationShell navigationShell;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     return GlassGround(
       child: Scaffold(
         backgroundColor: Colors.transparent,
         body: navigationShell,
         bottomNavigationBar: GlassNavBar(
           currentIndex: navigationShell.currentIndex,
-          onSelected:
-              (index) => navigationShell.goBranch(
-                index,
-                initialLocation: index == navigationShell.currentIndex,
-              ),
+          onSelected: (index) {
+            // A shell branch is kept alive in an IndexedStack, so coming back
+            // to Today does not rebuild it and nothing it counts is re-read.
+            // The desk's commonest morning is exactly that: read the messages
+            // on Patients, tap Today, and find the unread tile still showing
+            // the number from before they started. Its timer would catch up
+            // within fifteen seconds, which is fifteen seconds of a screen
+            // saying something the reader has just personally disproved.
+            //
+            // Invalidated here rather than inside the tab, because the tab is
+            // not rebuilt — this is the only place that knows the switch
+            // happened.
+            if (index == 0) {
+              ref.invalidate(clinicianNotificationsProvider);
+              ref.invalidate(appointmentDiaryProvider);
+            }
+            navigationShell.goBranch(
+              index,
+              initialLocation: index == navigationShell.currentIndex,
+            );
+          },
           // Single short words, so none wrap on a narrow phone.
           items: const [
             GlassNavItem(

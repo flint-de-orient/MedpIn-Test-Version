@@ -238,6 +238,28 @@ class ClinicianRepository {
     );
   }
 
+  /// Files a photograph or PDF of a paper prescription against a patient.
+  ///
+  /// Two calls on purpose. The upload puts the bytes somewhere and hands back
+  /// an asset id; this then records what that asset *is*. Combining them would
+  /// mean a failed save left an orphaned file and a desk with no way to retry
+  /// except photographing the paper again.
+  Future<void> fileScannedPrescription({
+    required String patientId,
+    required String assetId,
+    DateTime? issuedOn,
+    String? note,
+  }) async {
+    await _client.postJson(
+      '/patients/$patientId/prescriptions/scan',
+      body: {
+        'assetId': assetId,
+        if (issuedOn != null) 'issuedOn': issuedOn.toIso8601String(),
+        if (note != null && note.trim().isNotEmpty) 'note': note.trim(),
+      },
+    );
+  }
+
   /// Records a consult-time vitals snapshot (height/weight to the profile, the
   /// rest as a VitalRecord + glucose reading). All values optional — only the
   /// ones the doctor measured are sent.

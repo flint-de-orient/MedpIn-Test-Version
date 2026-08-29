@@ -18,6 +18,7 @@ import '../../clinician/presentation/widgets/clinician_notification_sheet.dart';
 import '../../../shared/widgets/clinic_brand.dart';
 import '../../../shared/widgets/auto_refresh.dart';
 import '../../../shared/widgets/notification_list_sheet.dart';
+import '../../../l10n/gen/app_localizations.dart';
 
 /// The front desk's day.
 ///
@@ -72,6 +73,7 @@ class _StaffTodayScreenState extends ConsumerState<StaffTodayScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     final requests =
         ref.watch(appointmentDiaryProvider(_requests)).valueOrNull?.items ??
         const <Appointment>[];
@@ -96,7 +98,7 @@ class _StaffTodayScreenState extends ConsumerState<StaffTodayScreen> {
         backgroundColor: AppColors.primary,
         foregroundColor: Colors.white,
         icon: const Icon(Icons.person_add_alt_1_rounded),
-        label: const Text('Register'),
+        label: Text(l10n.deskRegister),
       ),
       // Reading a message happens on another screen, and the desk leaves this
       // one and comes back all day. AutoRefresh re-reads on a timer while the
@@ -145,7 +147,7 @@ class _StaffTodayScreenState extends ConsumerState<StaffTodayScreen> {
 
                 if (requests.isNotEmpty) ...[
                   _SectionTitle(
-                    'Waiting for a time',
+                    l10n.deskWaitingForTime,
                     count: requests.length,
                     tone: AppColors.warning,
                   ),
@@ -155,13 +157,13 @@ class _StaffTodayScreenState extends ConsumerState<StaffTodayScreen> {
                   const SizedBox(height: AppSpacing.lg),
                 ],
 
-                _SectionTitle('Today', count: today.length),
+                _SectionTitle(l10n.deskToday, count: today.length),
                 const SizedBox(height: AppSpacing.sm),
                 if (today.isEmpty)
-                  const _Empty(
+                  _Empty(
                     icon: Icons.event_available_outlined,
-                    title: 'Nothing booked today',
-                    body: 'Appointments confirmed for today appear here.',
+                    title: l10n.deskNothingBooked,
+                    body: l10n.deskNothingBookedBody,
                   )
                 else
                   for (final a in today) _DayRow(appointment: a),
@@ -180,6 +182,11 @@ class _DeskHeader extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final scheme = Theme.of(context).colorScheme;
+    // The date reads in the chosen language too. DateFormat with no locale
+    // argument uses Intl's global default, which is not what MaterialApp's
+    // locale sets — so the day name would stay English while the words around
+    // it changed, which looks like a half-finished translation.
+    final locale = Localizations.localeOf(context).toString();
     // The day, then whose clinic this is, then the bell.
     //
     // Register used to sit here, and is now the button in the corner. It is
@@ -200,7 +207,7 @@ class _DeskHeader extends ConsumerWidget {
             mainAxisSize: MainAxisSize.min,
             children: [
               Text(
-                DateFormat('EEEE, d MMMM').format(DateTime.now()),
+                DateFormat('EEEE, d MMMM', locale).format(DateTime.now()),
                 style: TextStyle(
                   fontSize: 13,
                   height: 1.3,
@@ -209,7 +216,9 @@ class _DeskHeader extends ConsumerWidget {
                 ),
               ),
               const SizedBox(height: 4),
-              const ClinicWordmark(subtitle: 'Front desk'),
+              ClinicWordmark(
+                subtitle: AppLocalizations.of(context).deskFrontDesk,
+              ),
             ],
           ),
         ),
@@ -258,9 +267,7 @@ class _EmergencyStrip extends ConsumerWidget {
               ),
               const SizedBox(width: 6),
               Text(
-                urgent.length == 1
-                    ? 'Needs attention now'
-                    : '${urgent.length} need attention now',
+                AppLocalizations.of(context).deskNeedsAttention(urgent.length),
                 style: TextStyle(
                   fontSize: 15,
                   fontWeight: FontWeight.w800,
@@ -359,6 +366,8 @@ class _DayHero extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    final locale = Localizations.localeOf(context).toString();
     final now = DateTime.now();
     // The next one still to come, not the first of the day: at four in the
     // afternoon the morning's list is history, and a desk told "next: 9:30 AM"
@@ -371,20 +380,21 @@ class _DayHero extends StatelessWidget {
     final String headline;
     final String detail;
     if (today.isEmpty) {
-      headline = 'No appointments';
+      headline = l10n.deskNoAppointments;
       detail =
           requests.isEmpty
-              ? 'A quiet day. Walk-ins can be registered from the button below.'
-              : '${requests.length} ${requests.length == 1 ? 'person is' : 'people are'} waiting for a time.';
+              ? l10n.deskQuietDay
+              : l10n.deskWaitingForTimeCount(requests.length);
     } else if (next?.scheduledFor != null) {
-      headline =
-          today.length == 1 ? '1 appointment' : '${today.length} appointments';
-      final at = DateFormat('h:mm a').format(next!.scheduledFor!);
-      detail = 'Next: ${next.patientName ?? 'Patient'} at $at';
+      headline = l10n.deskAppointmentCount(today.length);
+      final at = DateFormat('h:mm a', locale).format(next!.scheduledFor!);
+      detail = l10n.deskNextAt(
+        next.patientName ?? l10n.deskPatientFallback,
+        at,
+      );
     } else {
-      headline =
-          today.length == 1 ? '1 appointment' : '${today.length} appointments';
-      detail = 'Everyone booked for today has been and gone.';
+      headline = l10n.deskAppointmentCount(today.length);
+      detail = l10n.deskAllPassed;
     }
 
     return Container(
@@ -414,7 +424,7 @@ class _DayHero extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
-                  'TODAY',
+                  l10n.deskToday.toUpperCase(),
                   style: TextStyle(
                     fontSize: 11,
                     fontWeight: FontWeight.w800,
@@ -481,6 +491,7 @@ class _DeskRail extends ConsumerWidget {
     //
     // Null while it loads, and drawn as an em dash: "0 unread" that turns into
     // 4 a second later is worse than admitting it does not know yet.
+    final l10n = AppLocalizations.of(context);
     final counts = ref.watch(clinicianNotificationsProvider).valueOrNull;
     final unread = counts?.messages;
 
@@ -489,7 +500,7 @@ class _DeskRail extends ConsumerWidget {
         Expanded(
           child: _RailTile(
             icon: Icons.event_note_rounded,
-            label: 'Booked',
+            label: l10n.deskBooked,
             value: '${today.length}',
             tone: AppColors.primary,
           ),
@@ -498,7 +509,7 @@ class _DeskRail extends ConsumerWidget {
         Expanded(
           child: _RailTile(
             icon: Icons.hourglass_bottom_rounded,
-            label: 'Waiting',
+            label: l10n.deskWaiting,
             value: '${requests.length}',
             tone: requests.isEmpty ? AppColors.primary : AppColors.warning,
           ),
@@ -507,7 +518,7 @@ class _DeskRail extends ConsumerWidget {
         Expanded(
           child: _RailTile(
             icon: Icons.mark_chat_unread_outlined,
-            label: 'Unread',
+            label: l10n.deskUnread,
             value: unread == null ? '—' : '$unread',
             tone: (unread ?? 0) > 0 ? AppColors.danger : AppColors.primary,
             // `go`, not `push`: Patients is one of this shell's own tabs, and
@@ -638,17 +649,22 @@ class _RequestCardState extends ConsumerState<_RequestCard> {
 
   /// How long they have been waiting. A request nobody answered for four days
   /// is the one that costs the clinic a patient.
-  String get _waited {
+  /// Takes the localisations rather than reaching for a context: this is a
+  /// getter on the state, and looking one up is the one thing a getter here
+  /// cannot do.
+  String _waitedIn(AppLocalizations l10n) {
     final at = widget.appointment.createdAt;
     if (at == null) return '';
     final d = DateTime.now().difference(at);
-    if (d.inHours < 1) return 'asked ${d.inMinutes}m ago';
-    if (d.inHours < 24) return 'asked ${d.inHours}h ago';
-    return 'asked ${d.inDays}d ago';
+    if (d.inHours < 1) return l10n.deskAskedAgoMinutes(d.inMinutes);
+    if (d.inHours < 24) return l10n.deskAskedAgoHours(d.inHours);
+    return l10n.deskAskedAgoDays(d.inDays);
   }
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    final waited = _waitedIn(l10n);
     final a = widget.appointment;
     final scheme = Theme.of(context).colorScheme;
     final stale =
@@ -699,7 +715,7 @@ class _RequestCardState extends ConsumerState<_RequestCard> {
                       [
                         if (a.preferredFor != null)
                           'for ${DateFormat('EEE, d MMM').format(a.preferredFor!)}',
-                        if (_waited.isNotEmpty) _waited,
+                        if (waited.isNotEmpty) waited,
                       ].join('   '),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
@@ -715,7 +731,7 @@ class _RequestCardState extends ConsumerState<_RequestCard> {
               ),
               if (a.patientPhone != null)
                 IconButton(
-                  tooltip: 'Call ${a.patientPhone}',
+                  tooltip: l10n.deskCallPatient(a.patientPhone ?? ''),
                   onPressed: () {},
                   icon: Icon(
                     Icons.call_outlined,
@@ -749,7 +765,7 @@ class _RequestCardState extends ConsumerState<_RequestCard> {
                   foregroundColor: scheme.onSurfaceVariant,
                   minimumSize: const Size(0, AppSpacing.minTapTarget),
                 ),
-                child: const Text('Decline'),
+                child: Text(l10n.deskDecline),
               ),
               const SizedBox(width: AppSpacing.sm),
               // Expanded rather than a Spacer: the action takes the room that
@@ -766,7 +782,7 @@ class _RequestCardState extends ConsumerState<_RequestCard> {
                             child: CircularProgressIndicator(strokeWidth: 2),
                           )
                           : const Icon(Icons.event_available_rounded, size: 18),
-                  label: const Text('Give a time'),
+                  label: Text(l10n.deskGiveTime),
                   style: FilledButton.styleFrom(
                     backgroundColor: AppColors.primary,
                     foregroundColor: Colors.white,
@@ -787,21 +803,22 @@ class _RequestCardState extends ConsumerState<_RequestCard> {
   }
 
   Future<void> _decline() async {
+    final l10n = AppLocalizations.of(context);
     final messenger = ScaffoldMessenger.of(context);
     final ok = await showDialog<bool>(
       context: context,
       builder:
           (ctx) => AlertDialog(
-            title: const Text('Decline this request?'),
-            content: Text(
-              '${widget.appointment.patientName ?? 'The patient'} will be told '
-              'the clinic could not offer a time. Message them first if there '
-              'is a reason they should know.',
-            ),
+            title: Text(l10n.deskDeclineTitle),
+            // The name is not interpolated into the sentence any more: word
+            // order round a subject differs by language, and a template with
+            // the name welded to the front of an English clause cannot be
+            // translated without rewriting it.
+            content: Text(l10n.deskDeclineBody),
             actions: [
               TextButton(
                 onPressed: () => Navigator.pop(ctx, false),
-                child: const Text('Keep it'),
+                child: Text(l10n.deskKeepIt),
               ),
               TextButton(
                 style: TextButton.styleFrom(foregroundColor: AppColors.danger),
@@ -828,17 +845,18 @@ class _RequestCardState extends ConsumerState<_RequestCard> {
 
   /// Choose the clinic, the day and a free slot, then confirm.
   Future<void> _pickTime() async {
+    final l10n = AppLocalizations.of(context);
+    // Captured before the first await, with the messenger, for the same
+    // reason: the sheet and the network call both sit between here and the
+    // snackbar, and this widget may be gone by then.
+    final locale = Localizations.localeOf(context).toString();
     final messenger = ScaffoldMessenger.of(context);
     final clinics = await ref.read(clinicRepositoryProvider).list();
     final open = clinics.where((c) => c.isActive).toList();
     if (!mounted) return;
 
     if (open.isEmpty) {
-      messenger.showSnackBar(
-        const SnackBar(
-          content: Text('No active clinic to book into. Add one in Profile.'),
-        ),
-      );
+      messenger.showSnackBar(SnackBar(content: Text(l10n.deskNoActiveClinic)));
       return;
     }
 
@@ -869,8 +887,8 @@ class _RequestCardState extends ConsumerState<_RequestCard> {
       messenger.showSnackBar(
         SnackBar(
           content: Text(
-            'Confirmed for ${DateFormat('EEE d MMM, h:mm a').format(picked.at)}. '
-            'The patient has been told.',
+            '${l10n.deskConfirmedFor(DateFormat('EEE d MMM, h:mm a', locale).format(picked.at))} '
+            '${l10n.deskPatientTold}',
           ),
         ),
       );
@@ -912,6 +930,7 @@ class _SlotPickerState extends ConsumerState<_SlotPicker> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     final scheme = Theme.of(context).colorScheme;
     final slots = ref.watch(
       slotDayProvider((clinicId: _clinic.id, date: _dayKey)),
@@ -931,13 +950,16 @@ class _SlotPickerState extends ConsumerState<_SlotPicker> {
               AppSpacing.lg,
             ),
             children: [
-              const Text(
-                'Give a time',
-                style: TextStyle(fontSize: 19, fontWeight: FontWeight.w800),
+              Text(
+                l10n.deskGiveTime,
+                style: const TextStyle(
+                  fontSize: 19,
+                  fontWeight: FontWeight.w800,
+                ),
               ),
               const SizedBox(height: 2),
               Text(
-                'Only times the doctor is actually available are offered.',
+                l10n.deskOnlyAvailable,
                 style: TextStyle(fontSize: 13, color: scheme.onSurfaceVariant),
               ),
               const SizedBox(height: AppSpacing.md),
@@ -981,7 +1003,7 @@ class _SlotPickerState extends ConsumerState<_SlotPicker> {
                       if (d != null) setState(() => _day = d);
                     },
                     icon: const Icon(Icons.calendar_today_rounded, size: 16),
-                    label: const Text('Change'),
+                    label: Text(l10n.deskChange),
                   ),
                 ],
               ),
@@ -997,7 +1019,7 @@ class _SlotPickerState extends ConsumerState<_SlotPicker> {
                     (_, _) => Padding(
                       padding: const EdgeInsets.symmetric(vertical: 32),
                       child: Text(
-                        'Could not load the times for this day.',
+                        l10n.deskCouldNotLoadTimes,
                         style: TextStyle(color: scheme.onSurfaceVariant),
                       ),
                     ),
@@ -1015,7 +1037,7 @@ class _SlotPickerState extends ConsumerState<_SlotPicker> {
                           ),
                           const SizedBox(height: AppSpacing.sm),
                           Text(
-                            'Nothing free on this day',
+                            l10n.deskNoFreeTimes,
                             style: TextStyle(
                               fontSize: 15,
                               fontWeight: FontWeight.w600,
@@ -1024,7 +1046,7 @@ class _SlotPickerState extends ConsumerState<_SlotPicker> {
                           ),
                           const SizedBox(height: 2),
                           Text(
-                            'Try another day, or another clinic.',
+                            l10n.deskTryAnotherDay,
                             style: TextStyle(
                               fontSize: 13,
                               color: scheme.onSurfaceVariant,
@@ -1065,14 +1087,15 @@ class _DayRow extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final l10n = AppLocalizations.of(context);
     final a = appointment;
     final scheme = Theme.of(context).colorScheme;
     final (label, tone) = switch (a.status) {
-      'checked_in' => ('Checked in', AppColors.success),
-      'in_consultation' => ('With the doctor', AppColors.primary),
-      'completed' => ('Done', scheme.onSurfaceVariant),
-      'no_show' => ('No show', AppColors.danger),
-      _ => ('Confirmed', scheme.onSurfaceVariant),
+      'checked_in' => (l10n.deskCheckedIn, AppColors.success),
+      'in_consultation' => (l10n.deskWithDoctor, AppColors.primary),
+      'completed' => (l10n.deskVisitDone, scheme.onSurfaceVariant),
+      'no_show' => (l10n.deskNoShow, AppColors.danger),
+      _ => (l10n.deskConfirmed, scheme.onSurfaceVariant),
     };
 
     return Container(
@@ -1127,7 +1150,7 @@ class _DayRow extends ConsumerWidget {
                   messenger.showSnackBar(SnackBar(content: Text(e.message)));
                 }
               },
-              child: const Text('Check in'),
+              child: Text(l10n.deskCheckIn),
             ),
         ],
       ),
