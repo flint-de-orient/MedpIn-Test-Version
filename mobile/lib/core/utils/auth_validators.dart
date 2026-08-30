@@ -15,10 +15,18 @@ class AuthValidators {
   static const int minNameLength = 2;
   static const int maxNameLength = 120;
 
-  /// Server: `z.enum([...]).default('type2')` — see [diabetesTypes]. The
-  /// default is why the client must force an explicit choice: a Type 1 patient
-  /// who skips the field would otherwise be stored as Type 2, which changes
-  /// how their risk is scored and what the assistant tells them.
+  /// Server: `z.enum([...]).optional()` — see [diabetesTypes].
+  ///
+  /// It used to carry `.default('type2')`, and this comment used to explain why
+  /// that made an explicit choice essential: a Type 1 patient who skipped the
+  /// field was stored as Type 2, which changes how their risk is scored and
+  /// what the assistant tells them. The default is gone; records created while
+  /// it stood still carry it, and nothing in the app can tell those apart from
+  /// a patient who genuinely answered Type 2.
+  ///
+  /// Which is why it is now editable in Health details rather than merely
+  /// displayed. Unset shows as "Not set", because not knowing is a true answer
+  /// and guessing is what caused this.
   static const List<String> diabetesTypes = [
     'type1',
     'type2',

@@ -1,5 +1,4 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:package_info_plus/package_info_plus.dart';
 
 import '../../shared/providers/core_providers.dart';
 
@@ -39,15 +38,24 @@ const VersionStatus _allClear = (
 /// are reasons to lock somebody out of their own medicines. The gate exists to
 /// catch a known-broken client, and a gate that closes when it cannot see is
 /// worse than no gate at all.
+/// The build number from pubspec, baked in at compile time.
+///
+/// NOT `PackageInfo.buildNumber`, which on Android is the APK's versionCode —
+/// and with `--split-per-abi` Flutter adds an ABI offset to that: build 8103
+/// ships as 10103 on arm64 and 9103 on armeabi-v7a. The same build reports two
+/// different numbers depending on the handset, so comparing either against a
+/// floor from pubspec is meaningless. Set 8103 as the floor and nothing is ever
+/// below it; set 10103 and every 32-bit phone is locked out of a build it is
+/// running perfectly well.
+///
+/// Passed with `--dart-define=APP_BUILD=<pubspec build>`; see the build script.
+/// Zero when nobody passed it, which switches the gate off rather than guessing
+/// — a forgotten flag must not become a locked door.
+const int _bakedBuild = int.fromEnvironment('APP_BUILD');
+
 final versionStatusProvider = FutureProvider<VersionStatus>((ref) async {
-  final int build;
-  try {
-    final info = await PackageInfo.fromPlatform();
-    build = int.tryParse(info.buildNumber) ?? 0;
-  } catch (_) {
-    return _allClear;
-  }
-  // A build number we could not read is a comparison we cannot trust.
+  final build = _bakedBuild;
+  // No build number we can trust is no comparison we can make.
   if (build <= 0) return _allClear;
 
   try {

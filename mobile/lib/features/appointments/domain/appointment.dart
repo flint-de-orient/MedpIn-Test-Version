@@ -13,6 +13,7 @@ class Appointment {
     this.patientPhone,
     this.patientAvatarUrl,
     this.doctorName,
+    this.doctorSpecialty,
     this.clinicId,
     this.clinicName,
     this.clinicAddress,
@@ -76,6 +77,10 @@ class Appointment {
   final String? patientAvatarUrl;
   final String? doctorName;
 
+  /// What the doctor is, as printed on their record. Null when unset, and the
+  /// UI then shows the name alone rather than an empty separator.
+  final String? doctorSpecialty;
+
   final String? clinicId;
   final String? clinicName;
   final String? clinicAddress;
@@ -130,6 +135,7 @@ class Appointment {
       patientPhone: j['patientPhone']?.toString(),
       patientAvatarUrl: j['patientAvatarUrl']?.toString(),
       doctorName: j['doctorName']?.toString(),
+      doctorSpecialty: j['doctorSpecialty']?.toString(),
       clinicId: (clinicMap['id'] ?? j['clinicId'])?.toString(),
       clinicName: clinicMap['name']?.toString(),
       clinicAddress: clinicMap['addressLine']?.toString(),

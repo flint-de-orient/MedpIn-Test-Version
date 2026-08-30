@@ -136,6 +136,7 @@ class AuthRepository {
         if (gender != null) 'gender': gender,
         if (address != null && address.isNotEmpty) 'address': address,
         if (heightCm != null) 'heightCm': heightCm,
+        if (diabetesType != null) 'diabetesType': diabetesType,
         if (weightKg != null) 'weightKg': weightKg,
         if (systolic != null) 'systolic': systolic,
         if (diastolic != null) 'diastolic': diastolic,
@@ -207,6 +208,7 @@ class AuthRepository {
   /// non-null keys are sent, so an unedited field is left untouched.
   Future<void> updateProfile({
     double? heightCm,
+    String? diabetesType,
     String? diagnosedOn,
     String? chiefComplaint,
     List<String>? allergies,

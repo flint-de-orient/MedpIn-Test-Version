@@ -42,7 +42,10 @@ const POPULATE = [
   // looking for a person standing in front of them, and initials in a coloured
   // circle are not what anybody scans a waiting room for.
   { path: 'patient', select: 'name phone avatarAssetId' },
-  { path: 'doctor', select: 'name' },
+  // specialty too, so a patient's own list can say who they are seeing and
+  // what for. It is on the doctor's record already and was simply never asked
+  // for here, which left the patient reading a date with no name against it.
+  { path: 'doctor', select: 'name specialty' },
   { path: 'clinic', select: 'name addressLine city phone' },
 ];
 
@@ -684,6 +687,7 @@ function serialise(a) {
       : null,
     doctorId: doctor?._id ?? a.doctor,
     doctorName: doctor?.name ?? null,
+    doctorSpecialty: doctor?.specialty ?? null,
     clinicId: clinic?._id ?? a.clinic ?? null,
     clinic: clinic
       ? {

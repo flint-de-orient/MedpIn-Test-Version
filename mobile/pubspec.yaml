@@ -6,7 +6,7 @@ publish_to: 'none'
 # to install over a higher versionCode, and a split build adds an ABI offset on
 # top of this number (armeabi-v7a +1000, arm64-v8a +2000) — so a plain
 # universal build always ranks below a split one of the same version.
-version: 1.0.0+8102
+version: 1.0.0+8104
 
 environment:
   sdk: ^3.7.2
@@ -69,10 +69,6 @@ dependencies:
   image_picker: ^1.1.2
   shared_preferences: ^2.3.4
   url_launcher: ^6.3.1
-  # Reads the running build number, so the app can tell the server which
-  # version is actually asking rather than trusting a constant someone forgot
-  # to bump.
-  package_info_plus: ^8.1.1
   firebase_core: ^4.12.1
   firebase_messaging: ^16.4.3
   record: ^6.2.1

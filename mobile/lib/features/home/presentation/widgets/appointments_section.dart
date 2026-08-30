@@ -141,112 +141,222 @@ class AppointmentsSection extends ConsumerWidget {
 
           // Confirmed first: a time to turn up at outranks a question that has
           // not been answered yet.
-          for (final a in confirmed.take(2))
+          //
+          // Each row is separated rather than stacked flush. Three states in a
+          // column with no gap read as one paragraph, and the eye cannot tell
+          // where a confirmed visit ends and an unanswered request begins.
+          for (var i = 0; i < confirmed.take(2).length; i++) ...[
+            if (i > 0) _RowDivider(),
             _StatusRow(
+              appointment: confirmed[i],
               icon: Icons.check_circle_rounded,
               tone: AppColors.successOn(context),
               title: l10n.apptStatusConfirmed,
               detail: DateFormat(
                 'EEE, d MMM · h:mm a',
                 Localizations.localeOf(context).toString(),
-              ).format(a.scheduledFor!.toLocal()),
+              ).format(confirmed[i].scheduledFor!.toLocal()),
             ),
+          ],
 
-          for (final a in waiting.take(2))
+          for (var i = 0; i < waiting.take(2).length; i++) ...[
+            if (confirmed.isNotEmpty || i > 0) _RowDivider(),
             _StatusRow(
+              appointment: waiting[i],
               icon: Icons.hourglass_top_rounded,
               tone: AppColors.warningOn(context),
               title: l10n.apptWaitingReply,
               detail:
-                  a.preferredFor == null
+                  waiting[i].preferredFor == null
                       ? l10n.dashboardAwaitingTime
                       : l10n.apptYouAskedFor(
                         DateFormat(
                           'EEE, d MMM',
                           Localizations.localeOf(context).toString(),
-                        ).format(a.preferredFor!.toLocal()),
+                        ).format(waiting[i].preferredFor!.toLocal()),
                       ),
             ),
+          ],
 
-          for (final a in declined.take(1))
+          for (var i = 0; i < declined.take(1).length; i++) ...[
+            if (confirmed.isNotEmpty || waiting.isNotEmpty) _RowDivider(),
             _StatusRow(
+              appointment: declined[i],
               icon: Icons.cancel_rounded,
               tone: AppColors.dangerOn(context),
               title: l10n.apptNotAvailable,
               detail:
-                  a.preferredFor == null
+                  declined[i].preferredFor == null
                       ? l10n.apptNotAvailableBody
                       : l10n.apptYouAskedFor(
                         DateFormat(
                           'EEE, d MMM',
                           Localizations.localeOf(context).toString(),
-                        ).format(a.preferredFor!.toLocal()),
+                        ).format(declined[i].preferredFor!.toLocal()),
                       ),
-              footnote: a.preferredFor == null ? null : l10n.apptNotAvailableBody,
+              footnote:
+                  declined[i].preferredFor == null
+                      ? null
+                      : l10n.apptNotAvailableBody,
+              // A refusal has no doctor and no mode to show: nobody was ever
+              // allocated. Printing "with Dr Dey · In clinic" under "not
+              // available" would describe a visit that is not happening.
+              showWho: false,
             ),
+          ],
         ],
       ),
     );
   }
 }
 
+/// A hairline between states, so three of them do not read as one paragraph.
+class _RowDivider extends StatelessWidget {
+  const _RowDivider();
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.only(bottom: AppSpacing.sm + 2),
+    child: Divider(
+      height: 1,
+      color: Theme.of(
+        context,
+      ).colorScheme.outlineVariant.withValues(alpha: 0.6),
+    ),
+  );
+}
+
 class _StatusRow extends StatelessWidget {
   const _StatusRow({
+    required this.appointment,
     required this.icon,
     required this.tone,
     required this.title,
     required this.detail,
     this.footnote,
+    this.showWho = true,
   });
 
+  final Appointment appointment;
   final IconData icon;
   final Color tone;
   final String title;
   final String detail;
   final String? footnote;
 
+  /// False for a refusal, which has no doctor and no mode: nobody was ever
+  /// allocated, and printing "with Dr Dey · In clinic" under "not available"
+  /// would describe a visit that is not happening.
+  final bool showWho;
+
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
+    final a = appointment;
+
+    // Who the patient is seeing, and what for. Both were missing: the card gave
+    // a date and an hour and left the person unnamed, which on a screen that
+    // may list two appointments is the one thing telling them apart.
+    final who = [
+      if ((a.doctorName ?? '').isNotEmpty) a.doctorName!,
+      if ((a.doctorSpecialty ?? '').isNotEmpty) a.doctorSpecialty!,
+    ].join(' · ');
+
     return Padding(
-      padding: const EdgeInsets.only(bottom: AppSpacing.sm),
+      padding: const EdgeInsets.only(bottom: AppSpacing.sm + 2),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Container(
-            width: 30,
-            height: 30,
+            width: 32,
+            height: 32,
             alignment: Alignment.center,
             decoration: BoxDecoration(
               color: tone.withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(9),
+              borderRadius: BorderRadius.circular(10),
             ),
-            child: Icon(icon, size: 17, color: tone),
+            child: Icon(icon, size: 18, color: tone),
           ),
-          const SizedBox(width: 10),
+          const SizedBox(width: 11),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
               children: [
-                Text(
-                  title,
-                  style: TextStyle(
-                    fontSize: 13.5,
-                    height: 1.25,
-                    fontWeight: FontWeight.w700,
-                    color: tone,
+                // A pill, not a coloured sentence. "Confirmed" as plain text
+                // sat at the same weight as everything around it and matched
+                // nothing else in the app, where every other status is a badge.
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 2,
+                  ),
+                  decoration: BoxDecoration(
+                    color: tone.withValues(alpha: 0.13),
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                  child: Text(
+                    title,
+                    style: TextStyle(
+                      fontSize: 11.5,
+                      height: 1.3,
+                      fontWeight: FontWeight.w800,
+                      color: tone,
+                    ),
                   ),
                 ),
+                const SizedBox(height: 4),
                 Text(
                   detail,
                   style: const TextStyle(
-                    fontSize: 14,
+                    fontSize: 14.5,
                     height: 1.3,
-                    fontWeight: FontWeight.w600,
+                    fontWeight: FontWeight.w700,
                   ),
                 ),
-                if (footnote != null)
+                if (showWho && who.isNotEmpty) ...[
+                  const SizedBox(height: 2),
+                  Text(
+                    who,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 13,
+                      height: 1.3,
+                      color: scheme.onSurfaceVariant,
+                    ),
+                  ),
+                ],
+                if (showWho) ...[
+                  const SizedBox(height: 3),
+                  Row(
+                    children: [
+                      // Video or clinic, said with an icon and the word. An
+                      // icon alone asks the reader to know the convention, and
+                      // turning up at a clinic for a video call is a wasted
+                      // journey.
+                      Icon(
+                        a.isTeleconsult
+                            ? Icons.videocam_outlined
+                            : Icons.place_outlined,
+                        size: 14,
+                        color: AppColors.primary,
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        a.isTeleconsult ? 'Video consultation' : 'In clinic',
+                        style: TextStyle(
+                          fontSize: 12.5,
+                          height: 1.3,
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.primary,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+                if (footnote != null) ...[
+                  const SizedBox(height: 3),
                   Text(
                     footnote!,
                     style: TextStyle(
@@ -255,6 +365,7 @@ class _StatusRow extends StatelessWidget {
                       color: scheme.onSurfaceVariant,
                     ),
                   ),
+                ],
               ],
             ),
           ),

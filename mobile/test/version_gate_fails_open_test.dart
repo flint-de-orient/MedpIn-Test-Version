@@ -19,21 +19,40 @@ void main() {
   final app = File('lib/app.dart').readAsStringSync();
 
   group('the version gate fails open', () {
-    test('every failure path returns all clear', () {
+    test('a failed check returns all clear', () {
       // A patient on a train with no signal, a server mid-restart, a malformed
       // response. None of those are reasons to block anyone.
-      final catches = RegExp(r'catch \(_\) \{\s*return _allClear;').allMatches(gate);
       expect(
-        catches.length,
-        greaterThanOrEqualTo(2),
-        reason: 'both the package-info read and the network call must fail open',
+        RegExp(r'catch \(_\) \{\s*return _allClear;').hasMatch(gate),
+        isTrue,
+        reason: 'the network call must fail open',
       );
     });
 
-    test('an unreadable build number blocks nobody', () {
-      // A build number we could not parse is a comparison we cannot trust, and
-      // an untrustworthy comparison must not be the thing that locks a door.
+    test('a build number nobody supplied blocks nobody', () {
+      // The number is baked in with --dart-define at build time; absent, it is
+      // 0. A forgotten flag switches the gate off rather than guessing, because
+      // a forgotten flag must never become a locked door.
       expect(gate.contains('if (build <= 0) return _allClear;'), isTrue);
+      expect(gate.contains("int.fromEnvironment('APP_BUILD')"), isTrue);
+    });
+
+    test('the build number is not read from the APK versionCode', () {
+      // PackageInfo.buildNumber is the versionCode, and --split-per-abi adds an
+      // ABI offset to it: build 8103 reports 10103 on arm64 and 9103 on
+      // armeabi-v7a. Comparing either against a floor taken from pubspec is
+      // meaningless — the same build answers differently per handset, so the
+      // gate would never fire, or would lock out every 32-bit phone.
+      // Checked against the code, not the prose: the comment above the constant
+      // names PackageInfo precisely to explain why it is not used, and a test
+      // that cannot tell an explanation from a call would fail on the sentence
+      // documenting the fix.
+      final code = gate
+          .split('\n')
+          .where((l) => !l.trimLeft().startsWith('//'))
+          .join('\n');
+      expect(code.contains('PackageInfo'), isFalse);
+      expect(code.contains('package_info_plus'), isFalse);
     });
 
     test('an unconfigured server blocks nobody', () {

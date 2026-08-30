@@ -6,6 +6,7 @@ import '../../../core/network/api_exception.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../l10n/gen/app_localizations.dart';
+import 'widgets/diabetes_type_sheet.dart';
 import '../../auth/presentation/auth_controller.dart';
 import '../../home/domain/care_summary.dart';
 import '../../home/presentation/home_providers.dart';
@@ -65,6 +66,7 @@ class _HealthDetailsScreenState extends ConsumerState<HealthDetailsScreen> {
         _contactPhone.text = c['phone']?.toString() ?? '';
         _contactRelation.text = c['relation']?.toString() ?? '';
       }
+      _diabetesType = p['diabetesType']?.toString();
       final d = p['diagnosedOn'];
       if (d != null) _diagnosedOn = DateTime.tryParse(d.toString());
     } on ApiException {
@@ -72,6 +74,27 @@ class _HealthDetailsScreenState extends ConsumerState<HealthDetailsScreen> {
     } finally {
       if (mounted) setState(() => _loading = false);
     }
+  }
+
+  /// The stored type, or null when nobody has ever said.
+  ///
+  /// Null is a real answer and is shown as "Not set" rather than guessed at.
+  /// Guessing is what put "Type 2 Diabetes" on the home screen of patients who
+  /// were never asked.
+  String? _diabetesType;
+
+  String? _diabetesLabel(AppLocalizations l10n) => switch (_diabetesType) {
+    'type1' => l10n.authDiabetesType1,
+    'type2' => l10n.authDiabetesType2,
+    'gestational' => l10n.authDiabetesTypeGestational,
+    'prediabetes' => l10n.authDiabetesTypePrediabetes,
+    'none' => l10n.authDiabetesTypeNone,
+    _ => null,
+  };
+
+  Future<void> _pickDiabetesType() async {
+    final chosen = await DiabetesTypeSheet.show(context, initial: _diabetesType);
+    if (chosen != null && mounted) setState(() => _diabetesType = chosen);
   }
 
   Future<void> _pickDiagnosedOn() async {
@@ -108,6 +131,7 @@ class _HealthDetailsScreenState extends ConsumerState<HealthDetailsScreen> {
           .read(authRepositoryProvider)
           .updateProfile(
             heightCm: double.tryParse(_height.text.trim()),
+            diabetesType: _diabetesType,
             chiefComplaint: _complaint.text.trim(),
             diagnosedOn:
                 _diagnosedOn == null
@@ -225,6 +249,43 @@ class _HealthDetailsScreenState extends ConsumerState<HealthDetailsScreen> {
                       label: l10n.healthMainConcern,
                       hint: l10n.healthMainConcernHint,
                       maxLines: 3,
+                    ),
+                    const SizedBox(height: AppSpacing.md),
+                    // Which diabetes, above the date it was diagnosed.
+                    //
+                    // The screen collected the date and never the diagnosis,
+                    // which is an odd pair to ask for on its own. Nothing
+                    // anywhere in the app could set this — not registration,
+                    // not the desk, not the doctor's record — so every patient
+                    // wore whatever the server defaulted them to, and the home
+                    // screen announced "Type 2 Diabetes" about people nobody
+                    // had asked. The picker for it already existed and was
+                    // wired to nothing.
+                    //
+                    // It matters more than an ordinary setting: type governs
+                    // DKA risk, insulin dependence and what the assistant tells
+                    // them, so a Type 1 patient recorded as Type 2 is a
+                    // clinical problem rather than a cosmetic one.
+                    InkWell(
+                      onTap: _pickDiabetesType,
+                      borderRadius: BorderRadius.circular(
+                        AppSpacing.buttonRadius,
+                      ),
+                      child: InputDecorator(
+                        decoration: InputDecoration(
+                          labelText: l10n.profileDiabetesType,
+                          prefixIcon: const Icon(Icons.monitor_heart_outlined),
+                        ),
+                        child: Text(
+                          _diabetesLabel(l10n) ?? l10n.profileDiabetesTypeNotSet,
+                          style: TextStyle(
+                            color:
+                                _diabetesType == null
+                                    ? scheme.onSurfaceVariant
+                                    : scheme.onSurface,
+                          ),
+                        ),
+                      ),
                     ),
                     const SizedBox(height: AppSpacing.md),
                     InkWell(
