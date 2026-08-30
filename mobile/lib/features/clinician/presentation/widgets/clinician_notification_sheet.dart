@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../../core/router/area.dart';
 
+import '../../../../l10n/gen/app_localizations.dart';
 import '../../../../shared/widgets/notification_list_sheet.dart';
 import '../../data/clinician_repository.dart';
 import '../clinician_providers.dart';
@@ -150,7 +151,37 @@ class _SheetState extends ConsumerState<_ClinicianNotificationSheet> {
     final async = ref.watch(clinicianNotificationsProvider);
     final view = async.valueOrNull;
 
+    // Grouped for the desk, flat for the doctor.
+    //
+    // The desk's feed is three genuinely different things arriving down one
+    // pipe — a clinical alert, somebody asking for an appointment, somebody
+    // writing in — and the receptionist has to triage them in that order. The
+    // doctor's is one kind of thing at heart, clinical work, and heading it
+    // into sections would add furniture without adding an answer.
+    final l10n = AppLocalizations.of(context);
+    final groups =
+        areaPrefix(ref) != '/staff'
+            ? const <NotificationGroup>[]
+            : [
+              NotificationGroup(
+                title: l10n.deskCatUrgent,
+                kinds: const {'urgent', 'alert'},
+                priority: NotificationPriority.urgent,
+              ),
+              NotificationGroup(
+                title: l10n.deskCatAppointments,
+                kinds: const {'request'},
+                priority: NotificationPriority.actionNeeded,
+              ),
+              NotificationGroup(
+                title: l10n.deskCatMessages,
+                kinds: const {'message', 'nutrition'},
+                priority: NotificationPriority.informational,
+              ),
+            ];
+
     return NotificationListSheet(
+      groups: groups,
       items: view?.items ?? const [],
       unread: view?.unread ?? 0,
       loading: async.isLoading,

@@ -63,6 +63,39 @@ class PanelNotification {
 /// the reader wants to know whether anything needs them before deciding to go
 /// anywhere, and a full screen with a back arrow makes that a trip.
 ///
+/// The colour a priority is allowed to spend.
+Color _priorityColour(BuildContext context, NotificationPriority p) =>
+    switch (p) {
+      NotificationPriority.urgent => AppColors.dangerOn(context),
+      NotificationPriority.actionNeeded => AppColors.warningOn(context),
+      NotificationPriority.informational => AppColors.primary,
+    };
+
+/// One headed section of the list.
+///
+/// [priority] is the whole point of the grouping: three levels, and colour
+/// spent on them in that order — red for something clinical and unsafe, amber
+/// for something a person is waiting on, and the panel's own blue for
+/// everything else. Before this, every row carried a colour of its own and none
+/// of them meant anything, because a language where each word is emphasised has
+/// no emphasis in it.
+enum NotificationPriority { urgent, actionNeeded, informational }
+
+class NotificationGroup {
+  const NotificationGroup({
+    required this.title,
+    required this.kinds,
+    required this.priority,
+  });
+
+  final String title;
+
+  /// Which [PanelNotification.kind] values belong here.
+  final Set<String> kinds;
+
+  final NotificationPriority priority;
+}
+
 /// Shared by the doctor and the dietician so the two cannot drift apart. What
 /// differs between them is the data and where a row leads, both passed in.
 class NotificationListSheet extends StatelessWidget {
@@ -77,7 +110,65 @@ class NotificationListSheet extends StatelessWidget {
     this.onMarkAllRead,
     this.emptyTitle = 'Nothing waiting',
     this.emptyBody = 'No unread messages and nothing flagged.',
+    this.groups = const [],
   });
+
+  /// Headed sections, in the order they should be read.
+  ///
+  /// Empty by default, which keeps the flat list every caller had before. The
+  /// front desk passes three — urgent, appointments, messages — because those
+  /// are genuinely different events that happen to arrive down one pipe, and a
+  /// list that renders "chest pain" and "can I come tomorrow?" as two rows in
+  /// the same weight makes the reader do the sorting the app should have done.
+  ///
+  /// A group with nothing in it is not drawn. A heading over an empty space is
+  /// a heading people learn to skip.
+  final List<NotificationGroup> groups;
+
+  /// The list body: flat, or split into the headed sections [groups] asks for.
+  ///
+  /// Anything whose kind no group claims is still drawn, at the end, ungrouped.
+  /// Losing a notification because the server began sending a kind this file
+  /// has not heard of would be the worst way for the two to drift apart, and it
+  /// would be silent.
+  List<Widget> _rows(BuildContext context) {
+    if (groups.isEmpty) {
+      return [
+        for (final item in items) ...[
+          _Row(item: item, onOpen: onOpen),
+          const SizedBox(height: 4),
+        ],
+      ];
+    }
+
+    final claimed = <String>{for (final g in groups) ...g.kinds};
+    final out = <Widget>[];
+
+    for (final group in groups) {
+      final rows = items.where((i) => group.kinds.contains(i.kind)).toList();
+      if (rows.isEmpty) continue;
+      out.add(
+        _GroupHeading(
+          title: group.title,
+          count: rows.length,
+          tone: _priorityColour(context, group.priority),
+        ),
+      );
+      for (final item in rows) {
+        out
+          ..add(_Row(item: item, onOpen: onOpen))
+          ..add(const SizedBox(height: 4));
+      }
+      out.add(const SizedBox(height: AppSpacing.sm));
+    }
+
+    for (final item in items.where((i) => !claimed.contains(i.kind))) {
+      out
+        ..add(_Row(item: item, onOpen: onOpen))
+        ..add(const SizedBox(height: 4));
+    }
+    return out;
+  }
 
   final List<PanelNotification> items;
   final int unread;
@@ -225,7 +316,7 @@ class NotificationListSheet extends StatelessWidget {
                     title: emptyTitle,
                     body: emptyBody,
                   ),
-                  _ => ListView.separated(
+                  _ => ListView(
                     controller: controller,
                     padding: const EdgeInsets.fromLTRB(
                       AppSpacing.md,
@@ -233,15 +324,60 @@ class NotificationListSheet extends StatelessWidget {
                       AppSpacing.md,
                       AppSpacing.xl,
                     ),
-                    itemCount: items.length,
-                    separatorBuilder: (_, _) => const SizedBox(height: 4),
-                    itemBuilder:
-                        (context, i) => _Row(item: items[i], onOpen: onOpen),
+                    children: _rows(context),
                   ),
                 },
               ),
             ],
           ),
+    );
+  }
+}
+
+/// "Urgent · 1" — a section's name, and how much is in it.
+///
+/// The dot carries the priority colour rather than the whole heading being
+/// painted in it. A red word is a red word; a red dot beside a black word reads
+/// as a label on a list, which is what this is.
+class _GroupHeading extends StatelessWidget {
+  const _GroupHeading({
+    required this.title,
+    required this.count,
+    required this.tone,
+  });
+
+  final String title;
+  final int count;
+  final Color tone;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(2, AppSpacing.sm, 2, 6),
+      child: Row(
+        children: [
+          Container(
+            width: 8,
+            height: 8,
+            decoration: BoxDecoration(color: tone, shape: BoxShape.circle),
+          ),
+          const SizedBox(width: 8),
+          Text(
+            title,
+            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800),
+          ),
+          const SizedBox(width: 6),
+          Text(
+            '$count',
+            style: TextStyle(
+              fontSize: 12.5,
+              fontWeight: FontWeight.w700,
+              color: scheme.onSurfaceVariant,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

@@ -1455,4 +1455,162 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get deskCouldNotUpdatePhoto => 'Could not update the photo.';
+
+  @override
+  String get deskOpen => 'Open';
+
+  @override
+  String get deskClosed => 'Closed';
+
+  @override
+  String get deskClosedToday => 'Closed today';
+
+  @override
+  String get deskRefresh => 'Refresh';
+
+  @override
+  String get deskUrgentChip => 'URGENT';
+
+  @override
+  String get deskReviewNow => 'Review now';
+
+  @override
+  String get deskTodaysQueue => 'Today\'s queue';
+
+  @override
+  String get deskManageQueue => 'Manage queue';
+
+  @override
+  String get deskScheduled => 'Scheduled';
+
+  @override
+  String get deskInProgress => 'In progress';
+
+  @override
+  String get deskForScheduling => 'For scheduling';
+
+  @override
+  String get deskNowLabel => 'Now';
+
+  @override
+  String get deskTodaysAppointments => 'Today\'s appointments';
+
+  @override
+  String get deskViewCalendar => 'View calendar';
+
+  @override
+  String get deskNoAppointmentsScheduled => 'No appointments scheduled';
+
+  @override
+  String get deskAddWalkIn => 'Add walk-in';
+
+  @override
+  String get deskQuickActions => 'Quick actions';
+
+  @override
+  String get deskRegisterPatient => 'Register patient';
+
+  @override
+  String get deskAddNewPatient => 'Add new patient';
+
+  @override
+  String get deskNewAppointment => 'New appointment';
+
+  @override
+  String get deskBookAppointment => 'Book appointment';
+
+  @override
+  String get deskCheckInPatient => 'Check-in patient';
+
+  @override
+  String get deskWalkInCheckIn => 'Walk-in check-in';
+
+  @override
+  String get deskMessagesLabel => 'Messages';
+
+  @override
+  String get deskClinicSummary => 'Clinic summary';
+
+  @override
+  String get deskCompleted => 'Completed';
+
+  @override
+  String get deskCancelled => 'Cancelled';
+
+  @override
+  String get deskNoShows => 'No shows';
+
+  @override
+  String get deskTotalVisitors => 'Total visitors';
+
+  @override
+  String get deskOfferTime => 'Offer a time';
+
+  @override
+  String get deskWaitingForScheduling => 'Waiting for scheduling';
+
+  @override
+  String get deskCatUrgent => 'Urgent';
+
+  @override
+  String get deskCatAppointments => 'Appointments';
+
+  @override
+  String get deskCatMessages => 'Messages';
+
+  @override
+  String get deskUrgentSymptom => 'Urgent patient-reported symptom';
+
+  @override
+  String get deskNothingInProgress => 'No appointment in progress';
+
+  @override
+  String deskClosesAt(String time) {
+    return 'Closes $time';
+  }
+
+  @override
+  String deskOpensAt(String time) {
+    return 'Opens $time';
+  }
+
+  @override
+  String deskUnreadCount(int count) {
+    return '$count unread';
+  }
+
+  @override
+  String deskReportedAgoMinutes(int count) {
+    return 'Reported $count min ago';
+  }
+
+  @override
+  String deskReportedAgoHours(int count) {
+    return 'Reported $count h ago';
+  }
+
+  @override
+  String deskReportedAgoDays(int count) {
+    return 'Reported $count d ago';
+  }
+
+  @override
+  String deskWaitingCount(int count) {
+    return '$count waiting for scheduling';
+  }
+
+  @override
+  String get rangeThisWeek => 'This week';
+
+  @override
+  String get deskChoosePatient => 'Choose a patient';
+
+  @override
+  String get deskSearchPatients => 'Search by name or phone';
+
+  @override
+  String get deskNoPatientsFound => 'No patients found';
+
+  @override
+  String get deskNobodyToCheckIn => 'Nobody is waiting to be checked in.';
 }

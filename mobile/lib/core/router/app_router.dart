@@ -360,6 +360,19 @@ final Provider<GoRouter> appRouterProvider = Provider<GoRouter>((ref) {
         path: '/staff/patients/new',
         builder: (context, state) => const AddPatientScreen(),
       ),
+      // The full diary, under the desk's own prefix.
+      //
+      // It is the same screen the doctor reaches at /clinician/appointments,
+      // and it has to be mounted twice because the redirect above bounces a
+      // staff account out of /clinician/* by design. Managing the day's
+      // appointments — confirming, starting, completing, marking a no-show —
+      // is the front desk's job before it is anybody else's, so Today's
+      // "Manage queue" and "View calendar" had nowhere to lead until this
+      // existed.
+      GoRoute(
+        path: '/staff/appointments',
+        builder: (context, state) => const AppointmentsAdminScreen(),
+      ),
       GoRoute(
         path: '/staff/profile/edit',
         builder: (context, state) => const EditProfileScreen(),

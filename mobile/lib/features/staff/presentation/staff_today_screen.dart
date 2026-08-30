@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -11,7 +13,9 @@ import '../../appointments/data/appointment_repository.dart';
 import '../../appointments/data/clinic_repository.dart';
 import '../../appointments/domain/appointment.dart';
 import '../../appointments/domain/clinic.dart';
+import '../../appointments/domain/clinic_status.dart';
 import '../../appointments/presentation/appointment_providers.dart';
+import '../../clinician/domain/clinician_models.dart';
 import '../../clinician/presentation/clinician_providers.dart';
 import '../../clinician/presentation/widgets/panel_ui.dart';
 import '../../clinician/presentation/widgets/clinician_notification_sheet.dart';
@@ -64,8 +68,14 @@ class _StaffTodayScreenState extends ConsumerState<StaffTodayScreen> {
   /// and came back still saw "2 Unread" — a number from before they started,
   /// with no way to clear it short of restarting the app.
   void _reload(WidgetRef ref) {
-    ref.invalidate(appointmentDiaryProvider(_requests));
-    ref.invalidate(appointmentDiaryProvider(_today));
+    // The whole family, not the two queries this method used to name.
+    //
+    // The summary card asks for its own range — this week, when the desk
+    // switches it — and that query is not one of the two. Listing them by hand
+    // is how a card ends up refreshing everything on screen except itself, so
+    // the family goes as a whole and Riverpod re-fetches only what is still
+    // being watched.
+    ref.invalidate(appointmentDiaryProvider);
     ref.invalidate(clinicianNotificationsProvider);
   }
 
@@ -73,33 +83,32 @@ class _StaffTodayScreenState extends ConsumerState<StaffTodayScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final l10n = AppLocalizations.of(context);
     final requests =
         ref.watch(appointmentDiaryProvider(_requests)).valueOrNull?.items ??
         const <Appointment>[];
     // Requests are already excluded from the day: they have no scheduledFor, so
-    // a date-ranged query cannot match them. Cancelled ones are dropped because
-    // the desk is looking at who is coming.
+    // a date-ranged query cannot match them.
+    //
+    // Kept unfiltered as well as filtered. The schedule shows who is coming, so
+    // it drops cancellations; the summary at the foot of the screen is a
+    // tally of the whole day, and a day's cancellations are exactly what it is
+    // being asked about. Filtering once at the top would have made the summary
+    // report zero cancellations on every day, for ever.
+    final todayAll =
+        ref.watch(appointmentDiaryProvider(_today)).valueOrNull?.items ??
+        const <Appointment>[];
     final today =
-        (ref.watch(appointmentDiaryProvider(_today)).valueOrNull?.items ??
-                const <Appointment>[])
-            .where((a) => a.status != 'cancelled')
-            .toList()
+        todayAll.where((a) => a.status != 'cancelled').toList()
           ..sort((a, b) => a.sortKey.compareTo(b.sortKey));
 
     return Scaffold(
       backgroundColor: Colors.transparent,
-      // Registering a walk-in is the desk's commonest job, so it stays one tap
-      // away — as a button that owns its own corner rather than one crammed
-      // into the header, where it took the whole width and left the date and
-      // the clinic name a column of single letters.
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => context.push('/staff/patients/new'),
-        backgroundColor: AppColors.primary,
-        foregroundColor: Colors.white,
-        icon: const Icon(Icons.person_add_alt_1_rounded),
-        label: Text(l10n.deskRegister),
-      ),
+      // No floating button. Registering a patient is the desk's commonest job
+      // and it now leads Quick actions — where it sits beside the other three
+      // things a receptionist does all day, instead of hovering over the
+      // urgent card in the same filled blue as "Review now" and competing with
+      // it. A floating action button that shouts as loudly as a chest-pain
+      // alert is a hierarchy that has been flattened by accident.
       // Reading a message happens on another screen, and the desk leaves this
       // one and comes back all day. AutoRefresh re-reads on a timer while the
       // screen is up and again the moment the app resumes, so the counts here
@@ -118,55 +127,41 @@ class _StaffTodayScreenState extends ConsumerState<StaffTodayScreen> {
                 96,
               ),
               children: [
+                // Ordered by what the desk has to answer, in the order they
+                // have to answer it: who needs help this minute, who is waiting
+                // on us, who is coming, what else can I do, how did the day go.
+                //
+                // It used to open with a large blue card that said "No
+                // appointments" — the least useful sentence on the screen given
+                // the widest, brightest surface, on a morning when somebody was
+                // already waiting for a time and somebody else had reported
+                // chest pain. Nothing was wrong with the card; it was answering
+                // the wrong question first.
                 const _DeskHeader(),
                 const SizedBox(height: AppSpacing.md),
-
-                // The shape of the patient's home screen, for the same reason it
-                // has that shape: one card that answers "what is happening", a
-                // rail of numbers under it, then the lists.
-                //
-                // A quiet morning used to render as a single empty box on a page
-                // of nothing, which reads as an app that has failed rather than
-                // a day that has not started. The hero and the rail are true on
-                // an empty day too — no appointments is a fact about the day,
-                // and the desk still wants the other two numbers.
-                // Above everything, when there is one.
-                //
-                // A patient writing "I have chest pain" already pushes to this
-                // handset — the desk is on that fan-out deliberately, because the
-                // receptionist is the person physically present and what happens
-                // next is fetching the doctor or ringing the patient back. The
-                // push arrived, and the screen behind it said "No appointments"
-                // with nothing anywhere about the emergency.
-                const _EmergencyStrip(),
-
-                _DayHero(today: today, requests: requests),
+                _DateBar(onRefresh: _refresh),
                 const SizedBox(height: AppSpacing.md),
-                _DeskRail(today: today, requests: requests),
-                const SizedBox(height: AppSpacing.lg),
 
-                if (requests.isNotEmpty) ...[
-                  _SectionTitle(
-                    l10n.deskWaitingForTime,
-                    count: requests.length,
-                    tone: AppColors.warning,
-                  ),
-                  const SizedBox(height: AppSpacing.sm),
-                  for (final a in requests)
-                    _RequestCard(appointment: a, onConfirmed: _refresh),
-                  const SizedBox(height: AppSpacing.lg),
-                ],
+                // A patient writing "I have chest pain" already pushes to this
+                // handset — the desk is on that fan-out deliberately, because
+                // the receptionist is the person physically present and what
+                // happens next is fetching the doctor or ringing the patient
+                // back. Nothing is drawn when there is nothing: a standing
+                // "Emergencies" heading on a quiet morning is a heading that
+                // has stopped being read by the time it matters.
+                const _UrgentSection(),
 
-                _SectionTitle(l10n.deskToday, count: today.length),
-                const SizedBox(height: AppSpacing.sm),
-                if (today.isEmpty)
-                  _Empty(
-                    icon: Icons.event_available_outlined,
-                    title: l10n.deskNothingBooked,
-                    body: l10n.deskNothingBookedBody,
-                  )
-                else
-                  for (final a in today) _DayRow(appointment: a),
+                _QueueCard(
+                  today: todayAll,
+                  requests: requests,
+                  onConfirmed: _refresh,
+                ),
+                const SizedBox(height: AppSpacing.md),
+                _AppointmentsCard(today: today),
+                const SizedBox(height: AppSpacing.md),
+                const _QuickActionsCard(),
+                const SizedBox(height: AppSpacing.md),
+                _ClinicSummaryCard(today: todayAll, requests: requests),
               ],
             ),
           ),
@@ -181,47 +176,19 @@ class _DeskHeader extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final scheme = Theme.of(context).colorScheme;
-    // The date reads in the chosen language too. DateFormat with no locale
-    // argument uses Intl's global default, which is not what MaterialApp's
-    // locale sets — so the day name would stay English while the words around
-    // it changed, which looks like a half-finished translation.
-    final locale = Localizations.localeOf(context).toString();
-    // The day, then whose clinic this is, then the bell.
+    // Whose clinic this is, whether it is open, and what is waiting.
     //
-    // Register used to sit here, and is now the button in the corner. It is
-    // the desk's commonest job, but a header is for saying where you are and
-    // what is waiting — and a filled button in one takes the whole width from
-    // whatever it shares the row with.
+    // The date has moved out to its own row below. It used to sit above the
+    // clinic name, which put the least specific thing on the screen — the
+    // date, which every phone already shows — in the position the eye reads
+    // first, and pushed the operational content down a line for it.
     //
     // The mark and the name come from [ClinicWordmark], the same widget every
-    // other panel uses. This drew its own square mark beside its own copy of
-    // the name, which is how the name ended up wrapped to two truncated lines
-    // next to a logo squeezed into 44 points.
+    // other panel uses.
     return Row(
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                DateFormat('EEEE, d MMMM', locale).format(DateTime.now()),
-                style: TextStyle(
-                  fontSize: 13,
-                  height: 1.3,
-                  fontWeight: FontWeight.w500,
-                  color: scheme.onSurfaceVariant,
-                ),
-              ),
-              const SizedBox(height: 4),
-              ClinicWordmark(
-                subtitle: AppLocalizations.of(context).deskFrontDesk,
-              ),
-            ],
-          ),
-        ),
+        const Expanded(child: ClinicWordmark(subtitleWidget: _DeskStatusLine())),
         const SizedBox(width: AppSpacing.sm),
         // The same bell the doctor has. What reaches it differs by role — the
         // desk is told about requests and messages, not about a patient's
@@ -232,20 +199,270 @@ class _DeskHeader extends ConsumerWidget {
   }
 }
 
-/// Open emergencies, at the top of the desk's day.
+/// "Front Desk · Open · Closes 8:00 PM", from the clinic's own schedule.
+///
+/// A receptionist is asked "are you open?" on the phone all day, and answering
+/// it from memory is how a patient gets told to come in on the afternoon the
+/// clinic shuts early. So this is read from the same weekly hours and one-off
+/// overrides the booking engine uses to decide which slots exist — there is no
+/// second setting to keep in step, and a Durga Puja closure entered once is
+/// true here the moment it is saved.
+class _DeskStatusLine extends ConsumerWidget {
+  const _DeskStatusLine();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final l10n = AppLocalizations.of(context);
+    final scheme = Theme.of(context).colorScheme;
+    final locale = Localizations.localeOf(context).toString();
+    final clinic = ref.watch(brandClinicProvider).valueOrNull;
+
+    final muted = TextStyle(
+      fontSize: 11.5,
+      height: 1.25,
+      fontWeight: FontWeight.w500,
+      color: scheme.onSurfaceVariant,
+    );
+
+    // No clinic loaded yet: the role, and nothing claimed about the hours.
+    // "Closed" while the answer is still in flight would be a lie told
+    // confidently, and this is the line people act on.
+    if (clinic == null) {
+      return Text(l10n.deskFrontDesk, maxLines: 1, style: muted);
+    }
+
+    final status = clinicStatusAt(clinic, DateTime.now());
+    final tone =
+        status.open ? AppColors.successOn(context) : scheme.onSurfaceVariant;
+
+    final String? tail;
+    if (status.open && status.closesAt != null) {
+      tail = l10n.deskClosesAt(DateFormat('h:mm a', locale).format(status.closesAt!));
+    } else if (!status.open && status.opensAt != null) {
+      tail = l10n.deskOpensAt(DateFormat('h:mm a', locale).format(status.opensAt!));
+    } else {
+      tail = null;
+    }
+
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Flexible(
+          child: Text(
+            l10n.deskFrontDesk,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: muted,
+          ),
+        ),
+        const SizedBox(width: 6),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 1),
+          decoration: BoxDecoration(
+            color: tone.withValues(alpha: 0.13),
+            borderRadius: BorderRadius.circular(999),
+          ),
+          child: Text(
+            status.open ? l10n.deskOpen : l10n.deskClosed,
+            style: TextStyle(
+              fontSize: 10.5,
+              height: 1.3,
+              fontWeight: FontWeight.w800,
+              color: tone,
+            ),
+          ),
+        ),
+        if (tail != null) ...[
+          const SizedBox(width: 6),
+          Flexible(
+            child: Text(
+              '· $tail',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: muted,
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+/// The date, and a way to ask again.
+///
+/// Refresh is explicit as well as automatic. [AutoRefresh] re-reads on a timer
+/// and on resume, which covers the desk that walks away and comes back — but a
+/// receptionist who has just taken a booking on the phone wants to see it land
+/// now, and pull-to-refresh is not discoverable on a screen that fits without
+/// scrolling.
+class _DateBar extends StatelessWidget {
+  const _DateBar({required this.onRefresh});
+
+  final Future<void> Function() onRefresh;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    final scheme = Theme.of(context).colorScheme;
+    // The date reads in the chosen language too. DateFormat with no locale
+    // argument uses Intl's global default, which is not what MaterialApp's
+    // locale sets — so the day name would stay English while the words around
+    // it changed, which looks like a half-finished translation.
+    final locale = Localizations.localeOf(context).toString();
+
+    return Row(
+      children: [
+        Icon(
+          Icons.calendar_today_rounded,
+          size: 15,
+          color: AppColors.primary,
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(
+            DateFormat('EEEE, d MMMM y', locale).format(DateTime.now()),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontSize: 14.5,
+              fontWeight: FontWeight.w700,
+              color: scheme.onSurface,
+            ),
+          ),
+        ),
+        TextButton.icon(
+          onPressed: onRefresh,
+          icon: const Icon(Icons.refresh_rounded, size: 17),
+          label: Text(l10n.deskRefresh),
+          style: TextButton.styleFrom(
+            foregroundColor: AppColors.primary,
+            padding: const EdgeInsets.symmetric(horizontal: 8),
+            minimumSize: const Size(0, 32),
+            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            textStyle: const TextStyle(
+              fontSize: 13.5,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Card geometry, in one place.
+///
+/// A section, the tiles inside it and the buttons on it are three different
+/// sizes of the same idea, and they were previously three unrelated numbers
+/// picked per widget. Naming them keeps the nesting readable: an inner tile is
+/// always visibly rounder-cornered than the card it sits in, never the reverse.
+const double _kSectionRadius = 20;
+const double _kInnerRadius = 14;
+
+/// The white surface every section on this screen sits on.
+class _SectionCard extends StatelessWidget {
+  const _SectionCard({
+    required this.child,
+    this.padding = const EdgeInsets.all(AppSpacing.md),
+  });
+
+  final Widget child;
+  final EdgeInsets padding;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      width: double.infinity,
+      padding: padding,
+      decoration: BoxDecoration(
+        color: scheme.surface,
+        borderRadius: BorderRadius.circular(_kSectionRadius),
+        border: Border.all(color: scheme.outlineVariant.withValues(alpha: 0.45)),
+      ),
+      child: child,
+    );
+  }
+}
+
+/// A section's title, and the one place it leads.
+class _CardHeader extends StatelessWidget {
+  const _CardHeader({required this.title, this.actionLabel, this.onAction});
+
+  final String title;
+  final String? actionLabel;
+  final VoidCallback? onAction;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Expanded(
+          child: Text(
+            title,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              fontSize: 16.5,
+              fontWeight: FontWeight.w800,
+              letterSpacing: -0.2,
+            ),
+          ),
+        ),
+        if (actionLabel != null && onAction != null)
+          TextButton(
+            onPressed: onAction,
+            style: TextButton.styleFrom(
+              foregroundColor: AppColors.primary,
+              padding: const EdgeInsets.symmetric(horizontal: 6),
+              minimumSize: const Size(0, 30),
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Flexible(
+                  child: Text(
+                    actionLabel!,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 13.5,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 2),
+                const Icon(Icons.arrow_forward_rounded, size: 14),
+              ],
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+/// Open emergencies, above everything else on the desk's day.
 ///
 /// Only urgent and emergency severities reach a staff account — the server
 /// filters, see `DESK_ALERTS`. So everything drawn here is something a
 /// receptionist can act on in the next minute, and the row leads to the thread
 /// because that is where the call button is.
 ///
-/// Nothing is drawn when there is nothing. An empty "Emergencies" heading on a
-/// quiet morning is a heading that stops being read by the time it matters.
-class _EmergencyStrip extends ConsumerWidget {
-  const _EmergencyStrip();
+/// The red is load-bearing, not decorative. It is the only red on the screen,
+/// and it is spent on the one case where the person at the desk should stop
+/// what they are doing: a patient has reported something that cannot wait for
+/// the doctor's next free moment. Everything else that needs action is amber.
+///
+/// Nothing is drawn when there is nothing. An empty "Needs attention" heading
+/// on a quiet morning is a heading that stops being read by the time it
+/// matters.
+class _UrgentSection extends ConsumerWidget {
+  const _UrgentSection();
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final l10n = AppLocalizations.of(context);
     final view = ref.watch(clinicianNotificationsProvider).valueOrNull;
     final urgent =
         (view?.items ?? const <PanelNotification>[])
@@ -253,338 +470,213 @@ class _EmergencyStrip extends ConsumerWidget {
             .toList();
     if (urgent.isEmpty) return const SizedBox.shrink();
 
+    final danger = AppColors.dangerOn(context);
+
     return Padding(
       padding: const EdgeInsets.only(bottom: AppSpacing.md),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(
-                Icons.emergency_rounded,
-                size: 18,
-                color: AppColors.dangerOn(context),
-              ),
-              const SizedBox(width: 6),
-              Text(
-                AppLocalizations.of(context).deskNeedsAttention(urgent.length),
-                style: TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w800,
-                  color: AppColors.dangerOn(context),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: AppSpacing.sm),
-          for (final a in urgent)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 8),
-              child: Material(
-                color: AppColors.dangerBgOn(context),
-                borderRadius: BorderRadius.circular(AppSpacing.cardRadius),
-                child: InkWell(
-                  borderRadius: BorderRadius.circular(AppSpacing.cardRadius),
-                  onTap:
-                      a.patientId.isEmpty
-                          ? null
-                          : () => context.push(
-                            '/staff/patients/${a.patientId}/thread',
-                            extra: a.patientName,
-                          ),
-                  child: Padding(
-                    padding: const EdgeInsets.all(AppSpacing.sm),
-                    child: Row(
-                      children: [
-                        UserAvatar(
-                          name: a.patientName,
-                          avatarUrl: a.avatarUrl,
-                          accent: AppColors.dangerOn(context),
-                          size: 40,
-                        ),
-                        const SizedBox(width: AppSpacing.sm),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Text(
-                                a.patientName,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(
-                                  fontSize: 15,
-                                  fontWeight: FontWeight.w800,
-                                ),
-                              ),
-                              Text(
-                                a.text,
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(
-                                  fontSize: 13,
-                                  height: 1.3,
-                                  fontWeight: FontWeight.w600,
-                                  color: AppColors.dangerOn(context),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        Icon(
-                          Icons.chevron_right_rounded,
-                          color: AppColors.dangerOn(context),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            ),
-        ],
-      ),
-    );
-  }
-}
-
-/// What is happening today, in one card.
-///
-/// Modelled on the patient's home hero, and for the same reason: the first
-/// thing on a screen should answer the question the person opened it with. For
-/// a receptionist at nine in the morning that question is "how busy am I, and
-/// who is first".
-///
-/// Drawn rather than photographed. The patient's card carries a photograph
-/// because it is the app greeting someone; this one is a working surface that
-/// several people share a login to, and a stock photo behind the day's numbers
-/// is decoration a desk has to read past.
-class _DayHero extends StatelessWidget {
-  const _DayHero({required this.today, required this.requests});
-
-  final List<Appointment> today;
-  final List<Appointment> requests;
-
-  @override
-  Widget build(BuildContext context) {
-    final l10n = AppLocalizations.of(context);
-    final locale = Localizations.localeOf(context).toString();
-    final now = DateTime.now();
-    // The next one still to come, not the first of the day: at four in the
-    // afternoon the morning's list is history, and a desk told "next: 9:30 AM"
-    // has been told something false.
-    final upcoming =
-        today.where((a) => (a.scheduledFor ?? now).isAfter(now)).toList()
-          ..sort((a, b) => a.sortKey.compareTo(b.sortKey));
-    final next = upcoming.firstOrNull;
-
-    final String headline;
-    final String detail;
-    if (today.isEmpty) {
-      headline = l10n.deskNoAppointments;
-      detail =
-          requests.isEmpty
-              ? l10n.deskQuietDay
-              : l10n.deskWaitingForTimeCount(requests.length);
-    } else if (next?.scheduledFor != null) {
-      headline = l10n.deskAppointmentCount(today.length);
-      final at = DateFormat('h:mm a', locale).format(next!.scheduledFor!);
-      detail = l10n.deskNextAt(
-        next.patientName ?? l10n.deskPatientFallback,
-        at,
-      );
-    } else {
-      headline = l10n.deskAppointmentCount(today.length);
-      detail = l10n.deskAllPassed;
-    }
-
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(AppSpacing.md),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(AppSpacing.cardRadius + 4),
-        gradient: const LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [Color(0xFF2C5BE0), Color(0xFF0B2C86)],
+      child: Container(
+        padding: const EdgeInsets.all(AppSpacing.md),
+        decoration: BoxDecoration(
+          color: AppColors.dangerBgOn(context),
+          borderRadius: BorderRadius.circular(_kSectionRadius),
+          border: Border.all(color: danger.withValues(alpha: 0.28)),
         ),
-        boxShadow: const [
-          BoxShadow(
-            color: Color(0x2E003399),
-            blurRadius: 20,
-            offset: Offset(0, 8),
-          ),
-        ],
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
               children: [
-                Text(
-                  l10n.deskToday.toUpperCase(),
-                  style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: 1.2,
-                    color: Colors.white.withValues(alpha: 0.72),
+                Container(
+                  width: 22,
+                  height: 22,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).colorScheme.surface,
+                    shape: BoxShape.circle,
                   ),
+                  child: Icon(Icons.priority_high_rounded, size: 15, color: danger),
                 ),
-                const SizedBox(height: 6),
-                Text(
-                  headline,
-                  style: const TextStyle(
-                    fontSize: 26,
-                    height: 1.1,
-                    fontWeight: FontWeight.w800,
-                    color: Colors.white,
-                  ),
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  detail,
-                  style: TextStyle(
-                    fontSize: 13,
-                    height: 1.35,
-                    fontWeight: FontWeight.w500,
-                    color: Colors.white.withValues(alpha: 0.86),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    l10n.deskNeedsAttention(urgent.length),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: -0.2,
+                      color: danger,
+                    ),
                   ),
                 ),
               ],
             ),
-          ),
-          const SizedBox(width: AppSpacing.sm),
-          Icon(
-            today.isEmpty
-                ? Icons.wb_sunny_outlined
-                : Icons.event_available_rounded,
-            size: 34,
-            color: Colors.white.withValues(alpha: 0.32),
-          ),
-        ],
+            const SizedBox(height: AppSpacing.sm + 4),
+            for (var i = 0; i < urgent.length; i++) ...[
+              if (i > 0) const SizedBox(height: AppSpacing.sm),
+              _UrgentCard(item: urgent[i]),
+            ],
+          ],
+        ),
       ),
     );
   }
 }
 
-/// Three numbers the desk is asked for all day.
-///
-/// Unread is counted across the whole roll rather than shown per patient: the
-/// question a receptionist is answering is "is anyone waiting on us", and that
-/// is a total. Tapping it opens the inbox, where the per-patient answer is.
-class _DeskRail extends ConsumerWidget {
-  const _DeskRail({required this.today, required this.requests});
+/// One patient who has reported something that cannot wait.
+class _UrgentCard extends StatelessWidget {
+  const _UrgentCard({required this.item});
 
-  final List<Appointment> today;
-  final List<Appointment> requests;
+  final PanelNotification item;
 
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    // The same number the bell is counting, from the same endpoint.
-    //
-    // This used to sum `unreadCount` across the patient roll — a different
-    // query, cached separately, that nothing invalidated when a message was
-    // read. The tile and the bell could disagree by a wide margin while sitting
-    // two inches apart, and the tile was usually the stale one.
-    //
-    // Null while it loads, and drawn as an em dash: "0 unread" that turns into
-    // 4 a second later is worse than admitting it does not know yet.
-    final l10n = AppLocalizations.of(context);
-    final counts = ref.watch(clinicianNotificationsProvider).valueOrNull;
-    final unread = counts?.messages;
-
-    return Row(
-      children: [
-        Expanded(
-          child: _RailTile(
-            icon: Icons.event_note_rounded,
-            label: l10n.deskBooked,
-            value: '${today.length}',
-            tone: AppColors.primary,
-          ),
-        ),
-        const SizedBox(width: AppSpacing.sm),
-        Expanded(
-          child: _RailTile(
-            icon: Icons.hourglass_bottom_rounded,
-            label: l10n.deskWaiting,
-            value: '${requests.length}',
-            tone: requests.isEmpty ? AppColors.primary : AppColors.warning,
-          ),
-        ),
-        const SizedBox(width: AppSpacing.sm),
-        Expanded(
-          child: _RailTile(
-            icon: Icons.mark_chat_unread_outlined,
-            label: l10n.deskUnread,
-            value: unread == null ? '—' : '$unread',
-            tone: (unread ?? 0) > 0 ? AppColors.danger : AppColors.primary,
-            // `go`, not `push`: Patients is one of this shell's own tabs, and
-            // pushing it stacks a copy while the bar keeps Today lit.
-            onTap: () => context.go('/staff/patients'),
-          ),
-        ),
-      ],
-    );
+  /// How long ago they said it. A symptom reported four minutes ago and one
+  /// reported four hours ago call for different things from the person reading
+  /// this, and the row is useless without it.
+  String? _reportedIn(AppLocalizations l10n) {
+    final at = item.at;
+    if (at == null) return null;
+    final d = DateTime.now().difference(at);
+    if (d.isNegative) return null;
+    if (d.inHours < 1) return l10n.deskReportedAgoMinutes(d.inMinutes);
+    if (d.inHours < 24) return l10n.deskReportedAgoHours(d.inHours);
+    return l10n.deskReportedAgoDays(d.inDays);
   }
-}
-
-class _RailTile extends StatelessWidget {
-  const _RailTile({
-    required this.icon,
-    required this.label,
-    required this.value,
-    required this.tone,
-    this.onTap,
-  });
-
-  final IconData icon;
-  final String label;
-  final String value;
-  final Color tone;
-  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    final danger = AppColors.dangerOn(context);
     final scheme = Theme.of(context).colorScheme;
+    final reported = _reportedIn(l10n);
+
+    // The thread, because that is where the clinic's emergency number and the
+    // patient's own phone number are. "Review now" that opened a read-only
+    // detail page would be a button that stops one step short of the only two
+    // things the desk can actually do about chest pain.
+    final open =
+        item.patientId.isEmpty
+            ? null
+            : () => context.push(
+              '/staff/patients/${item.patientId}/thread',
+              extra: item.patientName,
+            );
+
     return Material(
-      color: Colors.white,
-      borderRadius: BorderRadius.circular(AppSpacing.cardRadius),
+      color: scheme.surface,
+      borderRadius: BorderRadius.circular(_kInnerRadius),
       child: InkWell(
-        borderRadius: BorderRadius.circular(AppSpacing.cardRadius),
-        onTap: onTap,
+        onTap: open,
+        borderRadius: BorderRadius.circular(_kInnerRadius),
         child: Padding(
-          padding: const EdgeInsets.symmetric(
-            horizontal: 12,
-            vertical: AppSpacing.sm,
-          ),
+          padding: const EdgeInsets.all(AppSpacing.sm + 2),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(icon, size: 18, color: tone),
-              const SizedBox(height: 6),
-              Text(
-                value,
-                maxLines: 1,
-                style: TextStyle(
-                  fontSize: 22,
-                  height: 1.05,
-                  fontWeight: FontWeight.w800,
-                  color: tone,
-                ),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  UserAvatar(
+                    name: item.patientName,
+                    avatarUrl: item.avatarUrl,
+                    accent: danger,
+                    size: 44,
+                  ),
+                  const SizedBox(width: AppSpacing.sm + 2),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Row(
+                          children: [
+                            Flexible(
+                              child: Text(
+                                item.patientName,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  fontSize: 17,
+                                  fontWeight: FontWeight.w800,
+                                  letterSpacing: -0.2,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 6),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 7,
+                                vertical: 2,
+                              ),
+                              decoration: BoxDecoration(
+                                color: danger.withValues(alpha: 0.13),
+                                borderRadius: BorderRadius.circular(999),
+                              ),
+                              child: Text(
+                                l10n.deskUrgentChip,
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  height: 1.2,
+                                  fontWeight: FontWeight.w900,
+                                  letterSpacing: 0.4,
+                                  color: danger,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 3),
+                        Text(
+                          item.text,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 14.5,
+                            height: 1.25,
+                            fontWeight: FontWeight.w700,
+                            color: danger,
+                          ),
+                        ),
+                        // Says what kind of thing this is, so the red reads as
+                        // a clinical escalation rather than as an app styling
+                        // one of its notifications differently.
+                        const SizedBox(height: 3),
+                        Text(
+                          reported == null
+                              ? l10n.deskUrgentSymptom
+                              : '${l10n.deskUrgentSymptom} · $reported',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w500,
+                            color: scheme.onSurfaceVariant,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
               ),
-              const SizedBox(height: 2),
-              Text(
-                label,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                  color: scheme.onSurfaceVariant,
+              const SizedBox(height: AppSpacing.sm + 2),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton.icon(
+                  onPressed: open,
+                  icon: const Icon(Icons.arrow_forward_rounded, size: 17),
+                  label: Text(l10n.deskReviewNow),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: danger,
+                    foregroundColor: Colors.white,
+                    minimumSize: const Size(0, AppSpacing.minTapTarget),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(_kInnerRadius),
+                    ),
+                    textStyle: const TextStyle(
+                      fontSize: 14.5,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
                 ),
               ),
             ],
@@ -595,44 +687,197 @@ class _RailTile extends StatelessWidget {
   }
 }
 
-class _SectionTitle extends StatelessWidget {
-  const _SectionTitle(this.text, {required this.count, this.tone});
+/// Who is in the clinic's flow right now, and who is waiting on the desk.
+///
+/// This replaced a large blue hero whose headline, on a quiet morning, was "No
+/// appointments" — the least useful sentence available, given the brightest
+/// surface on the screen, while a patient sat unanswered in the list below it.
+/// The card now leads with the three numbers that describe the day and then
+/// hands over the one thing that needs doing.
+class _QueueCard extends ConsumerWidget {
+  const _QueueCard({
+    required this.today,
+    required this.requests,
+    required this.onConfirmed,
+  });
 
-  final String text;
-  final int count;
-  final Color? tone;
+  /// Everything scheduled for today, cancellations included.
+  final List<Appointment> today;
+  final List<Appointment> requests;
+  final Future<void> Function() onConfirmed;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final l10n = AppLocalizations.of(context);
     final scheme = Theme.of(context).colorScheme;
-    return Row(
-      children: [
-        Text(
-          text,
-          style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800),
-        ),
-        const SizedBox(width: 8),
-        if (count > 0)
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-            decoration: BoxDecoration(
-              color: (tone ?? scheme.onSurfaceVariant).withValues(alpha: 0.14),
-              borderRadius: BorderRadius.circular(20),
+
+    // Confirmed, but not yet arrived. Someone who has checked in is counted
+    // under "in progress" instead — they are in the building, and counting
+    // them in both places would describe a busier clinic than exists.
+    final scheduled = today.where((a) => a.status == 'confirmed').length;
+    final active =
+        today
+            .where(
+              (a) =>
+                  a.status == 'checked_in' || a.status == 'in_consultation',
+            )
+            .length;
+
+    return _SectionCard(
+      padding: const EdgeInsets.fromLTRB(
+        AppSpacing.md,
+        AppSpacing.md,
+        AppSpacing.md,
+        AppSpacing.sm + 4,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _CardHeader(
+            title: l10n.deskTodaysQueue,
+            actionLabel: l10n.deskManageQueue,
+            onAction: () => context.push('/staff/appointments'),
+          ),
+          const SizedBox(height: AppSpacing.sm + 4),
+          Row(
+            children: [
+              Expanded(
+                child: _QueueStat(
+                  icon: Icons.event_note_rounded,
+                  value: '$scheduled',
+                  label: l10n.deskScheduled,
+                  caption: l10n.deskToday,
+                  tone: AppColors.primary,
+                ),
+              ),
+              const SizedBox(width: AppSpacing.sm),
+              Expanded(
+                child: _QueueStat(
+                  icon: Icons.hourglass_top_rounded,
+                  value: '${requests.length}',
+                  label: l10n.deskWaiting,
+                  caption: l10n.deskForScheduling,
+                  // Amber only while somebody is actually waiting. A permanent
+                  // orange tile is a colour that has stopped meaning anything.
+                  tone:
+                      requests.isEmpty
+                          ? scheme.onSurfaceVariant
+                          : AppColors.warningOn(context),
+                ),
+              ),
+              const SizedBox(width: AppSpacing.sm),
+              Expanded(
+                child: _QueueStat(
+                  icon: Icons.medical_services_outlined,
+                  value: '$active',
+                  label: l10n.deskInProgress,
+                  caption: l10n.deskNowLabel,
+                  tone:
+                      active == 0
+                          ? scheme.onSurfaceVariant
+                          : AppColors.successOn(context),
+                ),
+              ),
+            ],
+          ),
+          if (requests.isNotEmpty) ...[
+            const SizedBox(height: AppSpacing.md),
+            Divider(
+              height: 1,
+              color: scheme.outlineVariant.withValues(alpha: 0.6),
             ),
-            child: Text(
-              '$count',
+            const SizedBox(height: AppSpacing.sm + 4),
+            Text(
+              l10n.deskWaitingCount(requests.length),
               style: TextStyle(
-                fontSize: 12.5,
-                fontWeight: FontWeight.w800,
-                color: tone ?? scheme.onSurfaceVariant,
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+                color: AppColors.warningOn(context),
               ),
             ),
-          ),
-      ],
+            const SizedBox(height: AppSpacing.sm),
+            for (final a in requests)
+              _RequestCard(appointment: a, onConfirmed: onConfirmed),
+          ],
+        ],
+      ),
     );
   }
 }
 
+/// One number in the queue rail.
+class _QueueStat extends StatelessWidget {
+  const _QueueStat({
+    required this.icon,
+    required this.value,
+    required this.label,
+    required this.caption,
+    required this.tone,
+  });
+
+  final IconData icon;
+  final String value;
+  final String label;
+  final String caption;
+  final Color tone;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerLowest,
+        borderRadius: BorderRadius.circular(_kInnerRadius),
+        border: Border.all(color: scheme.outlineVariant.withValues(alpha: 0.5)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 30,
+            height: 30,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: tone.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(9),
+            ),
+            child: Icon(icon, size: 16, color: tone),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            value,
+            maxLines: 1,
+            style: const TextStyle(
+              fontSize: 24,
+              height: 1.05,
+              fontWeight: FontWeight.w800,
+              letterSpacing: -0.5,
+            ),
+          ),
+          const SizedBox(height: 1),
+          Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700),
+          ),
+          Text(
+            caption,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w500,
+              color: scheme.onSurfaceVariant,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
 /// A patient who asked for an appointment and has no time yet.
 class _RequestCard extends ConsumerStatefulWidget {
   const _RequestCard({required this.appointment, required this.onConfirmed});
@@ -673,19 +918,24 @@ class _RequestCardState extends ConsumerState<_RequestCard> {
 
     return Container(
       margin: const EdgeInsets.only(bottom: AppSpacing.sm),
-      padding: const EdgeInsets.all(AppSpacing.md),
-      decoration: BoxDecoration(
-        color: scheme.surfaceContainerLowest,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          // Amber once it has been sitting a day. Not red: nobody is unwell,
-          // somebody is unanswered.
-          color:
-              stale
-                  ? AppColors.warning.withValues(alpha: 0.55)
-                  : scheme.outlineVariant.withValues(alpha: 0.5),
-        ),
-      ),
+      padding: EdgeInsets.all(stale ? AppSpacing.sm + 2 : 0),
+      // Only bordered once it has gone stale.
+      //
+      // The card now sits inside the queue card, so its own outline was a box
+      // drawn inside a box — two frames around one patient. The amber border is
+      // kept for the request nobody has answered in a day, because that is the
+      // one that has to catch an eye scanning past. Not red: nobody is unwell,
+      // somebody is unanswered.
+      decoration:
+          stale
+              ? BoxDecoration(
+                color: AppColors.warningBgOn(context),
+                borderRadius: BorderRadius.circular(_kInnerRadius),
+                border: Border.all(
+                  color: AppColors.warning.withValues(alpha: 0.5),
+                ),
+              )
+              : null,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -790,7 +1040,7 @@ class _RequestCardState extends ConsumerState<_RequestCard> {
                             child: CircularProgressIndicator(strokeWidth: 2),
                           )
                           : const Icon(Icons.event_available_rounded, size: 18),
-                  label: Text(l10n.deskGiveTime),
+                  label: Text(l10n.deskOfferTime),
                   style: FilledButton.styleFrom(
                     backgroundColor: AppColors.primary,
                     foregroundColor: Colors.white,
@@ -959,7 +1209,7 @@ class _SlotPickerState extends ConsumerState<_SlotPicker> {
             ),
             children: [
               Text(
-                l10n.deskGiveTime,
+                l10n.deskOfferTime,
                 style: const TextStyle(
                   fontSize: 19,
                   fontWeight: FontWeight.w800,
@@ -1089,9 +1339,16 @@ class _SlotPickerState extends ConsumerState<_SlotPicker> {
 
 /// One booked appointment in today's list.
 class _DayRow extends ConsumerWidget {
-  const _DayRow({required this.appointment});
+  const _DayRow({required this.appointment, this.flat = false});
 
   final Appointment appointment;
+
+  /// No border and no card fill, for when the row is already inside one.
+  ///
+  /// The check-in sheet is a list of these on a plain surface; drawing each
+  /// one's outline there stacks a box inside a box inside a sheet, which is
+  /// three frames around one line of text.
+  final bool flat;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -1109,11 +1366,16 @@ class _DayRow extends ConsumerWidget {
     return Container(
       margin: const EdgeInsets.only(bottom: AppSpacing.sm),
       padding: const EdgeInsets.all(AppSpacing.sm),
-      decoration: BoxDecoration(
-        color: scheme.surfaceContainerLowest,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: scheme.outlineVariant.withValues(alpha: 0.4)),
-      ),
+      decoration:
+          flat
+              ? null
+              : BoxDecoration(
+                color: scheme.surfaceContainerLowest,
+                borderRadius: BorderRadius.circular(_kInnerRadius),
+                border: Border.all(
+                  color: scheme.outlineVariant.withValues(alpha: 0.4),
+                ),
+              ),
       child: Row(
         children: [
           SizedBox(
@@ -1166,32 +1428,801 @@ class _DayRow extends ConsumerWidget {
   }
 }
 
-class _Empty extends StatelessWidget {
-  const _Empty({required this.icon, required this.title, required this.body});
+
+/// Who is actually coming in today.
+///
+/// Compact when empty on purpose. The old empty state was a 46-point icon and
+/// two lines of centred text inside 36 points of vertical padding, which gave
+/// the least informative moment of the day the largest block on the screen —
+/// and pushed everything a receptionist could actually do below the fold.
+class _AppointmentsCard extends ConsumerWidget {
+  const _AppointmentsCard({required this.today});
+
+  /// Today's appointments with cancellations already dropped.
+  final List<Appointment> today;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final l10n = AppLocalizations.of(context);
+    final scheme = Theme.of(context).colorScheme;
+
+    return _SectionCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _CardHeader(
+            title: l10n.deskTodaysAppointments,
+            actionLabel: l10n.deskViewCalendar,
+            onAction: () => context.push('/staff/appointments'),
+          ),
+          const SizedBox(height: AppSpacing.sm + 4),
+          if (today.isEmpty)
+            Container(
+              padding: const EdgeInsets.all(AppSpacing.sm + 4),
+              decoration: BoxDecoration(
+                color: scheme.surfaceContainerLowest,
+                borderRadius: BorderRadius.circular(_kInnerRadius),
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.event_busy_outlined,
+                    size: 30,
+                    color: AppColors.primary.withValues(alpha: 0.45),
+                  ),
+                  const SizedBox(width: AppSpacing.sm + 4),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          l10n.deskNoAppointmentsScheduled,
+                          style: const TextStyle(
+                            fontSize: 14.5,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          l10n.deskNothingBookedBody,
+                          style: TextStyle(
+                            fontSize: 12.5,
+                            height: 1.3,
+                            color: scheme.onSurfaceVariant,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            )
+          else
+            for (final a in today) _DayRow(appointment: a),
+          const SizedBox(height: AppSpacing.sm + 2),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              // A walk-in is a patient at the window with no appointment, so
+              // this is the ordinary booking flow with the time defaulted to
+              // now — not a separate kind of record the rest of the app would
+              // then have to know about.
+              onPressed: () => startDeskBooking(context, ref, walkIn: true),
+              icon: const Icon(Icons.add_circle_outline_rounded, size: 18),
+              label: Text(l10n.deskAddWalkIn),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: AppColors.primary,
+                minimumSize: const Size(0, AppSpacing.minTapTarget),
+                side: BorderSide(
+                  color: AppColors.primary.withValues(alpha: 0.35),
+                ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(_kInnerRadius),
+                ),
+                textStyle: const TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// The four things a receptionist does that are not on this screen already.
+class _QuickActionsCard extends ConsumerWidget {
+  const _QuickActionsCard();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final l10n = AppLocalizations.of(context);
+    // The same number the bell is counting, from the same endpoint.
+    //
+    // This used to sum `unreadCount` across the patient roll — a different
+    // query, cached separately, that nothing invalidated when a message was
+    // read. The tile and the bell could disagree by a wide margin while sitting
+    // two inches apart, and the tile was usually the stale one.
+    final unread = ref.watch(clinicianNotificationsProvider).valueOrNull?.messages;
+
+    return _SectionCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _CardHeader(title: l10n.deskQuickActions),
+          const SizedBox(height: AppSpacing.sm + 4),
+          Row(
+            children: [
+              Expanded(
+                child: _ActionTile(
+                  icon: Icons.person_add_alt_1_rounded,
+                  tone: AppColors.primary,
+                  title: l10n.deskRegisterPatient,
+                  caption: l10n.deskAddNewPatient,
+                  onTap: () => context.push('/staff/patients/new'),
+                ),
+              ),
+              const SizedBox(width: AppSpacing.sm),
+              Expanded(
+                child: _ActionTile(
+                  icon: Icons.event_available_rounded,
+                  tone: AppColors.warningOn(context),
+                  title: l10n.deskNewAppointment,
+                  caption: l10n.deskBookAppointment,
+                  onTap: () => startDeskBooking(context, ref),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: AppSpacing.sm),
+          Row(
+            children: [
+              Expanded(
+                child: _ActionTile(
+                  icon: Icons.how_to_reg_rounded,
+                  tone: AppColors.successOn(context),
+                  title: l10n.deskCheckInPatient,
+                  caption: l10n.deskWalkInCheckIn,
+                  onTap: () => showCheckInSheet(context),
+                ),
+              ),
+              const SizedBox(width: AppSpacing.sm),
+              Expanded(
+                child: _ActionTile(
+                  icon: Icons.forum_rounded,
+                  tone: const Color(0xFF7C5CD6),
+                  title: l10n.deskMessagesLabel,
+                  // Null while it loads rather than a confident zero that turns
+                  // into 3 a second later.
+                  caption:
+                      unread == null ? '—' : l10n.deskUnreadCount(unread),
+                  // `go`, not `push`: Patients is one of this shell's own tabs,
+                  // and pushing it stacks a copy while the bar keeps Today lit.
+                  onTap: () => context.go('/staff/patients'),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ActionTile extends StatelessWidget {
+  const _ActionTile({
+    required this.icon,
+    required this.tone,
+    required this.title,
+    required this.caption,
+    required this.onTap,
+  });
 
   final IconData icon;
+  final Color tone;
   final String title;
-  final String body;
+  final String caption;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 36),
+    return Material(
+      color: scheme.surfaceContainerLowest,
+      borderRadius: BorderRadius.circular(_kInnerRadius),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(_kInnerRadius),
+        child: Container(
+          constraints: const BoxConstraints(minHeight: 62),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(_kInnerRadius),
+            border: Border.all(
+              color: scheme.outlineVariant.withValues(alpha: 0.5),
+            ),
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 32,
+                height: 32,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: tone.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(9),
+                ),
+                child: Icon(icon, size: 17, color: tone),
+              ),
+              const SizedBox(width: 9),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 13,
+                        height: 1.2,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 1),
+                    Text(
+                      caption,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 11,
+                        height: 1.25,
+                        color: scheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// How the day went, once it has gone.
+///
+/// Deliberately last. These are the numbers a receptionist is asked for at
+/// closing time or by the doctor on Monday, not the ones they work from — and
+/// the previous layout had a version of them third from the top, above the
+/// patient who was waiting for a time.
+class _ClinicSummaryCard extends ConsumerStatefulWidget {
+  const _ClinicSummaryCard({required this.today, required this.requests});
+
+  final List<Appointment> today;
+  final List<Appointment> requests;
+
+  @override
+  ConsumerState<_ClinicSummaryCard> createState() => _ClinicSummaryCardState();
+}
+
+class _ClinicSummaryCardState extends ConsumerState<_ClinicSummaryCard> {
+  bool _week = false;
+
+  /// The same record shape the screen above builds for today, so asking for
+  /// today here hits the provider that is already loaded rather than fetching
+  /// the day a second time — records compare by value, which is what makes the
+  /// family key match.
+  AppointmentQuery get _query {
+    final now = DateTime.now();
+    final start = DateTime(now.year, now.month, now.day);
+    if (!_week) {
+      return (
+        from: start,
+        to: start.add(const Duration(days: 1)),
+        status: null,
+        clinicId: null,
+      );
+    }
+    // Monday to now. Not a rolling seven days: "this week" is the week the
+    // clinic is in, and a Monday morning total that still counts last
+    // Wednesday would be the wrong answer to the question being asked.
+    final monday = start.subtract(Duration(days: start.weekday - 1));
+    return (
+      from: monday,
+      to: start.add(const Duration(days: 1)),
+      status: null,
+      clinicId: null,
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    final scheme = Theme.of(context).colorScheme;
+
+    // Today comes from the parent, which already has it; a week is fetched.
+    final async = ref.watch(appointmentDiaryProvider(_query));
+    final rows = _week ? async.valueOrNull?.items : widget.today;
+    final loading = rows == null;
+
+    int count(bool Function(Appointment) test) =>
+        rows == null ? 0 : rows.where(test).length;
+
+    final completed = count((a) => a.status == 'completed');
+    final cancelled = count((a) => a.status == 'cancelled');
+    final noShow = count((a) => a.status == 'no_show');
+    // Everyone who actually came through the door: checked in, with the doctor,
+    // or finished. Not the size of the diary — a booking nobody kept is not a
+    // visitor, and counting it as one would quietly inflate every day's total.
+    final visitors = count(
+      (a) =>
+          a.status == 'checked_in' ||
+          a.status == 'in_consultation' ||
+          a.status == 'completed',
+    );
+
+    String n(int v) => loading ? '—' : '$v';
+
+    return _SectionCard(
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(icon, size: 46, color: scheme.outlineVariant),
+          Row(
+            children: [
+              Icon(Icons.bar_chart_rounded, size: 17, color: AppColors.primary),
+              const SizedBox(width: 7),
+              Expanded(
+                child: Text(
+                  l10n.deskClinicSummary,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 16.5,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: -0.2,
+                  ),
+                ),
+              ),
+              _RangeToggle(
+                week: _week,
+                onChanged: (v) => setState(() => _week = v),
+              ),
+            ],
+          ),
+          const SizedBox(height: AppSpacing.md),
+          IntrinsicHeight(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Expanded(
+                  child: _SummaryFigure(
+                    value: n(completed),
+                    label: l10n.deskCompleted,
+                  ),
+                ),
+                _SummaryDivider(scheme: scheme),
+                Expanded(
+                  child: _SummaryFigure(
+                    value: n(cancelled),
+                    label: l10n.deskCancelled,
+                  ),
+                ),
+                _SummaryDivider(scheme: scheme),
+                Expanded(
+                  child: _SummaryFigure(
+                    value: n(noShow),
+                    label: l10n.deskNoShows,
+                  ),
+                ),
+                _SummaryDivider(scheme: scheme),
+                Expanded(
+                  child: _SummaryFigure(
+                    value: n(visitors),
+                    label: l10n.deskTotalVisitors,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SummaryDivider extends StatelessWidget {
+  const _SummaryDivider({required this.scheme});
+
+  final ColorScheme scheme;
+
+  @override
+  Widget build(BuildContext context) => VerticalDivider(
+    width: 1,
+    thickness: 1,
+    color: scheme.outlineVariant.withValues(alpha: 0.55),
+  );
+}
+
+class _SummaryFigure extends StatelessWidget {
+  const _SummaryFigure({required this.value, required this.label});
+
+  final String value;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(
+          value,
+          maxLines: 1,
+          style: const TextStyle(
+            fontSize: 21,
+            height: 1.1,
+            fontWeight: FontWeight.w800,
+            letterSpacing: -0.5,
+          ),
+        ),
+        const SizedBox(height: 3),
+        Text(
+          label,
+          maxLines: 2,
+          textAlign: TextAlign.center,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(
+            fontSize: 11,
+            height: 1.2,
+            fontWeight: FontWeight.w500,
+            color: scheme.onSurfaceVariant,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Today, or the week so far.
+class _RangeToggle extends StatelessWidget {
+  const _RangeToggle({required this.week, required this.onChanged});
+
+  final bool week;
+  final ValueChanged<bool> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    final scheme = Theme.of(context).colorScheme;
+    return Material(
+      color: scheme.surfaceContainerLowest,
+      borderRadius: BorderRadius.circular(999),
+      child: InkWell(
+        onTap: () => onChanged(!week),
+        borderRadius: BorderRadius.circular(999),
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(11, 5, 7, 5),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(999),
+            border: Border.all(
+              color: scheme.outlineVariant.withValues(alpha: 0.7),
+            ),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                week ? l10n.rangeThisWeek : l10n.deskToday,
+                style: const TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(width: 2),
+              Icon(
+                Icons.expand_more_rounded,
+                size: 15,
+                color: scheme.onSurfaceVariant,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Book somebody in from the desk: choose the patient, then the slot.
+///
+/// The server has always accepted a `patientId` from a non-patient caller —
+/// only the app had no way to send one, so the front desk could confirm a
+/// request a patient had made but could not take a booking over the phone. That
+/// is most of a receptionist's day, and it was the one thing this panel could
+/// not do.
+///
+/// Patient first, because the desk is nearly always looking at a person: the
+/// caller on the line, or the face at the window. Slot second, reusing the same
+/// picker that confirms a request, so a booking made here obeys exactly the
+/// same clinic hours and clash rules as one made anywhere else.
+Future<void> startDeskBooking(
+  BuildContext context,
+  WidgetRef ref, {
+  bool walkIn = false,
+}) async {
+  final l10n = AppLocalizations.of(context);
+  final locale = Localizations.localeOf(context).toString();
+  final messenger = ScaffoldMessenger.of(context);
+
+  final patient = await showModalBottomSheet<PatientListItem>(
+    context: context,
+    isScrollControlled: true,
+    showDragHandle: true,
+    builder: (_) => const _PatientPickerSheet(),
+  );
+  if (patient == null || !context.mounted) return;
+
+  final clinics = await ref.read(clinicRepositoryProvider).list();
+  final open = clinics.where((c) => c.isActive).toList();
+  if (!context.mounted) return;
+  if (open.isEmpty) {
+    messenger.showSnackBar(SnackBar(content: Text(l10n.deskNoActiveClinic)));
+    return;
+  }
+
+  final picked = await showModalBottomSheet<({Clinic clinic, DateTime at})>(
+    context: context,
+    isScrollControlled: true,
+    showDragHandle: true,
+    // A walk-in is standing there now, so the picker opens on today. So does a
+    // phone booking, which is only a default — the desk can page forward.
+    builder: (_) => _SlotPicker(clinics: open, initialDay: DateTime.now()),
+  );
+  if (picked == null || !context.mounted) return;
+
+  try {
+    await ref
+        .read(appointmentRepositoryProvider)
+        .book(
+          clinicId: picked.clinic.id,
+          scheduledForIso: picked.at.toUtc().toIso8601String(),
+          patientId: patient.id,
+        );
+    // The whole family, not one query: a booking lands in today's diary, in the
+    // week the summary may be showing, and changes nothing about the requests
+    // list — naming them individually is how one of them gets forgotten.
+    ref.invalidate(appointmentDiaryProvider);
+    messenger.showSnackBar(
+      SnackBar(
+        content: Text(
+          '${patient.name} · '
+          '${l10n.deskConfirmedFor(DateFormat('EEE d MMM, h:mm a', locale).format(picked.at))}',
+        ),
+      ),
+    );
+  } on ApiException catch (e) {
+    // The server re-checks the slot, so "just taken" arrives here rather than
+    // being something this screen could have prevented.
+    messenger.showSnackBar(SnackBar(content: Text(e.message)));
+  }
+}
+
+/// Choose a patient by name or phone.
+class _PatientPickerSheet extends ConsumerStatefulWidget {
+  const _PatientPickerSheet();
+
+  @override
+  ConsumerState<_PatientPickerSheet> createState() =>
+      _PatientPickerSheetState();
+}
+
+class _PatientPickerSheetState extends ConsumerState<_PatientPickerSheet> {
+  final _controller = TextEditingController();
+  Timer? _debounce;
+  String _search = '';
+
+  @override
+  void dispose() {
+    _debounce?.cancel();
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _onChanged(String v) {
+    // Debounced: the roll is a network query, and firing one per keystroke
+    // makes a busy clinic's list flicker between stale answers.
+    _debounce?.cancel();
+    _debounce = Timer(const Duration(milliseconds: 280), () {
+      if (mounted) setState(() => _search = v.trim());
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    final scheme = Theme.of(context).colorScheme;
+    final async = ref.watch(
+      patientsProvider((
+        riskBand: null,
+        search: _search.isEmpty ? null : _search,
+        sort: 'name',
+      )),
+    );
+
+    return Padding(
+      padding: EdgeInsets.only(
+        left: AppSpacing.md,
+        right: AppSpacing.md,
+        bottom: MediaQuery.of(context).viewInsets.bottom + AppSpacing.md,
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            l10n.deskChoosePatient,
+            style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800),
+          ),
+          const SizedBox(height: AppSpacing.sm + 4),
+          TextField(
+            controller: _controller,
+            onChanged: _onChanged,
+            autofocus: true,
+            textInputAction: TextInputAction.search,
+            decoration: InputDecoration(
+              hintText: l10n.deskSearchPatients,
+              prefixIcon: const Icon(Icons.search_rounded),
+              filled: true,
+              fillColor: scheme.surfaceContainerLowest,
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(_kInnerRadius),
+                borderSide: BorderSide.none,
+              ),
+            ),
+          ),
           const SizedBox(height: AppSpacing.sm),
-          Text(
-            title,
-            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+          SizedBox(
+            height: 320,
+            child: async.when(
+              loading: () => const Center(child: CircularProgressIndicator()),
+              error:
+                  (e, _) => Center(
+                    child: Text(
+                      e is ApiException ? e.message : l10n.deskCouldNotLoadTimes,
+                      textAlign: TextAlign.center,
+                      style: TextStyle(color: scheme.onSurfaceVariant),
+                    ),
+                  ),
+              data: (page) {
+                if (page.items.isEmpty) {
+                  return Center(
+                    child: Text(
+                      l10n.deskNoPatientsFound,
+                      style: TextStyle(color: scheme.onSurfaceVariant),
+                    ),
+                  );
+                }
+                return ListView.builder(
+                  itemCount: page.items.length,
+                  itemBuilder: (_, i) {
+                    final p = page.items[i];
+                    return ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: UserAvatar(
+                        name: p.name,
+                        avatarUrl: p.avatarUrl,
+                        accent: AppColors.primary,
+                        size: 40,
+                      ),
+                      title: Text(
+                        p.name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontWeight: FontWeight.w600),
+                      ),
+                      subtitle: Text(p.phone),
+                      onTap: () => Navigator.pop(context, p),
+                    );
+                  },
+                );
+              },
+            ),
           ),
-          const SizedBox(height: 2),
+        ],
+      ),
+    );
+  }
+}
+
+/// Check in whoever has just arrived.
+///
+/// Every row on today's list already carries its own check-in button, and this
+/// is the same action reached the other way round — from "somebody is at the
+/// window" rather than from "here is the diary". A receptionist with a queue in
+/// front of them should not have to find the right row first.
+Future<void> showCheckInSheet(BuildContext context) => showModalBottomSheet<void>(
+  context: context,
+  isScrollControlled: true,
+  showDragHandle: true,
+  builder: (_) => const _CheckInSheet(),
+);
+
+class _CheckInSheet extends ConsumerWidget {
+  const _CheckInSheet();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final l10n = AppLocalizations.of(context);
+    final scheme = Theme.of(context).colorScheme;
+    final now = DateTime.now();
+    final start = DateTime(now.year, now.month, now.day);
+    final async = ref.watch(
+      appointmentDiaryProvider((
+        from: start,
+        to: start.add(const Duration(days: 1)),
+        status: null,
+        clinicId: null,
+      )),
+    );
+
+    // Only people who are booked and have not arrived. Someone already checked
+    // in cannot be checked in twice, and offering it would let the desk undo
+    // the doctor's "in consultation" by accident.
+    final waiting =
+        (async.valueOrNull?.items ?? const <Appointment>[])
+            .where((a) => a.status == 'confirmed')
+            .toList()
+          ..sort((a, b) => a.sortKey.compareTo(b.sortKey));
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+        AppSpacing.md,
+        0,
+        AppSpacing.md,
+        AppSpacing.lg,
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
           Text(
-            body,
-            textAlign: TextAlign.center,
-            style: TextStyle(fontSize: 13.5, color: scheme.onSurfaceVariant),
+            l10n.deskCheckInPatient,
+            style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800),
           ),
+          const SizedBox(height: AppSpacing.sm + 4),
+          if (async.isLoading && async.valueOrNull == null)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 40),
+              child: Center(child: CircularProgressIndicator()),
+            )
+          else if (waiting.isEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 28),
+              child: Center(
+                child: Text(
+                  l10n.deskNobodyToCheckIn,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: scheme.onSurfaceVariant,
+                  ),
+                ),
+              ),
+            )
+          else
+            Flexible(
+              child: ListView.builder(
+                shrinkWrap: true,
+                itemCount: waiting.length,
+                itemBuilder:
+                    (_, i) => _DayRow(appointment: waiting[i], flat: true),
+              ),
+            ),
         ],
       ),
     );

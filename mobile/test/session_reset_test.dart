@@ -140,4 +140,65 @@ void main() {
     container.read(p);
     expect(builds, 2);
   });
+
+  test('keeping a provider is useless unless its dependencies are kept', () {
+    // The bug this exists for, and the one the earlier tests could not see
+    // because none of them had a provider that WATCHED another.
+    //
+    // authControllerProvider was on the keep-list; authRepositoryProvider,
+    // which it watches, was not. Invalidating the repository rebuilt the
+    // controller anyway — from inside the sign-in that had called the reset —
+    // so the controller was disposed mid-flight and the state went back to
+    // "unknown". The app sat on its splash screen with nothing in the logs.
+    var depBuilds = 0;
+    var dependentBuilds = 0;
+    final dependency = Provider<int>((ref) => ++depBuilds);
+    final dependent = Provider<int>((ref) {
+      ref.watch(dependency);
+      return ++dependentBuilds;
+    });
+
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    // Only the dependent is kept — the mistake, reproduced.
+    registerSessionContainer(container, keep: {dependent});
+
+    container.read(dependent);
+    expect(dependentBuilds, 1);
+
+    resetSessionState();
+    container.read(dependent);
+
+    expect(
+      dependentBuilds,
+      2,
+      reason:
+          'the dependent rebuilt even though it was kept — its dependency was '
+          'invalidated, which is exactly the splash-screen loop',
+    );
+  });
+
+  test('the app keeps the whole auth chain, not just the controller', () {
+    // Read as source. The closure is the property that matters and it is not
+    // visible from any one line: main() must keep the auth controller AND the
+    // repository it watches AND the client and store beneath that.
+    final src = File('lib/main.dart').readAsStringSync();
+    final keep = src.substring(
+      src.indexOf('keep: {'),
+      src.indexOf('},', src.indexOf('keep: {')),
+    );
+    for (final p in [
+      'authControllerProvider',
+      'authRepositoryProvider',
+      'apiClientProvider',
+      'secureStoreProvider',
+      'sharedPreferencesProvider',
+    ]) {
+      expect(
+        keep.contains(p),
+        isTrue,
+        reason: '$p is missing — the chain above it will rebuild mid-sign-in',
+      );
+    }
+  });
 }

@@ -54,11 +54,17 @@ class AuthController extends StateNotifier<AuthState> {
     }
     try {
       final result = await _repository.getMe();
-      // Before the new session's screens read anything. A container that was
-      // never signed out of — an app resumed onto another account, a refresh
-      // that resolved to a different user — has the same stale data with
-      // nobody having pressed sign-out.
-      resetSessionState();
+      // Deliberately NOT resetting here.
+      //
+      // This runs from the constructor, and resetSessionState invalidates
+      // authRepositoryProvider — which authControllerProvider watches. So the
+      // controller was rebuilt by its own bootstrap, ran the constructor
+      // again, reset again, and went round for as long as anyone watched: the
+      // app sat on its splash screen because the state went back to `unknown`
+      // on every lap.
+      //
+      // Nothing needs clearing anyway. This is the first load of a fresh
+      // container — there is no previous session's data in it to leak.
       state = AuthState.authenticated(result.user);
     } on ApiException catch (e) {
       await _secureStore.clear();

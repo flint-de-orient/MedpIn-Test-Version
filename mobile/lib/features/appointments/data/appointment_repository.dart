@@ -38,11 +38,19 @@ class AppointmentRepository {
 
   /// Book a slot. [scheduledForIso] is the absolute ISO instant from the chosen
   /// [Slot]; the server re-validates it against the live schedule.
+  /// Books a slot.
+  ///
+  /// [patientId] is for the front desk booking on somebody's behalf — the
+  /// receptionist taking a call, or a walk-in at the window. A patient booking
+  /// for themselves leaves it null and the server uses their own id; it ignores
+  /// the field for patient callers anyway, so this cannot be used to book into
+  /// another person's name.
   Future<Appointment> book({
     required String clinicId,
     required String scheduledForIso,
     String mode = 'in_clinic',
     String? reason,
+    String? patientId,
   }) async {
     final json = await _client.postJson(
       '/appointments',
@@ -51,6 +59,7 @@ class AppointmentRepository {
         'scheduledFor': scheduledForIso,
         'mode': mode,
         if (reason != null && reason.isNotEmpty) 'reason': reason,
+        if (patientId != null) 'patientId': patientId,
       },
     );
     return Appointment.fromJson(json['appointment'] as Map<String, dynamic>);

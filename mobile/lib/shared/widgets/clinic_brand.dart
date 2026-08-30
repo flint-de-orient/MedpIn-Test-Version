@@ -130,12 +130,21 @@ class ClinicWordmark extends ConsumerWidget {
   const ClinicWordmark({
     super.key,
     this.subtitle,
+    this.subtitleWidget,
     this.height = 34,
     this.maxLogoWidth = 92,
   });
 
   /// A line under the name: "Doctor Panel", "Front desk".
   final String? subtitle;
+
+  /// The same line, when it is more than text.
+  ///
+  /// The front desk puts a live open/closed chip beside "Front Desk", which is
+  /// the one thing on that header a receptionist reads before answering the
+  /// phone. Overrides [subtitle] when both are given. Optional so that every
+  /// other panel keeps passing a plain string and keeps behaving identically.
+  final Widget? subtitleWidget;
 
   /// How tall the logo is drawn.
   final double height;
@@ -196,7 +205,9 @@ class ClinicWordmark extends ConsumerWidget {
                   color: AppColors.accentOn(context),
                 ),
               ),
-              if (subtitle != null)
+              if (subtitleWidget != null)
+                subtitleWidget!
+              else if (subtitle != null)
                 Text(
                   subtitle!,
                   maxLines: 1,

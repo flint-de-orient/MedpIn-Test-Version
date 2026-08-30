@@ -30,6 +30,11 @@ const AMBIENT = new Set([
   'Error', 'TypeError', 'RangeError', 'Promise', 'Map', 'Set', 'WeakMap', 'JSON',
   'Math', 'Symbol', 'BigInt', 'Buffer', 'URL', 'URLSearchParams', 'AbortController',
   'TextEncoder', 'TextDecoder', 'console', 'process', 'globalThis',
+  // Capitalised globals, for the receiver check below.
+  'Intl', 'Reflect', 'Proxy', 'WeakSet', 'WeakRef', 'ArrayBuffer', 'DataView',
+  'Uint8Array', 'Int32Array', 'Float64Array', 'Atomics', 'Function', 'Infinity',
+  'NaN', 'AggregateError', 'EvalError', 'SyntaxError', 'ReferenceError',
+  'Blob', 'File', 'FormData', 'Headers', 'Request', 'Response', 'Event',
   // Control-flow keywords that the call-shaped regex would otherwise pick up.
   'if', 'for', 'while', 'switch', 'catch', 'return', 'typeof', 'function',
   'await', 'yield', 'new', 'delete', 'void', 'in', 'of', 'do', 'else', 'case',
@@ -84,9 +89,10 @@ function declaredNames(src) {
   return names;
 }
 
-/** Locally-called names: `foo(`, but never `obj.foo(` or `new Foo(`. */
-function calledNames(src) {
-  const stripped = src
+/** Comments, string bodies and regex literals removed, so prose never reads
+ * as code. Split out so both checks below see the same cleaned source. */
+function strip(src) {
+  return src
     .replace(/\/\*[\s\S]*?\*\//g, ' ')
     .replace(/(^|[^:])\/\/[^\n]*/g, '$1')
     .replace(/`(?:\\[\s\S]|[^\\`])*`/g, '``')
@@ -101,9 +107,35 @@ function calledNames(src) {
       /(^|[^\w$)\]\s]|[\s](?=\/))\/(?![*/])(?:\\.|\[(?:\\.|[^\]\\])*\]|[^/\\\n])+\/[gimsuyd]*/g,
       '$1/RE/',
     );
+}
 
+/** Locally-called names: `foo(`, but never `obj.foo(` or `new Foo(`. */
+function calledNames(stripped) {
   const out = new Set();
   for (const m of stripped.matchAll(/(^|[^.\w$])([a-z_$][\w$]*)\s*\(/gm)) {
+    out.add(m[2]);
+  }
+  return out;
+}
+
+/**
+ * Capitalised receivers: the `PatientProfile` in `PatientProfile.findOne(...)`.
+ *
+ * Added because the check above missed the same bug wearing a different shape.
+ * It matches lowercase bare calls only, so a Mongoose model that was used but
+ * never imported slipped past twice over — capitalised, and behind a dot. The
+ * patient's dietician tab answered 500 for every newly registered patient and
+ * drew "Could not load the conversation", and nothing in the pipeline said a
+ * word, for exactly the reason written at the top of this file: it is a runtime
+ * ReferenceError on a path no test walked.
+ *
+ * Only method receivers, never every capitalised mention. A class named in a
+ * doc comment or a string is not a use, and this file is worth keeping only
+ * while a failure here still means something.
+ */
+function calledStatics(stripped) {
+  const out = new Set();
+  for (const m of stripped.matchAll(/(^|[^.\w$])([A-Z][\w$]*)\.[a-z][\w$]*\s*\(/gm)) {
     out.add(m[2]);
   }
   return out;
@@ -115,9 +147,11 @@ describe('every called helper is reachable', () => {
     test(rel, () => {
       const src = readFileSync(file, 'utf8');
       const declared = declaredNames(src);
-      const missing = [...calledNames(src)].filter(
-        (n) => !declared.has(n) && !AMBIENT.has(n),
-      );
+      const stripped = strip(src);
+      const missing = [
+        ...calledNames(stripped),
+        ...calledStatics(stripped),
+      ].filter((n) => !declared.has(n) && !AMBIENT.has(n));
       assert.deepEqual(
         missing,
         [],

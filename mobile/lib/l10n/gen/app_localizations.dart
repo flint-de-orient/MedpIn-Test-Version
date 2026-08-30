@@ -2775,6 +2775,294 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Could not update the photo.'**
   String get deskCouldNotUpdatePhoto;
+
+  /// No description provided for @deskOpen.
+  ///
+  /// In en, this message translates to:
+  /// **'Open'**
+  String get deskOpen;
+
+  /// No description provided for @deskClosed.
+  ///
+  /// In en, this message translates to:
+  /// **'Closed'**
+  String get deskClosed;
+
+  /// No description provided for @deskClosedToday.
+  ///
+  /// In en, this message translates to:
+  /// **'Closed today'**
+  String get deskClosedToday;
+
+  /// No description provided for @deskRefresh.
+  ///
+  /// In en, this message translates to:
+  /// **'Refresh'**
+  String get deskRefresh;
+
+  /// No description provided for @deskUrgentChip.
+  ///
+  /// In en, this message translates to:
+  /// **'URGENT'**
+  String get deskUrgentChip;
+
+  /// No description provided for @deskReviewNow.
+  ///
+  /// In en, this message translates to:
+  /// **'Review now'**
+  String get deskReviewNow;
+
+  /// No description provided for @deskTodaysQueue.
+  ///
+  /// In en, this message translates to:
+  /// **'Today\'s queue'**
+  String get deskTodaysQueue;
+
+  /// No description provided for @deskManageQueue.
+  ///
+  /// In en, this message translates to:
+  /// **'Manage queue'**
+  String get deskManageQueue;
+
+  /// No description provided for @deskScheduled.
+  ///
+  /// In en, this message translates to:
+  /// **'Scheduled'**
+  String get deskScheduled;
+
+  /// No description provided for @deskInProgress.
+  ///
+  /// In en, this message translates to:
+  /// **'In progress'**
+  String get deskInProgress;
+
+  /// No description provided for @deskForScheduling.
+  ///
+  /// In en, this message translates to:
+  /// **'For scheduling'**
+  String get deskForScheduling;
+
+  /// No description provided for @deskNowLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Now'**
+  String get deskNowLabel;
+
+  /// No description provided for @deskTodaysAppointments.
+  ///
+  /// In en, this message translates to:
+  /// **'Today\'s appointments'**
+  String get deskTodaysAppointments;
+
+  /// No description provided for @deskViewCalendar.
+  ///
+  /// In en, this message translates to:
+  /// **'View calendar'**
+  String get deskViewCalendar;
+
+  /// No description provided for @deskNoAppointmentsScheduled.
+  ///
+  /// In en, this message translates to:
+  /// **'No appointments scheduled'**
+  String get deskNoAppointmentsScheduled;
+
+  /// No description provided for @deskAddWalkIn.
+  ///
+  /// In en, this message translates to:
+  /// **'Add walk-in'**
+  String get deskAddWalkIn;
+
+  /// No description provided for @deskQuickActions.
+  ///
+  /// In en, this message translates to:
+  /// **'Quick actions'**
+  String get deskQuickActions;
+
+  /// No description provided for @deskRegisterPatient.
+  ///
+  /// In en, this message translates to:
+  /// **'Register patient'**
+  String get deskRegisterPatient;
+
+  /// No description provided for @deskAddNewPatient.
+  ///
+  /// In en, this message translates to:
+  /// **'Add new patient'**
+  String get deskAddNewPatient;
+
+  /// No description provided for @deskNewAppointment.
+  ///
+  /// In en, this message translates to:
+  /// **'New appointment'**
+  String get deskNewAppointment;
+
+  /// No description provided for @deskBookAppointment.
+  ///
+  /// In en, this message translates to:
+  /// **'Book appointment'**
+  String get deskBookAppointment;
+
+  /// No description provided for @deskCheckInPatient.
+  ///
+  /// In en, this message translates to:
+  /// **'Check-in patient'**
+  String get deskCheckInPatient;
+
+  /// No description provided for @deskWalkInCheckIn.
+  ///
+  /// In en, this message translates to:
+  /// **'Walk-in check-in'**
+  String get deskWalkInCheckIn;
+
+  /// No description provided for @deskMessagesLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Messages'**
+  String get deskMessagesLabel;
+
+  /// No description provided for @deskClinicSummary.
+  ///
+  /// In en, this message translates to:
+  /// **'Clinic summary'**
+  String get deskClinicSummary;
+
+  /// No description provided for @deskCompleted.
+  ///
+  /// In en, this message translates to:
+  /// **'Completed'**
+  String get deskCompleted;
+
+  /// No description provided for @deskCancelled.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancelled'**
+  String get deskCancelled;
+
+  /// No description provided for @deskNoShows.
+  ///
+  /// In en, this message translates to:
+  /// **'No shows'**
+  String get deskNoShows;
+
+  /// No description provided for @deskTotalVisitors.
+  ///
+  /// In en, this message translates to:
+  /// **'Total visitors'**
+  String get deskTotalVisitors;
+
+  /// No description provided for @deskOfferTime.
+  ///
+  /// In en, this message translates to:
+  /// **'Offer a time'**
+  String get deskOfferTime;
+
+  /// No description provided for @deskWaitingForScheduling.
+  ///
+  /// In en, this message translates to:
+  /// **'Waiting for scheduling'**
+  String get deskWaitingForScheduling;
+
+  /// No description provided for @deskCatUrgent.
+  ///
+  /// In en, this message translates to:
+  /// **'Urgent'**
+  String get deskCatUrgent;
+
+  /// No description provided for @deskCatAppointments.
+  ///
+  /// In en, this message translates to:
+  /// **'Appointments'**
+  String get deskCatAppointments;
+
+  /// No description provided for @deskCatMessages.
+  ///
+  /// In en, this message translates to:
+  /// **'Messages'**
+  String get deskCatMessages;
+
+  /// No description provided for @deskUrgentSymptom.
+  ///
+  /// In en, this message translates to:
+  /// **'Urgent patient-reported symptom'**
+  String get deskUrgentSymptom;
+
+  /// No description provided for @deskNothingInProgress.
+  ///
+  /// In en, this message translates to:
+  /// **'No appointment in progress'**
+  String get deskNothingInProgress;
+
+  /// No description provided for @deskClosesAt.
+  ///
+  /// In en, this message translates to:
+  /// **'Closes {time}'**
+  String deskClosesAt(String time);
+
+  /// No description provided for @deskOpensAt.
+  ///
+  /// In en, this message translates to:
+  /// **'Opens {time}'**
+  String deskOpensAt(String time);
+
+  /// No description provided for @deskUnreadCount.
+  ///
+  /// In en, this message translates to:
+  /// **'{count} unread'**
+  String deskUnreadCount(int count);
+
+  /// No description provided for @deskReportedAgoMinutes.
+  ///
+  /// In en, this message translates to:
+  /// **'Reported {count} min ago'**
+  String deskReportedAgoMinutes(int count);
+
+  /// No description provided for @deskReportedAgoHours.
+  ///
+  /// In en, this message translates to:
+  /// **'Reported {count} h ago'**
+  String deskReportedAgoHours(int count);
+
+  /// No description provided for @deskReportedAgoDays.
+  ///
+  /// In en, this message translates to:
+  /// **'Reported {count} d ago'**
+  String deskReportedAgoDays(int count);
+
+  /// No description provided for @deskWaitingCount.
+  ///
+  /// In en, this message translates to:
+  /// **'{count} waiting for scheduling'**
+  String deskWaitingCount(int count);
+
+  /// No description provided for @rangeThisWeek.
+  ///
+  /// In en, this message translates to:
+  /// **'This week'**
+  String get rangeThisWeek;
+
+  /// No description provided for @deskChoosePatient.
+  ///
+  /// In en, this message translates to:
+  /// **'Choose a patient'**
+  String get deskChoosePatient;
+
+  /// No description provided for @deskSearchPatients.
+  ///
+  /// In en, this message translates to:
+  /// **'Search by name or phone'**
+  String get deskSearchPatients;
+
+  /// No description provided for @deskNoPatientsFound.
+  ///
+  /// In en, this message translates to:
+  /// **'No patients found'**
+  String get deskNoPatientsFound;
+
+  /// No description provided for @deskNobodyToCheckIn.
+  ///
+  /// In en, this message translates to:
+  /// **'Nobody is waiting to be checked in.'**
+  String get deskNobodyToCheckIn;
 }
 
 class _AppLocalizationsDelegate

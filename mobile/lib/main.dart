@@ -68,6 +68,17 @@ Future<void> main() async {
       // screen with nothing in the logs, because nothing had failed except
       // that the answer kept being discarded before it could be used.
       authControllerProvider,
+      // And what it watches. This is the rule that is easy to miss and hard to
+      // debug: invalidating a provider rebuilds everything that WATCHES it, so
+      // keeping the auth controller while dropping its repository rebuilds the
+      // controller anyway — from inside the sign-in that called the reset. The
+      // controller is then disposed mid-flight and the app returns to
+      // "unknown", which is a splash screen that never resolves.
+      //
+      // So the keep-list has to be closed under "watches": everything a kept
+      // provider depends on is kept too. apiClientProvider, secureStoreProvider
+      // and sharedPreferencesProvider are below for the same reason.
+      authRepositoryProvider,
       // Chosen before anyone signs in and still true after. Dropping these
       // would flip a Bengali reader's app to English on sign-out.
       localeControllerProvider,

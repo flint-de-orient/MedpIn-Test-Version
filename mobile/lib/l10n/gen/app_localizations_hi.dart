@@ -1454,4 +1454,162 @@ class AppLocalizationsHi extends AppLocalizations {
 
   @override
   String get deskCouldNotUpdatePhoto => 'फ़ोटो नहीं बदली जा सकी।';
+
+  @override
+  String get deskOpen => 'खुला';
+
+  @override
+  String get deskClosed => 'बंद';
+
+  @override
+  String get deskClosedToday => 'आज बंद';
+
+  @override
+  String get deskRefresh => 'रिफ़्रेश';
+
+  @override
+  String get deskUrgentChip => 'अत्यावश्यक';
+
+  @override
+  String get deskReviewNow => 'अभी देखें';
+
+  @override
+  String get deskTodaysQueue => 'आज की कतार';
+
+  @override
+  String get deskManageQueue => 'कतार प्रबंधित करें';
+
+  @override
+  String get deskScheduled => 'निर्धारित';
+
+  @override
+  String get deskInProgress => 'चल रहा है';
+
+  @override
+  String get deskForScheduling => 'समय देना बाकी';
+
+  @override
+  String get deskNowLabel => 'अभी';
+
+  @override
+  String get deskTodaysAppointments => 'आज की अपॉइंटमेंट';
+
+  @override
+  String get deskViewCalendar => 'कैलेंडर देखें';
+
+  @override
+  String get deskNoAppointmentsScheduled => 'कोई अपॉइंटमेंट निर्धारित नहीं';
+
+  @override
+  String get deskAddWalkIn => 'वॉक-इन जोड़ें';
+
+  @override
+  String get deskQuickActions => 'त्वरित काम';
+
+  @override
+  String get deskRegisterPatient => 'मरीज़ पंजीकृत करें';
+
+  @override
+  String get deskAddNewPatient => 'नया मरीज़ जोड़ें';
+
+  @override
+  String get deskNewAppointment => 'नई अपॉइंटमेंट';
+
+  @override
+  String get deskBookAppointment => 'अपॉइंटमेंट बुक करें';
+
+  @override
+  String get deskCheckInPatient => 'मरीज़ चेक-इन';
+
+  @override
+  String get deskWalkInCheckIn => 'वॉक-इन चेक-इन';
+
+  @override
+  String get deskMessagesLabel => 'संदेश';
+
+  @override
+  String get deskClinicSummary => 'क्लिनिक सारांश';
+
+  @override
+  String get deskCompleted => 'पूरा हुआ';
+
+  @override
+  String get deskCancelled => 'रद्द';
+
+  @override
+  String get deskNoShows => 'नहीं आए';
+
+  @override
+  String get deskTotalVisitors => 'कुल आगंतुक';
+
+  @override
+  String get deskOfferTime => 'समय दें';
+
+  @override
+  String get deskWaitingForScheduling => 'समय का इंतज़ार';
+
+  @override
+  String get deskCatUrgent => 'अत्यावश्यक';
+
+  @override
+  String get deskCatAppointments => 'अपॉइंटमेंट';
+
+  @override
+  String get deskCatMessages => 'संदेश';
+
+  @override
+  String get deskUrgentSymptom => 'मरीज़ द्वारा बताया गया अत्यावश्यक लक्षण';
+
+  @override
+  String get deskNothingInProgress => 'कोई अपॉइंटमेंट नहीं चल रही';
+
+  @override
+  String deskClosesAt(String time) {
+    return '$time बजे बंद';
+  }
+
+  @override
+  String deskOpensAt(String time) {
+    return '$time बजे खुलेगा';
+  }
+
+  @override
+  String deskUnreadCount(int count) {
+    return '$count अपठित';
+  }
+
+  @override
+  String deskReportedAgoMinutes(int count) {
+    return '$count मिनट पहले बताया';
+  }
+
+  @override
+  String deskReportedAgoHours(int count) {
+    return '$count घंटे पहले बताया';
+  }
+
+  @override
+  String deskReportedAgoDays(int count) {
+    return '$count दिन पहले बताया';
+  }
+
+  @override
+  String deskWaitingCount(int count) {
+    return '$count को समय देना बाकी';
+  }
+
+  @override
+  String get rangeThisWeek => 'इस हफ़्ते';
+
+  @override
+  String get deskChoosePatient => 'मरीज़ चुनें';
+
+  @override
+  String get deskSearchPatients => 'नाम या फ़ोन से खोजें';
+
+  @override
+  String get deskNoPatientsFound => 'कोई मरीज़ नहीं मिला';
+
+  @override
+  String get deskNobodyToCheckIn => 'चेक-इन के लिए कोई नहीं है।';
 }

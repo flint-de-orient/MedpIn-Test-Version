@@ -687,5 +687,102 @@
   "deskAbout": "About",
   "deskNoDeviceLock": "This phone has no fingerprint or PIN set up.",
   "deskAppLockSub": "Ask for the phone’s fingerprint or PIN each time it opens",
-  "deskCouldNotUpdatePhoto": "Could not update the photo."
+  "deskCouldNotUpdatePhoto": "Could not update the photo.",
+  "deskOpen": "Open",
+  "deskClosed": "Closed",
+  "deskClosedToday": "Closed today",
+  "deskRefresh": "Refresh",
+  "deskUrgentChip": "URGENT",
+  "deskReviewNow": "Review now",
+  "deskTodaysQueue": "Today's queue",
+  "deskManageQueue": "Manage queue",
+  "deskScheduled": "Scheduled",
+  "deskInProgress": "In progress",
+  "deskForScheduling": "For scheduling",
+  "deskNowLabel": "Now",
+  "deskTodaysAppointments": "Today's appointments",
+  "deskViewCalendar": "View calendar",
+  "deskNoAppointmentsScheduled": "No appointments scheduled",
+  "deskAddWalkIn": "Add walk-in",
+  "deskQuickActions": "Quick actions",
+  "deskRegisterPatient": "Register patient",
+  "deskAddNewPatient": "Add new patient",
+  "deskNewAppointment": "New appointment",
+  "deskBookAppointment": "Book appointment",
+  "deskCheckInPatient": "Check-in patient",
+  "deskWalkInCheckIn": "Walk-in check-in",
+  "deskMessagesLabel": "Messages",
+  "deskClinicSummary": "Clinic summary",
+  "deskCompleted": "Completed",
+  "deskCancelled": "Cancelled",
+  "deskNoShows": "No shows",
+  "deskTotalVisitors": "Total visitors",
+  "deskOfferTime": "Offer a time",
+  "deskWaitingForScheduling": "Waiting for scheduling",
+  "deskCatUrgent": "Urgent",
+  "deskCatAppointments": "Appointments",
+  "deskCatMessages": "Messages",
+  "deskUrgentSymptom": "Urgent patient-reported symptom",
+  "deskNothingInProgress": "No appointment in progress",
+  "deskClosesAt": "Closes {time}",
+  "@deskClosesAt": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "deskOpensAt": "Opens {time}",
+  "@deskOpensAt": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "deskUnreadCount": "{count} unread",
+  "@deskUnreadCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "deskReportedAgoMinutes": "Reported {count} min ago",
+  "@deskReportedAgoMinutes": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "deskReportedAgoHours": "Reported {count} h ago",
+  "@deskReportedAgoHours": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "deskReportedAgoDays": "Reported {count} d ago",
+  "@deskReportedAgoDays": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "deskWaitingCount": "{count} waiting for scheduling",
+  "@deskWaitingCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "rangeThisWeek": "This week",
+  "deskChoosePatient": "Choose a patient",
+  "deskSearchPatients": "Search by name or phone",
+  "deskNoPatientsFound": "No patients found",
+  "deskNobodyToCheckIn": "Nobody is waiting to be checked in."
 }
