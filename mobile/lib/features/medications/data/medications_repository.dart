@@ -100,6 +100,26 @@ class MedicationsRepository {
     return PrescriptionScanResult.fromJson(json);
   }
 
+  /// Save the medicines the patient has just looked at.
+  ///
+  /// Sends the reviewed items back rather than the photograph. Re-reading the
+  /// picture would run the model a second time and could return a different
+  /// list from the one on screen — the patient would be approving one thing and
+  /// saving another, which is exactly what splitting this in two prevents.
+  Future<PrescriptionScanResult> confirmScannedMedicines({
+    required List<ScannedMedicine> items,
+    Map<String, dynamic>? prescriber,
+  }) async {
+    final json = await _client.postJson(
+      '$_base/scan/confirm',
+      body: {
+        'items': [for (final i in items) i.toJson()],
+        if (prescriber != null) 'prescriber': prescriber,
+      },
+    );
+    return PrescriptionScanResult.fromJson({...json, 'readable': true});
+  }
+
   static String _imageMime(String filename) {
     switch (filename.toLowerCase().split('.').last) {
       case 'png':

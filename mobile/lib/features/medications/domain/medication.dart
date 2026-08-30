@@ -101,15 +101,30 @@ class Medication {
 /// Result of `POST /medications/scan` — the medicines read from a prescription
 /// photo and created in the tracker. [readable] is false when the photo could
 /// not be read, so the UI can ask for a clearer one.
+/// What the scan read, before any of it is saved.
+///
+/// [items] is a proposal, not a record. The server used to create the medicines
+/// as it read them and hand back what it had already done — so a misread hour
+/// was a live alarm before the patient could see it. It now reads, works out
+/// the times, and stops; the patient looks, drops anything they do not
+/// recognise, and only then is any of it written.
 class PrescriptionScanResult {
   const PrescriptionScanResult({
     required this.readable,
     required this.created,
+    this.items = const [],
+    this.prescriber,
     this.note,
   });
 
   final bool readable;
+
+  /// Empty from a scan. Filled by the confirm step with what was actually
+  /// saved, so the sheet can say how many rather than guessing.
   final List<Medication> created;
+
+  final List<ScannedMedicine> items;
+  final Map<String, dynamic>? prescriber;
   final String? note;
 
   factory PrescriptionScanResult.fromJson(Map<String, dynamic> json) {
@@ -119,9 +134,64 @@ class PrescriptionScanResult {
           (json['created'] as List<dynamic>? ?? const [])
               .map((e) => Medication.fromJson(e as Map<String, dynamic>))
               .toList(),
+      items:
+          (json['items'] as List<dynamic>? ?? const [])
+              .whereType<Map<String, dynamic>>()
+              .map(ScannedMedicine.fromJson)
+              .toList(),
+      prescriber: json['prescriber'] as Map<String, dynamic>?,
       note: json['note'] as String?,
     );
   }
+}
+
+/// One medicine the scan proposes, with the times it worked out.
+class ScannedMedicine {
+  const ScannedMedicine({
+    required this.name,
+    this.strength,
+    this.dose,
+    this.instructions,
+    this.durationDays,
+    this.schedule = const [],
+  });
+
+  final String name;
+  final String? strength;
+  final String? dose;
+  final String? instructions;
+  final int? durationDays;
+
+  /// 'HH:mm' times with their relation to a meal.
+  final List<({String time, String relationToMeal})> schedule;
+
+  factory ScannedMedicine.fromJson(Map<String, dynamic> j) => ScannedMedicine(
+    name: j['name']?.toString() ?? '',
+    strength: j['strength']?.toString(),
+    dose: j['dose']?.toString(),
+    instructions: j['instructions']?.toString(),
+    durationDays: (j['durationDays'] as num?)?.toInt(),
+    schedule: [
+      for (final s in (j['schedule'] as List?) ?? const [])
+        if (s is Map<String, dynamic> && s['time'] != null)
+          (
+            time: s['time'].toString(),
+            relationToMeal: s['relationToMeal']?.toString() ?? 'any',
+          ),
+    ],
+  );
+
+  Map<String, dynamic> toJson() => {
+    'name': name,
+    if (strength != null) 'strength': strength,
+    if (dose != null) 'dose': dose,
+    if (instructions != null) 'instructions': instructions,
+    if (durationDays != null) 'durationDays': durationDays,
+    'schedule': [
+      for (final s in schedule)
+        {'time': s.time, 'relationToMeal': s.relationToMeal},
+    ],
+  };
 }
 
 /// The patient/dietician-facing plain-language dosing phrase, derived from the

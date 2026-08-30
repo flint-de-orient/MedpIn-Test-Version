@@ -12,6 +12,7 @@ import { MedicationLog } from '../models/MedicationLog.js';
 import { computeAdherence } from '../services/analytics.js';
 import { extractPrescription } from '../services/ai/vision.js';
 import { buildSchedule, scheduleText } from '../services/medicationSchedule.js';
+import { normaliseScannedItems } from '../services/prescriptionItems.js';
 import { PatientProfile } from '../models/PatientProfile.js';
 import { AiUnavailableError } from '../services/ai/gemini.js';
 import { MedicineBrand, brandSlug } from '../models/MedicineBrand.js';
@@ -141,33 +142,127 @@ router.post(
       clinic: p.clinic || undefined,
       writtenOn: written && !Number.isNaN(written.getTime()) ? written : undefined,
     };
+    // Split, tidied and de-duplicated before anything is written.
+    //
+    // A line naming two drugs is two medicines; the same drug on two lines is
+    // one medicine taken twice. Both were wrong here, and the second was the
+    // quieter failure: keyed by name alone, the later write overwrote the
+    // earlier and a dose vanished with no error anywhere.
+    const items = normaliseScannedItems(parsed.items);
+
+    // Nothing is written yet.
+    //
+    // This route used to create the medicines and arm their reminders before
+    // the patient had read a word: the sheet that says "Added 4 medicines" was
+    // a receipt, not a question. A misread strength or a mistaken hour was
+    // already a live alarm by the time anyone could see it, and on this very
+    // prescription three tablets were scheduled for eight in the morning.
+    //
+    // So the scan proposes and the patient disposes: what comes back here is a
+    // preview with the times worked out, and POST /scan/confirm writes it.
+    res.json({
+      readable: true,
+      preview: true,
+      created: [],
+      items: items.map((item) => ({
+          name: item.name,
+          strength: item.strength ?? null,
+          dose: item.dose ?? null,
+          frequency: item.frequency ?? null,
+          instructions: item.instructions ?? null,
+          relationToMeal: item.relationToMeal ?? null,
+          durationDays: item.durationDays ?? null,
+          schedule: buildSchedule(
+            scheduleText(item),
+            mealTimes,
+            item.relationToMeal ?? 'any',
+          ),
+      })),
+      prescriber,
+      note: parsed.note ?? null,
+    });
+  }),
+);
+
+/**
+ * Write the medicines the patient has just looked at.
+ *
+ * Takes the reviewed items back rather than the photograph. Re-reading the
+ * picture here would run the model a second time and could return a different
+ * list from the one on screen — the patient would be approving one thing and
+ * saving another, which is the whole failure this split exists to prevent.
+ *
+ * The patient may have dropped a row they did not recognise, so what arrives is
+ * the truth about what they agreed to.
+ */
+router.post(
+  '/scan/confirm',
+  validate({
+    body: z.object({
+      items: z
+        .array(
+          z.object({
+            name: z.string().trim().min(1).max(160),
+            strength: z.string().max(60).nullish(),
+            dose: z.string().max(60).nullish(),
+            instructions: z.string().max(600).nullish(),
+            durationDays: z.number().int().positive().max(3650).nullish(),
+            schedule: z.array(scheduleSlot).max(8).default([]),
+          }),
+        )
+        .min(1)
+        .max(30),
+      prescriber: z
+        .object({
+          name: z.string().max(160).nullish(),
+          speciality: z.string().max(160).nullish(),
+          clinic: z.string().max(160).nullish(),
+          writtenOn: z.coerce.date().nullish(),
+        })
+        .nullish(),
+    }),
+  }),
+  audit('create', 'Medication'),
+  asyncHandler(async (req, res) => {
+    const prescriber = req.body.prescriber
+      ? {
+          name: req.body.prescriber.name || undefined,
+          speciality: req.body.prescriber.speciality || undefined,
+          clinic: req.body.prescriber.clinic || undefined,
+          writtenOn: req.body.prescriber.writtenOn || undefined,
+        }
+      : undefined;
+
     const created = [];
-    for (const item of parsed.items) {
-      if (!item?.name) continue;
-      // Upsert by name so re-scanning the same prescription (or a medicine the
-      // patient already takes) updates that medicine rather than duplicating it.
+    for (const item of req.body.items) {
       const med = await Medication.findOneAndUpdate(
-        { patient: req.patientId, name: item.name, isActive: true },
+        // Strength is part of the key. Metformin 500 and metformin 1000 are
+        // different prescriptions, and matching on the name alone let the
+        // second silently replace the first.
+        {
+          patient: req.patientId,
+          name: item.name,
+          strength: item.strength ?? null,
+          isActive: true,
+        },
         {
           $set: {
             patient: req.patientId,
             name: item.name,
-            strength: item.strength,
-            dose: item.dose,
+            strength: item.strength ?? undefined,
+            dose: item.dose ?? undefined,
             form: /insulin/i.test(item.name) ? 'insulin' : 'tablet',
-            schedule: buildSchedule(scheduleText(item), mealTimes, item.relationToMeal ?? 'any'),
+            schedule: item.schedule,
             startDate: new Date(),
-            endDate: item.durationDays ? dayjs().add(item.durationDays, 'day').toDate() : undefined,
-            instructions: item.instructions,
+            endDate: item.durationDays
+              ? dayjs().add(item.durationDays, 'day').toDate()
+              : undefined,
+            instructions: item.instructions ?? undefined,
             prescribedBy: req.user.role === 'patient' ? undefined : req.user._id,
-            // Marked as read off a photograph, not issued here.
-            //
-            // Without this a scanned medicine was indistinguishable from one
-            // the doctor wrote in the app: prescribedBy was null either way,
-            // and the tracker showed a cardiologist's tablet beside Dr. Dey's
-            // own with nothing to tell them apart. The doctor needs to see it —
-            // that is the point of a complete list — but needs to know it is
-            // not theirs before changing anything about it.
+            // Marked as read off a photograph, not issued here. Without it a
+            // scanned medicine is indistinguishable from one the doctor wrote
+            // in the app, and the doctor needs to know a tablet is not his
+            // before changing anything about it.
             source: 'scan',
             externalPrescriber: prescriber,
             isActive: true,
@@ -179,14 +274,13 @@ router.post(
     }
 
     // Once for the batch, not once per medicine — a scanned prescription is a
-    // single act, and the coalescing window downstream would merge them anyway.
-    // Only when a clinician scanned it: a patient photographing their own
-    // prescription does not need telling what they just did.
+    // single act. Only when a clinician scanned it: a patient photographing
+    // their own prescription does not need telling what they just did.
     if (created.length > 0 && actingOnBehalf(req)) {
       notifyPatientOfMedicineChange(req.patientId, req.user, 'added');
     }
 
-    res.status(201).json({ readable: true, created });
+    res.status(201).json({ created });
   }),
 );
 

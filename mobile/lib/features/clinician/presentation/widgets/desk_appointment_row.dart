@@ -7,27 +7,26 @@ import '../../../../core/theme/app_colors.dart';
 import '../../../appointments/domain/appointment.dart';
 import '../../../staff/presentation/widgets/desk_geometry.dart';
 
-/// A phone number with its middle hidden.
+/// A phone number, in full and grouped so it can be read aloud.
 ///
-/// A front desk screen is read over the shoulder — by the next patient in the
-/// queue, by whoever is leaning on the counter. The receptionist needs enough
-/// digits to recognise the right person and confirm one back to them, not the
-/// whole number on display all day. The full number is one tap away on the call
-/// button beside it, which is what they actually want it for.
+/// It was masked to +91 93304 xxxx 63 for shoulder-surfing on a counter-top
+/// handset. The clinic asked for the whole number back, which is their call to
+/// make: the desk reads numbers out to patients and dictates them to couriers,
+/// and half a number cannot be checked against the one somebody is reciting.
 ///
-/// Falls back to the number as given when it is too short to mask meaningfully
-/// — hiding four digits of a six-digit number leaves nothing to recognise.
-String maskPhone(String? raw) {
+/// Grouped rather than run together, because +919330414463 is fourteen digits
+/// with nothing for the eye to hold on to, and a receptionist copying it out
+/// loses their place in the middle.
+String formatPhone(String? raw) {
   final s = (raw ?? '').trim();
   if (s.isEmpty) return '';
   final digits = s.replaceAll(RegExp(r'\D'), '');
-  if (digits.length < 8) return s;
+  if (digits.length < 10) return s;
 
-  final cc = s.startsWith('+') ? digits.substring(0, digits.length - 10) : '';
   final local = digits.substring(digits.length - 10);
-  final head = local.substring(0, 5);
-  final tail = local.substring(8);
-  return '${cc.isEmpty ? '' : '+$cc '}$head •••• $tail';
+  final cc = digits.substring(0, digits.length - 10);
+  final grouped = '${local.substring(0, 5)} ${local.substring(5)}';
+  return cc.isEmpty ? grouped : '+$cc $grouped';
 }
 
 /// One booked appointment, as the desk reads it.
@@ -112,7 +111,7 @@ class DeskAppointmentRow extends ConsumerWidget {
                                 children: [
                                   Flexible(
                                     child: Text(
-                                      maskPhone(a.patientPhone),
+                                      formatPhone(a.patientPhone),
                                       maxLines: 1,
                                       overflow: TextOverflow.ellipsis,
                                       style: TextStyle(
