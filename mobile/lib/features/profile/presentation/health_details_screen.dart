@@ -6,7 +6,6 @@ import '../../../core/network/api_exception.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../l10n/gen/app_localizations.dart';
-import 'widgets/diabetes_type_sheet.dart';
 import '../../auth/presentation/auth_controller.dart';
 import '../../home/domain/care_summary.dart';
 import '../../home/presentation/home_providers.dart';
@@ -26,6 +25,11 @@ class HealthDetailsScreen extends ConsumerStatefulWidget {
 class _HealthDetailsScreenState extends ConsumerState<HealthDetailsScreen> {
   final _formKey = GlobalKey<FormState>();
   final _height = TextEditingController();
+  final _weight = TextEditingController();
+
+  /// What the weight was when the form opened, so saving an untouched form
+  /// does not record a reading the patient never took.
+  double? _loadedWeight;
   final _complaint = TextEditingController();
   final _allergies = TextEditingController();
   final _contactName = TextEditingController();
@@ -45,6 +49,7 @@ class _HealthDetailsScreenState extends ConsumerState<HealthDetailsScreen> {
   @override
   void dispose() {
     _height.dispose();
+    _weight.dispose();
     _complaint.dispose();
     _allergies.dispose();
     _contactName.dispose();
@@ -58,6 +63,14 @@ class _HealthDetailsScreenState extends ConsumerState<HealthDetailsScreen> {
       final p = await ref.read(authRepositoryProvider).getProfile();
       if (!mounted) return;
       _height.text = (p['heightCm'] as num?)?.toString() ?? '';
+      // From the care summary, not the profile. The profile keeps
+      // baselineWeightKg — what they weighed when they joined — and the
+      // current weight is the latest vitals reading. Loading the profile
+      // field here would show a number from months ago and, worse, save it
+      // back as todays.
+      final current = ref.read(careSummaryProvider).valueOrNull?.profile.weightKg;
+      _weight.text = current?.toString() ?? '';
+      _loadedWeight = current?.toDouble();
       _complaint.text = p['chiefComplaint']?.toString() ?? '';
       _allergies.text = (p['allergies'] as List?)?.join(', ') ?? '';
       final c = p['emergencyContact'];
@@ -66,7 +79,6 @@ class _HealthDetailsScreenState extends ConsumerState<HealthDetailsScreen> {
         _contactPhone.text = c['phone']?.toString() ?? '';
         _contactRelation.text = c['relation']?.toString() ?? '';
       }
-      _diabetesType = p['diabetesType']?.toString();
       final d = p['diagnosedOn'];
       if (d != null) _diagnosedOn = DateTime.tryParse(d.toString());
     } on ApiException {
@@ -74,27 +86,6 @@ class _HealthDetailsScreenState extends ConsumerState<HealthDetailsScreen> {
     } finally {
       if (mounted) setState(() => _loading = false);
     }
-  }
-
-  /// The stored type, or null when nobody has ever said.
-  ///
-  /// Null is a real answer and is shown as "Not set" rather than guessed at.
-  /// Guessing is what put "Type 2 Diabetes" on the home screen of patients who
-  /// were never asked.
-  String? _diabetesType;
-
-  String? _diabetesLabel(AppLocalizations l10n) => switch (_diabetesType) {
-    'type1' => l10n.authDiabetesType1,
-    'type2' => l10n.authDiabetesType2,
-    'gestational' => l10n.authDiabetesTypeGestational,
-    'prediabetes' => l10n.authDiabetesTypePrediabetes,
-    'none' => l10n.authDiabetesTypeNone,
-    _ => null,
-  };
-
-  Future<void> _pickDiabetesType() async {
-    final chosen = await DiabetesTypeSheet.show(context, initial: _diabetesType);
-    if (chosen != null && mounted) setState(() => _diabetesType = chosen);
   }
 
   Future<void> _pickDiagnosedOn() async {
@@ -131,7 +122,6 @@ class _HealthDetailsScreenState extends ConsumerState<HealthDetailsScreen> {
           .read(authRepositoryProvider)
           .updateProfile(
             heightCm: double.tryParse(_height.text.trim()),
-            diabetesType: _diabetesType,
             chiefComplaint: _complaint.text.trim(),
             diagnosedOn:
                 _diagnosedOn == null
@@ -149,6 +139,16 @@ class _HealthDetailsScreenState extends ConsumerState<HealthDetailsScreen> {
                     }
                     : null,
           );
+      // The weight goes to vitals, and only when it actually changed — every
+      // save would otherwise stamp a new reading on the series and make a
+      // patient who edited their allergies look like they had weighed
+      // themselves.
+      final weight = double.tryParse(_weight.text.trim());
+      final patientId = ref.read(authControllerProvider).user?.id;
+      if (weight != null && patientId != null && weight != _loadedWeight) {
+        await ref.read(authRepositoryProvider).recordWeight(patientId, weight);
+        ref.invalidate(careSummaryProvider);
+      }
       messenger.showSnackBar(SnackBar(content: Text(l10n.profileSaved)));
       navigator.pop();
     } on ApiException {
@@ -244,48 +244,37 @@ class _HealthDetailsScreenState extends ConsumerState<HealthDetailsScreen> {
                       },
                     ),
                     const SizedBox(height: AppSpacing.md),
+                    // Weight, editable — it was shown read-only above with
+                    // "record a new one to update them", which is true of the
+                    // tracker but told a patient nothing about where. Height
+                    // was editable and weight was not, which is the wrong way
+                    // round: height barely changes and weight is the number
+                    // this clinic is actually working on.
+                    //
+                    // Saved as a vitals reading rather than a profile field,
+                    // so it joins the same series the doctor reads and BMI is
+                    // recomputed from it. A weight written into the profile
+                    // would be a second, quietly disagreeing copy.
+                    _field(
+                      controller: _weight,
+                      label: 'Weight (kg)',
+                      keyboardType: TextInputType.number,
+                      inputFormatters: [
+                        FilteringTextInputFormatter.allow(RegExp(r'[0-9.]')),
+                      ],
+                      validator: (v) {
+                        if (v == null || v.trim().isEmpty) return null;
+                        final w = double.tryParse(v.trim());
+                        if (w == null || w < 10 || w > 400) return '10–400';
+                        return null;
+                      },
+                    ),
+                    const SizedBox(height: AppSpacing.md),
                     _field(
                       controller: _complaint,
                       label: l10n.healthMainConcern,
                       hint: l10n.healthMainConcernHint,
                       maxLines: 3,
-                    ),
-                    const SizedBox(height: AppSpacing.md),
-                    // Which diabetes, above the date it was diagnosed.
-                    //
-                    // The screen collected the date and never the diagnosis,
-                    // which is an odd pair to ask for on its own. Nothing
-                    // anywhere in the app could set this — not registration,
-                    // not the desk, not the doctor's record — so every patient
-                    // wore whatever the server defaulted them to, and the home
-                    // screen announced "Type 2 Diabetes" about people nobody
-                    // had asked. The picker for it already existed and was
-                    // wired to nothing.
-                    //
-                    // It matters more than an ordinary setting: type governs
-                    // DKA risk, insulin dependence and what the assistant tells
-                    // them, so a Type 1 patient recorded as Type 2 is a
-                    // clinical problem rather than a cosmetic one.
-                    InkWell(
-                      onTap: _pickDiabetesType,
-                      borderRadius: BorderRadius.circular(
-                        AppSpacing.buttonRadius,
-                      ),
-                      child: InputDecorator(
-                        decoration: InputDecoration(
-                          labelText: l10n.profileDiabetesType,
-                          prefixIcon: const Icon(Icons.monitor_heart_outlined),
-                        ),
-                        child: Text(
-                          _diabetesLabel(l10n) ?? l10n.profileDiabetesTypeNotSet,
-                          style: TextStyle(
-                            color:
-                                _diabetesType == null
-                                    ? scheme.onSurfaceVariant
-                                    : scheme.onSurface,
-                          ),
-                        ),
-                      ),
                     ),
                     const SizedBox(height: AppSpacing.md),
                     InkWell(

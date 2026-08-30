@@ -88,6 +88,34 @@ export function scheduleText(item) {
     .join(' ');
 }
 
+/**
+ * Before or after food, read from the same words the timing came from.
+ *
+ * The model is asked for `relationToMeal` and often does not return it — the
+ * prescription says "1 tab each AF Lunch" and it answers with a frequency and
+ * nothing else. Every dose then carried "any", and the patient's list read
+ * "Anytime" against a line that plainly says after food. That is not a missing
+ * label; it is the app contradicting the prescription in front of them.
+ *
+ * Returns null when nothing was said, which stays "any" — a medicine with no
+ * meal instruction genuinely has none, and inventing one would be the same
+ * fault in the other direction.
+ */
+export function relationFromText(text) {
+  const s = String(text ?? '').toLowerCase();
+  if (!s.trim()) return null;
+  // Checked before "after", because "before food" contains neither word twice
+  // but a careless order would let a stray "af" inside another word win.
+  if (/\b(bf|before\s+(food|meal|meals|breakfast|lunch|dinner)|empty\s+stomach|khali\s*pet)\b/.test(s)) {
+    return 'before_meal';
+  }
+  if (/\b(af|pc|after\s+(food|meal|meals|breakfast|lunch|dinner))\b/.test(s)) {
+    return 'after_meal';
+  }
+  if (/\b(with\s+(food|meal|meals))\b/.test(s)) return 'with_meal';
+  return null;
+}
+
 /** Frequency notation → the ordered dose slots it means. */
 export function frequencyToSlots(frequency) {
   if (!frequency) return ['morning'];

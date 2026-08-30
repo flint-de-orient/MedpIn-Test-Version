@@ -11,7 +11,7 @@ import { Medication, MED_FORMS } from '../models/Medication.js';
 import { MedicationLog } from '../models/MedicationLog.js';
 import { computeAdherence } from '../services/analytics.js';
 import { extractPrescription } from '../services/ai/vision.js';
-import { buildSchedule, scheduleText } from '../services/medicationSchedule.js';
+import { buildSchedule, scheduleText, relationFromText } from '../services/medicationSchedule.js';
 import { normaliseScannedItems } from '../services/prescriptionItems.js';
 import { PatientProfile } from '../models/PatientProfile.js';
 import { AiUnavailableError } from '../services/ai/gemini.js';
@@ -179,7 +179,9 @@ router.post(
           schedule: buildSchedule(
             scheduleText(item),
             mealTimes,
-            item.relationToMeal ?? 'any',
+            // Derived from the doctor's own words when the model did not classify
+            // it, so "AF Lunch" stops arriving as "Anytime".
+            item.relationToMeal ?? relationFromText(scheduleText(item)) ?? 'any',
           ),
       })),
       prescriber,

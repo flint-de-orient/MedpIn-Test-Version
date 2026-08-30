@@ -60,63 +60,129 @@ class UpdateAvailableBanner extends ConsumerWidget {
     final scheme = Theme.of(context).colorScheme;
     final url = status.downloadUrl;
 
+    // A card that belongs to this app, not a system notice bolted on top.
+    //
+    // The first version was a tinted strip running edge to edge with a text
+    // button on it — the shape Android uses for "no internet connection", which
+    // is exactly the wrong register. This is a small courtesy, so it looks like
+    // one: an inset card on the app's own ground, the same rounded geometry as
+    // every other surface, and a filled pill for the action.
     return Column(
       children: [
-        Material(
-          color: AppColors.primary.withValues(alpha: 0.1),
-          child: SafeArea(
-            bottom: false,
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(
-                AppSpacing.md,
-                8,
-                AppSpacing.sm,
-                8,
+        SafeArea(
+          bottom: false,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(
+              AppSpacing.md,
+              AppSpacing.sm,
+              AppSpacing.md,
+              4,
+            ),
+            child: Container(
+              padding: const EdgeInsets.fromLTRB(12, 10, 10, 10),
+              decoration: BoxDecoration(
+                color: scheme.surface,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(
+                  color: AppColors.primary.withValues(alpha: 0.22),
+                ),
+                boxShadow: const [
+                  BoxShadow(
+                    color: Color(0x140B1B3A),
+                    blurRadius: 10,
+                    offset: Offset(0, 3),
+                  ),
+                ],
               ),
               child: Row(
                 children: [
-                  Icon(
-                    Icons.system_update_rounded,
-                    size: 18,
-                    color: AppColors.primary,
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Text(
-                      status.latestVersion == null
-                          ? 'A newer version of MedPin is available.'
-                          : 'MedPin ${status.latestVersion} is available.',
-                      style: TextStyle(
-                        fontSize: 13,
-                        height: 1.3,
-                        fontWeight: FontWeight.w600,
-                        color: scheme.onSurface,
-                      ),
+                  Container(
+                    width: 34,
+                    height: 34,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: AppColors.primary.withValues(alpha: 0.11),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Icon(
+                      Icons.system_update_rounded,
+                      size: 18,
+                      color: AppColors.primary,
                     ),
                   ),
-                  if (url != null && url.isNotEmpty)
-                    TextButton(
+                  const SizedBox(width: 11),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          status.latestVersion == null
+                              ? 'Update available'
+                              : 'MedPin ${status.latestVersion} is ready',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontSize: 14,
+                            height: 1.25,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                        Text(
+                          'A newer version is available to install.',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 12,
+                            height: 1.3,
+                            color: scheme.onSurfaceVariant,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  if (url != null && url.isNotEmpty) ...[
+                    const SizedBox(width: 8),
+                    FilledButton(
                       onPressed:
                           () => launchUrl(
                             Uri.parse(url),
                             mode: LaunchMode.externalApplication,
                           ),
-                      style: TextButton.styleFrom(
-                        foregroundColor: AppColors.primary,
-                        visualDensity: VisualDensity.compact,
+                      style: FilledButton.styleFrom(
+                        backgroundColor: AppColors.primary,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(horizontal: 14),
+                        minimumSize: const Size(0, 34),
+                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(999),
+                        ),
+                        textStyle: const TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                        ),
                       ),
                       child: const Text('Update'),
                     ),
+                  ],
+                  // Quieter than the action beside it, deliberately. Dismissing
+                  // is always available and never the thing being asked for.
                   IconButton(
-                    tooltip: 'Dismiss',
+                    tooltip: 'Not now',
                     visualDensity: VisualDensity.compact,
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(
+                      minWidth: 30,
+                      minHeight: 30,
+                    ),
                     onPressed:
                         () => ref
                             .read(_dismissedBuildProvider.notifier)
                             .dismiss(status.latestBuild),
                     icon: Icon(
                       Icons.close_rounded,
-                      size: 18,
+                      size: 17,
                       color: scheme.onSurfaceVariant,
                     ),
                   ),

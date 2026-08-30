@@ -187,6 +187,19 @@ class AuthRepository {
     );
   }
 
+  /// Records a weight reading for the signed-in patient.
+  ///
+  /// A vitals entry, not a profile field. Weight belongs to the series the
+  /// doctor reads and that BMI is computed from; writing it onto the profile
+  /// as well would leave two copies to disagree with each other, and the one on
+  /// the profile would never move again.
+  Future<void> recordWeight(String patientId, double weightKg) async {
+    await _client.postJson(
+      '/patients/$patientId/vitals',
+      body: {'weightKg': weightKg},
+    );
+  }
+
   /// Diabetes type lives on `PatientProfile`, not `User`, so it has its own
   /// endpoint — `PATCH /auth/me` would silently ignore it.
   Future<void> updateDiabetesType(String diabetesType) async {

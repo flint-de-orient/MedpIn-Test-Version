@@ -8,7 +8,7 @@ import { audit } from '../middleware/audit.js';
 import { Prescription } from '../models/Prescription.js';
 import { Medication } from '../models/Medication.js';
 import { notifyPatientOfPrescription } from '../services/notifications.js';
-import { buildSchedule, scheduleText } from '../services/medicationSchedule.js';
+import { buildSchedule, scheduleText, relationFromText } from '../services/medicationSchedule.js';
 import { PatientProfile } from '../models/PatientProfile.js';
 import { MediaAsset } from '../models/MediaAsset.js';
 import { User, ROLES } from '../models/User.js';
@@ -167,7 +167,7 @@ async function syncMedications(prescription, patientId, doctorId) {
           dose: item.dose,
           form: /insulin/i.test(item.name) ? 'insulin' : 'tablet',
           // PRN/Stat carry no recurring schedule, so they arm no reminders.
-          schedule: asNeeded || stat ? [] : buildSchedule(scheduleText(item), mealTimes, item.relationToMeal),
+          schedule: asNeeded || stat ? [] : buildSchedule(scheduleText(item), mealTimes, item.relationToMeal ?? relationFromText(scheduleText(item)) ?? 'any'),
           route: item.route ?? 'oral',
           asNeeded,
           stat,

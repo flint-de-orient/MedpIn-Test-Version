@@ -34,7 +34,31 @@ import mongoose from 'mongoose';
 
 import { env } from '../src/config/env.js';
 import { PatientProfile } from '../src/models/PatientProfile.js';
+import { Prescription } from '../src/models/Prescription.js';
 import { User, ROLES } from '../src/models/User.js';
+
+/**
+ * Clear the ones that were assumed. Off unless asked for.
+ *
+ * Narrower than the report above, and the difference is the safety. A patient
+ * is only cleared when ALL of these hold:
+ *
+ *   - the stored type is type2, the value the default wrote;
+ *   - the profile was created before the default was removed;
+ *   - and the patient has no prescription carrying a diagnosis.
+ *
+ * That last one is what makes this safe rather than merely bold. Diabetes type
+ * is set from a diagnosis when a doctor writes a prescription — so a patient
+ * with one has a type that came from a clinician, whenever they registered, and
+ * must not be touched. A patient with none has never been diagnosed here at
+ * all, and the app has been telling them they have Type 2 diabetes on the
+ * strength of a schema default.
+ *
+ * Clearing sets the field to nothing, which reads as "Condition not set". It
+ * does not guess a different type — the whole list exists because something
+ * guessed once.
+ */
+const apply = process.argv.includes('--apply');
 
 /// When `default: 'type2'` left the model (commit 14f089f). A floor, not a
 /// promise: the server kept defaulting until that commit was actually deployed.
@@ -135,10 +159,61 @@ async function main() {
   if (unset.length === 0) console.log('   (none)');
 
   console.log(`\n${line}`);
+
+  if (!apply) {
+    console.log(
+      'Nothing was changed.\n\n' +
+        'Re-run with --apply to clear the assumed ones. That clears only the\n' +
+        'patients above who ALSO have no prescription carrying a diagnosis —\n' +
+        'a type set from a real diagnosis is a clinician\'s and stays. Cleared\n' +
+        'records read "Condition not set", which is what they should have said\n' +
+        'all along. Nothing is guessed into place; the doctor sets the type by\n' +
+        'diagnosing, and it flows to every panel from there.\n',
+    );
+    await mongoose.disconnect();
+    return;
+  }
+
+  // Who has ever been diagnosed here. A prescription with a diagnosis is what
+  // sets diabetesType legitimately, so anyone holding one is left alone
+  // whenever they registered.
+  const diagnosed = new Set(
+    (
+      await Prescription.find({
+        patient: { $in: patients.map((p) => p._id) },
+        diagnosis: { $nin: [null, ''] },
+      })
+        .select('patient')
+        .lean()
+    ).map((p) => String(p.patient)),
+  );
+
+  const toClear = patients.filter((p) => {
+    const profile = byUser.get(String(p._id));
+    return (
+      profile?.diabetesType === 'type2' &&
+      p.createdAt &&
+      new Date(p.createdAt) < cutoff &&
+      !diagnosed.has(String(p._id))
+    );
+  });
+
+  console.log(`\nClearing ${toClear.length} of ${suspect.length}.`);
   console.log(
-    'Nothing was changed. To correct one, ask the patient and set it in the\n' +
-      "app — Profile → Health details. There is no bulk fix on purpose: a type\n" +
-      'assumed in bulk is how this list came to exist.\n',
+    `${suspect.length - toClear.length} left alone — they carry a diagnosis.\n`,
+  );
+
+  for (const p of toClear) {
+    await PatientProfile.updateOne(
+      { user: p._id },
+      { $unset: { diabetesType: '' } },
+    );
+    console.log(`   cleared  ${p.name ?? '?'}  ${p.phone ?? ''}`);
+  }
+
+  console.log(
+    '\nThose patients now read "Condition not set". The doctor sets a type by\n' +
+      'diagnosing, and it reaches every panel from there.\n',
   );
 
   await mongoose.disconnect();
