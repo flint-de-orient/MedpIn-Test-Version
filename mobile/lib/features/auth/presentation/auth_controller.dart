@@ -6,6 +6,7 @@ import '../../../core/storage/secure_store.dart';
 import '../../../shared/providers/core_providers.dart';
 import '../data/auth_repository.dart';
 import '../domain/user.dart';
+import '../../../core/session/session_reset.dart';
 
 enum AuthStatus {
   /// Still checking secure storage / calling `/auth/me` on cold start.
@@ -53,6 +54,11 @@ class AuthController extends StateNotifier<AuthState> {
     }
     try {
       final result = await _repository.getMe();
+      // Before the new session's screens read anything. A container that was
+      // never signed out of — an app resumed onto another account, a refresh
+      // that resolved to a different user — has the same stale data with
+      // nobody having pressed sign-out.
+      resetSessionState();
       state = AuthState.authenticated(result.user);
     } on ApiException catch (e) {
       await _secureStore.clear();
@@ -66,7 +72,10 @@ class AuthController extends StateNotifier<AuthState> {
     required String purpose,
   }) async {
     try {
-      return (sent: await _repository.requestOtp(phone: phone, purpose: purpose), error: null);
+      return (
+        sent: await _repository.requestOtp(phone: phone, purpose: purpose),
+        error: null,
+      );
     } on ApiException catch (e) {
       return (sent: null, error: e);
     }
@@ -80,6 +89,11 @@ class AuthController extends StateNotifier<AuthState> {
     _busy = true;
     try {
       final result = await _repository.verifyLoginOtp(phone: phone, code: code);
+      // Before the new session's screens read anything. A container that was
+      // never signed out of — an app resumed onto another account, a refresh
+      // that resolved to a different user — has the same stale data with
+      // nobody having pressed sign-out.
+      resetSessionState();
       state = AuthState.authenticated(result.user);
       return null;
     } on ApiException catch (e) {
@@ -97,6 +111,11 @@ class AuthController extends StateNotifier<AuthState> {
     _busy = true;
     try {
       final result = await _repository.login(phone: phone, password: password);
+      // Before the new session's screens read anything. A container that was
+      // never signed out of — an app resumed onto another account, a refresh
+      // that resolved to a different user — has the same stale data with
+      // nobody having pressed sign-out.
+      resetSessionState();
       state = AuthState.authenticated(result.user);
       return null;
     } on ApiException catch (e) {
@@ -146,6 +165,11 @@ class AuthController extends StateNotifier<AuthState> {
         diabetesType: diabetesType,
         inviteCode: inviteCode,
       );
+      // Before the new session's screens read anything. A container that was
+      // never signed out of — an app resumed onto another account, a refresh
+      // that resolved to a different user — has the same stale data with
+      // nobody having pressed sign-out.
+      resetSessionState();
       state = AuthState.authenticated(result.user);
       return null;
     } on ApiException catch (e) {
@@ -157,6 +181,14 @@ class AuthController extends StateNotifier<AuthState> {
 
   Future<void> logout() async {
     await _repository.logout();
+    // Everything the previous session cached, dropped.
+    //
+    // Without this the next person to sign in on this handset saw the last
+    // one's data: their doctor thread, their doses. The shells are
+    // indexedStack, so a visited tab stays mounted and its providers never
+    // auto-dispose — they simply hold what they last fetched until something
+    // asks again.
+    resetSessionState();
     state = const AuthState.unauthenticated();
   }
 
@@ -164,6 +196,10 @@ class AuthController extends StateNotifier<AuthState> {
   /// user straight to "unauthenticated" so the router redirects to login.
   void sessionExpired() {
     if (state.status != AuthStatus.authenticated) return;
+    // A sign-out nobody pressed, and the same leak if it is not cleared: the
+    // screens stay mounted, holding a patient's data, while the app shows the
+    // login page over the top of them.
+    resetSessionState();
     state = const AuthState.unauthenticated(
       ApiException(code: 'UNAUTHORIZED', message: 'Session expired'),
     );

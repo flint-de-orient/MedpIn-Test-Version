@@ -9,10 +9,20 @@ const patientProfileSchema = new mongoose.Schema(
   {
     user: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, unique: true, index: true },
 
+    /// The doctor's diagnosis, not a guess.
+    ///
+    /// This defaulted to 'type2', and the zod schema in registration defaulted
+    /// to it as well — so a patient who was never asked arrived on their own
+    /// Home screen labelled "Type 2 Diabetes". A diagnosis nobody made,
+    /// printed as fact, on the screen a patient trusts most.
+    ///
+    /// Undefined until somebody decides. Issuing a prescription already
+    /// derives it from the diagnosis text, which is the right moment: a
+    /// clinician wrote it down. Until then the app shows "Not set", which it
+    /// has always known how to do.
     diabetesType: {
       type: String,
       enum: ['type1', 'type2', 'gestational', 'prediabetes', 'none'],
-      default: 'type2',
     },
     diagnosedOn: Date,
 

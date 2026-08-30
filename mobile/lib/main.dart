@@ -8,6 +8,7 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'app.dart';
 import 'shared/providers/core_providers.dart';
 import 'shared/services/notification_service.dart';
+import 'core/session/session_reset.dart';
 
 /// Handles a push that arrives while the app is terminated or backgrounded.
 ///
@@ -22,7 +23,9 @@ Future<void> _onBackgroundMessage(RemoteMessage message) async {
   // messages that carry a notification block. Rendered with the same id the
   // on-device alarm uses, so if both arrive they collapse into one.
   if (message.data['kind'] == 'medication_reminder') {
-    await NotificationService.showMedicationReminderFromBackground(message.data);
+    await NotificationService.showMedicationReminderFromBackground(
+      message.data,
+    );
   }
 }
 
@@ -39,10 +42,14 @@ Future<void> main() async {
   // so the channel exists before the first appointment update fires.
   await NotificationService.instance.init();
 
-  runApp(
-    ProviderScope(
-      overrides: [sharedPreferencesProvider.overrideWithValue(prefs)],
-      child: const App(),
-    ),
+  // Built here rather than by ProviderScope, so the container can be handed to
+  // the session reset. Riverpod 2's Ref cannot reach its own container, and
+  // ProviderScope.containerOf needs a BuildContext — which the auth controller,
+  // where sign-in and sign-out happen, does not have.
+  final container = ProviderContainer(
+    overrides: [sharedPreferencesProvider.overrideWithValue(prefs)],
   );
+  registerSessionContainer(container);
+
+  runApp(UncontrolledProviderScope(container: container, child: const App()));
 }

@@ -62,7 +62,12 @@ const registerSchema = z.object({
   spo2: z.coerce.number().min(50).max(100).optional(),
   glucoseMgDl: z.coerce.number().min(10).max(900).optional(),
   complaints: z.string().trim().max(1000).optional(),
-  diabetesType: z.enum(['type1', 'type2', 'gestational', 'prediabetes', 'none']).default('type2'),
+  // No default. It used to be 'type2', so every patient who never answered the
+  // question arrived on their own Home screen labelled "Type 2 Diabetes" —
+  // a diagnosis nobody had made, printed as fact, on the screen they trust
+  // most. The field stays empty until a doctor's diagnosis fills it, and the
+  // app already knows how to show "Not set".
+  diabetesType: z.enum(['type1', 'type2', 'gestational', 'prediabetes', 'none']).optional(),
   // A dietician onboarding code turns this sign-up into a dietician account
   // instead of a patient. Anything else (or empty) registers a patient.
   inviteCode: z.string().trim().max(64).optional(),
