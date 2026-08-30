@@ -9,7 +9,8 @@ import '../../../shared/widgets/auto_refresh.dart';
 import '../../appointments/data/appointment_repository.dart';
 import '../../appointments/domain/appointment.dart';
 import '../../appointments/presentation/appointment_providers.dart';
-import '../../appointments/presentation/widgets/appointment_visuals.dart';
+import '../../staff/presentation/widgets/desk_geometry.dart';
+import 'widgets/desk_appointment_row.dart';
 import '../../../shared/widgets/user_avatar.dart';
 import '../../staff/presentation/widgets/request_card.dart';
 import 'widgets/appointment_manage_sheet.dart';
@@ -151,6 +152,21 @@ class _AppointmentsAdminScreenState
               ),
               const SizedBox(height: AppSpacing.md),
 
+              // Three numbers, and every one of them can move.
+              //
+              // The design had four, two of which read Checked in and
+              // Completed. Nothing sets those statuses any more — walking a
+              // patient through arrived → with the doctor → done belongs to the
+              // practice software the clinic already runs — so both would have
+              // shown 0 for ever, and a front desk reading "0 checked in" on a
+              // full morning would believe it.
+              _StatsStrip(
+                booked: bookedAsync.valueOrNull?.items ?? const [],
+                waiting: requests.length,
+                loading: bookedAsync.isLoading,
+              ),
+              const SizedBox(height: AppSpacing.md),
+
               bookedAsync.when(
                 skipLoadingOnReload: true,
                 skipLoadingOnRefresh: true,
@@ -191,21 +207,9 @@ class _AppointmentsAdminScreenState
                             padding: const EdgeInsets.only(
                               bottom: AppSpacing.sm,
                             ),
-                            child: AppointmentCard(
+                            child: DeskAppointmentRow(
                               appointment: a,
-                              clinicianView: true,
-                              onTap: () => _manage(a),
-                              trailing:
-                                  a.isActive
-                                      ? IconButton(
-                                        visualDensity: VisualDensity.compact,
-                                        icon: const Icon(
-                                          Icons.more_vert_rounded,
-                                          size: 20,
-                                        ),
-                                        onPressed: () => _manage(a),
-                                      )
-                                      : null,
+                              onManage: () => _manage(a),
                             ),
                           ),
                         const SizedBox(height: AppSpacing.sm),
@@ -242,6 +246,49 @@ class _AppointmentsAdminScreenState
             onChanged: () async => _reload(ref),
             onCancel: () async {
               final messenger = ScaffoldMessenger.of(context);
+              final locale = Localizations.localeOf(context).toString();
+
+              // Asked first, and told what it does.
+              //
+              // Cancelling sends a push to the patient. It is not undoable from
+              // this screen, it frees a slot somebody else may take within the
+              // minute, and it sat one tap from "Move to another time" in a
+              // menu a receptionist opens all day. Naming the patient and the
+              // hour is what makes a mis-tap visible before it is sent rather
+              // than after.
+              final sure = await showDialog<bool>(
+                context: context,
+                builder:
+                    (ctx) => AlertDialog(
+                      title: const Text('Cancel this appointment?'),
+                      content: Text(
+                        [
+                          a.patientName ?? 'This patient',
+                          if (a.scheduledFor != null)
+                            DateFormat(
+                              'EEE, d MMM · h:mm a',
+                              locale,
+                            ).format(a.scheduledFor!.toLocal()),
+                          'The patient will be told.',
+                        ].join('\n'),
+                      ),
+                      actions: [
+                        TextButton(
+                          onPressed: () => Navigator.pop(ctx, false),
+                          child: const Text('Keep it'),
+                        ),
+                        TextButton(
+                          style: TextButton.styleFrom(
+                            foregroundColor: AppColors.danger,
+                          ),
+                          onPressed: () => Navigator.pop(ctx, true),
+                          child: const Text('Cancel appointment'),
+                        ),
+                      ],
+                    ),
+              );
+              if (sure != true) return;
+
               try {
                 await ref.read(appointmentRepositoryProvider).cancel(a.id);
                 _reload(ref);
@@ -699,6 +746,155 @@ class _DeclinedSectionState extends State<_DeclinedSection> {
               ),
         ],
       ),
+    );
+  }
+}
+
+/// The shape of the slice on screen, in three numbers.
+///
+/// Deliberately derived from the list already loaded rather than fetched
+/// separately: a strip that counts one query while the rows below it come from
+/// another is a strip that disagrees with what the reader can see, and the desk
+/// trusts the rows.
+class _StatsStrip extends StatelessWidget {
+  const _StatsStrip({
+    required this.booked,
+    required this.waiting,
+    required this.loading,
+  });
+
+  final List<Appointment> booked;
+  final int waiting;
+  final bool loading;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final live = booked.where((a) => a.status != 'requested').toList();
+    final total = live.where((a) => !a.isCancelled).length;
+    final freed = live.where((a) => a.status == 'cancelled').length;
+
+    String n(int v) => loading ? '—' : '$v';
+
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 4),
+      decoration: BoxDecoration(
+        color: scheme.surface,
+        borderRadius: BorderRadius.circular(kSectionRadius),
+        border: Border.all(color: scheme.outlineVariant.withValues(alpha: 0.6)),
+      ),
+      child: IntrinsicHeight(
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Expanded(
+              child: _Stat(
+                icon: Icons.event_available_rounded,
+                value: n(total),
+                label: 'Booked',
+                caption: 'This list',
+                tone: AppColors.primary,
+              ),
+            ),
+            VerticalDivider(
+              width: 1,
+              color: scheme.outlineVariant.withValues(alpha: 0.6),
+            ),
+            Expanded(
+              child: _Stat(
+                icon: Icons.hourglass_top_rounded,
+                value: n(waiting),
+                label: 'Waiting',
+                caption: 'To schedule',
+                tone:
+                    waiting == 0
+                        ? scheme.onSurfaceVariant
+                        : AppColors.warningOn(context),
+              ),
+            ),
+            VerticalDivider(
+              width: 1,
+              color: scheme.outlineVariant.withValues(alpha: 0.6),
+            ),
+            Expanded(
+              child: _Stat(
+                icon: Icons.event_busy_outlined,
+                value: n(freed),
+                label: 'Freed up',
+                caption: 'Cancelled',
+                tone:
+                    freed == 0
+                        ? scheme.onSurfaceVariant
+                        : AppColors.dangerOn(context),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _Stat extends StatelessWidget {
+  const _Stat({
+    required this.icon,
+    required this.value,
+    required this.label,
+    required this.caption,
+    required this.tone,
+  });
+
+  final IconData icon;
+  final String value;
+  final String label;
+  final String caption;
+  final Color tone;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 30,
+          height: 30,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: tone.withValues(alpha: 0.12),
+            borderRadius: BorderRadius.circular(9),
+          ),
+          child: Icon(icon, size: 16, color: tone),
+        ),
+        const SizedBox(height: 6),
+        Text(
+          value,
+          style: TextStyle(
+            fontSize: 21,
+            height: 1.05,
+            fontWeight: FontWeight.w800,
+            color: tone,
+          ),
+        ),
+        const SizedBox(height: 1),
+        Text(
+          label,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700),
+        ),
+        Text(
+          caption,
+          maxLines: 2,
+          textAlign: TextAlign.center,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(
+            fontSize: 10.5,
+            height: 1.2,
+            color: scheme.onSurfaceVariant,
+          ),
+        ),
+      ],
     );
   }
 }

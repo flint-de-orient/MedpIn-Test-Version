@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/network/api_exception.dart';
 import '../../../core/theme/app_colors.dart';
@@ -988,22 +989,24 @@ class _DayRow extends ConsumerWidget {
               ],
             ),
           ),
-          // Checking somebody in is the desk's move, and the only one offered
-          // here: starting a consultation is the doctor's.
-          if (a.status == 'confirmed')
-            TextButton(
-              onPressed: () async {
-                final messenger = ScaffoldMessenger.of(context);
-                try {
-                  await ref
-                      .read(appointmentRepositoryProvider)
-                      .setStatus(a.id, 'checked_in');
-                  ref.invalidate(appointmentDiaryProvider);
-                } on ApiException catch (e) {
-                  messenger.showSnackBar(SnackBar(content: Text(e.message)));
-                }
-              },
-              child: Text(l10n.deskCheckIn),
+          // Ring them, which is the desk's actual move on a row like this.
+          //
+          // This was a Check in button. Marking arrivals belongs to the
+          // practice software the clinic already runs, and the copy kept here
+          // by hand was wrong whenever anybody forgot to press it. What the
+          // desk genuinely does from a list of today's patients is telephone
+          // one of them — and the phone is the one thing the other software
+          // cannot reach.
+          if ((a.patientPhone ?? '').isNotEmpty)
+            IconButton(
+              tooltip: a.patientPhone,
+              onPressed:
+                  () => launchUrl(Uri(scheme: 'tel', path: a.patientPhone)),
+              icon: Icon(
+                Icons.call_outlined,
+                size: 20,
+                color: AppColors.primary,
+              ),
             ),
         ],
       ),
@@ -1744,92 +1747,3 @@ class _PatientPickerSheetState extends ConsumerState<_PatientPickerSheet> {
   }
 }
 
-/// Check in whoever has just arrived.
-///
-/// Every row on today's list already carries its own check-in button, and this
-/// is the same action reached the other way round — from "somebody is at the
-/// window" rather than from "here is the diary". A receptionist with a queue in
-/// front of them should not have to find the right row first.
-Future<void> showCheckInSheet(BuildContext context) => showModalBottomSheet<void>(
-  context: context,
-  isScrollControlled: true,
-  showDragHandle: true,
-  builder: (_) => const _CheckInSheet(),
-);
-
-class _CheckInSheet extends ConsumerWidget {
-  const _CheckInSheet();
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final l10n = AppLocalizations.of(context);
-    final scheme = Theme.of(context).colorScheme;
-    final now = DateTime.now();
-    final start = DateTime(now.year, now.month, now.day);
-    final async = ref.watch(
-      appointmentDiaryProvider((
-        from: start,
-        to: start.add(const Duration(days: 1)),
-        status: null,
-        clinicId: null,
-      )),
-    );
-
-    // Only people who are booked and have not arrived. Someone already checked
-    // in cannot be checked in twice, and offering it would let the desk undo
-    // the doctor's "in consultation" by accident.
-    final waiting =
-        (async.valueOrNull?.items ?? const <Appointment>[])
-            .where((a) => a.status == 'confirmed')
-            .toList()
-          ..sort((a, b) => a.sortKey.compareTo(b.sortKey));
-
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(
-        AppSpacing.md,
-        0,
-        AppSpacing.md,
-        AppSpacing.lg,
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            l10n.deskCheckInPatient,
-            style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800),
-          ),
-          const SizedBox(height: AppSpacing.sm + 4),
-          if (async.isLoading && async.valueOrNull == null)
-            const Padding(
-              padding: EdgeInsets.symmetric(vertical: 40),
-              child: Center(child: CircularProgressIndicator()),
-            )
-          else if (waiting.isEmpty)
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 28),
-              child: Center(
-                child: Text(
-                  l10n.deskNobodyToCheckIn,
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontSize: 14,
-                    color: scheme.onSurfaceVariant,
-                  ),
-                ),
-              ),
-            )
-          else
-            Flexible(
-              child: ListView.builder(
-                shrinkWrap: true,
-                itemCount: waiting.length,
-                itemBuilder:
-                    (_, i) => _DayRow(appointment: waiting[i], flat: true),
-              ),
-            ),
-        ],
-      ),
-    );
-  }
-}
