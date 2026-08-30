@@ -73,19 +73,45 @@ void main() {
       // appears on every cold start while the network answers would be worse
       // than the bug it guards against.
       expect(app.contains('ref.watch(versionStatusProvider).valueOrNull'), isTrue);
-      expect(
-        app.contains('if (status == null || !status.mustUpdate) return child;'),
-        isTrue,
-      );
+      expect(app.contains('if (status == null || !status.mustUpdate)'), isTrue);
     });
   });
 
   group('the two states stay separate', () {
-    test('"could update" never blocks', () {
-      // canUpdate is a suggestion. Only mustUpdate reaches the wall, and
-      // collapsing the two would make every release a forced one.
+    final banner =
+        File('lib/core/update/update_available_banner.dart').readAsStringSync();
+
+    test('only mustUpdate reaches the wall', () {
+      // Collapsing the two would make every release a forced one.
       expect(app.contains('status.mustUpdate'), isTrue);
-      expect(app.contains('status.canUpdate'), isFalse);
+      expect(
+        app.contains('status.canUpdate'),
+        isFalse,
+        reason: 'app.dart decides only whether to block',
+      );
+    });
+
+    test('canUpdate is rendered, not computed and dropped', () {
+      // It was: the field existed, was calculated correctly, and nothing on
+      // screen ever read it — so "a newer version is available" was a promise
+      // the app had no way to keep.
+      expect(banner.contains('status.canUpdate'), isTrue);
+      expect(app.contains('UpdateAvailableBanner'), isTrue);
+    });
+
+    test('the banner never blocks and never nags', () {
+      // A strip they can close, and closing it is remembered against the
+      // version it was about — so waving away one release does not silence the
+      // next.
+      expect(banner.contains('Expanded(child: child)'), isTrue);
+      expect(banner.contains('dismissed >= status.latestBuild'), isTrue);
+      expect(banner.contains('dismiss(status.latestBuild)'), isTrue);
+    });
+
+    test('the banner is silent until the server names a newer build', () {
+      // canUpdate is false whenever latestBuild is 0, so a clinic that never
+      // touches these settings never sees this.
+      expect(gate.contains('latestBuild > 0 && build < latestBuild'), isTrue);
     });
   });
 }

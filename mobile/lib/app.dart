@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'core/config/app_config.dart';
 import 'core/router/app_router.dart';
+import 'core/update/update_available_banner.dart';
 import 'core/update/update_required_screen.dart';
 import 'core/update/version_gate.dart';
 import 'core/theme/app_theme.dart';
@@ -235,7 +236,12 @@ class _VersionGate extends ConsumerWidget {
     // path in versionStatusProvider already returns all-clear; this is the
     // second half of the same promise — no signal must never mean locked out.
     final status = ref.watch(versionStatusProvider).valueOrNull;
-    if (status == null || !status.mustUpdate) return child;
+    if (status == null || !status.mustUpdate) {
+      // Not blocked. A newer build may still exist, which is a strip they can
+      // dismiss rather than a wall — the banner decides for itself whether it
+      // has anything to say.
+      return UpdateAvailableBanner(child: child);
+    }
     return UpdateRequiredScreen(status: status);
   }
 }
