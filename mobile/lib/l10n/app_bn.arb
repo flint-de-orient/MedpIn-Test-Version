@@ -522,5 +522,12 @@
   "apptNotAvailableBody": "ক্লিনিক আপনাকে এই দিনটি দিতে পারেনি। অনুগ্রহ করে অন্য দিন চান।",
   "apptWaitingReply": "ক্লিনিকের উত্তরের অপেক্ষায়",
   "apptYouAskedFor": "আপনি {day} চেয়েছিলেন",
-  "apptNothingYet": "এখনও কোনও অ্যাপয়েন্টমেন্ট নেই"
+  "apptNothingYet": "এখনও কোনও অ্যাপয়েন্টমেন্ট নেই",
+  "deskFreedUp": "খালি হয়েছে",
+  "deskTodayLabel": "আজ",
+  "deskRequests": "অনুরোধ",
+  "deskDeclined": "প্রত্যাখ্যাত",
+  "deskConfirmedCount": "নিশ্চিত হয়েছে",
+  "deskAppointmentsLabel": "অ্যাপয়েন্টমেন্ট",
+  "deskViewDiary": "ডায়েরি দেখুন"
 }

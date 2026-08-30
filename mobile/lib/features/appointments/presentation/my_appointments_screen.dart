@@ -34,7 +34,7 @@ class MyAppointmentsScreen extends ConsumerWidget {
           ),
         ),
         floatingActionButton: FloatingActionButton.extended(
-          onPressed: () => context.push('/care/appointments/book'),
+          onPressed: () => context.push('/appointments/book'),
           icon: const Icon(Icons.add_rounded),
           label: Text(l10n.apptBook),
         ),

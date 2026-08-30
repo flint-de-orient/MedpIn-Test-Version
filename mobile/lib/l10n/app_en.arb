@@ -811,5 +811,12 @@
         "type": "String"
       }
     }
-  }
+  },
+  "deskFreedUp": "Freed up",
+  "deskTodayLabel": "Today",
+  "deskRequests": "Requests",
+  "deskDeclined": "Declined",
+  "deskConfirmedCount": "Confirmed",
+  "deskAppointmentsLabel": "Appointments",
+  "deskViewDiary": "View the diary"
 }

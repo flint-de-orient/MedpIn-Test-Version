@@ -698,11 +698,26 @@ class _PrescriptionCard extends StatelessWidget {
                         ),
                         if (unit.isNotEmpty) ...[
                           const SizedBox(width: 4),
-                          Text(
-                            unit,
-                            style: TextStyle(
-                              fontSize: 14,
-                              color: scheme.onSurfaceVariant,
+                          // Flexible, and clipped when it has to be.
+                          //
+                          // This was a bare Text, which takes whatever width it
+                          // wants and paints outside its parent when that is
+                          // more than there is. Most strengths are "mg" and it
+                          // never showed — but a scanned prescription can put a
+                          // whole line in this field ("T (TD 12.5) + ADB 1 tab
+                          // each 10 AM"), and that ran straight over the "Once
+                          // a day" chip beside it, leaving two sentences
+                          // printed on top of each other.
+                          Flexible(
+                            child: Text(
+                              unit,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: 14,
+                                height: 1.25,
+                                color: scheme.onSurfaceVariant,
+                              ),
                             ),
                           ),
                         ],
@@ -711,6 +726,7 @@ class _PrescriptionCard extends StatelessWidget {
                   )
                 else
                   const Spacer(),
+                const SizedBox(width: AppSpacing.sm),
                 Container(
                   padding: const EdgeInsets.symmetric(
                     horizontal: 12,

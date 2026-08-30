@@ -1653,4 +1653,25 @@ class AppLocalizationsBn extends AppLocalizations {
 
   @override
   String get apptNothingYet => 'এখনও কোনও অ্যাপয়েন্টমেন্ট নেই';
+
+  @override
+  String get deskFreedUp => 'খালি হয়েছে';
+
+  @override
+  String get deskTodayLabel => 'আজ';
+
+  @override
+  String get deskRequests => 'অনুরোধ';
+
+  @override
+  String get deskDeclined => 'প্রত্যাখ্যাত';
+
+  @override
+  String get deskConfirmedCount => 'নিশ্চিত হয়েছে';
+
+  @override
+  String get deskAppointmentsLabel => 'অ্যাপয়েন্টমেন্ট';
+
+  @override
+  String get deskViewDiary => 'ডায়েরি দেখুন';
 }

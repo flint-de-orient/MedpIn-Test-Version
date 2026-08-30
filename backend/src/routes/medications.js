@@ -11,7 +11,7 @@ import { Medication, MED_FORMS } from '../models/Medication.js';
 import { MedicationLog } from '../models/MedicationLog.js';
 import { computeAdherence } from '../services/analytics.js';
 import { extractPrescription } from '../services/ai/vision.js';
-import { buildSchedule } from '../services/medicationSchedule.js';
+import { buildSchedule, scheduleText } from '../services/medicationSchedule.js';
 import { PatientProfile } from '../models/PatientProfile.js';
 import { AiUnavailableError } from '../services/ai/gemini.js';
 import { MedicineBrand, brandSlug } from '../models/MedicineBrand.js';
@@ -155,7 +155,7 @@ router.post(
             strength: item.strength,
             dose: item.dose,
             form: /insulin/i.test(item.name) ? 'insulin' : 'tablet',
-            schedule: buildSchedule(item.frequency, mealTimes, item.relationToMeal ?? 'any'),
+            schedule: buildSchedule(scheduleText(item), mealTimes, item.relationToMeal ?? 'any'),
             startDate: new Date(),
             endDate: item.durationDays ? dayjs().add(item.durationDays, 'day').toDate() : undefined,
             instructions: item.instructions,

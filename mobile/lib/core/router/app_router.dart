@@ -58,6 +58,7 @@ import '../../features/staff/presentation/staff_profile_screen.dart';
 import '../../features/staff/presentation/staff_today_screen.dart';
 import '../../features/staff/presentation/staff_shell.dart';
 import '../../features/clinician/presentation/staff_accounts_screen.dart';
+import '../../features/appointments/presentation/book_appointment_screen.dart';
 import '../../features/appointments/presentation/my_appointments_screen.dart';
 
 /// Bridges Riverpod state changes into something [GoRouter]'s
@@ -159,6 +160,18 @@ final Provider<GoRouter> appRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/appointments',
         builder: (context, state) => const MyAppointmentsScreen(),
+      ),
+      // The patient's own booking flow: pick a free slot from the published
+      // schedule, which confirms immediately.
+      //
+      // The screen has existed all along and no route pointed at it. The Book
+      // button on the appointments screen pushed '/care/appointments/book',
+      // there is no '/care' branch and no errorBuilder, so a patient tapping
+      // Book got go_router's "page not found" — the one button in the app whose
+      // whole job is getting them seen.
+      GoRoute(
+        path: '/appointments/book',
+        builder: (context, state) => const BookAppointmentScreen(),
       ),
       GoRoute(
         path: '/splash',

@@ -30,6 +30,13 @@ function addMinutes(hhmm, delta) {
 
 /** Which meal each dose slot hangs off. */
 function slotBase(slot, meals) {
+  // An hour the prescription named outright, carried as `at:HH:mm`.
+  //
+  // These do not hang off a meal at all: "1 tab each 10 AM" means ten o'clock
+  // whatever time the patient eats, so it must not drift when they set their
+  // meal times, and must not take the ±30 minute before/after shift either.
+  if (typeof slot === 'string' && slot.startsWith('at:')) return slot.slice(3);
+
   switch (slot) {
     case 'morning':
       return meals.breakfast;
@@ -50,7 +57,29 @@ function slotBase(slot, meals) {
 /** The clock time for a dose slot, given the patient's meals and meal relation. */
 export function slotToTime(slot, mealTimes, relationToMeal = 'any') {
   const meals = { ...DEFAULT_MEAL_TIMES, ...(mealTimes ?? {}) };
-  return addMinutes(slotBase(slot, meals), MEAL_OFFSET_MIN[relationToMeal] ?? 0);
+  const base = slotBase(slot, meals);
+  // A named hour is already the answer. Shifting "10 AM" by the after-meal
+  // offset would turn a time the doctor wrote down into 10:30.
+  const explicit = typeof slot === 'string' && slot.startsWith('at:');
+  return explicit ? base : addMinutes(base, MEAL_OFFSET_MIN[relationToMeal] ?? 0);
+}
+
+/**
+ * Everything a prescription line says about *when*, as one string.
+ *
+ * The timing is not reliably in `frequency`. A doctor writes "1 tab each AF
+ * Lunch" as a single phrase, and a model asked to split that into fields will
+ * put "OD" in frequency and "after lunch" in instructions as readily as the
+ * other way round — so reading only `frequency` throws away the meal on roughly
+ * half the prescriptions, and a thrown-away meal becomes eight in the morning.
+ *
+ * Order matters: frequency first, so an explicit count ("BD") is seen before a
+ * meal named in the instructions and still wins.
+ */
+export function scheduleText(item) {
+  return [item?.frequency, item?.instructions, item?.dose]
+    .filter((s) => typeof s === 'string' && s.trim())
+    .join(' ');
 }
 
 /** Frequency notation → the ordered dose slots it means. */
@@ -78,11 +107,49 @@ export function frequencyToSlots(frequency) {
   const lower = String(frequency).toLowerCase();
   // As-needed / immediate one-off carry no recurring schedule at all.
   if (/\b(prn|sos|stat)\b/.test(lower)) return [];
+
+  // An hour written out: "10 AM", "10:30 pm", "22:00".
+  //
+  // Checked before the shorthand codes because it is the most specific thing a
+  // prescription can say about when to take something, and after the numeric
+  // patterns above, which contain digits but never a colon or am/pm.
+  const named = /\b(\d{1,2})(?::([0-5]\d))?\s*(a\.?m|p\.?m)\b/.exec(lower)
+    ?? /\b([01]?\d|2[0-3]):([0-5]\d)\b/.exec(lower);
+  if (named) {
+    let hour = Number(named[1]);
+    const minute = named[2] ? Number(named[2]) : 0;
+    const meridiem = named[3];
+    if (meridiem?.startsWith('p') && hour < 12) hour += 12;
+    if (meridiem?.startsWith('a') && hour === 12) hour = 0;
+    if (hour <= 23) {
+      return [`at:${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`];
+    }
+  }
+
   if (/\b(hs|bedtime|nocte|on)\b/.test(lower)) return ['bedtime'];
-  if (/\b(od|qd|once|om)\b/.test(lower)) return ['morning'];
   if (/\b(bd|bid|twice)\b/.test(lower)) return ['morning', 'night'];
   if (/\b(tds|tid|thrice|three times)\b/.test(lower)) return ['morning', 'noon', 'night'];
   if (/\b(qid|qds|four times)\b/.test(lower)) return ['morning', 'noon', 'afternoon', 'night'];
+
+  // The meal the prescription actually named.
+  //
+  // This is the case that sent a patient's dinner tablet to breakfast. Written
+  // Indian prescriptions say "1 tab AF Lunch" or "1 tab A Dinner" far more often
+  // than they say OD or 1-0-1, and none of those words matched anything here —
+  // so every one of them fell through to the ['morning'] default below and was
+  // scheduled for eight in the morning.
+  //
+  // Checked after the count-based codes on purpose: "1 tab BD after dinner"
+  // means twice a day, and the count is the stronger statement. Only when
+  // nothing has said how *often* does the named meal decide the single slot.
+  const meals = [];
+  if (/\b(breakfast|morning|subah|সকাল)\b/.test(lower)) meals.push('morning');
+  if (/\b(lunch|noon|midday|mid-day|dupur|দুপুর)\b/.test(lower)) meals.push('noon');
+  if (/\b(dinner|night|evening|supper|rat|রাত)\b/.test(lower)) meals.push('night');
+  if (meals.length) return meals;
+
+  if (/\b(od|qd|once|om)\b/.test(lower)) return ['morning'];
+
   return ['morning'];
 }
 

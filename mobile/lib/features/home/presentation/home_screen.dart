@@ -21,6 +21,7 @@ import '../../medications/domain/medication.dart';
 import '../../medications/presentation/medications_providers.dart';
 import '../domain/care_summary.dart';
 import 'home_providers.dart';
+import 'widgets/appointments_section.dart';
 import 'widgets/home_glucose_chart.dart';
 import '../../../shared/widgets/surfaces.dart';
 
@@ -151,6 +152,19 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                     ),
                     const SizedBox(height: T.s5),
                     _HeroCard(care: care),
+
+                    // Directly under the hero, because it is the only thing on
+                    // this screen with a deadline attached to it.
+                    //
+                    // There was no appointment section here at all. A patient
+                    // asked for a time, the desk gave them one, and the screen
+                    // they open every day said nothing about any of it — so the
+                    // first they knew was the reminder the evening before, and
+                    // a declined request they learned about from a push they
+                    // had already swiped away.
+                    const SizedBox(height: T.s8),
+                    const AppointmentsSection(),
+
                     const SizedBox(height: T.s8),
                     _HealthProfileCard(care: care),
                     const SizedBox(height: T.s8),

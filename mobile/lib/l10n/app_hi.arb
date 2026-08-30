@@ -522,5 +522,12 @@
   "apptNotAvailableBody": "क्लिनिक आपको यह दिन नहीं दे सका। कृपया दूसरा दिन मांगें।",
   "apptWaitingReply": "क्लिनिक के जवाब का इंतज़ार",
   "apptYouAskedFor": "आपने {day} मांगा था",
-  "apptNothingYet": "अभी कोई अपॉइंटमेंट नहीं"
+  "apptNothingYet": "अभी कोई अपॉइंटमेंट नहीं",
+  "deskFreedUp": "खाली हुए",
+  "deskTodayLabel": "आज",
+  "deskRequests": "अनुरोध",
+  "deskDeclined": "अस्वीकृत",
+  "deskConfirmedCount": "पुष्टि हुई",
+  "deskAppointmentsLabel": "अपॉइंटमेंट",
+  "deskViewDiary": "डायरी देखें"
 }

@@ -3141,6 +3141,48 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'No appointments yet'**
   String get apptNothingYet;
+
+  /// No description provided for @deskFreedUp.
+  ///
+  /// In en, this message translates to:
+  /// **'Freed up'**
+  String get deskFreedUp;
+
+  /// No description provided for @deskTodayLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Today'**
+  String get deskTodayLabel;
+
+  /// No description provided for @deskRequests.
+  ///
+  /// In en, this message translates to:
+  /// **'Requests'**
+  String get deskRequests;
+
+  /// No description provided for @deskDeclined.
+  ///
+  /// In en, this message translates to:
+  /// **'Declined'**
+  String get deskDeclined;
+
+  /// No description provided for @deskConfirmedCount.
+  ///
+  /// In en, this message translates to:
+  /// **'Confirmed'**
+  String get deskConfirmedCount;
+
+  /// No description provided for @deskAppointmentsLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Appointments'**
+  String get deskAppointmentsLabel;
+
+  /// No description provided for @deskViewDiary.
+  ///
+  /// In en, this message translates to:
+  /// **'View the diary'**
+  String get deskViewDiary;
 }
 
 class _AppLocalizationsDelegate

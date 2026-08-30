@@ -747,13 +747,20 @@ class _QueueCard extends ConsumerWidget {
     // under "in progress" instead — they are in the building, and counting
     // them in both places would describe a busier clinic than exists.
     final scheduled = today.where((a) => a.status == 'confirmed').length;
-    final active =
-        today
-            .where(
-              (a) =>
-                  a.status == 'checked_in' || a.status == 'in_consultation',
-            )
-            .length;
+    // Slots that freed up today, where "In progress" used to be.
+    //
+    // In progress counted checked_in and in_consultation, and nothing sets
+    // either any more: walking a patient through arrive → with the doctor →
+    // done is the practice software's job, and this app asking the desk to
+    // duplicate it by hand meant a number that was wrong whenever anybody
+    // forgot a tap. A tile that can only ever read zero is worse than no tile,
+    // because the desk reads it as "nobody is in with him" rather than as
+    // "this is not being tracked".
+    //
+    // Cancellations are true, they are about today, and they are the one thing
+    // on this card the desk can act on: an hour just came free, and somebody on
+    // the list wanted it.
+    final freed = today.where((a) => a.status == 'cancelled').length;
 
     return _SectionCard(
       padding: const EdgeInsets.fromLTRB(
@@ -800,14 +807,14 @@ class _QueueCard extends ConsumerWidget {
               const SizedBox(width: AppSpacing.sm),
               Expanded(
                 child: _QueueStat(
-                  icon: Icons.medical_services_outlined,
-                  value: '$active',
-                  label: l10n.deskInProgress,
-                  caption: l10n.deskNowLabel,
+                  icon: Icons.event_busy_outlined,
+                  value: '$freed',
+                  label: l10n.deskFreedUp,
+                  caption: l10n.deskTodayLabel,
                   tone:
-                      active == 0
+                      freed == 0
                           ? scheme.onSurfaceVariant
-                          : AppColors.successOn(context),
+                          : AppColors.warningOn(context),
                 ),
               ),
             ],
@@ -1160,9 +1167,14 @@ class _QuickActionsCard extends ConsumerWidget {
                 child: _ActionTile(
                   icon: Icons.how_to_reg_rounded,
                   tone: AppColors.successOn(context),
-                  title: l10n.deskCheckInPatient,
-                  caption: l10n.deskWalkInCheckIn,
-                  onTap: () => showCheckInSheet(context),
+                  // Was "Check-in patient". Check-in wrote a status nothing
+                  // reads any more — the arrive / with-the-doctor / done chain
+                  // belonged to the practice software the clinic already runs.
+                  // The diary is what the desk opens instead, all day, to
+                  // answer the phone.
+                  title: l10n.deskAppointmentsLabel,
+                  caption: l10n.deskViewDiary,
+                  onTap: () => context.push('/staff/appointments'),
                 ),
               ),
               const SizedBox(width: AppSpacing.sm),
@@ -1331,17 +1343,33 @@ class _ClinicSummaryCardState extends ConsumerState<_ClinicSummaryCard> {
     int count(bool Function(Appointment) test) =>
         rows == null ? 0 : rows.where(test).length;
 
-    final completed = count((a) => a.status == 'completed');
-    final cancelled = count((a) => a.status == 'cancelled');
-    final noShow = count((a) => a.status == 'no_show');
-    // Everyone who actually came through the door: checked in, with the doctor,
-    // or finished. Not the size of the diary — a booking nobody kept is not a
-    // visitor, and counting it as one would quietly inflate every day's total.
-    final visitors = count(
-      (a) =>
-          a.status == 'checked_in' ||
-          a.status == 'in_consultation' ||
-          a.status == 'completed',
+    // What the desk did, rather than what happened in the consulting room.
+    //
+    // This card used to report Completed, Cancelled, No shows and Total
+    // visitors. Three of those four read their answer from statuses only the
+    // check-in → with-the-doctor → complete chain ever set, and that chain is
+    // gone: it belonged to the practice software the clinic already runs, and
+    // asking a receptionist to keep a second copy of it by hand meant every
+    // figure here was wrong the moment anybody forgot a tap.
+    //
+    // Left alone they would have read 0, 0 and 0 for ever — and a summary card
+    // confidently reporting no visitors on a busy day is worse than one that
+    // does not claim to know. So it now counts the four things this app is
+    // actually the record of: what patients asked for, and what the desk did
+    // about it.
+    final requested = count((a) => a.status == 'requested');
+    final confirmed = count(
+      (a) => a.status == 'confirmed' && a.scheduledFor != null,
+    );
+    // Turned down before it ever had a time, which is the only cancellation
+    // with no scheduledFor on it.
+    final declined = count(
+      (a) => a.status == 'cancelled' && a.scheduledFor == null,
+    );
+    // Called off after it had one. A different act, and a different number:
+    // this is the one that frees an hour somebody else could have had.
+    final cancelled = count(
+      (a) => a.status == 'cancelled' && a.scheduledFor != null,
     );
 
     String n(int v) => loading ? '—' : '$v';
@@ -1379,8 +1407,22 @@ class _ClinicSummaryCardState extends ConsumerState<_ClinicSummaryCard> {
               children: [
                 Expanded(
                   child: _SummaryFigure(
-                    value: n(completed),
-                    label: l10n.deskCompleted,
+                    value: n(requested),
+                    label: l10n.deskRequests,
+                  ),
+                ),
+                _SummaryDivider(scheme: scheme),
+                Expanded(
+                  child: _SummaryFigure(
+                    value: n(confirmed),
+                    label: l10n.deskConfirmedCount,
+                  ),
+                ),
+                _SummaryDivider(scheme: scheme),
+                Expanded(
+                  child: _SummaryFigure(
+                    value: n(declined),
+                    label: l10n.deskDeclined,
                   ),
                 ),
                 _SummaryDivider(scheme: scheme),
@@ -1388,20 +1430,6 @@ class _ClinicSummaryCardState extends ConsumerState<_ClinicSummaryCard> {
                   child: _SummaryFigure(
                     value: n(cancelled),
                     label: l10n.deskCancelled,
-                  ),
-                ),
-                _SummaryDivider(scheme: scheme),
-                Expanded(
-                  child: _SummaryFigure(
-                    value: n(noShow),
-                    label: l10n.deskNoShows,
-                  ),
-                ),
-                _SummaryDivider(scheme: scheme),
-                Expanded(
-                  child: _SummaryFigure(
-                    value: n(visitors),
-                    label: l10n.deskTotalVisitors,
                   ),
                 ),
               ],

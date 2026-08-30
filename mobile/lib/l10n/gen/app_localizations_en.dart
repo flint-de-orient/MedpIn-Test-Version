@@ -1658,4 +1658,25 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get apptNothingYet => 'No appointments yet';
+
+  @override
+  String get deskFreedUp => 'Freed up';
+
+  @override
+  String get deskTodayLabel => 'Today';
+
+  @override
+  String get deskRequests => 'Requests';
+
+  @override
+  String get deskDeclined => 'Declined';
+
+  @override
+  String get deskConfirmedCount => 'Confirmed';
+
+  @override
+  String get deskAppointmentsLabel => 'Appointments';
+
+  @override
+  String get deskViewDiary => 'View the diary';
 }

@@ -1657,4 +1657,25 @@ class AppLocalizationsHi extends AppLocalizations {
 
   @override
   String get apptNothingYet => 'अभी कोई अपॉइंटमेंट नहीं';
+
+  @override
+  String get deskFreedUp => 'खाली हुए';
+
+  @override
+  String get deskTodayLabel => 'आज';
+
+  @override
+  String get deskRequests => 'अनुरोध';
+
+  @override
+  String get deskDeclined => 'अस्वीकृत';
+
+  @override
+  String get deskConfirmedCount => 'पुष्टि हुई';
+
+  @override
+  String get deskAppointmentsLabel => 'अपॉइंटमेंट';
+
+  @override
+  String get deskViewDiary => 'डायरी देखें';
 }

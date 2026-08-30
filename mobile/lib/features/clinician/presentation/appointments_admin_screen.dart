@@ -12,6 +12,7 @@ import '../../appointments/presentation/appointment_providers.dart';
 import '../../appointments/presentation/widgets/appointment_visuals.dart';
 import '../../../shared/widgets/user_avatar.dart';
 import '../../staff/presentation/widgets/request_card.dart';
+import 'widgets/appointment_manage_sheet.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 /// The clinic diary, led by the one thing this app is for.
@@ -42,7 +43,7 @@ class _AppointmentsAdminScreenState
     extends ConsumerState<AppointmentsAdminScreen> {
   /// Which slice of the *booked* list is shown. Requests are never scoped by
   /// day — see below.
-  String _scope = 'upcoming'; // today | upcoming | all
+  String _scope = 'today'; // today | upcoming | past
 
   /// Everything asked for and not yet given a time, whatever day it is for.
   ///
@@ -70,9 +71,19 @@ class _AppointmentsAdminScreenState
         final b = todayBounds();
         return (from: b.from, to: b.to, status: null, clinicId: null);
       case 'upcoming':
-        return (from: todayBounds().from, to: null, status: null, clinicId: null);
+        // From tomorrow, not from today. Upcoming beside a Today tab that
+        // already holds the day means *after* today; overlapping them listed
+        // this morning twice and made the two tabs disagree about how many
+        // appointments the clinic has.
+        return (
+          from: todayBounds().to,
+          to: null,
+          status: null,
+          clinicId: null,
+        );
       default:
-        return (from: null, to: null, status: null, clinicId: null);
+        // Past: everything up to the start of today.
+        return (from: null, to: todayBounds().from, status: null, clinicId: null);
     }
   }
 
@@ -131,12 +142,9 @@ class _AppointmentsAdminScreenState
                 const SizedBox(height: AppSpacing.lg),
               ],
 
-              _SectionHeader(
-                title: 'Booked',
-                icon: Icons.event_available_rounded,
-                tone: AppColors.primary,
-              ),
-              const SizedBox(height: AppSpacing.sm),
+              // No "Booked" heading above this. The screen is called
+              // Appointments and the tabs immediately under it say which ones
+              // — a third label between the two said nothing either did not.
               _ScopeToggle(
                 scope: _scope,
                 onChanged: (s) => setState(() => _scope = s),
@@ -165,7 +173,7 @@ class _AppointmentsAdminScreenState
                           .toList()
                         ..sort(
                           (a, b) =>
-                              _scope == 'all'
+                              _scope == 'past'
                                   ? b.sortKey.compareTo(a.sortKey)
                                   : a.sortKey.compareTo(b.sortKey),
                         );
@@ -229,32 +237,16 @@ class _AppointmentsAdminScreenState
       context: context,
       showDragHandle: true,
       builder:
-          (_) => _ManageSheet(
+          (_) => AppointmentManageSheet(
             appointment: a,
-            onAction: (
-              targetStatus, {
-              String? notes,
-              bool cancel = false,
-            }) async {
+            onChanged: () async => _reload(ref),
+            onCancel: () async {
               final messenger = ScaffoldMessenger.of(context);
-              Navigator.pop(context);
               try {
-                if (cancel) {
-                  await ref
-                      .read(appointmentRepositoryProvider)
-                      .cancel(a.id, reason: notes);
-                } else {
-                  await ref
-                      .read(appointmentRepositoryProvider)
-                      .setStatus(a.id, targetStatus!, consultationNotes: notes);
-                }
+                await ref.read(appointmentRepositoryProvider).cancel(a.id);
                 _reload(ref);
-              } on ApiException {
-                messenger.showSnackBar(
-                  const SnackBar(
-                    content: Text('Could not update. Please try again.'),
-                  ),
-                );
+              } on ApiException catch (e) {
+                messenger.showSnackBar(SnackBar(content: Text(e.message)));
               }
             },
           ),
@@ -347,38 +339,59 @@ class _DayHeading extends StatelessWidget {
     final today = DateTime(now.year, now.month, now.day);
     final delta = day.difference(today).inDays;
 
-    final label = switch (delta) {
-      0 => 'Today',
-      1 => 'Tomorrow',
-      -1 => 'Yesterday',
-      _ => DateFormat('EEEE, d MMMM', locale).format(day),
+    // One shape for every row: a relative word where there is one, then the
+    // date itself, always.
+    //
+    // It printed "Tomorrow" for one group and "Wednesday, 2 September" for the
+    // next — two different kinds of label in a single list, so the eye could
+    // not compare them, and "Tomorrow" gave no date at all to a receptionist
+    // writing one down for a patient on the phone.
+    //
+    // Computed every build, never stored: at one minute past midnight tomorrow
+    // becomes today, and a cached string would stay wrong until somebody
+    // happened to reopen the app.
+    final relative = switch (delta) {
+      0 => 'TODAY',
+      1 => 'TOMORROW',
+      -1 => 'YESTERDAY',
+      _ => DateFormat('EEEE', locale).format(day).toUpperCase(),
     };
+    // The year appears only when it is not this one, so an ordinary week is not
+    // cluttered by a number that never changes.
+    final date =
+        DateFormat(
+          day.year == now.year ? 'd MMM' : 'd MMM yyyy',
+          locale,
+        ).format(day).toUpperCase();
+
+    final tone = delta == 0 ? AppColors.primary : scheme.onSurfaceVariant;
 
     return Row(
       children: [
-        Text(
-          label,
-          style: TextStyle(
-            fontSize: 13,
-            fontWeight: FontWeight.w800,
-            letterSpacing: 0.2,
-            color: delta == 0 ? AppColors.primary : scheme.onSurfaceVariant,
-          ),
-        ),
-        const SizedBox(width: 8),
         Expanded(
-          child: Divider(
-            color: scheme.outlineVariant.withValues(alpha: 0.7),
-            height: 1,
+          child: Text(
+            '$relative · $date',
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w800,
+              letterSpacing: 0.8,
+              color: tone,
+            ),
           ),
         ),
-        const SizedBox(width: 8),
-        Text(
-          count == 1 ? '1 booked' : '$count booked',
-          style: TextStyle(
-            fontSize: 12,
-            fontWeight: FontWeight.w600,
-            color: scheme.onSurfaceVariant,
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+          decoration: BoxDecoration(
+            color: tone.withValues(alpha: 0.12),
+            borderRadius: BorderRadius.circular(20),
+          ),
+          child: Text(
+            '$count',
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w800,
+              color: tone,
+            ),
           ),
         ),
       ],
@@ -395,7 +408,7 @@ class _ScopeToggle extends StatelessWidget {
   static const _options = [
     ('today', 'Today'),
     ('upcoming', 'Upcoming'),
-    ('all', 'All'),
+    ('past', 'Past'),
   ];
 
   @override
@@ -537,204 +550,6 @@ class _LoadFailed extends StatelessWidget {
   }
 }
 
-typedef _ActionCallback =
-    Future<void> Function(String? targetStatus, {String? notes, bool cancel});
-
-class _ManageSheet extends StatelessWidget {
-  const _ManageSheet({required this.appointment, required this.onAction});
-
-  final Appointment appointment;
-  final _ActionCallback onAction;
-
-  @override
-  Widget build(BuildContext context) {
-    final a = appointment;
-    final scheme = Theme.of(context).colorScheme;
-
-    // Which transitions make sense from the current status.
-    final actions = <_Action>[];
-    switch (a.status) {
-      case 'requested':
-        actions.add(
-          _Action(
-            'Confirm',
-            Icons.check_circle_outline_rounded,
-            AppColors.success,
-            status: 'confirmed',
-          ),
-        );
-        actions.add(
-          _Action(
-            'Mark no-show',
-            Icons.person_off_outlined,
-            AppColors.warning,
-            status: 'no_show',
-          ),
-        );
-      case 'confirmed':
-        actions.add(
-          _Action(
-            'Check in',
-            Icons.login_rounded,
-            AppColors.primary,
-            status: 'checked_in',
-          ),
-        );
-        actions.add(
-          _Action(
-            'Start consultation',
-            Icons.play_circle_outline_rounded,
-            AppColors.primary,
-            status: 'in_consultation',
-          ),
-        );
-        actions.add(
-          _Action(
-            'Mark no-show',
-            Icons.person_off_outlined,
-            AppColors.warning,
-            status: 'no_show',
-          ),
-        );
-      case 'checked_in':
-        actions.add(
-          _Action(
-            'Start consultation',
-            Icons.play_circle_outline_rounded,
-            AppColors.primary,
-            status: 'in_consultation',
-          ),
-        );
-      case 'in_consultation':
-        actions.add(
-          _Action(
-            'Complete',
-            Icons.task_alt_rounded,
-            AppColors.success,
-            status: 'completed',
-            notes: true,
-          ),
-        );
-    }
-    final canCancel = a.isActive;
-
-    return SafeArea(
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(
-          AppSpacing.md,
-          0,
-          AppSpacing.md,
-          AppSpacing.md,
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              a.patientName ?? 'Patient',
-              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
-            ),
-            Text(
-              a.scheduledFor != null
-                  ? '${DateFormat('EEE, d MMM · h:mm a').format(a.scheduledFor!)}'
-                      '  ·  ${a.clinicName ?? ''}'
-                  // A request: the day they asked for, and no invented hour.
-                  : a.preferredFor != null
-                  ? 'Asked for ${DateFormat('EEE, d MMM').format(a.preferredFor!)}'
-                      '  ·  needs a time'
-                  : 'Needs a time',
-              style: TextStyle(fontSize: 14, color: scheme.onSurfaceVariant),
-            ),
-            const SizedBox(height: AppSpacing.md),
-            for (final act in actions)
-              ListTile(
-                contentPadding: EdgeInsets.zero,
-                leading: Icon(act.icon, color: act.color),
-                title: Text(act.label),
-                onTap: () {
-                  if (act.notes) {
-                    _completeWithNotes(context, act.status!);
-                  } else {
-                    onAction(act.status);
-                  }
-                },
-              ),
-            if (canCancel)
-              ListTile(
-                contentPadding: EdgeInsets.zero,
-                leading: Icon(
-                  Icons.cancel_outlined,
-                  color: AppColors.dangerOn(context),
-                ),
-                title: Text(
-                  'Cancel appointment',
-                  style: TextStyle(color: AppColors.dangerOn(context)),
-                ),
-                onTap: () => onAction(null, cancel: true),
-              ),
-            if (actions.isEmpty && !canCancel)
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: AppSpacing.md),
-                child: Text(
-                  'No actions available for a ${a.status} appointment.',
-                  style: TextStyle(color: scheme.onSurfaceVariant),
-                ),
-              ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Future<void> _completeWithNotes(BuildContext context, String status) async {
-    final controller = TextEditingController();
-    final notes = await showDialog<String>(
-      context: context,
-      builder:
-          (ctx) => AlertDialog(
-            title: const Text('Consultation notes'),
-            content: TextField(
-              controller: controller,
-              maxLines: 4,
-              decoration: const InputDecoration(
-                hintText: 'Optional notes for the record',
-              ),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(ctx),
-                child: const Text('Skip'),
-              ),
-              FilledButton(
-                onPressed: () => Navigator.pop(ctx, controller.text.trim()),
-                child: const Text('Complete'),
-              ),
-            ],
-          ),
-    );
-    // Dialog dismissed entirely (back button) → do nothing; otherwise complete.
-    if (context.mounted && notes != null) {
-      await onAction(status, notes: notes.isEmpty ? null : notes);
-    } else if (context.mounted) {
-      await onAction(status);
-    }
-  }
-}
-
-class _Action {
-  const _Action(
-    this.label,
-    this.icon,
-    this.color, {
-    this.status,
-    this.notes = false,
-  });
-  final String label;
-  final IconData icon;
-  final Color color;
-  final String? status;
-  final bool notes;
-}
 
 /// Requests the clinic turned down, folded away.
 ///
