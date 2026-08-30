@@ -515,5 +515,12 @@
   "deskAlreadyBookedTitle": "সেদিন ইতিমধ্যেই বুক করা আছে",
   "deskAlreadyBookedBody": "এই রোগীর সেদিন ইতিমধ্যেই একটি অ্যাপয়েন্টমেন্ট আছে। তবুও আরেকটি বুক করবেন?",
   "deskBookAnyway": "তবুও বুক করুন",
-  "deskAlreadyBookedAt": "এই রোগীর সেদিন {time}-এ ইতিমধ্যেই একটি অ্যাপয়েন্টমেন্ট আছে। তবুও আরেকটি বুক করবেন?"
+  "deskAlreadyBookedAt": "এই রোগীর সেদিন {time}-এ ইতিমধ্যেই একটি অ্যাপয়েন্টমেন্ট আছে। তবুও আরেকটি বুক করবেন?",
+  "apptYourAppointments": "আপনার অ্যাপয়েন্টমেন্ট",
+  "apptViewAll": "সব দেখুন",
+  "apptNotAvailable": "পাওয়া যায়নি",
+  "apptNotAvailableBody": "ক্লিনিক আপনাকে এই দিনটি দিতে পারেনি। অনুগ্রহ করে অন্য দিন চান।",
+  "apptWaitingReply": "ক্লিনিকের উত্তরের অপেক্ষায়",
+  "apptYouAskedFor": "আপনি {day} চেয়েছিলেন",
+  "apptNothingYet": "এখনও কোনও অ্যাপয়েন্টমেন্ট নেই"
 }

@@ -3099,6 +3099,48 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'This patient already has {time} on that day. Book another one anyway?'**
   String deskAlreadyBookedAt(String time);
+
+  /// No description provided for @apptYourAppointments.
+  ///
+  /// In en, this message translates to:
+  /// **'Your appointments'**
+  String get apptYourAppointments;
+
+  /// No description provided for @apptViewAll.
+  ///
+  /// In en, this message translates to:
+  /// **'View all'**
+  String get apptViewAll;
+
+  /// No description provided for @apptNotAvailable.
+  ///
+  /// In en, this message translates to:
+  /// **'Not available'**
+  String get apptNotAvailable;
+
+  /// No description provided for @apptNotAvailableBody.
+  ///
+  /// In en, this message translates to:
+  /// **'The clinic could not give you this day. Please ask for another.'**
+  String get apptNotAvailableBody;
+
+  /// No description provided for @apptWaitingReply.
+  ///
+  /// In en, this message translates to:
+  /// **'Waiting for the clinic'**
+  String get apptWaitingReply;
+
+  /// No description provided for @apptYouAskedFor.
+  ///
+  /// In en, this message translates to:
+  /// **'You asked for {day}'**
+  String apptYouAskedFor(String day);
+
+  /// No description provided for @apptNothingYet.
+  ///
+  /// In en, this message translates to:
+  /// **'No appointments yet'**
+  String get apptNothingYet;
 }
 
 class _AppLocalizationsDelegate

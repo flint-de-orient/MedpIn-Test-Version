@@ -15,7 +15,7 @@ import 'widgets/adherence_tile.dart';
 import 'widgets/alerts_banner.dart';
 import 'widgets/glucose_summary_card.dart';
 import 'widgets/health_score_card.dart';
-import 'widgets/next_appointment_card.dart';
+import 'widgets/appointments_section.dart';
 import 'widgets/recommendations_list.dart';
 
 class DashboardScreen extends ConsumerWidget {
@@ -132,7 +132,7 @@ class _DashboardContent extends StatelessWidget {
         const SizedBox(height: AppSpacing.md),
         AdherenceTile(adherence: data.adherence),
         const SizedBox(height: AppSpacing.md),
-        NextAppointmentCard(appointment: data.nextAppointment),
+        const AppointmentsSection(),
         if (reminderChips.isNotEmpty) ...[
           const SizedBox(height: AppSpacing.md),
           Wrap(

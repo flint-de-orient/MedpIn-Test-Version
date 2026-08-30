@@ -1629,4 +1629,28 @@ class AppLocalizationsBn extends AppLocalizations {
   String deskAlreadyBookedAt(String time) {
     return 'এই রোগীর সেদিন $time-এ ইতিমধ্যেই একটি অ্যাপয়েন্টমেন্ট আছে। তবুও আরেকটি বুক করবেন?';
   }
+
+  @override
+  String get apptYourAppointments => 'আপনার অ্যাপয়েন্টমেন্ট';
+
+  @override
+  String get apptViewAll => 'সব দেখুন';
+
+  @override
+  String get apptNotAvailable => 'পাওয়া যায়নি';
+
+  @override
+  String get apptNotAvailableBody =>
+      'ক্লিনিক আপনাকে এই দিনটি দিতে পারেনি। অনুগ্রহ করে অন্য দিন চান।';
+
+  @override
+  String get apptWaitingReply => 'ক্লিনিকের উত্তরের অপেক্ষায়';
+
+  @override
+  String apptYouAskedFor(String day) {
+    return 'আপনি $day চেয়েছিলেন';
+  }
+
+  @override
+  String get apptNothingYet => 'এখনও কোনও অ্যাপয়েন্টমেন্ট নেই';
 }

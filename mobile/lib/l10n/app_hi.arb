@@ -515,5 +515,12 @@
   "deskAlreadyBookedTitle": "उस दिन पहले से बुक है",
   "deskAlreadyBookedBody": "इस मरीज़ का उस दिन पहले से अपॉइंटमेंट है। फिर भी एक और बुक करें?",
   "deskBookAnyway": "फिर भी बुक करें",
-  "deskAlreadyBookedAt": "इस मरीज़ का उस दिन {time} पर पहले से अपॉइंटमेंट है। फिर भी एक और बुक करें?"
+  "deskAlreadyBookedAt": "इस मरीज़ का उस दिन {time} पर पहले से अपॉइंटमेंट है। फिर भी एक और बुक करें?",
+  "apptYourAppointments": "आपके अपॉइंटमेंट",
+  "apptViewAll": "सभी देखें",
+  "apptNotAvailable": "उपलब्ध नहीं",
+  "apptNotAvailableBody": "क्लिनिक आपको यह दिन नहीं दे सका। कृपया दूसरा दिन मांगें।",
+  "apptWaitingReply": "क्लिनिक के जवाब का इंतज़ार",
+  "apptYouAskedFor": "आपने {day} मांगा था",
+  "apptNothingYet": "अभी कोई अपॉइंटमेंट नहीं"
 }

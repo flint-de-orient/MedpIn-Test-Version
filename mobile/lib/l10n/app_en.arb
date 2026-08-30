@@ -797,5 +797,19 @@
         "type": "String"
       }
     }
+  },
+  "apptYourAppointments": "Your appointments",
+  "apptViewAll": "View all",
+  "apptNotAvailable": "Not available",
+  "apptNotAvailableBody": "The clinic could not give you this day. Please ask for another.",
+  "apptWaitingReply": "Waiting for the clinic",
+  "apptYouAskedFor": "You asked for {day}",
+  "apptNothingYet": "No appointments yet",
+  "@apptYouAskedFor": {
+    "placeholders": {
+      "day": {
+        "type": "String"
+      }
+    }
   }
 }

@@ -1634,4 +1634,28 @@ class AppLocalizationsEn extends AppLocalizations {
   String deskAlreadyBookedAt(String time) {
     return 'This patient already has $time on that day. Book another one anyway?';
   }
+
+  @override
+  String get apptYourAppointments => 'Your appointments';
+
+  @override
+  String get apptViewAll => 'View all';
+
+  @override
+  String get apptNotAvailable => 'Not available';
+
+  @override
+  String get apptNotAvailableBody =>
+      'The clinic could not give you this day. Please ask for another.';
+
+  @override
+  String get apptWaitingReply => 'Waiting for the clinic';
+
+  @override
+  String apptYouAskedFor(String day) {
+    return 'You asked for $day';
+  }
+
+  @override
+  String get apptNothingYet => 'No appointments yet';
 }
