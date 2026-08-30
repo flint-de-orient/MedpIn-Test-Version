@@ -784,5 +784,7 @@
   "deskChoosePatient": "Choose a patient",
   "deskSearchPatients": "Search by name or phone",
   "deskNoPatientsFound": "No patients found",
-  "deskNobodyToCheckIn": "Nobody is waiting to be checked in."
+  "deskNobodyToCheckIn": "Nobody is waiting to be checked in.",
+  "nutritionLoadFailed": "Could not load the conversation",
+  "nutritionNoMessages": "No messages yet"
 }

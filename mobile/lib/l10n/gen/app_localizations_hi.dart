@@ -1612,4 +1612,10 @@ class AppLocalizationsHi extends AppLocalizations {
 
   @override
   String get deskNobodyToCheckIn => 'चेक-इन के लिए कोई नहीं है।';
+
+  @override
+  String get nutritionLoadFailed => 'बातचीत लोड नहीं हो सकी';
+
+  @override
+  String get nutritionNoMessages => 'अभी कोई संदेश नहीं';
 }

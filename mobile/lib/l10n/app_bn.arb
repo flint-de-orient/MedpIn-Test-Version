@@ -509,5 +509,7 @@
   "deskChoosePatient": "রোগী বাছুন",
   "deskSearchPatients": "নাম বা ফোন দিয়ে খুঁজুন",
   "deskNoPatientsFound": "কোনও রোগী পাওয়া যায়নি",
-  "deskNobodyToCheckIn": "চেক-ইনের জন্য কেউ নেই।"
+  "deskNobodyToCheckIn": "চেক-ইনের জন্য কেউ নেই।",
+  "nutritionLoadFailed": "কথোপকথন লোড করা যায়নি",
+  "nutritionNoMessages": "এখনও কোনও বার্তা নেই"
 }

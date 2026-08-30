@@ -1,11 +1,13 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/network/api_exception.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
+import '../../../l10n/gen/app_localizations.dart';
 import '../../../shared/providers/core_providers.dart';
 import '../../../shared/providers/locale_provider.dart';
 import '../../../shared/widgets/chat_background.dart';
@@ -401,6 +403,7 @@ class _NutritionChatScreenState extends ConsumerState<NutritionChatScreen>
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     final scheme = Theme.of(context).colorScheme;
     final async = ref.watch(nutritionThreadProvider);
 
@@ -527,13 +530,19 @@ class _NutritionChatScreenState extends ConsumerState<NutritionChatScreen>
                           child: Column(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              const Text('Could not load the conversation'),
+                              // Translated, like everything else the patient
+                              // reads. This was two hardcoded English strings
+                              // in a trilingual app, and the one moment they
+                              // showed was the moment something had gone wrong
+                              // — which is the worst time to hand somebody a
+                              // language they may not read.
+                              Text(l10n.nutritionLoadFailed),
                               const SizedBox(height: AppSpacing.sm),
                               OutlinedButton(
                                 onPressed:
                                     () =>
                                         ref.invalidate(nutritionThreadProvider),
-                                child: const Text('Retry'),
+                                child: Text(l10n.commonRetry),
                               ),
                             ],
                           ),
@@ -571,8 +580,8 @@ class _NutritionChatScreenState extends ConsumerState<NutritionChatScreen>
                                   color: scheme.outlineVariant,
                                 ),
                                 const SizedBox(height: AppSpacing.md),
-                                const Text(
-                                  'No messages yet',
+                                Text(
+                                  l10n.nutritionNoMessages,
                                   style: TextStyle(
                                     fontSize: 16,
                                     fontWeight: FontWeight.w700,

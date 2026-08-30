@@ -509,5 +509,7 @@
   "deskChoosePatient": "मरीज़ चुनें",
   "deskSearchPatients": "नाम या फ़ोन से खोजें",
   "deskNoPatientsFound": "कोई मरीज़ नहीं मिला",
-  "deskNobodyToCheckIn": "चेक-इन के लिए कोई नहीं है।"
+  "deskNobodyToCheckIn": "चेक-इन के लिए कोई नहीं है।",
+  "nutritionLoadFailed": "बातचीत लोड नहीं हो सकी",
+  "nutritionNoMessages": "अभी कोई संदेश नहीं"
 }

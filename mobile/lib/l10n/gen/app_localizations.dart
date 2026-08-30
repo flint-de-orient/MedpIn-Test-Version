@@ -3063,6 +3063,18 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Nobody is waiting to be checked in.'**
   String get deskNobodyToCheckIn;
+
+  /// No description provided for @nutritionLoadFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not load the conversation'**
+  String get nutritionLoadFailed;
+
+  /// No description provided for @nutritionNoMessages.
+  ///
+  /// In en, this message translates to:
+  /// **'No messages yet'**
+  String get nutritionNoMessages;
 }
 
 class _AppLocalizationsDelegate

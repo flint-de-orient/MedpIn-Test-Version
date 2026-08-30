@@ -1613,4 +1613,10 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get deskNobodyToCheckIn => 'Nobody is waiting to be checked in.';
+
+  @override
+  String get nutritionLoadFailed => 'Could not load the conversation';
+
+  @override
+  String get nutritionNoMessages => 'No messages yet';
 }

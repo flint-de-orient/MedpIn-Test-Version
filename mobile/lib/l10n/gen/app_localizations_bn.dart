@@ -1608,4 +1608,10 @@ class AppLocalizationsBn extends AppLocalizations {
 
   @override
   String get deskNobodyToCheckIn => 'চেক-ইনের জন্য কেউ নেই।';
+
+  @override
+  String get nutritionLoadFailed => 'কথোপকথন লোড করা যায়নি';
+
+  @override
+  String get nutritionNoMessages => 'এখনও কোনও বার্তা নেই';
 }

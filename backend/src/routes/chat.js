@@ -4,8 +4,8 @@ import { z } from 'zod';
 import { requireAuth, requireClinician, requireRole, resolvePatientScope } from '../middleware/auth.js';
 import { validate, q } from '../middleware/validate.js';
 import { asyncHandler, notFound, badRequest } from '../middleware/errors.js';
-import { ROLES, User } from '../models/User.js';
-import { PatientProfile } from '../models/PatientProfile.js';
+import { ROLES } from '../models/User.js';
+import { dieticianFacingPatient } from '../services/dieticianIdentity.js';
 import { audit } from '../middleware/audit.js';
 import { handlePatientMessage, streamPatientMessage } from '../services/ai/assistant.js';
 import { ChatSession } from '../models/ChatSession.js';
@@ -588,67 +588,6 @@ router.get(
   }),
 );
 
-
-/**
- * The dietician a patient should be shown as theirs, or null.
- *
- * Three answers, in the order they are true:
- *
- *   - the one a doctor explicitly assigned. A human decided; nothing else
- *     overrides that.
- *   - the one who has actually been answering this patient. With no
- *     assignment, whoever has been replying IS their dietician in every sense
- *     the patient experiences, and showing somebody else would be a worse lie
- *     than showing nobody.
- *   - null, when neither is true. Deliberately not "pick one" — a clinician
- *     allocation made by a shuffle is worse than one made late, and the screen
- *     can say plainly that nobody has been assigned yet.
- */
-async function dieticianFacingPatient(patientId) {
-  const profile = await PatientProfile.findOne({ user: patientId })
-    .select('assignedDietician')
-    .lean();
-
-  const shape = (u) =>
-    u
-      ? {
-          id: String(u._id),
-          name: u.name,
-          avatarUrl: u.avatarAssetId ? `/api/v1/uploads/${u.avatarAssetId}/raw` : null,
-          assigned: Boolean(profile?.assignedDietician),
-        }
-      : null;
-
-  if (profile?.assignedDietician) {
-    const assigned = await User.findOne({
-      _id: profile.assignedDietician,
-      isActive: true,
-    })
-      .select('name avatarAssetId')
-      .lean();
-    if (assigned) return shape(assigned);
-  }
-
-  // Nobody assigned: whoever last wrote here, if anyone has.
-  const session = await ChatSession.findOne({ patient: patientId, kind: 'nutrition' })
-    .select('_id')
-    .lean();
-  if (!session) return null;
-
-  const lastReply = await ChatMessage.findOne({
-    session: session._id,
-    role: 'dietician',
-  })
-    .sort({ seq: -1 })
-    .select('sender')
-    .lean();
-  if (!lastReply?.sender) return null;
-
-  const replier = await User.findOne({ _id: lastReply.sender, isActive: true })
-    .select('name avatarAssetId')
-    .lean();
-  return shape(replier);
-}
 
 /**
  * The patient writes to their dietician.
