@@ -25,8 +25,24 @@ if ! [[ "$BUILD" =~ ^[0-9]+$ ]]; then
   exit 1
 fi
 
+APK="build/app/outputs/flutter-apk/app-arm64-v8a-release.apk"
+BEFORE="$( [ -f "$APK" ] && date -r "$APK" +%s || echo 0 )"
+
 echo "Building ${NAME}+${BUILD}"
 flutter build apk --release --split-per-abi --dart-define="APP_BUILD=${BUILD}"
+
+# Proof, not an exit code.
+#
+# A release build takes six-odd minutes cold and about one warm, and the output
+# is easy to lose to a pipe — which is how a build in progress got mistaken for
+# a build that never ran. An exit code of 0 from a pipeline is the last stage's,
+# not flutter's, so the only honest check is whether the file on disk actually
+# moved.
+AFTER="$( [ -f "$APK" ] && date -r "$APK" +%s || echo 0 )"
+if [ "$AFTER" -le "$BEFORE" ]; then
+  echo "FAILED: $APK was not rewritten — the APK on disk is from an earlier build." >&2
+  exit 1
+fi
 
 cat <<EOF
 

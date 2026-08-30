@@ -72,16 +72,26 @@ class UpdateAvailableBanner extends ConsumerWidget {
         SafeArea(
           bottom: false,
           child: Padding(
+            // Below the system icons with room to spare. The first version
+            // sat hard against the status bar and read as part of it.
             padding: const EdgeInsets.fromLTRB(
               AppSpacing.md,
-              AppSpacing.sm,
               AppSpacing.md,
-              4,
+              AppSpacing.md,
+              6,
             ),
             child: Container(
               padding: const EdgeInsets.fromLTRB(12, 10, 10, 10),
               decoration: BoxDecoration(
-                color: scheme.surface,
+                // White, stated rather than taken from the scheme.
+                //
+                // The first version tinted the strip with the brand blue at
+                // ten percent and let the text colour resolve from the theme.
+                // On the handset that came out dark on dark and the sentence
+                // was very nearly unreadable — the one sentence whose whole
+                // job is to be read. A named ground and a named ink cannot
+                // drift apart like that.
+                color: Colors.white,
                 borderRadius: BorderRadius.circular(16),
                 border: Border.all(
                   color: AppColors.primary.withValues(alpha: 0.22),
@@ -126,16 +136,17 @@ class UpdateAvailableBanner extends ConsumerWidget {
                             fontSize: 14,
                             height: 1.25,
                             fontWeight: FontWeight.w800,
+                            color: Color(0xFF0B1B3A),
                           ),
                         ),
                         Text(
                           'A newer version is available to install.',
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
+                          style: const TextStyle(
                             fontSize: 12,
                             height: 1.3,
-                            color: scheme.onSurfaceVariant,
+                            color: Color(0xFF5B6B85),
                           ),
                         ),
                       ],
@@ -172,18 +183,21 @@ class UpdateAvailableBanner extends ConsumerWidget {
                     tooltip: 'Not now',
                     visualDensity: VisualDensity.compact,
                     padding: EdgeInsets.zero,
+                    // 40 square. Thirty was under every touch-target guideline
+                    // there is, on the one control whose whole purpose is to
+                    // let somebody make this go away.
                     constraints: const BoxConstraints(
-                      minWidth: 30,
-                      minHeight: 30,
+                      minWidth: 40,
+                      minHeight: 40,
                     ),
                     onPressed:
                         () => ref
                             .read(_dismissedBuildProvider.notifier)
                             .dismiss(status.latestBuild),
-                    icon: Icon(
+                    icon: const Icon(
                       Icons.close_rounded,
-                      size: 17,
-                      color: scheme.onSurfaceVariant,
+                      size: 18,
+                      color: Color(0xFF5B6B85),
                     ),
                   ),
                 ],
