@@ -35,6 +35,18 @@
         <intent>
             <action android:name="android.speech.RecognitionService"/>
         </intent>
+        <!--
+          Package visibility for the dialler. From Android 11 an app cannot see
+          which apps handle an intent unless it says which ones it asks about,
+          and without this `canLaunchUrl` on a tel: URI answers false on every
+          modern handset — including for the emergency card's "Call the clinic"
+          button, which is the one button in this app that must never quietly
+          do nothing.
+        -->
+        <intent>
+            <action android:name="android.intent.action.DIAL"/>
+            <data android:scheme="tel"/>
+        </intent>
     </queries>
 
     <application

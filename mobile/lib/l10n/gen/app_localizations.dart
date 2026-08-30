@@ -3075,6 +3075,30 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'No messages yet'**
   String get nutritionNoMessages;
+
+  /// No description provided for @deskAlreadyBookedTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Already booked that day'**
+  String get deskAlreadyBookedTitle;
+
+  /// No description provided for @deskAlreadyBookedBody.
+  ///
+  /// In en, this message translates to:
+  /// **'This patient already has an appointment on that day. Book another one anyway?'**
+  String get deskAlreadyBookedBody;
+
+  /// No description provided for @deskBookAnyway.
+  ///
+  /// In en, this message translates to:
+  /// **'Book anyway'**
+  String get deskBookAnyway;
+
+  /// No description provided for @deskAlreadyBookedAt.
+  ///
+  /// In en, this message translates to:
+  /// **'This patient already has {time} on that day. Book another one anyway?'**
+  String deskAlreadyBookedAt(String time);
 }
 
 class _AppLocalizationsDelegate

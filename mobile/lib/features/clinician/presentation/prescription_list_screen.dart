@@ -199,8 +199,21 @@ class _PrescriptionListScreenState
                     color: Colors.white,
                   ),
                 )
-                : const Icon(Icons.note_add_outlined),
-        label: Text(_filing ? 'Filing…' : 'Add prescription'),
+                : const Icon(Icons.document_scanner_outlined),
+        // What it does, which is not what "Add prescription" says.
+        //
+        // This photographs a prescription the doctor has already written and
+        // signed on paper, and files it against the patient — the clinic's
+        // pilot runs on paper and this is how the app's prescription list stops
+        // being empty. The desk is meant to do it, and the record keeps the two
+        // roles apart: `doctor` is whose prescription it is, `uploadedBy` is
+        // who filed it.
+        //
+        // But "Add prescription" reads as *write a new one*, which is a thing
+        // no receptionist may do and the server refuses outright. A label that
+        // describes a forbidden act, on a button that performs a permitted one,
+        // is how a front desk ends up believing it can prescribe.
+        label: Text(_filing ? 'Filing…' : 'Scan paper prescription'),
       ),
       body: RefreshIndicator(
         onRefresh:

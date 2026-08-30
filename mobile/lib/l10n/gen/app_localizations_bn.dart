@@ -1614,4 +1614,19 @@ class AppLocalizationsBn extends AppLocalizations {
 
   @override
   String get nutritionNoMessages => 'এখনও কোনও বার্তা নেই';
+
+  @override
+  String get deskAlreadyBookedTitle => 'সেদিন ইতিমধ্যেই বুক করা আছে';
+
+  @override
+  String get deskAlreadyBookedBody =>
+      'এই রোগীর সেদিন ইতিমধ্যেই একটি অ্যাপয়েন্টমেন্ট আছে। তবুও আরেকটি বুক করবেন?';
+
+  @override
+  String get deskBookAnyway => 'তবুও বুক করুন';
+
+  @override
+  String deskAlreadyBookedAt(String time) {
+    return 'এই রোগীর সেদিন $time-এ ইতিমধ্যেই একটি অ্যাপয়েন্টমেন্ট আছে। তবুও আরেকটি বুক করবেন?';
+  }
 }

@@ -786,5 +786,16 @@
   "deskNoPatientsFound": "No patients found",
   "deskNobodyToCheckIn": "Nobody is waiting to be checked in.",
   "nutritionLoadFailed": "Could not load the conversation",
-  "nutritionNoMessages": "No messages yet"
+  "nutritionNoMessages": "No messages yet",
+  "deskAlreadyBookedTitle": "Already booked that day",
+  "deskAlreadyBookedBody": "This patient already has an appointment on that day. Book another one anyway?",
+  "deskBookAnyway": "Book anyway",
+  "deskAlreadyBookedAt": "This patient already has {time} on that day. Book another one anyway?",
+  "@deskAlreadyBookedAt": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  }
 }

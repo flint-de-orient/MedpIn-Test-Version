@@ -1618,4 +1618,19 @@ class AppLocalizationsHi extends AppLocalizations {
 
   @override
   String get nutritionNoMessages => 'अभी कोई संदेश नहीं';
+
+  @override
+  String get deskAlreadyBookedTitle => 'उस दिन पहले से बुक है';
+
+  @override
+  String get deskAlreadyBookedBody =>
+      'इस मरीज़ का उस दिन पहले से अपॉइंटमेंट है। फिर भी एक और बुक करें?';
+
+  @override
+  String get deskBookAnyway => 'फिर भी बुक करें';
+
+  @override
+  String deskAlreadyBookedAt(String time) {
+    return 'इस मरीज़ का उस दिन $time पर पहले से अपॉइंटमेंट है। फिर भी एक और बुक करें?';
+  }
 }

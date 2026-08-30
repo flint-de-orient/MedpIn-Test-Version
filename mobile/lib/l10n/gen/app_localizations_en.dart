@@ -1619,4 +1619,19 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get nutritionNoMessages => 'No messages yet';
+
+  @override
+  String get deskAlreadyBookedTitle => 'Already booked that day';
+
+  @override
+  String get deskAlreadyBookedBody =>
+      'This patient already has an appointment on that day. Book another one anyway?';
+
+  @override
+  String get deskBookAnyway => 'Book anyway';
+
+  @override
+  String deskAlreadyBookedAt(String time) {
+    return 'This patient already has $time on that day. Book another one anyway?';
+  }
 }

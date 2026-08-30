@@ -511,5 +511,9 @@
   "deskNoPatientsFound": "কোনও রোগী পাওয়া যায়নি",
   "deskNobodyToCheckIn": "চেক-ইনের জন্য কেউ নেই।",
   "nutritionLoadFailed": "কথোপকথন লোড করা যায়নি",
-  "nutritionNoMessages": "এখনও কোনও বার্তা নেই"
+  "nutritionNoMessages": "এখনও কোনও বার্তা নেই",
+  "deskAlreadyBookedTitle": "সেদিন ইতিমধ্যেই বুক করা আছে",
+  "deskAlreadyBookedBody": "এই রোগীর সেদিন ইতিমধ্যেই একটি অ্যাপয়েন্টমেন্ট আছে। তবুও আরেকটি বুক করবেন?",
+  "deskBookAnyway": "তবুও বুক করুন",
+  "deskAlreadyBookedAt": "এই রোগীর সেদিন {time}-এ ইতিমধ্যেই একটি অ্যাপয়েন্টমেন্ট আছে। তবুও আরেকটি বুক করবেন?"
 }

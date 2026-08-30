@@ -511,5 +511,9 @@
   "deskNoPatientsFound": "कोई मरीज़ नहीं मिला",
   "deskNobodyToCheckIn": "चेक-इन के लिए कोई नहीं है।",
   "nutritionLoadFailed": "बातचीत लोड नहीं हो सकी",
-  "nutritionNoMessages": "अभी कोई संदेश नहीं"
+  "nutritionNoMessages": "अभी कोई संदेश नहीं",
+  "deskAlreadyBookedTitle": "उस दिन पहले से बुक है",
+  "deskAlreadyBookedBody": "इस मरीज़ का उस दिन पहले से अपॉइंटमेंट है। फिर भी एक और बुक करें?",
+  "deskBookAnyway": "फिर भी बुक करें",
+  "deskAlreadyBookedAt": "इस मरीज़ का उस दिन {time} पर पहले से अपॉइंटमेंट है। फिर भी एक और बुक करें?"
 }

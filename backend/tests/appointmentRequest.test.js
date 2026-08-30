@@ -73,12 +73,50 @@ describe('an appointment request', () => {
     );
     const at = src.indexOf("'/:id/confirm',");
     assert.ok(at > -1, 'the confirm route must exist');
-    const block = src.slice(at, at + 2600);
+    // To the end of the route, not a fixed number of characters. This read the
+    // first 2600 and broke the day a guard was added ahead of the line it was
+    // looking for — reporting "the status must move with the time" about code
+    // that does exactly that, just further down than the window reached. A test
+    // that fails when correct code is added teaches people to edit the test.
+    const next = src.indexOf('\nrouter.', at);
+    const block = src.slice(at, next > -1 ? next : src.length);
 
     assert.match(block, /status !== 'requested'/, 'only a request may be confirmed');
     assert.match(block, /isSlotBookable/, 'the slot must be validated');
     assert.match(block, /ACTIVE_STATUSES/, 'a clash must be guarded');
     assert.match(block, /status = 'confirmed'/, 'the status must move with the time');
     assert.match(block, /preferredFor = undefined/, 'the spent wish must be cleared');
+  });
+});
+describe('one patient, two slots in a day', () => {
+  const src = readFileSync(
+    new URL('../src/routes/appointments.js', import.meta.url),
+    'utf8',
+  );
+  const at = src.indexOf("'/:id/confirm',");
+  const next = src.indexOf('\nrouter.', at);
+  const block = src.slice(at, next > -1 ? next : src.length);
+
+  test('confirming warns when the patient already has one that day', () => {
+    // Two Sandip Mandals at 10:00 and 10:30 on the same Monday is what this is
+    // for. The slot clash check above cannot see it: both slots are genuinely
+    // free, so nothing was wrong as far as the schedule was concerned, and the
+    // clinic held a slot nobody was coming to.
+    assert.match(block, /patient: appointment\.patient/, 'scoped to this patient');
+    assert.match(block, /SAME_DAY_APPOINTMENT/, 'the client needs a code to act on');
+    assert.match(block, /startOf\('day'\)/, 'the window is the calendar day');
+  });
+
+  test('and lets the desk go ahead anyway', () => {
+    // A warning, not a rule. A morning review and an evening procedure on one
+    // day is a thing clinics legitimately do, so the desk is told and decides —
+    // being refused something the clinic is allowed to do is worse than being
+    // asked to confirm it.
+    assert.match(block, /allowSameDay/, 'there must be a way past it');
+    assert.match(
+      src.slice(at, at + 700),
+      /allowSameDay: z\.boolean\(\)\.optional\(\)/,
+      'and it must be an accepted field, not a silently ignored one',
+    );
   });
 });

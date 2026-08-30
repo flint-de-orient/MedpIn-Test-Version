@@ -7,7 +7,7 @@ import crypto from 'node:crypto';
 import { z } from 'zod';
 import { requireAuth, requireClinician, requireRole } from '../middleware/auth.js';
 import { validate, q } from '../middleware/validate.js';
-import { asyncHandler, notFound, badRequest } from '../middleware/errors.js';
+import { asyncHandler, notFound, badRequest, conflict } from '../middleware/errors.js';
 import { audit } from '../middleware/audit.js';
 import { Appointment, APPOINTMENT_STATUS } from '../models/Appointment.js';
 import { Clinic } from '../models/Clinic.js';
@@ -38,7 +38,10 @@ function scopeFilter(req) {
 }
 
 const POPULATE = [
-  { path: 'patient', select: 'name phone' },
+  // avatarAssetId so a request card can show the patient's face. The desk is
+  // looking for a person standing in front of them, and initials in a coloured
+  // circle are not what anybody scans a waiting room for.
+  { path: 'patient', select: 'name phone avatarAssetId' },
   { path: 'doctor', select: 'name' },
   { path: 'clinic', select: 'name addressLine city phone' },
 ];
@@ -292,6 +295,9 @@ router.patch(
     body: z.object({
       clinicId: z.string(),
       scheduledFor: z.coerce.date(),
+      // Set only on a second attempt, after the desk has been shown that this
+      // patient already has a slot that day and has said to go ahead anyway.
+      allowSameDay: z.boolean().optional(),
     }),
   }),
   audit('update', 'Appointment'),
@@ -328,6 +334,46 @@ router.patch(
       },
     });
     if (clash) throw badRequest('That time has just been taken. Please choose another.');
+
+    // The same patient, twice on one day.
+    //
+    // The clash check above asks whether the *slot* is free, which it is — a
+    // patient given 10:00 and then 10:30 breaks no rule the schedule knows
+    // about. It is still almost always a mistake: two requests from one person
+    // that both got answered, or a desk confirming twice because the first tap
+    // did not visibly land. The clinic then holds a slot nobody comes to and
+    // the patient gets two reminders for one visit.
+    //
+    // A warning, not a rule. Two appointments in a day are legitimate — a
+    // morning review and an evening procedure — so the desk is told and may go
+    // ahead, rather than being refused something the clinic is allowed to do.
+    if (!req.body.allowSameDay) {
+      const dayStart = slotStart.startOf('day');
+      const sameDay = await Appointment.findOne({
+        _id: { $ne: appointment._id },
+        patient: appointment.patient,
+        status: { $in: ACTIVE_STATUSES },
+        scheduledFor: {
+          $gte: dayStart.toDate(),
+          $lt: dayStart.add(1, 'day').toDate(),
+        },
+      })
+        .select('scheduledFor')
+        .lean();
+
+      if (sameDay) {
+        // A list of {path, message}, because that is the only shape the error
+        // envelope carries through to the client — an object here is parsed as
+        // nothing and the desk would get a bare "conflict" with no idea which
+        // appointment it clashed with.
+        throw conflict('This patient already has an appointment that day.', [
+          {
+            path: 'SAME_DAY_APPOINTMENT',
+            message: sameDay.scheduledFor.toISOString(),
+          },
+        ]);
+      }
+    }
 
     appointment.clinic = clinic._id;
     appointment.scheduledFor = scheduledFor;
@@ -633,6 +679,9 @@ function serialise(a) {
     patientId: patient?._id ?? a.patient,
     patientName: patient?.name ?? null,
     patientPhone: patient?.phone ?? null,
+    patientAvatarUrl: patient?.avatarAssetId
+      ? `/api/v1/uploads/${patient.avatarAssetId}/raw`
+      : null,
     doctorId: doctor?._id ?? a.doctor,
     doctorName: doctor?.name ?? null,
     clinicId: clinic?._id ?? a.clinic ?? null,

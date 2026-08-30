@@ -137,12 +137,16 @@ class AppointmentRepository {
     String id, {
     required String clinicId,
     required DateTime scheduledFor,
+    /// Sent only on a second attempt, after the desk has been shown that this
+    /// patient already has a slot that day and has chosen to go ahead.
+    bool allowSameDay = false,
   }) async {
     final json = await _client.patchJson(
       '/appointments/$id/confirm',
       body: {
         'clinicId': clinicId,
         'scheduledFor': scheduledFor.toUtc().toIso8601String(),
+        if (allowSameDay) 'allowSameDay': true,
       },
     );
     return Appointment.fromJson(json['appointment'] as Map<String, dynamic>);

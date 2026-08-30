@@ -11,6 +11,7 @@ class Appointment {
     this.patientId,
     this.patientName,
     this.patientPhone,
+    this.patientAvatarUrl,
     this.doctorName,
     this.clinicId,
     this.clinicName,
@@ -67,6 +68,12 @@ class Appointment {
   final String? patientId;
   final String? patientName;
   final String? patientPhone;
+
+  /// The patient's photo, when they have set one.
+  ///
+  /// A face is what the desk is matching against the person in front of them;
+  /// initials in a coloured circle are a placeholder, not an identification.
+  final String? patientAvatarUrl;
   final String? doctorName;
 
   final String? clinicId;
@@ -121,6 +128,7 @@ class Appointment {
       patientId: j['patientId']?.toString(),
       patientName: j['patientName']?.toString(),
       patientPhone: j['patientPhone']?.toString(),
+      patientAvatarUrl: j['patientAvatarUrl']?.toString(),
       doctorName: j['doctorName']?.toString(),
       clinicId: (clinicMap['id'] ?? j['clinicId'])?.toString(),
       clinicName: clinicMap['name']?.toString(),
