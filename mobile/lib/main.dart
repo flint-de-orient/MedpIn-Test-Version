@@ -9,6 +9,11 @@ import 'app.dart';
 import 'shared/providers/core_providers.dart';
 import 'shared/services/notification_service.dart';
 import 'core/session/session_reset.dart';
+import 'shared/providers/app_lock_provider.dart';
+import 'shared/providers/theme_provider.dart';
+import 'shared/providers/locale_provider.dart';
+import 'features/auth/presentation/auth_controller.dart';
+import 'core/router/app_router.dart';
 
 /// Handles a push that arrives while the app is terminated or backgrounded.
 ///
@@ -49,7 +54,40 @@ Future<void> main() async {
   final container = ProviderContainer(
     overrides: [sharedPreferencesProvider.overrideWithValue(prefs)],
   );
-  registerSessionContainer(container);
+  // Named here rather than in session_reset.dart, because identity is the only
+  // way a keep-list cannot silently fail — and this file already imports them.
+  //
+  // Everything absent from this set is thrown away when the session changes,
+  // which is the point: a provider added next month is covered without anyone
+  // remembering to come back here.
+  registerSessionContainer(
+    container,
+    keep: {
+      // The session itself. Invalidating it during sign-in resets the state
+      // this is being called from — which left the app spinning on the splash
+      // screen with nothing in the logs, because nothing had failed except
+      // that the answer kept being discarded before it could be used.
+      authControllerProvider,
+      // Chosen before anyone signs in and still true after. Dropping these
+      // would flip a Bengali reader's app to English on sign-out.
+      localeControllerProvider,
+      themeControllerProvider,
+      appLockProvider,
+      // Infrastructure, not data — a token store, an HTTP client, the
+      // preferences box. None holds a patient's anything, and recreating them
+      // mid-flight tears the socket out from under the request that is signing
+      // somebody in.
+      sharedPreferencesProvider,
+      secureStoreProvider,
+      apiClientProvider,
+      imageAuthHeaderProvider,
+      // The router holds rootNavigatorKey, a global GlobalKey; recreating it
+      // while the old one is mounted throws, during exactly this transition.
+      // It does not need recreating: signing out redirects to /login, outside
+      // every shell, so GoRouter disposes the shells and their branch stacks.
+      appRouterProvider,
+    },
+  );
 
   runApp(UncontrolledProviderScope(container: container, child: const App()));
 }

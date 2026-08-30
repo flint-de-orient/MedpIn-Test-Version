@@ -88,41 +88,56 @@ void main() {
     expect(resetSessionState, returnsNormally);
   });
 
-  test('no provider holding patient data is on the keep-list', () {
-    // The keep-list is the one way this fix can be defeated: add a provider to
-    // it and that provider holds a patient's data across a sign-out, silently,
-    // with every other guard still green. So the list is checked for the shape
-    // of a data provider rather than trusted to stay short.
-    final src = File('lib/core/session/session_reset.dart').readAsStringSync();
-    final block = src.substring(
-      src.indexOf('const _keep'),
-      src.indexOf('};', src.indexOf('const _keep')),
-    );
-    // Only the quoted entries. The comments around them legitimately say
-    // "patient" — they explain what must not be kept.
-    final keep = RegExp(
-      "'([A-Za-z]+)'",
-    ).allMatches(block).map((m) => m.group(1)!.toLowerCase()).join(' ');
+  test('a kept provider actually survives — and the rest do not', () {
+    // The failure this exists for. The first keep-list matched on
+    // `provider.name`, which is null unless a provider is explicitly named and
+    // none of this app's are. So it matched nothing, every sign-in invalidated
+    // the auth controller with everything else, the session reset to "unknown",
+    // and the app sat on the splash screen spinning — with no error anywhere,
+    // because nothing had failed except that the answer kept being discarded.
+    //
+    // The old tests all passed through that, because they only ever checked
+    // that things WERE cleared.
+    var keptBuilds = 0;
+    var otherBuilds = 0;
+    final kept = Provider<int>((ref) => ++keptBuilds);
+    final other = Provider<int>((ref) => ++otherBuilds);
 
-    for (final clinical in [
-      'careSummary',
-      'medication',
-      'chat',
-      'patient',
-      'dose',
-      'appointment',
-      'prescription',
-      'alert',
-      'diet',
-      'overview',
-    ]) {
-      expect(
-        keep.contains(clinical),
-        isFalse,
-        reason:
-            '"$clinical" is on the keep-list — it would survive a sign-out '
-            'and be shown to the next person to use this handset',
-      );
-    }
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    registerSessionContainer(container, keep: {kept});
+
+    container.read(kept);
+    container.read(other);
+    expect(keptBuilds, 1);
+    expect(otherBuilds, 1);
+
+    resetSessionState();
+
+    container.read(kept);
+    container.read(other);
+    expect(
+      keptBuilds,
+      1,
+      reason:
+          'the keep-list did not protect it — this is the splash-screen hang',
+    );
+    expect(otherBuilds, 2, reason: 'everything else must still be cleared');
+  });
+
+  test('an empty keep-list clears everything', () {
+    // The default. Nothing is implicitly protected: a provider is kept because
+    // main() named it, never because it happened to look infrastructural.
+    var builds = 0;
+    final p = Provider<int>((ref) => ++builds);
+
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    registerSessionContainer(container);
+
+    container.read(p);
+    resetSessionState();
+    container.read(p);
+    expect(builds, 2);
   });
 }

@@ -36,43 +36,32 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 /// controller, where sign-in and sign-out actually happen, does not have.
 ProviderContainer? _appContainer;
 
-/// Called from main() with the container the app was launched on.
-void registerSessionContainer(ProviderContainer container) {
+/// Called from main() with the container the app was launched on, and the
+/// providers that must survive a session change.
+void registerSessionContainer(
+  ProviderContainer container, {
+  Set<ProviderOrFamily> keep = const {},
+}) {
   _appContainer = container;
+  _keep = keep;
 }
 
 /// Providers that must NOT be thrown away when the session changes.
 ///
-/// Matched by name rather than identity, because this file must not import
-/// every feature package to name their providers — a core utility depending on
-/// all of them is a dependency cycle waiting to happen. Every entry is
-/// something that has to survive a session change.
-const _keep = <String>{
-  // The session itself. Invalidating this mid-sign-in re-enters the code that
-  // is calling this function.
-  'authControllerProvider',
-  // Chosen before anyone signs in, and still true after. Dropping the locale
-  // would flip a Bengali reader's app to English on sign-out.
-  'localeControllerProvider',
-  'themeControllerProvider',
-  'appLockProvider',
-  // Infrastructure, not data — a token store, an HTTP client, the preferences
-  // box. None holds a patient's anything, and recreating them mid-flight tears
-  // the socket out from under the request that is signing somebody in.
-  'sharedPreferencesProvider',
-  'secureStorageProvider',
-  'apiClientProvider',
-  'imageAuthHeaderProvider',
-  // The router holds `rootNavigatorKey`, a global GlobalKey. Recreating it
-  // while the old one is still mounted throws "duplicate GlobalKey", and the
-  // window for that is exactly the sign-out transition this runs in.
-  //
-  // It does not need recreating anyway. Signing out redirects to /login, which
-  // is outside every shell, so GoRouter disposes the shells and their branch
-  // navigators; signing in rebuilds them fresh. The tab stacks reset because
-  // the shell is gone, not because the router was replaced.
-  'appRouterProvider',
-};
+/// Held by identity, and supplied by main() rather than named here.
+///
+/// The first version matched on `provider.name`, which reads well and does not
+/// work: `name` is null unless a provider is explicitly given one, and none of
+/// this app's are. So the keep-list matched nothing, every sign-in invalidated
+/// the auth controller along with everything else, the session reset itself to
+/// "unknown" — and the app sat on the splash screen spinning, with no error
+/// anywhere, because nothing had gone wrong except that the answer kept being
+/// thrown away before it could be used.
+///
+/// Identity cannot silently fail to match. The cost is that main() has to name
+/// them, which is the right place: it already imports them, and this file must
+/// not import every feature package to reach them.
+Set<ProviderOrFamily> _keep = const {};
 
 /// Drop every cached provider except the few that outlive a session.
 ///
@@ -93,11 +82,13 @@ void resetSessionState() {
   ];
 
   for (final provider in origins) {
-    final name = provider.name ?? provider.runtimeType.toString();
-    if (_keep.any(name.contains)) continue;
     // `from` is the family a keyed provider was built from. Invalidating the
     // family clears every key at once, which is the point: a stale patientId
     // key is exactly the leak this is here to stop.
-    container.invalidate(provider.from ?? provider);
+    final target = provider.from ?? provider;
+    // Checked against both, so naming either the family or one of its keys in
+    // the keep-list works.
+    if (_keep.contains(target) || _keep.contains(provider)) continue;
+    container.invalidate(target);
   }
 }
