@@ -75,11 +75,21 @@ class GlassNavItem {
     required this.icon,
     required this.selectedIcon,
     required this.label,
+    this.showDot = false,
   });
 
   final IconData icon;
   final IconData selectedIcon;
   final String label;
+
+  /// A small mark on the icon, for something waiting on this tab.
+  ///
+  /// A dot rather than a count, because what is worth marking here is not
+  /// countable — an app update is one fact, not seven. It exists so a tab can
+  /// say there is something inside it without anything having to interrupt the
+  /// screen the reader is actually on, which is the whole reason the update
+  /// notice stopped being a strip that floated over the app.
+  final bool showDot;
 }
 
 class _Tab extends StatelessWidget {
@@ -127,10 +137,37 @@ class _Tab extends StatelessWidget {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(
-                  selected ? item.selectedIcon : item.icon,
-                  size: 22,
-                  color: tone,
+                Stack(
+                  clipBehavior: Clip.none,
+                  children: [
+                    Icon(
+                      selected ? item.selectedIcon : item.icon,
+                      size: 22,
+                      color: tone,
+                    ),
+                    if (item.showDot)
+                      Positioned(
+                        top: -1,
+                        right: -2,
+                        child: Container(
+                          width: 9,
+                          height: 9,
+                          decoration: BoxDecoration(
+                            color: T.primary,
+                            shape: BoxShape.circle,
+                            // Ringed in the bar's own ground so it reads as a
+                            // mark placed on the icon rather than part of it.
+                            border: Border.all(
+                              color:
+                                  dark
+                                      ? const Color(0xFF141B26)
+                                      : Colors.white,
+                              width: 1.6,
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
                 ),
                 const SizedBox(height: 3),
                 Text(

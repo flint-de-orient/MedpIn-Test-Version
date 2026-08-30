@@ -7,6 +7,7 @@ import '../../../core/config/app_config.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
+import '../../../core/update/app_update_section.dart';
 import '../../../l10n/gen/app_localizations.dart';
 import '../../../shared/data/upload_repository.dart';
 import '../../../shared/providers/app_lock_provider.dart';
@@ -749,6 +750,14 @@ class _ClinicianMoreScreenState extends ConsumerState<ClinicianMoreScreen> {
             ],
           ),
 
+
+          // ---- App -----------------------------------------------------
+          //
+          // Above sign-out and below everything else: the last thing anyone
+          // reads, and the first thing anyone is asked for when a handset
+          // misbehaves.
+          const SizedBox(height: AppSpacing.lg),
+          const AppUpdateSection(),
           // ---- Logout --------------------------------------------------
           // Set apart from the settings above it. Sitting flush under the last
           // card, "Log out" read as one more row of the App group — and it is

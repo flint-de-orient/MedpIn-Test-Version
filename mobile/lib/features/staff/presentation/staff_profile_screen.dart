@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
+import '../../../core/update/app_update_section.dart';
 import '../../appointments/presentation/appointment_providers.dart';
 import '../../auth/presentation/auth_controller.dart';
 import '../../../shared/widgets/error_view.dart';
@@ -341,6 +342,13 @@ class _StaffProfileScreenState extends ConsumerState<StaffProfileScreen> {
               ],
             ),
 
+
+            // ---- App ---------------------------------------------------
+            //
+            // Above sign-out and below everything else: the last thing anyone
+            // reads, and the first thing anyone is asked for when a handset
+            // misbehaves.
+            const AppUpdateSection(),
             const SizedBox(height: AppSpacing.lg),
             // Set apart, below a gap, so it is never the thing tapped by
             // accident on the way to something else.

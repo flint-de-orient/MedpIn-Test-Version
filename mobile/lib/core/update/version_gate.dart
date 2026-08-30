@@ -51,7 +51,9 @@ const VersionStatus _allClear = (
 /// Passed with `--dart-define=APP_BUILD=<pubspec build>`; see the build script.
 /// Zero when nobody passed it, which switches the gate off rather than guessing
 /// — a forgotten flag must not become a locked door.
-const int _bakedBuild = int.fromEnvironment('APP_BUILD');
+const int appBuildNumber = int.fromEnvironment('APP_BUILD');
+
+const int _bakedBuild = appBuildNumber;
 
 final versionStatusProvider = FutureProvider<VersionStatus>((ref) async {
   final build = _bakedBuild;

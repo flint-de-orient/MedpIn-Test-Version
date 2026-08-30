@@ -9,6 +9,7 @@ import '../../../shared/data/upload_repository.dart';
 import '../../../shared/widgets/fullscreen_photo.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
+import '../../../core/update/app_update_section.dart';
 import '../../../l10n/gen/app_localizations.dart';
 import '../../../shared/providers/app_lock_provider.dart';
 import '../../../shared/providers/locale_provider.dart';
@@ -462,6 +463,14 @@ class _DieticianProfileScreenState
               ),
             ],
           ),
+
+          // ---- App -----------------------------------------------------
+          //
+          // Above sign-out and below everything else: the last thing anyone
+          // reads, and the first thing anyone is asked for when a handset
+          // misbehaves.
+          const SizedBox(height: AppSpacing.lg),
+          const AppUpdateSection(),
 
           // Set apart from the settings above it. Flush under the last card,
           // "Log out" read as one more row of the App group — and it is the

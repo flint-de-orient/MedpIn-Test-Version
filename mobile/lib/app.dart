@@ -4,7 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'core/config/app_config.dart';
 import 'core/router/app_router.dart';
-import 'core/update/update_available_banner.dart';
+import 'core/update/update_prompt.dart';
 import 'core/update/update_required_screen.dart';
 import 'core/update/version_gate.dart';
 import 'core/theme/app_theme.dart';
@@ -225,23 +225,56 @@ class AppScrollBehavior extends MaterialScrollBehavior {
 /// a second after launch on every cold start would be worse than the problem:
 /// this is a floor almost nobody is below, and everybody else would pay for it
 /// with a flash of the wrong screen.
-class _VersionGate extends ConsumerWidget {
+class _VersionGate extends ConsumerStatefulWidget {
   const _VersionGate({required this.child});
 
   final Widget child;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<_VersionGate> createState() => _VersionGateState();
+}
+
+class _VersionGateState extends ConsumerState<_VersionGate> {
+  bool _askedThisSession = false;
+
+  @override
+  Widget build(BuildContext context) {
     // valueOrNull, so loading and error both mean "carry on". Every failure
     // path in versionStatusProvider already returns all-clear; this is the
     // second half of the same promise — no signal must never mean locked out.
     final status = ref.watch(versionStatusProvider).valueOrNull;
-    if (status == null || !status.mustUpdate) {
-      // Not blocked. A newer build may still exist, which is a strip they can
-      // dismiss rather than a wall — the banner decides for itself whether it
-      // has anything to say.
-      return UpdateAvailableBanner(child: child);
+
+    // Asked once, and only about a version nobody has been asked about before.
+    //
+    // Two guards, doing different jobs. The stored one stops a version being
+    // raised twice across launches; this one stops a rebuild raising it twice
+    // within a single launch, which a provider settling can easily cause.
+    //
+    // Deferred to after the frame because a dialog cannot be opened from
+    // inside build, and skipped entirely while the wall is up — being asked
+    // whether to update later, on top of a screen saying you must update now,
+    // would be a contradiction the app puts to the reader itself.
+    if (status != null &&
+        status.canUpdate &&
+        !status.mustUpdate &&
+        !_askedThisSession) {
+      _askedThisSession = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) maybeShowUpdatePrompt(context, ref);
+      });
     }
+    // Only the wall lives here now.
+    //
+    // "A newer version exists" used to float over whatever screen the reader
+    // was on. It worked, and it was the wrong shape for what it says: an
+    // update notice is reference material, not an interruption, and a thing
+    // that appears uninvited gets dismissed reflexively — often before it has
+    // been read. It is a permanent row in each panel's Profile tab instead,
+    // where somebody goes looking for it. See [AppUpdateSection].
+    //
+    // Being blocked is different and stays here: that one has to interrupt,
+    // because the build behind it will otherwise fail quietly.
+    if (status == null || !status.mustUpdate) return widget.child;
     return UpdateRequiredScreen(status: status);
   }
 }

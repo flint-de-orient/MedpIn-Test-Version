@@ -7,6 +7,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../../core/config/app_config.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/theme/app_colors.dart';
+import '../../../core/update/app_update_section.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/tokens.dart';
 import '../../../shared/widgets/hero_band.dart';
@@ -483,6 +484,14 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                     ),
                   ],
                 ),
+
+                // ---- App -------------------------------------------------------
+                //
+                // Above sign-out and below everything else, because it is the
+                // last thing anyone reads and the first thing anyone is asked
+                // for when a handset misbehaves.
+                const SizedBox(height: AppSpacing.lg),
+                const AppUpdateSection(),
 
                 // ---- Logout ----------------------------------------------------
                 SizedBox(
