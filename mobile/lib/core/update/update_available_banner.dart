@@ -14,10 +14,11 @@ import 'version_gate.dart';
 /// away today should still hear about the version after it.
 const _dismissedKey = 'update_prompt_dismissed_build';
 
-final _dismissedBuildProvider =
-    StateNotifierProvider<_DismissedBuild, int>((ref) {
-      return _DismissedBuild(ref);
-    });
+final _dismissedBuildProvider = StateNotifierProvider<_DismissedBuild, int>((
+  ref,
+) {
+  return _DismissedBuild(ref);
+});
 
 class _DismissedBuild extends StateNotifier<int> {
   _DismissedBuild(this._ref)
@@ -67,145 +68,172 @@ class UpdateAvailableBanner extends ConsumerWidget {
     // is exactly the wrong register. This is a small courtesy, so it looks like
     // one: an inset card on the app's own ground, the same rounded geometry as
     // every other surface, and a filled pill for the action.
-    return Column(
+    // Over the app, not above it.
+    //
+    // This used to be a Column: the card, then the app below it. That took a
+    // slice of every screen for as long as it was there — the page underneath
+    // visibly shrank — and nothing painted the ground behind the strip, so the
+    // margins around it showed through to black. The result read as a system
+    // alert dropped on top of the app rather than something belonging to it.
+    //
+    // A Stack floats it over the content instead. Nothing moves, nothing is
+    // resized, the app's own background shows around it because the app is
+    // genuinely still there, and it goes away leaving the screen exactly as it
+    // was.
+    return Stack(
       children: [
-        SafeArea(
-          bottom: false,
-          child: Padding(
-            // Below the system icons with room to spare. The first version
-            // sat hard against the status bar and read as part of it.
-            padding: const EdgeInsets.fromLTRB(
-              AppSpacing.md,
-              AppSpacing.md,
-              AppSpacing.md,
-              6,
-            ),
-            child: Container(
-              padding: const EdgeInsets.fromLTRB(12, 10, 10, 10),
-              decoration: BoxDecoration(
-                // White, stated rather than taken from the scheme.
-                //
-                // The first version tinted the strip with the brand blue at
-                // ten percent and let the text colour resolve from the theme.
-                // On the handset that came out dark on dark and the sentence
-                // was very nearly unreadable — the one sentence whose whole
-                // job is to be read. A named ground and a named ink cannot
-                // drift apart like that.
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(
-                  color: AppColors.primary.withValues(alpha: 0.22),
-                ),
-                boxShadow: const [
-                  BoxShadow(
-                    color: Color(0x140B1B3A),
-                    blurRadius: 10,
-                    offset: Offset(0, 3),
-                  ),
-                ],
+        child,
+        Positioned(
+          top: 0,
+          left: 0,
+          right: 0,
+          child: SafeArea(
+            bottom: false,
+            child: Padding(
+              // Below the system icons with room to spare. The first version
+              // sat hard against the status bar and read as part of it.
+              // Tight. Every point this takes is a point off the screen
+              // underneath it, and it is a notice, not a feature.
+              padding: const EdgeInsets.fromLTRB(
+                AppSpacing.md,
+                AppSpacing.sm,
+                AppSpacing.md,
+                AppSpacing.sm,
               ),
-              child: Row(
-                children: [
-                  Container(
-                    width: 34,
-                    height: 34,
-                    alignment: Alignment.center,
-                    decoration: BoxDecoration(
-                      color: AppColors.primary.withValues(alpha: 0.11),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: Icon(
-                      Icons.system_update_rounded,
-                      size: 18,
-                      color: AppColors.primary,
-                    ),
+              child: Container(
+                padding: const EdgeInsets.fromLTRB(10, 8, 8, 8),
+                decoration: BoxDecoration(
+                  // White, stated rather than taken from the scheme.
+                  //
+                  // The first version tinted the strip with the brand blue at
+                  // ten percent and let the text colour resolve from the theme.
+                  // On the handset that came out dark on dark and the sentence
+                  // was very nearly unreadable — the one sentence whose whole
+                  // job is to be read. A named ground and a named ink cannot
+                  // drift apart like that.
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(
+                    color: AppColors.primary.withValues(alpha: 0.22),
                   ),
-                  const SizedBox(width: 11),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(
-                          status.latestVersion == null
-                              ? 'Update available'
-                              : 'MedPin ${status.latestVersion} is ready',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            fontSize: 14,
-                            height: 1.25,
-                            fontWeight: FontWeight.w800,
-                            color: Color(0xFF0B1B3A),
-                          ),
-                        ),
-                        Text(
-                          'A newer version is available to install.',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            fontSize: 12,
-                            height: 1.3,
-                            color: Color(0xFF5B6B85),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  if (url != null && url.isNotEmpty) ...[
-                    const SizedBox(width: 8),
-                    FilledButton(
-                      onPressed:
-                          () => launchUrl(
-                            Uri.parse(url),
-                            mode: LaunchMode.externalApplication,
-                          ),
-                      style: FilledButton.styleFrom(
-                        backgroundColor: AppColors.primary,
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(horizontal: 14),
-                        minimumSize: const Size(0, 34),
-                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(999),
-                        ),
-                        textStyle: const TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                      child: const Text('Update'),
+                  boxShadow: const [
+                    BoxShadow(
+                      color: Color(0x140B1B3A),
+                      blurRadius: 10,
+                      offset: Offset(0, 3),
                     ),
                   ],
-                  // Quieter than the action beside it, deliberately. Dismissing
-                  // is always available and never the thing being asked for.
-                  IconButton(
-                    tooltip: 'Not now',
-                    visualDensity: VisualDensity.compact,
-                    padding: EdgeInsets.zero,
-                    // 40 square. Thirty was under every touch-target guideline
-                    // there is, on the one control whose whole purpose is to
-                    // let somebody make this go away.
-                    constraints: const BoxConstraints(
-                      minWidth: 40,
-                      minHeight: 40,
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 32,
+                      height: 32,
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        color: AppColors.primary.withValues(alpha: 0.11),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Icon(
+                        Icons.system_update_rounded,
+                        size: 18,
+                        color: AppColors.primary,
+                      ),
                     ),
-                    onPressed:
-                        () => ref
-                            .read(_dismissedBuildProvider.notifier)
-                            .dismiss(status.latestBuild),
-                    icon: const Icon(
-                      Icons.close_rounded,
-                      size: 18,
-                      color: Color(0xFF5B6B85),
+                    const SizedBox(width: 11),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          // Short enough to finish.
+                          //
+                          // "MedPin 1.0.0 is ready" over "A newer version is
+                          // available to install" left about 150 points once the
+                          // icon, the pill and the close had taken theirs, so
+                          // both lines ended in an ellipsis — a notice about an
+                          // update that could not say what it was. Two short
+                          // lines say the same thing and finish: what is
+                          // happening, then which version.
+                          const Text(
+                            'Update available',
+                            maxLines: 1,
+                            style: TextStyle(
+                              fontSize: 14,
+                              height: 1.25,
+                              fontWeight: FontWeight.w800,
+                              color: Color(0xFF0B1B3A),
+                            ),
+                          ),
+                          Text(
+                            status.latestVersion == null
+                                ? 'Tap to install the newest MedPin'
+                                : 'MedPin ${status.latestVersion}',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontSize: 12,
+                              height: 1.3,
+                              color: Color(0xFF5B6B85),
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
-                  ),
-                ],
+                    if (url != null && url.isNotEmpty) ...[
+                      const SizedBox(width: 8),
+                      FilledButton(
+                        onPressed:
+                            () => launchUrl(
+                              Uri.parse(url),
+                              mode: LaunchMode.externalApplication,
+                            ),
+                        style: FilledButton.styleFrom(
+                          backgroundColor: AppColors.primary,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(horizontal: 14),
+                          minimumSize: const Size(0, 34),
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(999),
+                          ),
+                          textStyle: const TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        child: const Text('Update'),
+                      ),
+                    ],
+                    // Quieter than the action beside it, deliberately. Dismissing
+                    // is always available and never the thing being asked for.
+                    IconButton(
+                      tooltip: 'Not now',
+                      visualDensity: VisualDensity.compact,
+                      padding: EdgeInsets.zero,
+                      // 40 square. Thirty was under every touch-target guideline
+                      // there is, on the one control whose whole purpose is to
+                      // let somebody make this go away.
+                      constraints: const BoxConstraints(
+                        minWidth: 40,
+                        minHeight: 40,
+                      ),
+                      onPressed:
+                          () => ref
+                              .read(_dismissedBuildProvider.notifier)
+                              .dismiss(status.latestBuild),
+                      icon: const Icon(
+                        Icons.close_rounded,
+                        size: 18,
+                        color: Color(0xFF5B6B85),
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
         ),
-        Expanded(child: child),
       ],
     );
   }

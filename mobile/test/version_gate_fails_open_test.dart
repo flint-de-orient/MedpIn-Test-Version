@@ -99,11 +99,24 @@ void main() {
       expect(app.contains('UpdateAvailableBanner'), isTrue);
     });
 
-    test('the banner never blocks and never nags', () {
-      // A strip they can close, and closing it is remembered against the
+    test('the banner floats over the app, never resizes it', () {
+      // It was a Column — the card, then the app below it — which took a slice
+      // off every screen for as long as it was up, and left the margins around
+      // itself painting through to black because nothing owned that ground. A
+      // Stack with the app as its first child leaves the page exactly as it
+      // was and lets the app's own background show around the card.
+      expect(banner.contains('return Stack('), isTrue);
+      expect(
+        banner.contains('Expanded(child: child)'),
+        isFalse,
+        reason: 'a Column here would shrink the screen underneath it',
+      );
+    });
+
+    test('the banner never nags', () {
+      // A card they can close, and closing it is remembered against the
       // version it was about — so waving away one release does not silence the
       // next.
-      expect(banner.contains('Expanded(child: child)'), isTrue);
       expect(banner.contains('dismissed >= status.latestBuild'), isTrue);
       expect(banner.contains('dismiss(status.latestBuild)'), isTrue);
     });
