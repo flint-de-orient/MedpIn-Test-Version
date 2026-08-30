@@ -41,6 +41,22 @@ const schema = z.object({
   MAX_UPLOAD_MB: z.coerce.number().default(12),
 
   CLINIC_NAME: z.string().default('Dr. Amit Kumar Dey Clinic'),
+
+  // What build of the app the server expects to be talking to.
+  //
+  // ANDROID_MIN_BUILD is a floor, not a preference: below it the client is
+  // known to misbehave against this server rather than merely be old. The scan
+  // route is why it exists — it stopped creating medicines and began returning
+  // a preview, so a client from before that change photographs a prescription,
+  // reads created:[] and shows the patient nothing at all. No error, no
+  // explanation, and nothing on the app side that would lead anyone here.
+  //
+  // Default 0 so a server that has not been told anything gates nobody. A
+  // version check that locks people out by accident is worse than none.
+  ANDROID_MIN_BUILD: z.coerce.number().int().min(0).default(0),
+  ANDROID_LATEST_BUILD: z.coerce.number().int().min(0).default(0),
+  ANDROID_LATEST_VERSION: z.string().default(''),
+  APP_DOWNLOAD_URL: z.string().default(''),
   // The number a patient in an emergency is told to ring.
   //
   // It used to default to '+91-0000000000', and that placeholder is spoken

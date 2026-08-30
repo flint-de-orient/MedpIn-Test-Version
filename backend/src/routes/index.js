@@ -16,6 +16,7 @@ import appointmentRoutes from './appointments.js';
 import clinicRoutes from './clinics.js';
 import messageRoutes from './messages.js';
 import prescriptionRoutes from './prescriptions.js';
+import appVersionRoutes from './appVersion.js';
 import dashboardRoutes from './dashboard.js';
 import doctorRoutes from './doctor.js';
 import dieticianRoutes from './dietician.js';
@@ -65,6 +66,9 @@ router.get('/health', async (req, res) => {
   });
 });
 
+// Before the authenticated routes and outside them: a client too old to sign
+// in is exactly the client this has to be able to answer.
+router.use('/app', appVersionRoutes);
 router.use('/auth', authRoutes);
 router.use('/chat', chatRoutes);
 router.use('/appointments', appointmentRoutes);

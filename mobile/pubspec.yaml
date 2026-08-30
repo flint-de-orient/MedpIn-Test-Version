@@ -69,6 +69,10 @@ dependencies:
   image_picker: ^1.1.2
   shared_preferences: ^2.3.4
   url_launcher: ^6.3.1
+  # Reads the running build number, so the app can tell the server which
+  # version is actually asking rather than trusting a constant someone forgot
+  # to bump.
+  package_info_plus: ^8.1.1
   firebase_core: ^4.12.1
   firebase_messaging: ^16.4.3
   record: ^6.2.1

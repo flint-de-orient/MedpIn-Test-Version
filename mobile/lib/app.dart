@@ -4,6 +4,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'core/config/app_config.dart';
 import 'core/router/app_router.dart';
+import 'core/update/update_required_screen.dart';
+import 'core/update/version_gate.dart';
 import 'core/theme/app_theme.dart';
 import 'l10n/gen/app_localizations.dart';
 import 'shared/providers/locale_provider.dart';
@@ -162,7 +164,9 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
           ),
           child: MediaQuery(
             data: mq.copyWith(textScaler: TextScaler.linear(scale)),
-            child: AppLockGate(child: child ?? const SizedBox.shrink()),
+            child: _VersionGate(
+              child: AppLockGate(child: child ?? const SizedBox.shrink()),
+            ),
           ),
         );
       },
@@ -207,5 +211,31 @@ class AppScrollBehavior extends MaterialScrollBehavior {
           child: child,
         );
     }
+  }
+}
+
+/// Stops a build the server knows will misbehave, and nothing else.
+///
+/// Wraps the whole app rather than sitting on one screen, because the builds
+/// this catches fail quietly wherever they are used — the point is that they
+/// look like they are working.
+///
+/// While the check is in flight the app is shown as normal. A wall that appears
+/// a second after launch on every cold start would be worse than the problem:
+/// this is a floor almost nobody is below, and everybody else would pay for it
+/// with a flash of the wrong screen.
+class _VersionGate extends ConsumerWidget {
+  const _VersionGate({required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    // valueOrNull, so loading and error both mean "carry on". Every failure
+    // path in versionStatusProvider already returns all-clear; this is the
+    // second half of the same promise — no signal must never mean locked out.
+    final status = ref.watch(versionStatusProvider).valueOrNull;
+    if (status == null || !status.mustUpdate) return child;
+    return UpdateRequiredScreen(status: status);
   }
 }
