@@ -104,7 +104,7 @@ class Appointment {
           DateTime.tryParse(j['scheduledFor']?.toString() ?? '')?.toLocal(),
       preferredFor:
           DateTime.tryParse(j['preferredFor']?.toString() ?? '')?.toLocal(),
-    preferredTime: j['preferredTime']?.toString(),
+      preferredTime: j['preferredTime']?.toString(),
       status: j['status']?.toString() ?? 'requested',
       mode: j['mode']?.toString() ?? 'in_clinic',
       reason:

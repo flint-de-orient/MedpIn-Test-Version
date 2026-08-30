@@ -316,11 +316,23 @@ router.get(
     const bySeverity = Object.fromEntries(alertCounts.map((a) => [a._id, a.count]));
     const byRisk = Object.fromEntries(riskGroups.map((r) => [r._id ?? 'low', r.count]));
 
-    const [dietPatients, foodLogsToday, newPatientsToday, reviews] = await Promise.all([
+    const [dietPatients, foodLogsToday, newPatientsToday, reviews, dieticianCount, unassignedCount] = await Promise.all([
       PatientProfile.countDocuments({ assignedDietician: { $ne: null } }),
       FoodLog.countDocuments({ createdAt: { $gte: dayStart } }),
       User.countDocuments({ role: ROLES.PATIENT, createdAt: { $gte: dayStart } }),
       nutritionReviews(),
+      // Only worth asking about once there is a choice to make.
+      //
+      // With one dietician the fallbacks answer it: an unassigned patient is
+      // covered by whoever is not carrying their own list, and nobody has to
+      // decide anything. With two, "who is looking after this patient" stops
+      // being obvious and starts being whoever replied first — a clinical
+      // allocation arrived at by accident, and one the patient cannot be told
+      // in advance because nobody has made it.
+      User.countDocuments({ role: ROLES.DIETICIAN, isActive: true }),
+      PatientProfile.countDocuments({
+        $or: [{ assignedDietician: null }, { assignedDietician: { $exists: false } }],
+      }),
     ]);
 
     res.json({
@@ -347,6 +359,10 @@ router.get(
       },
       nutrition: {
         dietPatients,
+        // The prompt, not the decision. Shown to the doctor only when there is
+        // more than one dietician and somebody is unassigned; assigning is
+        // his, and nothing here picks for him.
+        needsDieticianAssignment: dieticianCount > 1 ? unassignedCount : 0,
         foodLogsToday,
         reviews,
       },

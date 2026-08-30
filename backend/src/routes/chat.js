@@ -557,7 +557,21 @@ router.get(
       isArchived: false,
     }).sort({ lastMessageAt: -1 });
 
-    if (!session) return res.json({ items: [] });
+    // Who the patient is talking to, said by the server rather than guessed
+    // from the thread.
+    //
+    // The screen used to read the name and face off the last dietician message
+    // in the conversation. That works once somebody has written, and for a new
+    // patient there is no such message — so the header showed a nameless
+    // avatar under "Your dietician", which reads as a picture that failed to
+    // load rather than as "nobody has been assigned yet".
+    //
+    // It matters more now the clinic has two. Whoever answers first used to be
+    // the answer; a patient deserves to know who is looking after them before
+    // that person happens to type something.
+    const dietician = await dieticianFacingPatient(req.user._id);
+
+    if (!session) return res.json({ items: [], dietician });
 
     const items = await ChatMessage.find({
       session: session._id,
@@ -569,9 +583,71 @@ router.get(
       .populate('attachments', 'kind mimeType transcript originalName sizeBytes')
       .lean();
 
-    res.json({ items: items.map(serialiseMessage) });
+    res.json({ items: items.map(serialiseMessage), dietician });
   }),
 );
+
+
+/**
+ * The dietician a patient should be shown as theirs, or null.
+ *
+ * Three answers, in the order they are true:
+ *
+ *   - the one a doctor explicitly assigned. A human decided; nothing else
+ *     overrides that.
+ *   - the one who has actually been answering this patient. With no
+ *     assignment, whoever has been replying IS their dietician in every sense
+ *     the patient experiences, and showing somebody else would be a worse lie
+ *     than showing nobody.
+ *   - null, when neither is true. Deliberately not "pick one" — a clinician
+ *     allocation made by a shuffle is worse than one made late, and the screen
+ *     can say plainly that nobody has been assigned yet.
+ */
+async function dieticianFacingPatient(patientId) {
+  const profile = await PatientProfile.findOne({ user: patientId })
+    .select('assignedDietician')
+    .lean();
+
+  const shape = (u) =>
+    u
+      ? {
+          id: String(u._id),
+          name: u.name,
+          avatarUrl: u.avatarAssetId ? `/api/v1/uploads/${u.avatarAssetId}/raw` : null,
+          assigned: Boolean(profile?.assignedDietician),
+        }
+      : null;
+
+  if (profile?.assignedDietician) {
+    const assigned = await User.findOne({
+      _id: profile.assignedDietician,
+      isActive: true,
+    })
+      .select('name avatarAssetId')
+      .lean();
+    if (assigned) return shape(assigned);
+  }
+
+  // Nobody assigned: whoever last wrote here, if anyone has.
+  const session = await ChatSession.findOne({ patient: patientId, kind: 'nutrition' })
+    .select('_id')
+    .lean();
+  if (!session) return null;
+
+  const lastReply = await ChatMessage.findOne({
+    session: session._id,
+    role: 'dietician',
+  })
+    .sort({ seq: -1 })
+    .select('sender')
+    .lean();
+  if (!lastReply?.sender) return null;
+
+  const replier = await User.findOne({ _id: lastReply.sender, isActive: true })
+    .select('name avatarAssetId')
+    .lean();
+  return shape(replier);
+}
 
 /**
  * The patient writes to their dietician.

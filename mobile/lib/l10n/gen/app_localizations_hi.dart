@@ -288,6 +288,16 @@ class AppLocalizationsHi extends AppLocalizations {
   String get dashboardNextAppointment => 'अगली अपॉइंटमेंट';
 
   @override
+  String get dashboardAppointmentRequested => 'अपॉइंटमेंट का अनुरोध भेजा गया';
+
+  @override
+  String get dashboardWaitingForClinic =>
+      'क्लिनिक द्वारा समय तय किए जाने की प्रतीक्षा';
+
+  @override
+  String get dashboardAwaitingTime => 'क्लिनिक दिन और समय बताएगा';
+
+  @override
   String get dashboardNoAppointment => 'कोई अपॉइंटमेंट तय नहीं है';
 
   @override

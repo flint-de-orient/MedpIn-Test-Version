@@ -287,6 +287,16 @@ class AppLocalizationsEn extends AppLocalizations {
   String get dashboardNextAppointment => 'Next appointment';
 
   @override
+  String get dashboardAppointmentRequested => 'Appointment requested';
+
+  @override
+  String get dashboardWaitingForClinic =>
+      'Waiting for the clinic to confirm a time';
+
+  @override
+  String get dashboardAwaitingTime => 'The clinic will confirm a day and time';
+
+  @override
   String get dashboardNoAppointment => 'No upcoming appointment';
 
   @override

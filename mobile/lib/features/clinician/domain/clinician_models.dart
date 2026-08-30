@@ -21,6 +21,7 @@ class ClinicOverview {
     required this.riskHigh,
     required this.riskCritical,
     this.dietPatients = 0,
+    this.needsDieticianAssignment = 0,
     this.foodLogsToday = 0,
     this.nutritionReviews = const [],
   });
@@ -63,6 +64,16 @@ class ClinicOverview {
 
   /// Patients a doctor has assigned to a dietician, and meals logged today.
   final int dietPatients;
+
+  /// Patients with no dietician chosen, counted only when the clinic has more
+  /// than one to choose between.
+  ///
+  /// Zero with a single dietician, because there is nothing to decide: the
+  /// fallbacks cover an unassigned patient and everyone knows who answers.
+  /// Above one, "who is looking after this patient" becomes whoever replied
+  /// first — an allocation arrived at by accident, which is the doctor's to
+  /// make on purpose.
+  final int needsDieticianAssignment;
   final int foodLogsToday;
 
   /// The patients on a review cadence, closest to their review date first.
@@ -109,6 +120,7 @@ class ClinicOverview {
       riskHigh: n(risk['high']),
       riskCritical: n(risk['critical']),
       dietPatients: n(nutrition['dietPatients']),
+      needsDieticianAssignment: n(nutrition['needsDieticianAssignment']),
       foodLogsToday: n(nutrition['foodLogsToday']),
       nutritionReviews:
           (nutrition['reviews'] as List?)

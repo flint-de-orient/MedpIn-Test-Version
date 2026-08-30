@@ -87,6 +87,18 @@
   "dashboardAdherence": "ওষুধ মেনে চলা",
   "dashboardTodayPending": "আজ {count}টি বাকি",
   "dashboardNextAppointment": "পরবর্তী অ্যাপয়েন্টমেন্ট",
+  "dashboardAppointmentRequested": "অ্যাপয়েন্টমেন্টের অনুরোধ পাঠানো হয়েছে",
+  "@dashboardAppointmentRequested": {
+    "description": "Dashboard: dashboardAppointmentRequested"
+  },
+  "dashboardWaitingForClinic": "ক্লিনিক সময় নিশ্চিত করার অপেক্ষায়",
+  "@dashboardWaitingForClinic": {
+    "description": "Dashboard: dashboardWaitingForClinic"
+  },
+  "dashboardAwaitingTime": "ক্লিনিক দিন ও সময় জানিয়ে দেবে",
+  "@dashboardAwaitingTime": {
+    "description": "Dashboard: dashboardAwaitingTime"
+  },
   "dashboardNoAppointment": "কোনো অ্যাপয়েন্টমেন্ট ঠিক করা নেই",
   "dashboardOpenAlerts": "সক্রিয় সতর্কতা",
   "dashboardNoAlerts": "কোনো সতর্কতা নেই",

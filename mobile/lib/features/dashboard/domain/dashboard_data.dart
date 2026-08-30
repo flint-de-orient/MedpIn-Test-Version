@@ -195,18 +195,27 @@ class NextAppointment {
   const NextAppointment({
     required this.id,
     required this.scheduledFor,
+    this.preferredFor,
     required this.mode,
     required this.status,
   });
 
   final String id;
   final DateTime? scheduledFor;
+
+  /// The day asked for, on a request the clinic has not yet given a time to.
+  /// Null on a real booking — the two are never both set.
+  final DateTime? preferredFor;
   final String mode;
   final String status;
 
   factory NextAppointment.fromJson(Map<String, dynamic> json) {
     return NextAppointment(
       id: json['id']?.toString() ?? '',
+      preferredFor:
+          json['preferredFor'] == null
+              ? null
+              : DateTime.tryParse(json['preferredFor'].toString()),
       scheduledFor:
           json['scheduledFor'] == null
               ? null

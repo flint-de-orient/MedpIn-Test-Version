@@ -40,9 +40,7 @@ class TodaysClinic extends ConsumerWidget {
     // Cancelled ones are not the day. Sorted because the answer to "what is
     // next" is only readable in order.
     final items =
-        (all ?? const <Appointment>[])
-            .where((a) => !a.isCancelled)
-            .toList()
+        (all ?? const <Appointment>[]).where((a) => !a.isCancelled).toList()
           ..sort((a, b) {
             // Nulls last rather than crashing the sort: a confirmed
             // appointment always has a time, but the diary is a shared shape.
@@ -62,11 +60,7 @@ class TodaysClinic extends ConsumerWidget {
         children: [
           Row(
             children: [
-              const Icon(
-                Icons.event_note_rounded,
-                size: 18,
-                color: T.primary,
-              ),
+              const Icon(Icons.event_note_rounded, size: 18, color: T.primary),
               const SizedBox(width: T.s2),
               Expanded(
                 child: Text(
@@ -212,10 +206,7 @@ class _Row extends StatelessWidget {
             ),
             if (label.isNotEmpty)
               Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 8,
-                  vertical: 2,
-                ),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                 decoration: BoxDecoration(
                   color: tone.withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(20),

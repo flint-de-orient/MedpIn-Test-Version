@@ -28,15 +28,58 @@ import '../../../core/push/chat_push_signal.dart';
 /// do not interleave — but the server runs the *same* triage on anything sent
 /// here. Which inbox a patient happens to pick must never decide whether a
 /// worrying symptom reaches the clinic.
-final nutritionThreadProvider = FutureProvider.autoDispose<List<ChatMessage>>((
+/// Who is looking after this patient's nutrition, as the server sees it.
+///
+/// Null when nobody has been assigned and nobody has written yet — which is a
+/// real answer, not a missing one, and the header says so rather than drawing
+/// a nameless face.
+class DieticianFace {
+  const DieticianFace({
+    required this.name,
+    required this.avatarUrl,
+    required this.assigned,
+  });
+
+  final String name;
+  final String? avatarUrl;
+
+  /// True when a doctor chose them, false when they are simply the person who
+  /// has been answering. Both are shown the same way to the patient — the
+  /// distinction belongs to the clinic, not to them.
+  final bool assigned;
+
+  static DieticianFace? fromJson(Object? j) {
+    if (j is! Map<String, dynamic>) return null;
+    final name = j['name']?.toString();
+    if (name == null || name.isEmpty) return null;
+    return DieticianFace(
+      name: name,
+      avatarUrl: j['avatarUrl']?.toString(),
+      assigned: j['assigned'] == true,
+    );
+  }
+}
+
+/// The thread, and the person on the other end of it.
+typedef NutritionThread = ({List<ChatMessage> items, DieticianFace? dietician});
+
+final nutritionThreadProvider = FutureProvider.autoDispose<NutritionThread>((
   ref,
 ) async {
   final json = await ref.read(apiClientProvider).getJson('/chat/nutrition');
   final items = (json['items'] as List?) ?? const [];
-  return items
-      .whereType<Map<String, dynamic>>()
-      .map(ChatMessage.fromJson)
-      .toList();
+  return (
+    items:
+        items
+            .whereType<Map<String, dynamic>>()
+            .map(ChatMessage.fromJson)
+            .toList(),
+    // Asked for, rather than inferred from the last message in the thread.
+    // Inference works only once somebody has written, and a new patient's
+    // header showed a nameless avatar under "Your dietician" — which reads as
+    // a picture that failed to load, not as "nobody is assigned yet".
+    dietician: DieticianFace.fromJson(json['dietician']),
+  );
 });
 
 class NutritionChatScreen extends ConsumerStatefulWidget {
@@ -361,18 +404,13 @@ class _NutritionChatScreenState extends ConsumerState<NutritionChatScreen>
     final scheme = Theme.of(context).colorScheme;
     final async = ref.watch(nutritionThreadProvider);
 
-    // Whoever last wrote as the dietician on this thread. Read from the
-    // messages rather than fetched separately: the thread is already loaded,
-    // and a clinic with two dieticians should show whichever one is actually
-    // answering this patient.
-    final dieticianTurn =
-        async.valueOrNull
-            ?.where(
-              (m) => m.role == 'dietician' && (m.senderName ?? '').isNotEmpty,
-            )
-            .lastOrNull;
-    final dieticianName = dieticianTurn?.senderName;
-    final dieticianAvatar = dieticianTurn?.senderAvatarUrl;
+    // The server's answer: the assigned dietician, or whoever has actually been
+    // replying, or nobody. Read from the thread's own payload rather than
+    // scanned out of the messages, so an assigned dietician is shown from the
+    // patient's first day instead of only after their first reply.
+    final dietician = async.valueOrNull?.dietician;
+    final dieticianName = dietician?.name;
+    final dieticianAvatar = dietician?.avatarUrl;
 
     return Scaffold(
       // Transparent so the shell's ground runs unbroken behind this
@@ -416,8 +454,13 @@ class _NutritionChatScreenState extends ConsumerState<NutritionChatScreen>
                     ),
                     const SizedBox(height: 1),
                     Text(
+                      // Honest when there is nobody yet. "Food and nutrition"
+                      // beside a blank face looks like a screen that failed to
+                      // load; this says what has actually happened, which is
+                      // that no dietician has been assigned and a message will
+                      // still reach one.
                       dieticianName == null
-                          ? 'Food and nutrition'
+                          ? 'Not assigned yet · a dietician will reply'
                           : 'Your dietician · Food and nutrition',
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
@@ -463,7 +506,7 @@ class _NutritionChatScreenState extends ConsumerState<NutritionChatScreen>
             // The same banner the care thread carries. A message the dietician
             // pinned is one they meant the patient to keep in view, and it was
             // scrolling away with everything else.
-            ..._pinnedBanner(async.valueOrNull ?? const <ChatMessage>[]),
+            ..._pinnedBanner(async.valueOrNull?.items ?? const <ChatMessage>[]),
             Expanded(
               // The button floats over the thread instead of sitting in the
               // column. Given a row of its own it both stole a strip of the
@@ -495,9 +538,11 @@ class _NutritionChatScreenState extends ConsumerState<NutritionChatScreen>
                             ],
                           ),
                         ),
-                    data: (messages) {
+                    data: (thread) {
                       var shown =
-                          messages.where((m) => m.role != 'system').toList();
+                          thread.items
+                              .where((m) => m.role != 'system')
+                              .toList();
                       // The reload has caught up (a new message arrived), so the
                       // optimistic voice bubble(s) now have real counterparts —
                       // drop them. Deferred because we're inside build.

@@ -1,5 +1,8 @@
 import { Router } from 'express';
 import dayjs from 'dayjs';
+// The clinic's own clock, not the server's. A confirmation that names an hour
+// has to name it in the hour the patient will turn up.
+import { inClinicTz } from '../utils/clinicTime.js';
 import crypto from 'node:crypto';
 import { z } from 'zod';
 import { requireAuth, requireClinician, requireRole } from '../middleware/auth.js';
@@ -19,6 +22,7 @@ import {
 } from '../services/notifications.js';
 import { ACTIVE_STATUSES, isSlotBookable } from '../services/scheduling.js';
 import { paged, pageParams, dateRange } from '../utils/pagination.js';
+import { postCareThreadNote } from '../services/careThreadNote.js';
 
 const router = Router();
 router.use(requireAuth);
@@ -336,9 +340,20 @@ router.patch(
     await appointment.save();
     await appointment.populate(POPULATE);
 
+    const when = inClinicTz(scheduledFor).format('ddd D MMM, h:mm A');
+
     // The patient asked and is owed the answer; the doctor's day has changed.
     await Promise.all([
       notifyPatientOfAppointmentChange(appointment, 'confirmed').catch(() => {}),
+      // And in the thread they asked in. The push is dismissed or arrives with
+      // the phone face-down; the Home card shows a date with no account of
+      // where it came from. Without this the conversation reads as a question
+      // nobody answered.
+      postCareThreadNote({
+        patientId: appointment.patient?._id ?? appointment.patient,
+        author: req.user,
+        text: `Your appointment is confirmed for ${when} at ${clinic.name}.`,
+      }),
       notifyClinicOfAppointmentChange(
         appointment,
         appointment.patient?.name ?? 'A patient',

@@ -285,6 +285,16 @@ class AppLocalizationsBn extends AppLocalizations {
   String get dashboardNextAppointment => 'পরবর্তী অ্যাপয়েন্টমেন্ট';
 
   @override
+  String get dashboardAppointmentRequested =>
+      'অ্যাপয়েন্টমেন্টের অনুরোধ পাঠানো হয়েছে';
+
+  @override
+  String get dashboardWaitingForClinic => 'ক্লিনিক সময় নিশ্চিত করার অপেক্ষায়';
+
+  @override
+  String get dashboardAwaitingTime => 'ক্লিনিক দিন ও সময় জানিয়ে দেবে';
+
+  @override
   String get dashboardNoAppointment => 'কোনো অ্যাপয়েন্টমেন্ট ঠিক করা নেই';
 
   @override

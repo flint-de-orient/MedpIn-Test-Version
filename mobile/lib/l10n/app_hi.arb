@@ -87,6 +87,18 @@
   "dashboardAdherence": "दवा नियमितता",
   "dashboardTodayPending": "आज {count} बाकी",
   "dashboardNextAppointment": "अगली अपॉइंटमेंट",
+  "dashboardAppointmentRequested": "अपॉइंटमेंट का अनुरोध भेजा गया",
+  "@dashboardAppointmentRequested": {
+    "description": "Dashboard: dashboardAppointmentRequested"
+  },
+  "dashboardWaitingForClinic": "क्लिनिक द्वारा समय तय किए जाने की प्रतीक्षा",
+  "@dashboardWaitingForClinic": {
+    "description": "Dashboard: dashboardWaitingForClinic"
+  },
+  "dashboardAwaitingTime": "क्लिनिक दिन और समय बताएगा",
+  "@dashboardAwaitingTime": {
+    "description": "Dashboard: dashboardAwaitingTime"
+  },
   "dashboardNoAppointment": "कोई अपॉइंटमेंट तय नहीं है",
   "dashboardOpenAlerts": "सक्रिय अलर्ट",
   "dashboardNoAlerts": "कोई अलर्ट नहीं है",

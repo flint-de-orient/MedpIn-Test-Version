@@ -137,7 +137,8 @@ class _PatientsScreenState extends ConsumerState<PatientsScreen>
           areaPrefix(ref) == '/staff'
               ? null
               : FloatingActionButton.extended(
-                onPressed: () => context.push('${areaPrefix(ref)}/patients/new'),
+                onPressed:
+                    () => context.push('${areaPrefix(ref)}/patients/new'),
                 backgroundColor: AppColors.primary,
                 foregroundColor: Colors.white,
                 icon: const Icon(Icons.person_add_alt_1_rounded),

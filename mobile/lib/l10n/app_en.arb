@@ -137,6 +137,18 @@
     }
   },
   "dashboardNextAppointment": "Next appointment",
+  "dashboardAppointmentRequested": "Appointment requested",
+  "@dashboardAppointmentRequested": {
+    "description": "Dashboard: dashboardAppointmentRequested"
+  },
+  "dashboardWaitingForClinic": "Waiting for the clinic to confirm a time",
+  "@dashboardWaitingForClinic": {
+    "description": "Dashboard: dashboardWaitingForClinic"
+  },
+  "dashboardAwaitingTime": "The clinic will confirm a day and time",
+  "@dashboardAwaitingTime": {
+    "description": "Dashboard: dashboardAwaitingTime"
+  },
   "dashboardNoAppointment": "No upcoming appointment",
   "dashboardOpenAlerts": "Open alerts",
   "dashboardNoAlerts": "No open alerts",

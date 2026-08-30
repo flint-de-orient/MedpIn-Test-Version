@@ -58,6 +58,7 @@ import '../../features/staff/presentation/staff_profile_screen.dart';
 import '../../features/staff/presentation/staff_today_screen.dart';
 import '../../features/staff/presentation/staff_shell.dart';
 import '../../features/clinician/presentation/staff_accounts_screen.dart';
+import '../../features/appointments/presentation/my_appointments_screen.dart';
 
 /// Bridges Riverpod state changes into something [GoRouter]'s
 /// `refreshListenable` can observe, so a login/logout or a first-time
@@ -148,6 +149,17 @@ final Provider<GoRouter> appRouterProvider = Provider<GoRouter>((ref) {
     refreshListenable: refreshNotifier,
     redirect: (context, state) => _redirect(ref, state),
     routes: [
+      // The patient's own appointments — bookings and pending requests.
+      //
+      // The screen existed and was reachable from nowhere: no route, no link.
+      // A patient could see the next appointment on Home and had no way to see
+      // the one after it, or to check whether last month's visit happened.
+      // Not a tab, though: appointments are consulted a few times per visit,
+      // not daily, and a sixth tab would spend most of its life empty.
+      GoRoute(
+        path: '/appointments',
+        builder: (context, state) => const MyAppointmentsScreen(),
+      ),
       GoRoute(
         path: '/splash',
         builder: (context, state) => const SplashScreen(),

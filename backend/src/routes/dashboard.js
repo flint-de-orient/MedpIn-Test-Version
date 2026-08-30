@@ -36,12 +36,27 @@ router.get(
         glucoseTrends(patientId, { days: 7 }),
         computeAdherence(patientId, { days: 30 }),
         GlucoseReading.findOne({ patient: patientId }).sort({ measuredAt: -1 }).lean(),
+        // Bookings that are still ahead, and requests that have no time yet.
+        //
+        // The filter was `scheduledFor: { $gte: now }`, and a request has no
+        // scheduledFor at all — so it matched nothing and the patient who
+        // asked for an appointment this morning saw "No upcoming appointment"
+        // on their own Home screen. From where they sit, the request went
+        // nowhere.
+        //
+        // Sorted so a confirmed booking outranks a pending request: a time you
+        // have been given is more use than one you are waiting for.
         Appointment.findOne({
           patient: patientId,
-          status: { $in: ['requested', 'confirmed', 'checked_in'] },
-          scheduledFor: { $gte: new Date() },
+          $or: [
+            {
+              status: { $in: ['confirmed', 'checked_in'] },
+              scheduledFor: { $gte: new Date() },
+            },
+            { status: 'requested' },
+          ],
         })
-          .sort({ scheduledFor: 1 })
+          .sort({ scheduledFor: 1, preferredFor: 1 })
           .lean(),
         ClinicalAlert.find({ patient: patientId, status: 'open' })
           .sort({ severity: -1, createdAt: -1 })
@@ -72,7 +87,10 @@ router.get(
       nextAppointment: nextAppointment
         ? {
             id: nextAppointment._id,
-            scheduledFor: nextAppointment.scheduledFor,
+            scheduledFor: nextAppointment.scheduledFor ?? null,
+            // The day asked for, when there is no time yet. The card shows it
+            // as "Requested for ..." rather than inventing an hour.
+            preferredFor: nextAppointment.preferredFor ?? null,
             mode: nextAppointment.mode,
             status: nextAppointment.status,
           }

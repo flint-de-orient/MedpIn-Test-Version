@@ -532,16 +532,38 @@ class ActionQueue extends StatelessWidget {
                       ),
                       const SizedBox(width: T.s3),
                       Expanded(
+                        // The assignment prompt takes this tile when there is
+                        // one, because it is the only thing on this screen that
+                        // nobody else in the clinic can action: a dietician
+                        // cannot assign themselves, and the desk must not — it
+                        // decides who may see that patient at all.
                         child: _ActionTile(
-                          icon: Icons.restaurant_rounded,
-                          tone: T.success,
-                          count: overview.nutritionReviews.length,
-                          label: 'Nutrition reviews',
+                          icon:
+                              overview.needsDieticianAssignment > 0
+                                  ? Icons.person_search_rounded
+                                  : Icons.restaurant_rounded,
+                          tone:
+                              overview.needsDieticianAssignment > 0
+                                  ? T.warning
+                                  : T.success,
+                          count:
+                              overview.needsDieticianAssignment > 0
+                                  ? overview.needsDieticianAssignment
+                                  : overview.nutritionReviews.length,
+                          label:
+                              overview.needsDieticianAssignment > 0
+                                  ? 'Need a dietician'
+                                  : 'Nutrition reviews',
                           note:
-                              overview.nutritionReviews.isEmpty
+                              overview.needsDieticianAssignment > 0
+                                  ? 'Assign one'
+                                  : overview.nutritionReviews.isEmpty
                                   ? null
                                   : 'Due for review',
-                          noteTone: T.success,
+                          noteTone:
+                              overview.needsDieticianAssignment > 0
+                                  ? T.warning
+                                  : T.success,
                           onTap: () => context.go('/clinician/nutrition'),
                         ),
                       ),

@@ -622,6 +622,24 @@ abstract class AppLocalizations {
   /// **'Next appointment'**
   String get dashboardNextAppointment;
 
+  /// Dashboard: dashboardAppointmentRequested
+  ///
+  /// In en, this message translates to:
+  /// **'Appointment requested'**
+  String get dashboardAppointmentRequested;
+
+  /// Dashboard: dashboardWaitingForClinic
+  ///
+  /// In en, this message translates to:
+  /// **'Waiting for the clinic to confirm a time'**
+  String get dashboardWaitingForClinic;
+
+  /// Dashboard: dashboardAwaitingTime
+  ///
+  /// In en, this message translates to:
+  /// **'The clinic will confirm a day and time'**
+  String get dashboardAwaitingTime;
+
   /// No description provided for @dashboardNoAppointment.
   ///
   /// In en, this message translates to:
