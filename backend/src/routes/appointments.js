@@ -482,6 +482,37 @@ router.patch(
     // to ignore the alert that matters.
     if (!appt.patient?._id?.equals?.(req.user._id)) {
       await notifyPatientOfAppointmentChange(appt, 'cancelled', req.body.reason);
+
+      // And in the thread, exactly as a confirmation is.
+      //
+      // Confirming wrote a line into the conversation the patient asked in;
+      // being turned down wrote nothing, so a refusal existed only as a push —
+      // and a push is swiped away. The thread then reads as a question nobody
+      // answered, which is the precise failure the confirmation note was added
+      // to prevent, left in place for the answer that is harder to hear.
+      //
+      // The two are worded apart because they are different events. A request
+      // declined never had a time, so there is nothing to say has been called
+      // off — only that the day they wanted could not be given, and that asking
+      // for another is the next move. A booking cancelled had an hour, and
+      // naming it is how the patient knows which visit is gone.
+      const declinedRequest = !appt.scheduledFor;
+      const reason = (req.body.reason ?? '').trim();
+      await postCareThreadNote({
+        patientId: appt.patient?._id ?? appt.patient,
+        author: req.user,
+        text: declinedRequest
+          ? [
+              appt.preferredFor
+                ? `We could not give you an appointment on ${inClinicTz(appt.preferredFor).format('ddd D MMM')}.`
+                : 'We could not give you an appointment for the day you asked about.',
+              reason || 'Please ask for another day and we will find you a time.',
+            ].join(' ')
+          : [
+              `Your appointment on ${inClinicTz(appt.scheduledFor).format('ddd D MMM, h:mm A')} has been cancelled.`,
+              reason || 'Please ask for another time when you are ready.',
+            ].join(' '),
+      });
     }
     await offerFreedSlotToWaitlist(appt);
 
