@@ -169,6 +169,10 @@ router.post(
           strength: item.strength ?? null,
           dose: item.dose ?? null,
           frequency: item.frequency ?? null,
+          // The doctor's own words about when. Shown beside the time on the
+          // review sheet so the patient checks a sentence against their paper
+          // rather than an hour they have no way to verify.
+          whenText: item.whenText ?? null,
           instructions: item.instructions ?? null,
           relationToMeal: item.relationToMeal ?? null,
           durationDays: item.durationDays ?? null,

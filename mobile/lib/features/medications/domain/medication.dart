@@ -151,6 +151,7 @@ class ScannedMedicine {
     required this.name,
     this.strength,
     this.dose,
+    this.whenText,
     this.instructions,
     this.durationDays,
     this.schedule = const [],
@@ -159,6 +160,11 @@ class ScannedMedicine {
   final String name;
   final String? strength;
   final String? dose;
+  /// The doctor's own words about when — "1 tab each AF Lunch". Shown beside
+  /// the time so the patient checks a sentence against their paper rather than
+  /// an hour they have no way to verify.
+  final String? whenText;
+
   final String? instructions;
   final int? durationDays;
 
@@ -169,6 +175,7 @@ class ScannedMedicine {
     name: j['name']?.toString() ?? '',
     strength: j['strength']?.toString(),
     dose: j['dose']?.toString(),
+    whenText: j['whenText']?.toString(),
     instructions: j['instructions']?.toString(),
     durationDays: (j['durationDays'] as num?)?.toInt(),
     schedule: [

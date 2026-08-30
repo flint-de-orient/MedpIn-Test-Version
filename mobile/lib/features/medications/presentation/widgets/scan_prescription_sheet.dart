@@ -462,10 +462,23 @@ class _ReviewRow extends StatelessWidget {
                             ),
                           ],
                         ),
-                        if ((med.instructions ?? '').isNotEmpty) ...[
+                        // What the doctor wrote about when, under the hour it
+                        // was turned into.
+                        //
+                        // An hour on its own is unverifiable: a patient looking
+                        // at "13:30" has no way to tell whether that is what
+                        // their prescription says. "1 tab each AF Lunch" beside
+                        // it is a sentence they can hold against the paper,
+                        // which is the only thing that makes this a review
+                        // rather than a formality.
+                        for (final line in {
+                          if ((med.whenText ?? '').isNotEmpty) med.whenText!,
+                          if ((med.instructions ?? '').isNotEmpty)
+                            med.instructions!,
+                        }) ...[
                           const SizedBox(height: 3),
                           Text(
-                            med.instructions!,
+                            line,
                             maxLines: 2,
                             overflow: TextOverflow.ellipsis,
                             style: TextStyle(

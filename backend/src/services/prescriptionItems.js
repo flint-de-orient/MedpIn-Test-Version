@@ -122,6 +122,10 @@ export function splitCombination(item) {
       strength: tidied.strength,
       // The timing on the line applies to every drug on it.
       frequency: item.frequency,
+      // The line's timing belongs to every drug written on it. "Teneligliptin
+      // + MF500(SR) — 1 tab each AF Lunch" is two tablets, both after lunch,
+      // and dropping this from the second one sends it back to breakfast.
+      whenText: item.whenText,
       relationToMeal: item.relationToMeal,
       instructions: joinNotes(item.instructions, tidied.leftover, fromLine.leftover),
     };

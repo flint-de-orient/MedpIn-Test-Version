@@ -199,6 +199,15 @@ const PRESCRIPTION_SCHEMA = {
           dose: { type: 'string' },
           // "1-0-1", "1-1-1", "OD", "BD", "TDS" — kept as written.
           frequency: { type: 'string' },
+          // The timing exactly as the doctor wrote it, transcribed rather than
+          // interpreted: "AF Lunch", "A Dinner", "before meal", "10 AM".
+          //
+          // Its own field because `frequency` is defined as how OFTEN, so a
+          // model filling that in returns "OD" and discards the word "Lunch" —
+          // and the meal is the half that decides what hour the alarm rings.
+          // Every timing on the prescription this was built from lived in that
+          // discarded half, and all four medicines were scheduled for 08:00.
+          whenText: { type: 'string' },
           durationDays: { type: 'integer' },
           relationToMeal: { type: 'string', enum: ['before_meal', 'after_meal', 'with_meal', 'any'] },
           instructions: { type: 'string' },
@@ -238,6 +247,7 @@ export async function extractPrescription({ images }) {
 Strict rules:
 - Extract ONLY what is clearly legible. Never invent a medicine, dose, strength, or timing. If a field is not written, omit it.
 - "frequency" is how often per day. Keep the notation the prescription uses: Indian "1-0-1" (morning-noon-night), "1-1-1", "0-0-1", "1-0-1-0", or shorthand (OD, BD, TDS, QID) or words (once/twice/thrice daily).
+- "whenText": the timing EXACTLY as written, copied not interpreted — "1 tab each AF Lunch", "1 tab A Dinner", "1 tab before meal", "1 tab each 10 AM". Include the meal or the hour if either is written. This is the most important field on the line after the medicine name: it is what decides when the patient's alarm rings, and "frequency" above deliberately does not carry it.
 - "relationToMeal": before_meal (BF / before food / खाली পেটে), after_meal (AF / after food / খাবারের পরে), with_meal, or any.
 - "durationDays": the number of days if written, e.g. "x 5 days" -> 5, "1 week" -> 7.
 - Read the medicine lines (usually after the ℞ / Rx symbol) for the items. Ignore patient details, diagnosis and general advice.

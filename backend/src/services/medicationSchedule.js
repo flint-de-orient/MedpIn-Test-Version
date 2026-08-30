@@ -77,7 +77,13 @@ export function slotToTime(slot, mealTimes, relationToMeal = 'any') {
  * meal named in the instructions and still wins.
  */
 export function scheduleText(item) {
-  return [item?.frequency, item?.instructions, item?.dose]
+  // whenText first among the descriptive fields, because it is the one asked
+  // for verbatim: "1 tab each AF Lunch" rather than the model's reading of it.
+  //
+  // frequency stays ahead of it so an explicit count still wins — "1 tab BD
+  // after dinner" is twice a day, and only when nothing has said how often does
+  // the named meal get to choose the single slot.
+  return [item?.frequency, item?.whenText, item?.instructions, item?.dose]
     .filter((s) => typeof s === 'string' && s.trim())
     .join(' ');
 }
