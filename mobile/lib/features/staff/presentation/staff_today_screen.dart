@@ -865,10 +865,14 @@ class _QueueStat extends StatelessWidget {
           ),
           Text(
             caption,
-            maxLines: 1,
+            // Two lines, because a third of a 360-point screen is about 84
+            // points of text and "For scheduling" does not fit on one of them —
+            // it arrived on the handset as "For scheduli…".
+            maxLines: 2,
             overflow: TextOverflow.ellipsis,
             style: TextStyle(
-              fontSize: 11,
+              fontSize: 10.5,
+              height: 1.2,
               fontWeight: FontWeight.w500,
               color: scheme.onSurfaceVariant,
             ),
@@ -912,6 +916,9 @@ class _RequestCardState extends ConsumerState<_RequestCard> {
     final waited = _waitedIn(l10n);
     final a = widget.appointment;
     final scheme = Theme.of(context).colorScheme;
+    // The day name reads in the chosen language too — DateFormat with no
+    // locale uses Intl's global default, which is not what MaterialApp sets.
+    final locale = Localizations.localeOf(context).toString();
     final stale =
         (a.createdAt != null &&
             DateTime.now().difference(a.createdAt!).inDays >= 1);
@@ -961,29 +968,49 @@ class _RequestCardState extends ConsumerState<_RequestCard> {
                         fontWeight: FontWeight.w700,
                       ),
                     ),
-                    Text(
-                      [
-                        if (a.preferredFor != null)
-                          // The hour goes on the same line as the day, because
-                          // "Tuesday, evening" is one answer to one question.
-                          // Absent when they said any time — which is most of
-                          // them, and printing "any time" would be noise on
-                          // every row.
-                          [
-                            'for ${DateFormat('EEE, d MMM').format(a.preferredFor!)}',
-                            if (a.preferredTime != null) a.preferredTime!,
-                          ].join(', '),
-                        if (waited.isNotEmpty) waited,
-                      ].join('   '),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: 13,
-                        color:
-                            stale ? AppColors.warning : scheme.onSurfaceVariant,
-                        fontWeight: stale ? FontWeight.w600 : FontWeight.w400,
+                    // How long they have waited, then what they asked for.
+                    //
+                    // Two lines, not one. Joined with spaces they read as "for
+                    // Sun, 30 Aug, 11:00   asked 17h ago" and ran off the edge
+                    // of a 360-point screen as "asked 17h…", losing the units
+                    // from the only number on the row that decides whether this
+                    // is urgent. They are also two different facts: how long we
+                    // have kept them waiting, and what they wanted.
+                    if (waited.isNotEmpty)
+                      Text(
+                        waited,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 13,
+                          height: 1.25,
+                          color:
+                              stale
+                                  ? AppColors.warningOn(context)
+                                  : scheme.onSurfaceVariant,
+                          fontWeight:
+                              stale ? FontWeight.w700 : FontWeight.w400,
+                        ),
                       ),
-                    ),
+                    if (a.preferredFor != null)
+                      Text(
+                        // The hour goes with the day, because "Tuesday,
+                        // evening" is one answer to one question. Absent when
+                        // they said any time — which is most of them, and
+                        // printing "any time" would be noise on every row.
+                        [
+                          'for ${DateFormat('EEE, d MMM', locale).format(a.preferredFor!)}',
+                          if (a.preferredTime != null) a.preferredTime!,
+                        ].join(' · '),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 13,
+                          height: 1.25,
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.primary,
+                        ),
+                      ),
                   ],
                 ),
               ),
@@ -1637,15 +1664,24 @@ class _ActionTile extends StatelessWidget {
         onTap: onTap,
         borderRadius: BorderRadius.circular(_kInnerRadius),
         child: Container(
-          constraints: const BoxConstraints(minHeight: 62),
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+          padding: const EdgeInsets.fromLTRB(11, 10, 11, 11),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(_kInnerRadius),
             border: Border.all(
               color: scheme.outlineVariant.withValues(alpha: 0.5),
             ),
           ),
-          child: Row(
+          // Icon above the words, not beside them.
+          //
+          // Beside them, a half-width tile on a 360-point handset leaves about
+          // 95 points for text once the padding and the icon have taken theirs,
+          // and "Register patient" became "Register pa…". Stacked, the label
+          // gets the tile's full width and two lines if it wants them — which
+          // also gives translations somewhere to go, since the Bengali for
+          // "Walk-in check-in" is not going to be shorter.
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
             children: [
               Container(
                 width: 32,
@@ -1657,34 +1693,26 @@ class _ActionTile extends StatelessWidget {
                 ),
                 child: Icon(icon, size: 17, color: tone),
               ),
-              const SizedBox(width: 9),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      title,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        fontSize: 13,
-                        height: 1.2,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    const SizedBox(height: 1),
-                    Text(
-                      caption,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: 11,
-                        height: 1.25,
-                        color: scheme.onSurfaceVariant,
-                      ),
-                    ),
-                  ],
+              const SizedBox(height: 9),
+              Text(
+                title,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontSize: 13,
+                  height: 1.2,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                caption,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 11,
+                  height: 1.25,
+                  color: scheme.onSurfaceVariant,
                 ),
               ),
             ],
