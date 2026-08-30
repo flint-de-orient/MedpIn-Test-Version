@@ -137,6 +137,38 @@ All list endpoints accept `?from=ISO&to=ISO&page=&limit=`.
 `POST /:id/log` `{ "scheduledFor":"2026-07-22T08:00:00Z", "status":"taken", "unitsAdministered":12, "injectionSite":"abdomen", "skipReason":"" }` → `201` (idempotent per `medication+scheduledFor`)
 `GET /adherence?days=30` → `{ expected, taken, missed, percentage, perMedication:[{medicationId,name,expected,taken,percentage}] }`
 
+### Scanning a paper prescription — two steps, deliberately
+
+`POST /scan` (multipart, field `file`) → **writes nothing.** Reads the photo and
+proposes:
+
+```json
+{ "readable":true, "preview":true, "created":[],
+  "items":[{ "name":"MF500(SR)","strength":null,"dose":null,"frequency":"AF Lunch · A Dinner",
+             "instructions":null,"relationToMeal":"after_meal","durationDays":null,
+             "schedule":[{"time":"14:00","relationToMeal":"after_meal"},
+                         {"time":"21:00","relationToMeal":"after_meal"}] }],
+  "prescriber":{...}, "note":null }
+```
+
+`POST /scan/confirm` `{ "items":[…], "prescriber":{…} }` → `201 { created: Medication[] }`
+
+Unreadable photos still return `{ readable:false, created:[] }`.
+
+**This route used to create the medicines itself**, so a misread hour was a live
+alarm before the patient had seen it. Confirm takes the reviewed `items` back
+rather than the photograph — re-reading the picture would run the model a second
+time and could save a different list from the one the patient approved.
+
+Two consequences worth knowing before deploying:
+
+- **An old client against a new server appears to do nothing.** It sends the
+  photo, gets a preview it does not understand, and finds `created: []`. Ship
+  the app and the server together.
+- `items` are already split, tidied and de-duplicated: a line joining two drugs
+  with `+` arrives as two items sharing the line's timing, and the same drug on
+  two lines arrives once with both timings. See `services/prescriptionItems.js`.
+
 ---
 
 ## 5. Foot Care — `/patients/:patientId/foot`
