@@ -1195,7 +1195,7 @@ const DESK_ALERTS = { status: 'open', severity: { $in: ['urgent', 'emergency'] }
  * A front-desk account could reassign a patient's dietician (which, in a clinic
  * with two, decides who may see that patient at all), edit and approve the
  * knowledge base the assistant answers patients from, post into a review thread
- * under the clinician's name, issue the dietician invite code, create dietician
+ * under the clinician's name, create dietician
  * accounts, and change clinic settings. None of that is a receptionist's job
  * and none of it was refused.
  *
@@ -1615,6 +1615,11 @@ router.get(
 
 router.post(
   '/knowledge',
+  // The knowledge base is what the assistant answers patients from. Editing it
+  // changes clinical advice given at scale, unattended — see the note above
+  // the desk-privilege sweep. Same false pass as /settings: the guard landed
+  // on the GET.
+  requireDoctor,
   validate({ body: knowledgeSchema }),
   asyncHandler(async (req, res) => {
     const chunk = await KnowledgeChunk.create({ ...req.body, status: 'pending_review' });
@@ -1784,52 +1789,6 @@ router.get(
 );
 
 /**
- * The clinic's dietician invite code, so the doctor can invite a dietician to
- * self-register (with their own password) rather than the doctor creating the
- * account and setting a password on their behalf. Null when no code is
- * configured for this deployment, so the app hides the invite option.
- */
-router.get(
-  '/dietician-invite',
-  asyncHandler(async (req, res) => {
-    const settings = await getClinicSettings();
-    // The stored code wins; the env var is the fallback for a clinic that has
-    // never rotated one, so existing deployments keep working untouched.
-    res.json({ code: settings.dieticianInviteCode || env.DIETICIAN_INVITE_CODE || null });
-  }),
-);
-
-/**
- * Issues a fresh invite code, replacing whatever is current.
- *
- * Rotating is the whole point: the code travels over WhatsApp, and the only
- * remedy once it has reached the wrong person is to make it stop working.
- */
-router.post(
-  '/dietician-invite/generate',
-  // Minting clinical staff. Same rule the staff invite already follows:
-  // a desk that can issue an invite is a desk that can let anyone in.
-  requireDoctor,
-  audit('update', 'ClinicSettings'),
-  asyncHandler(async (req, res) => {
-    // Unambiguous alphabet: no O/0, no I/1/L. The code is read aloud and typed
-    // by hand, and a 0 mistaken for an O is a support call.
-    const ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
-    const code = Array.from(
-      { length: 8 },
-      () => ALPHABET[Math.floor(Math.random() * ALPHABET.length)],
-    ).join('');
-
-    await ClinicSettings.findOneAndUpdate(
-      { key: 'clinic' },
-      { $set: { dieticianInviteCode: code }, $setOnInsert: { key: 'clinic' } },
-      { upsert: true, new: true, setDefaultsOnInsert: true },
-    );
-    res.json({ code });
-  }),
-);
-
-/**
  * Clinic-wide settings. Read by the doctor's Dieticians screen.
  *
  * The review cadence lives here rather than on each patient for the same reason
@@ -1838,7 +1797,7 @@ router.post(
  */
 router.get(
   '/settings',
-  // Clinic-wide configuration, including the invite code above.
+  // Clinic-wide configuration.
   requireDoctor,
   asyncHandler(async (req, res) => {
     const settings = await getClinicSettings();
@@ -1848,6 +1807,11 @@ router.get(
 
 router.patch(
   '/settings',
+  // Clinic-wide configuration, changed by the doctor and nobody else.
+  //
+  // Missing until now. The privilege sweep added it to the GET of the same
+  // name, and the test matched that one and reported this as guarded.
+  requireDoctor,
   validate({
     body: z.object({
       dietReviewIntervalDays: z.coerce.number().int().min(1).max(90).optional(),
@@ -1907,13 +1871,14 @@ router.post(
   validate({
     body: z.object({
       name: z.string().trim().min(2).max(120),
-      // Normalised to E.164 first: a number stored as bare digits is an
-      // account whose owner can never sign in, because login sends +91.
-      phone: z
-        .string()
-        .trim()
-        .transform(toE164)
-        .pipe(z.string().regex(/^\+?[1-9]\d{7,14}$/, 'Enter a valid phone number')),
+      // Proof the number was answered, not a number.
+      //
+      // A regex tests the shape of a phone number and nothing about who holds
+      // it, and a desk account is the sharper case of the two: the password
+      // below is optional and off by default, so for most of them the number
+      // IS the whole credential. One mistyped digit and it belongs to whoever
+      // owns the number that was typed instead.
+      phoneToken: z.string().min(20),
       // Optional. Staff can sign in with a texted code like everyone else; a
       // password is for the shared handset that stays on the counter, where
       // waiting for an SMS on somebody's personal phone is not workable.
@@ -1922,7 +1887,8 @@ router.post(
   }),
   audit('create', 'User'),
   asyncHandler(async (req, res) => {
-    const { name, phone, password } = req.body;
+    const { name, phoneToken, password } = req.body;
+    const phone = phoneFromToken(phoneToken);
     if (await User.phoneTaken(phone)) {
       throw conflict('An account with this phone number already exists');
     }
@@ -1957,80 +1923,48 @@ router.delete(
   }),
 );
 
-/** The clinic's staff invite code, so a receptionist can self-register. */
-router.get(
-  '/staff-invite',
-  requireDoctor,
-  asyncHandler(async (req, res) => {
-    const settings = await getClinicSettings();
-    res.json({ code: settings.staffInviteCode || null });
-  }),
-);
-
 /**
- * Issues a fresh staff invite code, replacing whatever is current.
+ * Create a dietician account the doctor can then assign to patients.
  *
- * Rotating is the whole point: the code travels over WhatsApp, and once it has
- * reached the wrong person the only remedy is to make it stop working. It
- * matters more here than for a dietician — this code opens an account that can
- * see every patient in the clinic.
+ * ---- Why a phoneToken and not a phone ------------------------------------
+ *
+ * The number used to be a plain string checked against a regex, which tests
+ * the shape of a number and not whether anybody answers it. A single mistyped
+ * digit produced a working clinical account bound to a stranger's phone —
+ * and because login sends a code to whatever number is on the account, that
+ * stranger could sign in. A dietician with no explicit assignments reads every
+ * patient record in the clinic.
+ *
+ * That was survivable while the invite code existed alongside it. It is not
+ * now: this route and its front-desk twin are the only ways a clinical account
+ * comes into being, so the whole question of who gets into this clinic rests on
+ * ten digits being typed correctly.
+ *
+ * So the doctor sends a code to the number first — the colleague is in front of
+ * him, or on the phone — and the account is created from the token that proves
+ * it was answered. Exactly what a patient's own registration does, with the
+ * same machinery. A typo now fails as "no code arrived" instead of succeeding
+ * silently against somebody else's handset.
  */
 router.post(
-  '/staff-invite/generate',
-  requireDoctor,
-  audit('update', 'ClinicSettings'),
-  asyncHandler(async (req, res) => {
-    // Unambiguous alphabet: no O/0, no I/1/L. The code is read aloud and typed
-    // by hand, and a 0 mistaken for an O is a support call.
-    const ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
-    const code = Array.from(
-      { length: 8 },
-      () => ALPHABET[Math.floor(Math.random() * ALPHABET.length)],
-    ).join('');
-
-    await ClinicSettings.findOneAndUpdate(
-      { key: 'clinic' },
-      { $set: { staffInviteCode: code }, $setOnInsert: { key: 'clinic' } },
-      { upsert: true, new: true, setDefaultsOnInsert: true },
-    );
-    res.json({ code });
-  }),
-);
-
-/** Revokes the staff invite code entirely. */
-router.delete(
-  '/staff-invite',
-  requireDoctor,
-  audit('update', 'ClinicSettings'),
-  asyncHandler(async (req, res) => {
-    await ClinicSettings.findOneAndUpdate(
-      { key: 'clinic' },
-      { $set: { staffInviteCode: null }, $setOnInsert: { key: 'clinic' } },
-      { upsert: true, new: true, setDefaultsOnInsert: true },
-    );
-    res.status(204).end();
-  }),
-);
-
-/** Create a dietician account the doctor can then assign to patients. */
-router.post(
   '/dieticians',
+  // Missing until now, and not harmlessly: without it the file-level
+  // requireClinician applies, which admits STAFF — so the front desk could
+  // create a dietician account. The test that was supposed to catch this
+  // matched the GET route of the same name and passed.
+  requireDoctor,
   validate({
     body: z.object({
       name: z.string().trim().min(2).max(120),
-      // Normalised to E.164 first: a number stored as bare digits is an
-      // account whose owner can never sign in, because login sends +91.
-      phone: z
-        .string()
-        .trim()
-        .transform(toE164)
-        .pipe(z.string().regex(/^\+?[1-9]\d{7,14}$/, 'Enter a valid phone number')),
+      // Proof the number was answered, not a number. See above.
+      phoneToken: z.string().min(20),
       password: z.string().min(8, 'At least 8 characters').max(128),
     }),
   }),
   audit('create', 'User'),
   asyncHandler(async (req, res) => {
-    const { name, phone, password } = req.body;
+    const { name, phoneToken, password } = req.body;
+    const phone = phoneFromToken(phoneToken);
     if (await User.phoneTaken(phone)) throw conflict('An account with this phone number already exists');
     const user = new User({
       name,

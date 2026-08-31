@@ -93,19 +93,6 @@ class AuthRepository {
     return json['phoneToken'] as String;
   }
 
-  /// The role an invite code opens: `dietician` or `staff`.
-  ///
-  /// Throws when the code is not valid. The server decides the role from the
-  /// code again at registration, so this answer only exists so the form can
-  /// ask for the right fields — it is never what makes the account.
-  Future<String> validateInviteCode(String code) async {
-    final json = await _client.postJson(
-      '/auth/invite/validate',
-      body: {'code': code},
-    );
-    return json['role']?.toString() ?? 'dietician';
-  }
-
   Future<AuthResult> register({
     required String name,
     required String phoneToken,
@@ -123,7 +110,6 @@ class AuthRepository {
     int? glucoseMgDl,
     String? complaints,
     String? diabetesType,
-    String? inviteCode,
   }) async {
     final json = await _client.postJson(
       '/auth/register',
@@ -146,8 +132,6 @@ class AuthRepository {
         if (complaints != null && complaints.isNotEmpty)
           'complaints': complaints,
         if (diabetesType != null) 'diabetesType': diabetesType,
-        if (inviteCode != null && inviteCode.isNotEmpty)
-          'inviteCode': inviteCode,
       },
     );
     return _resultFromJson(json);

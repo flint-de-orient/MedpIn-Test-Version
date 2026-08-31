@@ -29,6 +29,7 @@ import '../../medications/domain/strength.dart';
 import '../../../shared/widgets/strength_field.dart';
 import '../../../shared/widgets/surfaces.dart';
 import '../domain/clinician_models.dart';
+import '../../../shared/widgets/disclosure_tile.dart';
 
 /// The doctor's working screen for one patient: who they are at the top, and
 /// everything the doctor might do about it underneath.
@@ -1389,7 +1390,7 @@ class _Collapsible extends StatelessWidget {
       clipBehavior: Clip.antiAlias,
       child: Theme(
         data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
-        child: ExpansionTile(
+        child: DisclosureTile(
           tilePadding: const EdgeInsets.symmetric(
             horizontal: AppSpacing.md,
             vertical: 0,
@@ -1400,7 +1401,7 @@ class _Collapsible extends StatelessWidget {
             AppSpacing.md,
             AppSpacing.md,
           ),
-          expandedCrossAxisAlignment: CrossAxisAlignment.start,
+          crossAxisAlignment: CrossAxisAlignment.start,
           leading:
               icon == null
                   ? null

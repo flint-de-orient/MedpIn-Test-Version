@@ -3,82 +3,77 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
 /**
- * What an invite code is allowed to make.
+ * Registration makes patients. There is no other kind.
  *
- * A staff account can see every patient in the clinic. A dietician's cannot,
- * and a patient's certainly cannot. The one thing that must never happen is a
- * caller choosing which of those it becomes: the app posts an inviteCode and a
- * form, and an edited APK can put anything in that form.
+ * This file used to guard an invite code: a shared secret that, typed into the
+ * registration form, turned the new account into a dietician or a front desk.
+ * The tests were about making the *code* decide the role rather than the
+ * caller, which was the right guard for the wrong feature.
  *
- * So the code decides the role, server-side, and these read the source to say
- * so. Read rather than exercised because the failure would be a *missing*
- * check — a line someone deletes while making something else work — and a
- * request that never happens cannot be tested by making requests.
+ * The feature is gone. A shared code is a credential that cannot be un-shared —
+ * read out over a counter, forwarded, photographed — and it does not record who
+ * used it. One of them was used by an account nobody at the clinic recognised,
+ * which is the failure that shape guarantees eventually, and a dietician
+ * account with no explicit assignments can read every patient record in the
+ * clinic. Clinical accounts are created by the doctor, one at a time, in the
+ * panel: he knows who he is hiring, and a code does not.
+ *
+ * So what is guarded now is the absence. Read from the source, because what
+ * matters is that no line reappears — and a route that does not exist cannot be
+ * tested by calling it.
  */
 const auth = readFileSync(new URL('../src/routes/auth.js', import.meta.url), 'utf8');
 const doctor = readFileSync(new URL('../src/routes/doctor.js', import.meta.url), 'utf8');
+const settings = readFileSync(
+  new URL('../src/models/ClinicSettings.js', import.meta.url),
+  'utf8',
+);
 
-describe('an invite code decides its own role', () => {
-  test('registration never reads a role off the request body', () => {
-    // The register schema must not accept one. If it ever does, an APK can
-    // ask to be staff.
+describe('registration cannot make anything but a patient', () => {
+  test('the role is a constant, not a lookup', () => {
+    assert.match(auth, /const role = ROLES\.PATIENT;/);
+  });
+
+  test('no role is read off the request body', () => {
+    // The schema must not accept one. If it ever does, an edited APK can ask
+    // to be staff — which is what the invite code was protecting against, and
+    // the protection has to outlive the feature.
     const schema = auth.slice(
       auth.indexOf('const registerSchema'),
       auth.indexOf('router.post'),
     );
     assert.ok(!/\brole\s*:/.test(schema), 'registerSchema accepts a role field');
+    assert.ok(!/inviteCode/.test(schema), 'registerSchema still takes an invite code');
   });
 
-  test('the role comes from roleForInvite, not from the caller', () => {
-    assert.match(auth, /const invitedRole = await roleForInvite\(inviteCode\)/);
-    assert.match(auth, /const role = invitedRole \?\? ROLES\.PATIENT/);
+  test('nothing anywhere resolves a role from a code', () => {
+    assert.ok(!/roleForInvite/.test(auth), 'roleForInvite is back');
+    assert.ok(!/invite/i.test(auth.replace(/\/\*[\s\S]*?\*\//g, '')), 'an invite path is back in auth');
+  });
+});
+
+describe('there is no invite code to steal', () => {
+  test('the endpoints are gone', () => {
+    for (const route of ["'/invite/validate'", "'/dietician-invite'", "'/staff-invite'"]) {
+      assert.ok(!auth.includes(route), `${route} is back in auth.js`);
+      assert.ok(!doctor.includes(route), `${route} is back in doctor.js`);
+    }
   });
 
-  test('an unrecognised code is refused rather than ignored', () => {
-    // Silently falling back to patient would be worse than an error: someone
-    // handed a stale code would get an account, and never know it was the
-    // wrong kind until they could not do their job.
-    assert.match(auth, /if \(inviteCode && !invitedRole\)/);
+  test('and no code is stored', () => {
+    // Left in the schema, the field would be a live credential that nothing
+    // reads, nobody can rotate, and no screen displays.
+    assert.ok(!/dieticianInviteCode/.test(settings));
+    assert.ok(!/staffInviteCode/.test(settings));
   });
 
-  test('the staff code has no source-code default', () => {
-    // The dietician code falls back to an env var so existing deployments keep
-    // working. Staff must not: a default that ships in the repository is not a
-    // credential, and this one opens every patient record in the clinic.
-    const fn = auth.slice(
-      auth.indexOf('async function roleForInvite'),
-      auth.indexOf('const otpLimiter'),
-    );
-    assert.match(fn, /settings\.staffInviteCode/);
-    assert.ok(
-      !/STAFF_INVITE_CODE/.test(fn),
-      'the staff code falls back to an env default',
-    );
-  });
-
-  test('the two codes are separate', () => {
-    // One code for both roles would mean rotating it for a departing
-    // receptionist also locked out every dietician mid-registration.
-    const fn = auth.slice(
-      auth.indexOf('async function roleForInvite'),
-      auth.indexOf('const otpLimiter'),
-    );
-    assert.match(fn, /dieticianInviteCode/);
-    assert.match(fn, /staffInviteCode/);
-  });
-
-  test('only a doctor may create or rotate staff access', () => {
-    // requireClinician admits STAFF. A desk that can mint another desk account,
-    // or reissue the code, is a desk that can let anyone in.
-    for (const route of [
-      "'/staff'",
-      "'/staff-invite'",
-      "'/staff-invite/generate'",
-    ]) {
+  test('creating a clinical account is still doctor-only', () => {
+    // The invite code is gone; the door it bypassed is not. This is the only
+    // way in now, so it has to stay shut to everyone but the doctor.
+    for (const route of ["'/dieticians'", "'/staff'"]) {
       const at = doctor.indexOf(`  ${route},`);
       assert.notEqual(at, -1, `no route registered at ${route}`);
-      const guards = doctor.slice(at, at + 200);
-      assert.match(guards, /requireDoctor/, `${route} is not doctor-only`);
+      assert.match(doctor.slice(at, at + 200), /requireDoctor/, `${route} is not doctor-only`);
     }
   });
 });

@@ -24,6 +24,7 @@ import 'widgets/mark_dose_sheet.dart';
 import 'widgets/medication_slot_tile.dart';
 import '../domain/strength.dart';
 import '../../../shared/widgets/clinic_brand.dart';
+import 'widgets/reminder_health_card.dart';
 
 /// The patient's medicines: the windows their reminders fire in, what they are
 /// currently prescribed, and today's outstanding doses.
@@ -229,6 +230,11 @@ class _MedicationsScreenState extends ConsumerState<MedicationsScreen>
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.stretch,
                             children: [
+                              // Above the ring, because a ring showing four
+                              // doses due is actively reassuring on a phone
+                              // that will announce none of them. Draws nothing
+                              // when the reminders are healthy.
+                              const ReminderHealthCard(),
                               _DoseRing(schedule: scheduleAsync.valueOrNull),
                               const SizedBox(height: T.s4),
                               _ScanAction(onTap: () => _onScan(context, ref)),

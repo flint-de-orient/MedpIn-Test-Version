@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 
 import '../../../core/config/app_config.dart';
 import '../../../core/theme/app_spacing.dart';
+import '../../../shared/widgets/disclosure_tile.dart';
 
 /// The open-source licences, with a search box.
 ///
@@ -164,7 +165,7 @@ class _LicensesScreenState extends State<LicensesScreen> {
                 );
               }
               final p = shown[i - 1];
-              return ExpansionTile(
+              return DisclosureTile(
                 title: Text(
                   p.name,
                   style: const TextStyle(

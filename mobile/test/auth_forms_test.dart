@@ -247,19 +247,17 @@ void main() {
       expect(find.byType(StepBar), findsNothing);
     });
 
-    testWidgets('asks for the number before the invite code', (tester) async {
+    testWidgets('there is no invite code to type', (tester) async {
       useTallSurface(tester);
       await tester.pumpWidget(harness(const RegisterScreen()));
 
-      // The order is load-bearing: the code decides which fields the form is
-      // going to ask for, so it cannot come after them.
-      final phone = tester.getTopLeft(
-        find.widgetWithText(AuthField, 'Phone number'),
-      );
-      final invite = tester.getTopLeft(
-        find.widgetWithText(AuthField, 'Have an invite code?'),
-      );
-      expect(phone.dy, lessThan(invite.dy));
+      // This form makes patients and nothing else. The invite code was a
+      // shared string that turned the new account into a dietician or a front
+      // desk — a credential that cannot be un-shared, does not record who used
+      // it, and was in fact used by an account nobody at the clinic
+      // recognised. Clinical accounts are created by the doctor, in his panel.
+      expect(find.textContaining('invite'), findsNothing);
+      expect(find.textContaining('Invite'), findsNothing);
     });
 
     testWidgets(
@@ -363,21 +361,10 @@ void main() {
 
       // A section heading over a single labelled field said the same words
       // twice — "Your phone number" above a field labelled "Phone number".
-      for (final label in ['Phone number', 'Have an invite code?']) {
+      for (final label in const ['Phone number']) {
         expect(find.text(label), findsOneWidget, reason: label);
       }
     });
 
-    testWidgets('the invite code explains who it is for', (tester) async {
-      useTallSurface(tester);
-      await tester.pumpWidget(harness(const RegisterScreen()));
-
-      // Every patient sees this field and almost none of them should fill it
-      // in, so it says so rather than leaving them guessing.
-      expect(
-        find.textContaining('Patients can leave this empty'),
-        findsOneWidget,
-      );
-    });
   });
 }

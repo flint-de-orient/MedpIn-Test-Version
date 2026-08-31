@@ -6,6 +6,7 @@ import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_spacing.dart';
 import '../../domain/diet_models.dart';
 import '../dietician_providers.dart';
+import '../../../../shared/widgets/disclosure_tile.dart';
 
 /// The plans this patient has been taken off.
 ///
@@ -150,7 +151,7 @@ class _RevisionCard extends StatelessWidget {
         // The default divider on an ExpansionTile draws a line across a card
         // that already has a border.
         data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
-        child: ExpansionTile(
+        child: DisclosureTile(
           tilePadding: const EdgeInsets.symmetric(
             horizontal: AppSpacing.md,
             vertical: 4,

@@ -367,14 +367,19 @@ class ClinicianRepository {
 
   /// Creates a dietician account (the doctor onboarding one directly). Returns
   /// the new dietician so it can be assigned right away.
+  ///
+  /// Takes a [phoneToken], not a phone. The number has to have been answered:
+  /// a regex tests the shape of a phone number and nothing about who holds it,
+  /// and one mistyped digit used to produce a working clinical account bound to
+  /// a stranger's handset — who could then receive its login code.
   Future<({String id, String name})> addDietician({
     required String name,
-    required String phone,
+    required String phoneToken,
     required String password,
   }) async {
     final json = await _client.postJson(
       '/doctor/dieticians',
-      body: {'name': name, 'phone': phone, 'password': password},
+      body: {'name': name, 'phoneToken': phoneToken, 'password': password},
     );
     return (
       id: json['id']?.toString() ?? '',
@@ -396,23 +401,26 @@ class ClinicianRepository {
   /// Creates a front-desk account. A password is optional — staff can sign in
   /// with a texted code like anyone else, and one is only worth setting for a
   /// shared handset that stays on the counter.
+  /// [phoneToken], not a phone — see [addDietician]. Sharper here: the
+  /// password below is optional and off by default, so for most desk accounts
+  /// the number is the entire credential.
   Future<StaffMember> createStaff({
     required String name,
-    required String phone,
+    required String phoneToken,
     String? password,
   }) async {
     final json = await _client.postJson(
       '/doctor/staff',
       body: {
         'name': name,
-        'phone': phone,
+        'phoneToken': phoneToken,
         if (password != null && password.isNotEmpty) 'password': password,
       },
     );
     return StaffMember(
       id: json['id']?.toString() ?? '',
       name: json['name']?.toString() ?? name,
-      phone: json['phone']?.toString() ?? phone,
+      phone: json['phone']?.toString() ?? '',
     );
   }
 
@@ -420,20 +428,6 @@ class ClinicianRepository {
   /// they did stays on the audit trail.
   Future<void> removeStaff(String id) => _client.delete('/doctor/staff/$id');
 
-  /// The current staff invite code, or null when none has been issued.
-  Future<String?> staffInvite() async {
-    final json = await _client.getJson('/doctor/staff-invite');
-    return json['code']?.toString();
-  }
-
-  /// Issues a fresh code, replacing whatever is current.
-  Future<String> generateStaffInvite() async {
-    final json = await _client.postJson('/doctor/staff-invite/generate');
-    return json['code']?.toString() ?? '';
-  }
-
-  /// Revokes the code entirely, so nobody can register with it.
-  Future<void> revokeStaffInvite() => _client.delete('/doctor/staff-invite');
 
   /// Assign the patient's dietician and food-log review cadence. A null
   /// [dieticianId] unassigns; a null [reviewIntervalDays] clears the cadence.

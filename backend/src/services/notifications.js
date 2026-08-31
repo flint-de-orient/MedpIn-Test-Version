@@ -113,23 +113,101 @@ async function deliverData({ tokens, data }) {
  * deterministic id for this (med, slot, day) so the two collapse into a single
  * notification rather than reminding twice.
  */
+/**
+ * How stale a phone's "my alarms are armed" report may be and still be trusted.
+ *
+ * Two days, because the report is posted every time the app arms — on launch,
+ * on resume, after a dose is logged — so a patient who has opened the app at
+ * all this week has a fresh one. Longer would keep trusting a phone that has
+ * been silently broken for days; much shorter would send the loud envelope to
+ * somebody who simply had a quiet weekend, and give them two of every reminder
+ * for their trouble.
+ */
+const ARMED_REPORT_TTL_MS = 48 * 60 * 60 * 1000;
+
 export async function sendMedicationReminderPush({ patientId, med, time, relationToMeal, notifId }) {
-  const patient = await User.findById(patientId).select('deviceTokens').lean();
+  const patient = await User.findById(patientId)
+    .select('deviceTokens language remindersArmedAt')
+    .lean();
   const tokens = patient?.deviceTokens ?? [];
   if (!tokens.length) return { delivered: 0 };
-  return deliverData({
+
+  const data = {
+    kind: 'medication_reminder',
+    notifId,
+    medicationId: med._id?.toString?.() ?? String(med._id),
+    name: med.name ?? 'your medicine',
+    dose: med.dose ?? '',
+    relationToMeal: relationToMeal ?? '',
+    time: time ?? '',
+  };
+
+  // Can this phone draw its own reminder?
+  //
+  // A data-only message is silent until the app renders it, and the app cannot
+  // render anything when it has been force-stopped — by the patient, or by the
+  // battery manager these handsets ship with. That is precisely the case this
+  // backstop exists for, so for those phones the message carries a notification
+  // block and Android draws it without the app's help.
+  //
+  // The alternative was to always carry one, which would have meant every
+  // healthy phone showing the reminder twice: the local alarm draws it, and a
+  // system-drawn notification will not collapse onto that, because the id the
+  // two sides share is only honoured when the app is the one drawing.
+  //
+  // So the phone says which it is. It reads the platform's pending-alarm table
+  // after every arming pass and reports; a report inside
+  // [ARMED_REPORT_TTL_MS] means the local alarm is live and this can stay
+  // silent. No report, or a stale one, gets the drawn notification — the safe
+  // direction, since being wrong that way costs one duplicate and being wrong
+  // the other way costs the dose.
+  const armedAt = patient?.remindersArmedAt;
+  const canDrawItself =
+    armedAt instanceof Date && Date.now() - armedAt.getTime() < ARMED_REPORT_TTL_MS;
+
+  if (canDrawItself) return deliverData({ tokens, data });
+
+  const copy = MEDICATION_BACKSTOP_COPY[patient?.language] ?? MEDICATION_BACKSTOP_COPY.en;
+  return deliver({
     tokens,
-    data: {
-      kind: 'medication_reminder',
-      notifId,
-      medicationId: med._id?.toString?.() ?? String(med._id),
-      name: med.name ?? 'your medicine',
-      dose: med.dose ?? '',
-      relationToMeal: relationToMeal ?? '',
-      time: time ?? '',
-    },
+    title: copy.title(med.name ?? 'your medicine'),
+    body: copy.body(med.dose ?? '', relationToMeal ?? ''),
+    data,
   });
 }
+
+/**
+ * What the server writes when it has to draw the reminder itself.
+ *
+ * Only used on a phone whose app cannot run, so it is read on a lock screen
+ * with no chance of the app adding anything to it. It names the medicine and
+ * the dose and nothing else — a lock screen is visible to whoever picks the
+ * phone up, and on a shared handset the rest of somebody's prescription is not
+ * theirs to read.
+ */
+const MEDICATION_BACKSTOP_COPY = {
+  en: {
+    title: (name) => `Time for ${name}`,
+    body: (dose, rel) =>
+      [dose, rel === 'before_meal' ? 'before food' : rel === 'after_meal' ? 'after food' : '']
+        .filter(Boolean)
+        .join(' · ') || 'Tap to open MedPin.',
+  },
+  bn: {
+    title: (name) => `${name} নেওয়ার সময়`,
+    body: (dose, rel) =>
+      [dose, rel === 'before_meal' ? 'খাবারের আগে' : rel === 'after_meal' ? 'খাবারের পরে' : '']
+        .filter(Boolean)
+        .join(' · ') || 'MedPin খুলতে ট্যাপ করুন।',
+  },
+  hi: {
+    title: (name) => `${name} लेने का समय`,
+    body: (dose, rel) =>
+      [dose, rel === 'before_meal' ? 'खाने से पहले' : rel === 'after_meal' ? 'खाने के बाद' : '']
+        .filter(Boolean)
+        .join(' · ') || 'MedPin खोलने के लिए टैप करें।',
+  },
+};
 
 /**
  * Localized copy for the two patient-engagement nudges. The frame is

@@ -5,11 +5,11 @@ import 'package:intl/intl.dart';
 
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
-import '../../../core/utils/auth_validators.dart';
 import '../../../shared/widgets/error_view.dart';
 import '../../../shared/widgets/user_avatar.dart';
 import '../domain/staff_member.dart';
 import '../data/clinician_repository.dart';
+import 'widgets/verified_phone_field.dart';
 
 /// Who works the front desk.
 ///
@@ -22,7 +22,16 @@ import '../data/clinician_repository.dart';
 ///
 /// Two ways in, because a clinic has both situations. The doctor creates the
 /// account outright when the desk phone is a handset that lives on the counter.
-/// The invite code is for a receptionist with their own phone, who registers
+/// Accounts are created here and nowhere else.
+///
+/// There was an invite code beside this: a shared string a receptionist typed
+/// into the public registration form to become staff. It is gone. A code read
+/// out over a counter cannot be un-shared, does not record who used it, and
+/// works until somebody remembers to rotate it — and one of the clinic's was
+/// used by an account nobody recognised.
+///
+/// Creating the account outright is slower by one screen and answers the
+/// question the code could not: who this is. The old comment said the invite
 /// on it themselves and never has a password read out to them.
 class StaffAccountsScreen extends ConsumerStatefulWidget {
   const StaffAccountsScreen({super.key});
@@ -34,7 +43,6 @@ class StaffAccountsScreen extends ConsumerStatefulWidget {
 
 class _StaffAccountsScreenState extends ConsumerState<StaffAccountsScreen> {
   late Future<List<StaffMember>> _staff;
-  late Future<String?> _invite;
   bool _busy = false;
 
   @override
@@ -46,12 +54,11 @@ class _StaffAccountsScreenState extends ConsumerState<StaffAccountsScreen> {
   void _load() {
     final repo = ref.read(clinicianRepositoryProvider);
     _staff = repo.staff();
-    _invite = repo.staffInvite();
   }
 
   Future<void> _refresh() async {
     setState(_load);
-    await Future.wait([_staff, _invite]);
+    await _staff;
   }
 
   @override
@@ -89,12 +96,6 @@ class _StaffAccountsScreenState extends ConsumerState<StaffAccountsScreen> {
             ),
             const SizedBox(height: AppSpacing.lg),
 
-            _InviteCard(
-              future: _invite,
-              onGenerate: _generateInvite,
-              onRevoke: _revokeInvite,
-              busy: _busy,
-            ),
             const SizedBox(height: AppSpacing.lg),
 
             Text(
@@ -145,38 +146,6 @@ class _StaffAccountsScreenState extends ConsumerState<StaffAccountsScreen> {
   }
 
   // ---- actions ---------------------------------------------------------------
-
-  Future<void> _generateInvite() async {
-    setState(() => _busy = true);
-    try {
-      await ref.read(clinicianRepositoryProvider).generateStaffInvite();
-      if (mounted) setState(_load);
-    } catch (e) {
-      _say(e);
-    } finally {
-      if (mounted) setState(() => _busy = false);
-    }
-  }
-
-  Future<void> _revokeInvite() async {
-    final ok = await _confirm(
-      title: 'Revoke the code?',
-      body:
-          'Anyone who has it will no longer be able to register. Accounts '
-          'already created are not affected.',
-      action: 'Revoke',
-    );
-    if (!ok) return;
-    setState(() => _busy = true);
-    try {
-      await ref.read(clinicianRepositoryProvider).revokeStaffInvite();
-      if (mounted) setState(_load);
-    } catch (e) {
-      _say(e);
-    } finally {
-      if (mounted) setState(() => _busy = false);
-    }
-  }
 
   Future<void> _removeStaff(StaffMember s) async {
     final ok = await _confirm(
@@ -240,153 +209,6 @@ class _StaffAccountsScreenState extends ConsumerState<StaffAccountsScreen> {
     ScaffoldMessenger.of(
       context,
     ).showSnackBar(SnackBar(content: Text(ErrorView.messageFor(context, e))));
-  }
-}
-
-/// The invite code, with the one thing that makes it safe: a way to withdraw it.
-class _InviteCard extends StatelessWidget {
-  const _InviteCard({
-    required this.future,
-    required this.onGenerate,
-    required this.onRevoke,
-    required this.busy,
-  });
-
-  final Future<String?> future;
-  final VoidCallback onGenerate;
-  final VoidCallback onRevoke;
-  final bool busy;
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-
-    return FutureBuilder<String?>(
-      future: future,
-      builder: (context, snap) {
-        final code = snap.data;
-        return Container(
-          padding: const EdgeInsets.all(AppSpacing.md),
-          decoration: BoxDecoration(
-            color: scheme.surface,
-            borderRadius: BorderRadius.circular(AppSpacing.cardRadius),
-            border: Border.all(color: scheme.outlineVariant),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Row(
-                children: [
-                  const Icon(
-                    Icons.vpn_key_outlined,
-                    size: 20,
-                    color: AppColors.primary,
-                  ),
-                  const SizedBox(width: AppSpacing.sm),
-                  const Expanded(
-                    child: Text(
-                      'Invite code',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 4),
-              Text(
-                code == null
-                    ? 'Issue a code and a new receptionist can register on '
-                        'their own phone. No password is read out to anyone.'
-                    : 'Give this to the person joining. They enter it on the '
-                        'registration screen and the account becomes a '
-                        'front-desk one.',
-                style: TextStyle(
-                  fontSize: 13,
-                  height: 1.4,
-                  color: scheme.onSurfaceVariant,
-                ),
-              ),
-              const SizedBox(height: AppSpacing.md),
-
-              if (code != null) ...[
-                InkWell(
-                  onTap: () {
-                    Clipboard.setData(ClipboardData(text: code));
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Code copied')),
-                    );
-                  },
-                  borderRadius: BorderRadius.circular(AppSpacing.cardRadius),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: AppSpacing.md,
-                      vertical: 14,
-                    ),
-                    decoration: BoxDecoration(
-                      color: AppColors.primary.withValues(alpha: 0.08),
-                      borderRadius: BorderRadius.circular(
-                        AppSpacing.cardRadius,
-                      ),
-                    ),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            code,
-                            style: const TextStyle(
-                              fontSize: 22,
-                              fontWeight: FontWeight.w800,
-                              letterSpacing: 3,
-                              color: AppColors.primary,
-                            ),
-                          ),
-                        ),
-                        const Icon(
-                          Icons.copy_rounded,
-                          size: 18,
-                          color: AppColors.primary,
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-                const SizedBox(height: AppSpacing.sm),
-                // Stacked, never side by side: "Issue a new code" beside
-                // "Revoke" is wider than a phone, and a themed button in a Row
-                // takes the whole width from whatever shares it.
-                OutlinedButton(
-                  onPressed: busy ? null : onGenerate,
-                  style: OutlinedButton.styleFrom(
-                    minimumSize: const Size(0, AppSpacing.minTapTarget),
-                  ),
-                  child: const Text('Issue a new code'),
-                ),
-                const SizedBox(height: AppSpacing.sm),
-                TextButton(
-                  onPressed: busy ? null : onRevoke,
-                  style: TextButton.styleFrom(
-                    foregroundColor: AppColors.danger,
-                    minimumSize: const Size(0, AppSpacing.minTapTarget),
-                  ),
-                  child: const Text('Revoke the code'),
-                ),
-              ] else
-                FilledButton(
-                  onPressed: busy ? null : onGenerate,
-                  style: FilledButton.styleFrom(
-                    backgroundColor: AppColors.primary,
-                    foregroundColor: Colors.white,
-                    minimumSize: const Size(0, AppSpacing.minTapTarget),
-                  ),
-                  child: const Text('Issue a code'),
-                ),
-            ],
-          ),
-        );
-      },
-    );
   }
 }
 
@@ -514,7 +336,8 @@ class _AddStaffSheet extends ConsumerStatefulWidget {
 class _AddStaffSheetState extends ConsumerState<_AddStaffSheet> {
   final _formKey = GlobalKey<FormState>();
   final _name = TextEditingController();
-  final _phone = TextEditingController();
+  /// Proof the number was answered, or null until it is.
+  String? _phoneToken;
   final _password = TextEditingController();
   bool _setPassword = false;
   bool _saving = false;
@@ -523,13 +346,21 @@ class _AddStaffSheetState extends ConsumerState<_AddStaffSheet> {
   @override
   void dispose() {
     _name.dispose();
-    _phone.dispose();
     _password.dispose();
     super.dispose();
   }
 
   Future<void> _save() async {
     if (!(_formKey.currentState?.validate() ?? false)) return;
+
+    final token = _phoneToken;
+    if (token == null) {
+      setState(
+        () => _error = 'Verify their number before creating the account.',
+      );
+      return;
+    }
+
     setState(() {
       _saving = true;
       _error = null;
@@ -539,7 +370,7 @@ class _AddStaffSheetState extends ConsumerState<_AddStaffSheet> {
           .read(clinicianRepositoryProvider)
           .createStaff(
             name: _name.text.trim(),
-            phone: AuthValidators.toE164(_phone.text),
+            phoneToken: token,
             password: _setPassword ? _password.text : null,
           );
       if (mounted) Navigator.pop(context, true);
@@ -601,23 +432,9 @@ class _AddStaffSheetState extends ConsumerState<_AddStaffSheet> {
               ),
               const SizedBox(height: AppSpacing.md),
 
-              TextFormField(
-                controller: _phone,
-                keyboardType: TextInputType.phone,
-                inputFormatters: [
-                  FilteringTextInputFormatter.digitsOnly,
-                  LengthLimitingTextInputFormatter(10),
-                ],
-                decoration: const InputDecoration(
-                  labelText: 'Phone',
-                  prefixText: '+91 ',
-                  prefixIcon: Icon(Icons.phone_outlined),
-                ),
-                validator:
-                    (v) =>
-                        AuthValidators.isValidPhone(v ?? '')
-                            ? null
-                            : 'Enter a valid 10-digit number',
+              VerifiedPhoneField(
+                label: 'Their mobile number',
+                onToken: (t) => setState(() => _phoneToken = t),
               ),
               const SizedBox(height: AppSpacing.sm),
 

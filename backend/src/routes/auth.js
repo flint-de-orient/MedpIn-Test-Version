@@ -70,7 +70,6 @@ const registerSchema = z.object({
   diabetesType: z.enum(['type1', 'type2', 'gestational', 'prediabetes', 'none']).optional(),
   // A dietician onboarding code turns this sign-up into a dietician account
   // instead of a patient. Anything else (or empty) registers a patient.
-  inviteCode: z.string().trim().max(64).optional(),
 });
 
 /**
@@ -82,32 +81,59 @@ const registerSchema = z.object({
  * refused — a rotate button that quietly breaks the thing it rotates.
  */
 /**
- * The role a typed code opens, or null when it opens nothing.
+ * Registration makes patients. There is no other kind.
  *
- * Two separate codes, and the code decides which role it makes — not the
- * caller. A single shared code would mean the client had to say what it was
- * registering as, which is exactly the decision an edited APK would lie about.
+ * There used to be an invite code: a shared secret that, typed into the
+ * registration form, turned the new account into a dietician or a front desk.
+ * It has been removed, and the reason is not tidiness.
  *
- * The dietician code falls back to the env var for a clinic that has never
- * rotated one, so existing deployments keep working. There is no fallback for
- * staff: a front-desk account can see every patient in the clinic, and a
- * default that ships in the source is not a credential.
+ * A shared code is a credential that cannot be un-shared. It is read out over a
+ * counter, forwarded, and photographed; it does not identify who used it, and
+ * it works until somebody thinks to rotate it. One of them was used by an
+ * account nobody at the clinic recognised, which is exactly the failure the
+ * shape guarantees eventually — and a dietician account with no explicit
+ * assignments can read every patient record in the clinic.
+ *
+ * Clinical accounts are created by the doctor, one at a time, in the panel. The
+ * doctor knows who they are hiring; a code does not.
  */
-async function roleForInvite(code) {
-  if (!code) return null;
-  const settings = await getClinicSettings();
 
-  const dietician = settings.dieticianInviteCode || env.DIETICIAN_INVITE_CODE;
-  if (dietician && code === dietician) return ROLES.DIETICIAN;
-
-  const staff = settings.staffInviteCode;
-  if (staff && code === staff) return ROLES.STAFF;
-
-  return null;
-}
-
-// A code request costs the clinic an SMS and costs whoever owns the number
+// A code request costs the clinic an SMS// A code request costs the clinic an SMS and costs whoever owns the number
 // their attention, so it is limited harder than the credential endpoints.
+/**
+ * The phone reporting whether its medication alarms are actually armed.
+ *
+ * Posted after every arming pass, so the answer is never older than the last
+ * time the app ran. See `remindersArmedAt` on the User model for what it
+ * decides.
+ */
+router.post(
+  '/reminder-health',
+  requireAuth,
+  validate({
+    body: z.object({
+      armed: z.number().int().min(0).max(500),
+      expected: z.number().int().min(0).max(500),
+    }),
+  }),
+  asyncHandler(async (req, res) => {
+    const { armed, expected } = req.body;
+    await User.updateOne(
+      { _id: req.user._id },
+      {
+        $set: {
+          // Only a phone that armed everything it meant to counts as
+          // confirmed. A partial set still needs the louder backstop for the
+          // doses that are missing, and the server cannot tell which.
+          remindersArmedAt: armed > 0 && armed >= expected ? new Date() : null,
+          remindersArmedCount: armed,
+        },
+      },
+    );
+    res.json({ ok: true });
+  }),
+);
+
 const otpLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   limit: 6,
@@ -208,34 +234,12 @@ router.post(
   }),
 );
 
-/**
- * Check an invite code without spending it.
- *
- * The registration form asks so it can switch to dietician fields the moment
- * the code is accepted, rather than making someone fill in a patient form and
- * discover at submit that it was the wrong one. Registration checks the code
- * again for itself — this endpoint is a courtesy to the UI, not the gate.
- */
-router.post(
-  '/invite/validate',
-  authLimiter,
-  validate({ body: z.object({ code: z.string().trim().min(1).max(64) }) }),
-  asyncHandler(async (req, res) => {
-    const role = await roleForInvite(req.body.code);
-    if (!role) throw badRequest('That invite code is not valid or has expired.');
-    // The role travels back so the form can ask for the right fields. It is
-    // decided again at registration from the code itself, so this answer is a
-    // courtesy to the UI and never the gate.
-    res.json({ valid: true, role });
-  }),
-);
-
 router.post(
   '/register',
   authLimiter,
   validate({ body: registerSchema }),
   asyncHandler(async (req, res) => {
-    const { name, phoneToken, email, language, dateOfBirth, gender, address, diabetesType, inviteCode } = req.body;
+    const { name, phoneToken, email, language, dateOfBirth, gender, address, diabetesType } = req.body;
 
     const phone = phoneFromToken(phoneToken);
 
@@ -253,15 +257,10 @@ router.post(
     // env var for a clinic that has never rotated one. Without the stored code
     // here, pressing Generate would mint a code that self-registration then
     // refused — a rotate button that quietly breaks the thing it rotates.
-    // The role is decided here, from the code, and never read off the
-    // request. An APK can be edited to post `role: 'staff'`; it cannot produce
-    // a code it does not have.
-    const invitedRole = await roleForInvite(inviteCode);
-    if (inviteCode && !invitedRole) {
-      throw badRequest('That invite code is not valid or has expired.');
-    }
-    const role = invitedRole ?? ROLES.PATIENT;
-    const isDietician = role === ROLES.DIETICIAN;
+    // Not read off the request, and no longer derived from anything the
+    // caller can supply. An edited APK can post `role: 'staff'`; there is now
+    // nothing here that would look at it.
+    const role = ROLES.PATIENT;
 
     const user = new User({
       name,

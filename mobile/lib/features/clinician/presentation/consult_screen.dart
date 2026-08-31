@@ -22,6 +22,7 @@ import 'clinician_providers.dart';
 import '../../medications/domain/strength.dart';
 import '../../../shared/widgets/strength_field.dart';
 import '../data/medicine_brand_repository.dart';
+import '../../../shared/widgets/disclosure_tile.dart';
 
 /// The consultation flow: Vitals → Diagnosis → Clinical advice, ending in a
 /// generated prescription. Vitals are recorded to the patient's history and the
@@ -668,7 +669,7 @@ class _ConsultScreenState extends ConsumerState<ConsultScreen> {
       clipBehavior: Clip.antiAlias,
       child: Theme(
         data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
-        child: ExpansionTile(
+        child: DisclosureTile(
           tilePadding: const EdgeInsets.symmetric(
             horizontal: AppSpacing.md,
             vertical: 0,
@@ -679,7 +680,7 @@ class _ConsultScreenState extends ConsumerState<ConsultScreen> {
             AppSpacing.md,
             AppSpacing.md,
           ),
-          expandedCrossAxisAlignment: CrossAxisAlignment.start,
+          crossAxisAlignment: CrossAxisAlignment.start,
           leading: Icon(Icons.history_rounded, color: scheme.onSurfaceVariant),
           title: const Text(
             'Last prescription',

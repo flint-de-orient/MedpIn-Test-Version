@@ -84,6 +84,45 @@ int medDailyReminderId(String medId, String hhmm) {
 /// alarms), so "time to take your medicine" fires at the right minute even when
 /// the app is closed or the phone has been idle — no server, push, or network
 /// needed at reminder time.
+/// Whether the medication reminders on this phone will actually fire.
+///
+/// Every field is a fact read from the platform, not a guess.
+class ReminderHealth {
+  const ReminderHealth({
+    required this.expected,
+    required this.armed,
+    required this.notificationsAllowed,
+    required this.exactAlarmsAllowed,
+  });
+
+  /// Doses that should have an alarm — one per distinct medicine time.
+  final int expected;
+
+  /// Alarms the platform says are actually pending in the reserved id range.
+  final int armed;
+
+  /// Android 13+ runtime permission. False means nothing can be shown at all,
+  /// alarm or push.
+  final bool notificationsAllowed;
+
+  /// Android 12+ exact-alarm gate. False is survivable — timing drifts to
+  /// whenever Doze next wakes — so it is a warning, not a failure.
+  final bool exactAlarmsAllowed;
+
+  /// The one that matters: medicines exist and nothing is going to ring.
+  ///
+  /// Not `armed < expected`. A partially armed set is worth knowing about but
+  /// is not the emergency; zero is, and saying "some reminders may be missing"
+  /// about a phone that is working fine is how a warning gets ignored on the
+  /// day it is true.
+  bool get silent => expected > 0 && armed == 0;
+
+  /// Something a person should be told, even if alarms are arming.
+  bool get degraded => !notificationsAllowed || !exactAlarmsAllowed;
+
+  bool get healthy => !silent && !degraded;
+}
+
 class NotificationService {
   NotificationService._();
   static final NotificationService instance = NotificationService._();
@@ -214,6 +253,47 @@ class NotificationService {
     tz.setLocalLocation(tz.getLocation('Asia/Kolkata'));
 
     _ready = true;
+  }
+
+  /// Reads the platform to find out whether reminders will fire.
+  ///
+  /// [expected] is how many the app believes it armed — the caller has the
+  /// medicine list, this class does not.
+  ///
+  /// `pendingNotificationRequests` is the honest source: it is what Android
+  /// will actually act on, rather than what this app remembers asking for.
+  /// Those two disagree exactly when it matters — a withheld permission, an
+  /// OEM battery manager clearing the alarm table, a force-stop — and it is
+  /// the disagreement that has to reach a person.
+  Future<ReminderHealth> reminderHealth({required int expected}) async {
+    await init();
+    final android =
+        _plugin
+            .resolvePlatformSpecificImplementation<
+              AndroidFlutterLocalNotificationsPlugin
+            >();
+
+    var armed = 0;
+    try {
+      for (final p in await _plugin.pendingNotificationRequests()) {
+        if (p.id >= medIdBase && p.id < medIdBase + _medIdSpan) armed++;
+      }
+    } catch (_) {
+      // Reading the pending list can throw on some OEM builds. An unknown
+      // count must not be reported as zero — that would put a red banner on a
+      // working phone, which is the fastest way to teach someone to ignore it.
+      armed = expected;
+    }
+
+    return ReminderHealth(
+      expected: expected,
+      armed: armed,
+      // Null means the platform would not say. Treated as allowed: this drives
+      // a warning, and a warning shown on a "don't know" is a warning shown to
+      // everybody.
+      notificationsAllowed: await android?.areNotificationsEnabled() ?? true,
+      exactAlarmsAllowed: await android?.canScheduleExactNotifications() ?? true,
+    );
   }
 
   /// Re-requests the runtime permissions reliable alarms need, and reports

@@ -22,21 +22,7 @@ const clinicSettingsSchema = new mongoose.Schema(
     /// patient's record says otherwise.
     dietReviewIntervalDays: { type: Number, min: 1, max: 90, default: 14 },
 
-    /// The code a dietician types to self-register against this clinic.
-    ///
-    /// Held here rather than in an env var so the doctor can rotate it from the
-    /// app. A code that can only change with a redeploy is one that never
-    /// changes — and this one is shared over WhatsApp, so it should be
-    /// replaceable the moment it reaches someone it should not have.
-    dieticianInviteCode: { type: String, trim: true, maxlength: 24 },
 
-    // The same lever for the front desk.
-    //
-    // Kept separate from the dietician's on purpose: one code that opened both
-    // roles would mean rotating it for a departing receptionist also locked out
-    // every dietician waiting to register, and a code handed to the wrong
-    // person would decide for itself what it made them.
-    staffInviteCode: { type: String, trim: true, maxlength: 24 },
   },
   { timestamps: true },
 );

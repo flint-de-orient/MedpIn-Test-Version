@@ -10,6 +10,7 @@ import '../../../shared/providers/core_providers.dart';
 import '../../../shared/widgets/fullscreen_photo.dart';
 import '../../../shared/widgets/user_avatar.dart';
 import '../data/clinician_repository.dart';
+import 'widgets/verified_phone_field.dart';
 
 final _dieticiansProvider = FutureProvider.autoDispose<List<_Dietician>>((
   ref,
@@ -22,17 +23,6 @@ final _dieticiansProvider = FutureProvider.autoDispose<List<_Dietician>>((
       .toList();
 });
 
-/// The clinic's dietician invite code — shared so a dietician can self-register
-/// with their own password. Null when this deployment has no code configured,
-/// in which case the invite card is hidden and only direct "Add" remains.
-final _inviteCodeProvider = FutureProvider.autoDispose<String?>((ref) async {
-  final data = await ref
-      .read(apiClientProvider)
-      .getJson('/doctor/dietician-invite');
-  return data['code']?.toString();
-});
-
-/// How often a patient's food log should be reviewed, clinic-wide.
 final _reviewIntervalProvider = FutureProvider.autoDispose<int>((ref) async {
   final data = await ref.read(apiClientProvider).getJson('/doctor/settings');
   return (data['dietReviewIntervalDays'] as num?)?.toInt() ?? 14;
@@ -52,53 +42,6 @@ class DieticiansScreen extends ConsumerStatefulWidget {
 }
 
 class _DieticiansScreenState extends ConsumerState<DieticiansScreen> {
-  /// Issues a new invite code, retiring the current one.
-  ///
-  /// Confirmed first, and the confirmation says what actually happens: the old
-  /// code stops working. Someone mid-registration with the old one will be
-  /// turned away, and the doctor should know that before rotating rather than
-  /// after a dietician calls to say the code was refused.
-  Future<void> _regenerateInvite(BuildContext context, WidgetRef ref) async {
-    final ok = await showDialog<bool>(
-      context: context,
-      builder:
-          (ctx) => AlertDialog(
-            title: const Text('Generate a new invite code?'),
-            content: const Text(
-              'The current code stops working immediately. Anyone you have already '
-              'sent it to will need the new one.',
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(ctx, false),
-                child: const Text('Cancel'),
-              ),
-              FilledButton(
-                style: FilledButton.styleFrom(
-                  backgroundColor: AppColors.primary,
-                ),
-                onPressed: () => Navigator.pop(ctx, true),
-                child: const Text('Generate'),
-              ),
-            ],
-          ),
-    );
-    if (ok != true || !context.mounted) return;
-
-    final messenger = ScaffoldMessenger.of(context);
-    try {
-      await ref
-          .read(apiClientProvider)
-          .postJson('/doctor/dietician-invite/generate');
-      ref.invalidate(_inviteCodeProvider);
-      messenger.showSnackBar(
-        const SnackBar(content: Text('New invite code generated')),
-      );
-    } on ApiException catch (e) {
-      messenger.showSnackBar(SnackBar(content: Text(e.message)));
-    }
-  }
-
   Future<void> _add() async {
     final created = await showModalBottomSheet<bool>(
       context: context,
@@ -287,141 +230,6 @@ class _DieticiansScreenState extends ConsumerState<DieticiansScreen> {
                                   ),
                               ],
                             ),
-                          ),
-                        ),
-                      );
-                    },
-                  ),
-                  const SizedBox(height: AppSpacing.lg),
-                  // Invite a dietician to self-register with the clinic code — an
-                  // alternative to creating their account and password by hand.
-                  Consumer(
-                    builder: (context, ref, _) {
-                      final code = ref.watch(_inviteCodeProvider).valueOrNull;
-                      if (code == null || code.isEmpty)
-                        return const SizedBox.shrink();
-                      return Padding(
-                        padding: const EdgeInsets.only(bottom: AppSpacing.lg),
-                        child: Container(
-                          padding: const EdgeInsets.all(AppSpacing.md),
-                          decoration: BoxDecoration(
-                            color: scheme.surfaceContainerLowest,
-                            borderRadius: BorderRadius.circular(
-                              AppSpacing.cardRadius,
-                            ),
-                            border: Border.all(
-                              color: scheme.outlineVariant.withValues(
-                                alpha: 0.7,
-                              ),
-                            ),
-                          ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Row(
-                                children: [
-                                  Icon(
-                                    Icons.mail_outline_rounded,
-                                    size: 20,
-                                    color: AppColors.accentOn(context),
-                                  ),
-                                  const SizedBox(width: AppSpacing.sm),
-                                  const Text(
-                                    'Invite a dietician',
-                                    style: TextStyle(
-                                      fontSize: 16,
-                                      fontWeight: FontWeight.w700,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: 4),
-                              Text(
-                                'Share this code. They install the app, register, and enter it to '
-                                'join as a dietician — with their own password.',
-                                style: TextStyle(
-                                  fontSize: 14,
-                                  height: 1.4,
-                                  color: scheme.onSurfaceVariant,
-                                ),
-                              ),
-                              const SizedBox(height: AppSpacing.md),
-                              // Full width and a single line — it used to share a
-                              // row with the Copy button, where the Expanded around
-                              // it collapsed and the code stacked one letter per row.
-                              Container(
-                                width: double.infinity,
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 12,
-                                  vertical: 12,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: AppColors.accentSoftOn(context),
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
-                                child: Text(
-                                  code,
-                                  textAlign: TextAlign.center,
-                                  maxLines: 1,
-                                  softWrap: false,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: const TextStyle(
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.w800,
-                                    letterSpacing: 2,
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(height: AppSpacing.sm),
-                              Row(
-                                children: [
-                                  Expanded(
-                                    child: OutlinedButton.icon(
-                                      style: OutlinedButton.styleFrom(
-                                        foregroundColor: AppColors.accentOn(
-                                          context,
-                                        ),
-                                        minimumSize: const Size.fromHeight(48),
-                                      ),
-                                      onPressed:
-                                          () => _regenerateInvite(context, ref),
-                                      icon: const Icon(
-                                        Icons.autorenew_rounded,
-                                        size: 18,
-                                      ),
-                                      label: const Text('Generate new'),
-                                    ),
-                                  ),
-                                  const SizedBox(width: AppSpacing.sm),
-                                  Expanded(
-                                    child: FilledButton.icon(
-                                      style: FilledButton.styleFrom(
-                                        backgroundColor: AppColors.primary,
-                                        foregroundColor: Colors.white,
-                                        minimumSize: const Size.fromHeight(48),
-                                      ),
-                                      onPressed: () {
-                                        Clipboard.setData(
-                                          ClipboardData(text: code),
-                                        );
-                                        ScaffoldMessenger.of(
-                                          context,
-                                        ).showSnackBar(
-                                          const SnackBar(
-                                            content: Text('Invite code copied'),
-                                          ),
-                                        );
-                                      },
-                                      icon: const Icon(
-                                        Icons.copy_rounded,
-                                        size: 18,
-                                      ),
-                                      label: const Text('Copy'),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ],
                           ),
                         ),
                       );
@@ -776,7 +584,8 @@ class _AddDieticianSheet extends ConsumerStatefulWidget {
 class _AddDieticianSheetState extends ConsumerState<_AddDieticianSheet> {
   final _formKey = GlobalKey<FormState>();
   final _name = TextEditingController();
-  final _phone = TextEditingController();
+  /// Proof the number was answered, or null until it is.
+  String? _phoneToken;
   final _password = TextEditingController();
 
   /// Hidden until the first submit attempt, exactly as the login and register
@@ -791,7 +600,6 @@ class _AddDieticianSheetState extends ConsumerState<_AddDieticianSheet> {
   @override
   void dispose() {
     _name.dispose();
-    _phone.dispose();
     _password.dispose();
     super.dispose();
   }
@@ -803,13 +611,21 @@ class _AddDieticianSheetState extends ConsumerState<_AddDieticianSheet> {
       return;
     }
 
+    final token = _phoneToken;
+    if (token == null) {
+      setState(
+        () => _serverError = 'Verify their number before creating the account.',
+      );
+      return;
+    }
+
     setState(() => _saving = true);
     try {
       await ref
           .read(clinicianRepositoryProvider)
           .addDietician(
             name: _name.text.trim(),
-            phone: AuthValidators.toE164(_phone.text),
+            phoneToken: token,
             password: _password.text,
           );
       if (!mounted) return;
@@ -871,33 +687,9 @@ class _AddDieticianSheetState extends ConsumerState<_AddDieticianSheet> {
               },
             ),
             const SizedBox(height: AppSpacing.md),
-            TextFormField(
-              controller: _phone,
-              keyboardType: TextInputType.phone,
-              textInputAction: TextInputAction.next,
-              // Same as the login field: one limiter, in the formatters, so the
-              // caret survives an edit in the middle of a full number.
-              inputFormatters: [
-                FilteringTextInputFormatter.digitsOnly,
-                LengthLimitingTextInputFormatter(10),
-              ],
-              decoration: const InputDecoration(
-                labelText: 'Mobile number',
-                hintText: '9830012345',
-                prefixIcon: Icon(Icons.phone_outlined),
-                prefixText: '${AuthValidators.countryCode} ',
-                counterText: '',
-              ),
-              validator: (v) {
-                final digits = AuthValidators.digitsOnly(v ?? '');
-                if (digits.isEmpty) return 'Enter their mobile number.';
-                if (digits.length != 10)
-                  return 'A mobile number is exactly 10 digits.';
-                if (!AuthValidators.isValidPhone(digits)) {
-                  return 'Indian mobile numbers start with 6, 7, 8 or 9.';
-                }
-                return null;
-              },
+VerifiedPhoneField(
+              label: 'Their mobile number',
+              onToken: (t) => setState(() => _phoneToken = t),
             ),
             const SizedBox(height: AppSpacing.md),
             TextFormField(

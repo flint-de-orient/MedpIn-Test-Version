@@ -148,7 +148,6 @@ class AuthController extends StateNotifier<AuthState> {
     int? glucoseMgDl,
     String? complaints,
     String? diabetesType,
-    String? inviteCode,
   }) async {
     _busy = true;
     try {
@@ -169,7 +168,6 @@ class AuthController extends StateNotifier<AuthState> {
         glucoseMgDl: glucoseMgDl,
         complaints: complaints,
         diabetesType: diabetesType,
-        inviteCode: inviteCode,
       );
       // Before the new session's screens read anything. A container that was
       // never signed out of — an app resumed onto another account, a refresh

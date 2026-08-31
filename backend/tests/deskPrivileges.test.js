@@ -15,8 +15,10 @@ import { readFileSync } from 'node:fs';
  * A receptionist could reassign a patient's dietician (which, in a clinic with
  * two, decides who may see that patient at all), edit and approve the knowledge
  * base the assistant answers patients from, post into a review thread under the
- * clinician's name, issue the dietician invite code, create dietician accounts,
- * and change clinic settings.
+ * clinician's name, create dietician accounts, and change clinic settings.
+ *
+ * The two invite-code routes that were also on this list are gone entirely —
+ * the feature was removed, and a door that does not exist needs no lock.
  *
  * Read from the source rather than exercised, because what these guard is a
  * *missing line* — one somebody deletes while making something else work — and
@@ -24,21 +26,31 @@ import { readFileSync } from 'node:fs';
  */
 const doctor = readFileSync(new URL('../src/routes/doctor.js', import.meta.url), 'utf8');
 
-/** The guards registered between a route's path and its handler. */
-function guardsFor(path) {
-  const at = doctor.indexOf(`\n  '${path}',\n`);
-  assert.notEqual(at, -1, `no route registered at ${path}`);
+/**
+ * The guards registered between a route's path and its handler.
+ *
+ * [verb] matters. Several paths are registered twice — `/dieticians` is a GET
+ * that lists them and a POST that creates one — and searching for the path
+ * alone finds whichever comes first in the file. It found the GET, which is
+ * doctor-only, and reported the POST as guarded while it was not: the front
+ * desk could create a dietician account, and this test said it could not.
+ *
+ * A test that passes for the wrong reason is worse than no test, because it
+ * occupies the space where the real one would go.
+ */
+function guardsFor(path, verb = 'post') {
+  const at = doctor.indexOf(`router.${verb}(\n  '${path}',\n`);
+  assert.notEqual(at, -1, `no ${verb.toUpperCase()} route registered at ${path}`);
   return doctor.slice(at, at + 400);
 }
 
 describe('the front desk is not a clinician', () => {
   const doctorOnly = [
-    ['/patients/:id/dietician', 'reassigning a patient to a dietician'],
+    ['/patients/:id/dietician', 'reassigning a patient to a dietician', 'patch'],
     ['/dieticians', 'creating a dietician account'],
-    ['/dietician-invite/generate', 'issuing the dietician invite code'],
-    ['/settings', 'changing clinic settings'],
+    ['/settings', 'changing clinic settings', 'patch'],
     ['/knowledge', 'writing the assistant knowledge base'],
-    ['/knowledge/:id', 'editing it'],
+    ['/knowledge/:id', 'editing it', 'patch'],
     ['/knowledge/:id/approve', 'putting a passage in front of patients'],
     ['/knowledge/:id/retire', 'withdrawing one'],
     ['/chat-review/:sessionId/reviewed', 'declaring a conversation reviewed'],
@@ -46,13 +58,12 @@ describe('the front desk is not a clinician', () => {
     ['/alerts/:id/acknowledge', 'acknowledging a clinical alert'],
     ['/alerts/:id/resolve', 'resolving one'],
     ['/staff', 'creating a front-desk account'],
-    ['/staff-invite/generate', 'issuing the front-desk invite code'],
   ];
 
-  for (const [path, what] of doctorOnly) {
+  for (const [path, what, verb] of doctorOnly) {
     test(`${what} is doctor-only`, () => {
       assert.match(
-        guardsFor(path),
+        guardsFor(path, verb),
         /requireDoctor/,
         `${path} is open to STAFF — ${what} is not a receptionist's job`,
       );
@@ -65,12 +76,12 @@ describe('the front desk is not a clinician', () => {
     ['/notifications/seen', 'clearing the message badge'],
   ];
 
-  for (const [path, what] of deskWork) {
+  for (const [path, what, verb] of deskWork) {
     test(`${what} stays open to the desk`, () => {
       // The other half of the rule. Locking these down would leave a front desk
       // that cannot do the job the account exists for.
       assert.ok(
-        !/requireDoctor/.test(guardsFor(path)),
+        !/requireDoctor/.test(guardsFor(path, verb)),
         `${path} was closed to STAFF — ${what} is exactly what a desk does`,
       );
     });

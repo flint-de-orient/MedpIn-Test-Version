@@ -11,8 +11,6 @@ import 'package:path_provider/path_provider.dart';
 import '../../../core/config/app_config.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
-import '../../../core/network/api_exception.dart';
-import '../../../core/utils/auth_validators.dart';
 import '../../../shared/providers/core_providers.dart';
 import '../../../shared/widgets/authed_image.dart';
 import '../../../shared/widgets/fullscreen_photo.dart';
@@ -24,6 +22,7 @@ import 'widgets/clinician_visuals.dart';
 import 'widgets/sparkline.dart';
 import '../../../core/theme/tokens.dart';
 import '../../../core/router/area.dart';
+import '../../../shared/widgets/disclosure_tile.dart';
 
 /// The read side of a patient: health score, adherence, glucose control, HbA1c
 /// history, test reports, recent alerts, the dietician's review cadence, and
@@ -240,7 +239,7 @@ class _ConsultationTile extends StatelessWidget {
       clipBehavior: Clip.antiAlias,
       child: Theme(
         data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
-        child: ExpansionTile(
+        child: DisclosureTile(
           tilePadding: const EdgeInsets.symmetric(
             horizontal: AppSpacing.md,
             vertical: 0,
@@ -251,7 +250,7 @@ class _ConsultationTile extends StatelessWidget {
             AppSpacing.md,
             AppSpacing.md,
           ),
-          expandedCrossAxisAlignment: CrossAxisAlignment.start,
+          crossAxisAlignment: CrossAxisAlignment.start,
           title: Text(
             date,
             style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
@@ -1358,31 +1357,13 @@ class _DieticianSection extends ConsumerWidget {
                         Padding(
                           padding: const EdgeInsets.symmetric(vertical: 4),
                           child: Text(
-                            'No dieticians yet — add one below.',
+                            // Not "below" any more. This sheet carried its own
+                            // create form — a third implementation of one act,
+                            // and the one that skipped verifying the number.
+                            'No dieticians yet. Add one in More → Clinic care.',
                             style: TextStyle(color: scheme.onSurfaceVariant),
                           ),
                         ),
-
-                      Align(
-                        alignment: Alignment.centerLeft,
-                        child: TextButton.icon(
-                          onPressed: () async {
-                            final created = await _addDieticianForm(ctx, repo);
-                            if (created != null) {
-                              try {
-                                options = await repo.dieticians();
-                              } catch (_) {
-                                // The account was created; the list will catch
-                                // up on the next open. Selecting it below is
-                                // what matters now.
-                              }
-                              setSheet(() => selectedId = created.id);
-                            }
-                          },
-                          icon: const Icon(Icons.person_add_alt_1_rounded),
-                          label: const Text('Add a new dietician'),
-                        ),
-                      ),
 
                       if (selectedId != null) ...[
                         const SizedBox(height: AppSpacing.sm),
@@ -1459,152 +1440,6 @@ class _DieticianSection extends ConsumerWidget {
 
   /// A small inline form to create a dietician account. Returns the new
   /// dietician (id + name), or null if cancelled.
-  Future<({String id, String name})?> _addDieticianForm(
-    BuildContext ctx,
-    ClinicianRepository repo,
-  ) {
-    final name = TextEditingController();
-    final phone = TextEditingController();
-    final password = TextEditingController();
-    return showDialog<({String id, String name})?>(
-      context: ctx,
-      builder: (dctx) {
-        bool saving = false;
-        String? error;
-        return StatefulBuilder(
-          builder:
-              (dctx, setD) => AlertDialog(
-                title: const Text('Add dietician'),
-                content: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    TextField(
-                      controller: name,
-                      textCapitalization: TextCapitalization.words,
-                      maxLength: 120,
-                      decoration: const InputDecoration(
-                        labelText: 'Name',
-                        counterText: '',
-                      ),
-                    ),
-                    // Same rules as sign-in: +91 is fixed and only the 10 national
-                    // digits are typed. Previously this only checked "not empty",
-                    // so a 26-digit number was accepted here and then rejected by
-                    // the server — or worse, created an account nobody could log
-                    // into.
-                    TextField(
-                      controller: phone,
-                      keyboardType: TextInputType.number,
-                      // maxLength dropped: paired with the limiter below it capped
-                      // the number twice and reset the caret to the end on every
-                      // mid-string edit.
-                      inputFormatters: [
-                        FilteringTextInputFormatter.digitsOnly,
-                        LengthLimitingTextInputFormatter(10),
-                      ],
-                      decoration: const InputDecoration(
-                        labelText: 'Phone',
-                        prefixText: '${AuthValidators.countryCode} ',
-                        counterText: '',
-                      ),
-                    ),
-                    TextField(
-                      controller: password,
-                      obscureText: true,
-                      maxLength: 72,
-                      decoration: const InputDecoration(
-                        labelText: 'Temporary password (8+ chars)',
-                        counterText: '',
-                      ),
-                    ),
-                    if (error != null)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 8),
-                        child: Text(
-                          error!,
-                          style: TextStyle(
-                            color: AppColors.dangerOn(dctx),
-                            fontSize: 14,
-                          ),
-                        ),
-                      ),
-                  ],
-                ),
-                actions: [
-                  TextButton(
-                    onPressed: saving ? null : () => Navigator.pop(dctx),
-                    child: const Text('Cancel'),
-                  ),
-                  FilledButton(
-                    onPressed:
-                        saving
-                            ? null
-                            : () async {
-                              final digits = phone.text.trim();
-                              if (name.text.trim().length < 2) {
-                                setD(
-                                  () =>
-                                      error =
-                                          'Enter the dietician\'s full name.',
-                                );
-                                return;
-                              }
-                              // Said separately rather than as one catch-all message:
-                              // "enter a name, phone and password" does not tell
-                              // someone who typed nine digits what is actually wrong.
-                              if (digits.length != 10 ||
-                                  !RegExp(r'^[6-9]\d{9}$').hasMatch(digits)) {
-                                setD(
-                                  () =>
-                                      error =
-                                          'Enter a valid 10-digit mobile number.',
-                                );
-                                return;
-                              }
-                              if (password.text.length < 8) {
-                                setD(
-                                  () =>
-                                      error =
-                                          'Password must be at least 8 characters.',
-                                );
-                                return;
-                              }
-                              setD(() {
-                                saving = true;
-                                error = null;
-                              });
-                              try {
-                                final d = await repo.addDietician(
-                                  name: name.text.trim(),
-                                  // Sent in the same +91XXXXXXXXXX form the server
-                                  // stores for every other account, so the dietician
-                                  // can sign in with the number the doctor typed.
-                                  phone: '${AuthValidators.countryCode}$digits',
-                                  password: password.text,
-                                );
-                                if (dctx.mounted) Navigator.pop(dctx, d);
-                              } on ApiException catch (e) {
-                                setD(() {
-                                  saving = false;
-                                  error = e.message;
-                                });
-                              }
-                            },
-                    child:
-                        saving
-                            ? const SizedBox(
-                              width: 16,
-                              height: 18,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                            : const Text('Create'),
-                  ),
-                ],
-              ),
-        );
-      },
-    );
-  }
 }
 
 class _LabReportRow extends ConsumerStatefulWidget {
@@ -2152,7 +1987,7 @@ class _AiContextCard extends StatelessWidget {
       clipBehavior: Clip.antiAlias,
       child: Theme(
         data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
-        child: ExpansionTile(
+        child: DisclosureTile(
           tilePadding: const EdgeInsets.symmetric(
             horizontal: AppSpacing.md,
             vertical: 0,
@@ -2163,7 +1998,7 @@ class _AiContextCard extends StatelessWidget {
             AppSpacing.md,
             AppSpacing.md,
           ),
-          expandedCrossAxisAlignment: CrossAxisAlignment.start,
+          crossAxisAlignment: CrossAxisAlignment.start,
           leading: Icon(
             Icons.smart_toy_outlined,
             size: 20,

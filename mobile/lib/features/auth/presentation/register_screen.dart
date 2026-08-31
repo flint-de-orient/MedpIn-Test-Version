@@ -49,7 +49,6 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
   final _spo2Controller = TextEditingController();
   final _sugarController = TextEditingController();
   final _complaintsController = TextEditingController();
-  final _inviteController = TextEditingController();
   final _resendKey = GlobalKey<OtpResendTimerState>();
 
   /// Errors stay hidden until the first submit attempt. `onUserInteraction`
@@ -81,27 +80,17 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
 
   bool get _phoneVerified => _phoneToken != null;
 
-  // ---- invite code ---------------------------------------------------------
+  // No invite code.
+  //
+  // There used to be one: a shared secret that turned this form into a
+  // dietician's or a receptionist's. It is gone, and this form now makes
+  // patients and nothing else. A code read out over a counter is a credential
+  // that cannot be un-shared and does not record who used it — and one of them
+  // was used by an account nobody at the clinic recognised. Clinical accounts
+  // are created by the doctor in his own panel, where he knows who he is
+  // hiring.
 
-  bool _checkingInvite = false;
-  String? _inviteError;
-
-  /// The role the accepted code opens, or null while none has been accepted.
-  ///
-  /// The one thing that decides which form this is, and it comes from the
-  /// server — never from anything the reader typed. The server decides again
-  /// from the code itself when the account is made, so a client that lied here
-  /// would only have lied to itself about which fields to show.
-  String? _invitedRole;
-
-  bool get _inviteVerified => _invitedRole != null;
-
-  /// True for a dietician OR a receptionist: neither has a diabetes record, so
-  /// neither is asked for one.
-  bool get _isClinicRole => _invitedRole != null;
-
-  String get _roleLabel => _invitedRole == 'staff' ? 'Front desk' : 'Dietician';
-
+  @override
   @override
   void dispose() {
     _nameController.dispose();
@@ -117,7 +106,6 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
     _spo2Controller.dispose();
     _sugarController.dispose();
     _complaintsController.dispose();
-    _inviteController.dispose();
     super.dispose();
   }
 
@@ -224,42 +212,6 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
 
   // ---- step two ------------------------------------------------------------
 
-  Future<void> _validateInvite() async {
-    final l10n = AppLocalizations.of(context);
-    final code = _inviteController.text.trim();
-    if (code.isEmpty) return;
-
-    setState(() {
-      _checkingInvite = true;
-      _inviteError = null;
-    });
-    try {
-      final role = await ref
-          .read(authRepositoryProvider)
-          .validateInviteCode(code);
-      if (!mounted) return;
-      setState(() => _invitedRole = role);
-    } on Object {
-      if (!mounted) return;
-      setState(() {
-        _invitedRole = null;
-        _inviteError = l10n.authInviteInvalid;
-      });
-    } finally {
-      if (mounted) setState(() => _checkingInvite = false);
-    }
-  }
-
-  void _clearInvite() {
-    setState(() {
-      _invitedRole = null;
-      _inviteError = null;
-      _inviteController.clear();
-    });
-  }
-
-  // ---- submit --------------------------------------------------------------
-
   Future<void> _submit() async {
     final l10n = AppLocalizations.of(context);
     if (!_phoneVerified) {
@@ -291,43 +243,27 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
           // none of it, and sending it would have the server store a diabetes
           // record against a clinician.
           dateOfBirth:
-              _isClinicRole || _dateOfBirth == null
+              _dateOfBirth == null
                   ? null
                   : '${_dateOfBirth!.year.toString().padLeft(4, '0')}-'
                       '${_dateOfBirth!.month.toString().padLeft(2, '0')}-'
                       '${_dateOfBirth!.day.toString().padLeft(2, '0')}',
-          gender: _isClinicRole ? null : _gender,
+          gender: _gender,
           address:
-              _isClinicRole || _addressController.text.trim().isEmpty
+              _addressController.text.trim().isEmpty
                   ? null
                   : _addressController.text.trim(),
-          heightCm:
-              _isClinicRole
-                  ? null
-                  : double.tryParse(_heightController.text.trim()),
-          weightKg:
-              _isClinicRole
-                  ? null
-                  : double.tryParse(_weightController.text.trim()),
-          systolic:
-              _isClinicRole
-                  ? null
-                  : int.tryParse(_systolicController.text.trim()),
-          diastolic:
-              _isClinicRole
-                  ? null
-                  : int.tryParse(_diastolicController.text.trim()),
-          pulse:
-              _isClinicRole ? null : int.tryParse(_pulseController.text.trim()),
-          spo2:
-              _isClinicRole ? null : int.tryParse(_spo2Controller.text.trim()),
-          glucoseMgDl:
-              _isClinicRole ? null : int.tryParse(_sugarController.text.trim()),
+          heightCm: double.tryParse(_heightController.text.trim()),
+          weightKg: double.tryParse(_weightController.text.trim()),
+          systolic: int.tryParse(_systolicController.text.trim()),
+          diastolic: int.tryParse(_diastolicController.text.trim()),
+          pulse: int.tryParse(_pulseController.text.trim()),
+          spo2: int.tryParse(_spo2Controller.text.trim()),
+          glucoseMgDl: int.tryParse(_sugarController.text.trim()),
           complaints:
-              _isClinicRole || _complaintsController.text.trim().isEmpty
+              _complaintsController.text.trim().isEmpty
                   ? null
                   : _complaintsController.text.trim(),
-          inviteCode: _inviteVerified ? _inviteController.text.trim() : null,
           // Deliberately not sent from this screen — diabetes type is no
           // longer collected at signup. The server therefore applies its
           // `.default('type2')`, so it must be confirmed with the patient
@@ -410,15 +346,8 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                       ScreenHeading(
                         // Names itself once it knows what it is. Before the
                         // code is validated there is nothing to claim.
-                        // Named for the role the code opened, so a
-                        // receptionist is not told they are registering as a
-                        // dietician.
-                        title:
-                            _isClinicRole
-                                ? '$_roleLabel registration'
-                                : l10n.authRegisterTitle,
-                        subtitle:
-                            _isClinicRole ? null : l10n.authRegisterSubtitle,
+                        title: l10n.authRegisterTitle,
+                        subtitle: l10n.authRegisterSubtitle,
                       ),
 
                       // No section heading over either of these. Each holds
@@ -428,8 +357,6 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                       // over a field labelled "Have an invite code?".
                       const SizedBox(height: T.s8),
                       _phoneBlock(l10n),
-                      const SizedBox(height: T.s8),
-                      _inviteBlock(l10n),
 
                       // Everything below is a form nobody can submit until the
                       // number is theirs, so it stays out of the way until it
@@ -485,225 +412,220 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                           ),
                         ),
 
-                        // ---- patient-only from here ------------------------
-                        if (!_isClinicRole) ...[
-                          _section('About you'),
+                        // Everything from here is a patient's, and everyone
+                        // who registers here is one.
+                        _section('About you'),
 
-                          // A plain InkWell cannot participate in Form
-                          // validation, so the date sits inside a FormField
-                          // that owns the error state.
-                          FormField<DateTime>(
-                            initialValue: _dateOfBirth,
-                            validator: (v) {
-                              if (v == null) {
-                                return l10n.authDateOfBirthRequired;
-                              }
-                              if (!AuthValidators.isPlausibleDateOfBirth(v)) {
-                                return l10n.authDateOfBirthTooYoung;
-                              }
-                              return null;
-                            },
-                            builder:
-                                (field) => AuthField(
-                                  label: l10n.authDateOfBirthLabel,
-                                  child: InkWell(
-                                    onTap: () async {
-                                      await _pickDateOfBirth();
-                                      field.didChange(_dateOfBirth);
-                                    },
-                                    borderRadius: BorderRadius.circular(
-                                      T.rCard,
-                                    ),
-                                    child: InputDecorator(
-                                      decoration: AuthField.decoration(
-                                        suffix: const Icon(
-                                          Icons.calendar_today_outlined,
-                                          size: 20,
-                                          color: T.inkMuted,
-                                        ),
-                                      ).copyWith(errorText: field.errorText),
-                                      child: Text(
-                                        _dateOfBirth == null
-                                            ? 'Select date'
-                                            : '${_dateOfBirth!.day.toString().padLeft(2, '0')}'
-                                                '/${_dateOfBirth!.month.toString().padLeft(2, '0')}'
-                                                '/${_dateOfBirth!.year}',
-                                        style: T.body.copyWith(
-                                          color:
-                                              _dateOfBirth == null
-                                                  ? T.inkFaint
-                                                  : T.ink,
-                                        ),
+                        // A plain InkWell cannot participate in Form
+                        // validation, so the date sits inside a FormField
+                        // that owns the error state.
+                        FormField<DateTime>(
+                          initialValue: _dateOfBirth,
+                          validator: (v) {
+                            if (v == null) {
+                              return l10n.authDateOfBirthRequired;
+                            }
+                            if (!AuthValidators.isPlausibleDateOfBirth(v)) {
+                              return l10n.authDateOfBirthTooYoung;
+                            }
+                            return null;
+                          },
+                          builder:
+                              (field) => AuthField(
+                                label: l10n.authDateOfBirthLabel,
+                                child: InkWell(
+                                  onTap: () async {
+                                    await _pickDateOfBirth();
+                                    field.didChange(_dateOfBirth);
+                                  },
+                                  borderRadius: BorderRadius.circular(T.rCard),
+                                  child: InputDecorator(
+                                    decoration: AuthField.decoration(
+                                      suffix: const Icon(
+                                        Icons.calendar_today_outlined,
+                                        size: 20,
+                                        color: T.inkMuted,
+                                      ),
+                                    ).copyWith(errorText: field.errorText),
+                                    child: Text(
+                                      _dateOfBirth == null
+                                          ? 'Select date'
+                                          : '${_dateOfBirth!.day.toString().padLeft(2, '0')}'
+                                              '/${_dateOfBirth!.month.toString().padLeft(2, '0')}'
+                                              '/${_dateOfBirth!.year}',
+                                      style: T.body.copyWith(
+                                        color:
+                                            _dateOfBirth == null
+                                                ? T.inkFaint
+                                                : T.ink,
                                       ),
                                     ),
                                   ),
                                 ),
-                          ),
-                          const SizedBox(height: T.s5),
-
-                          AuthField(
-                            label: l10n.authGenderLabel,
-                            child: DropdownButtonFormField<String>(
-                              initialValue: _gender,
-                              // Sizes to the widest item without this, which
-                              // on a narrow phone clips the child away and
-                              // leaves a chevron over an empty box.
-                              isExpanded: true,
-                              style: T.body.copyWith(color: T.ink),
-                              icon: const Icon(
-                                Icons.keyboard_arrow_down_rounded,
-                                color: T.inkMuted,
                               ),
-                              decoration: AuthField.decoration(hint: 'Select'),
-                              // The server also accepts 'undisclosed' (and
-                              // defaults to it), but the form does not offer
-                              // it — the field is required, so a patient always
-                              // picks one of these three explicitly.
-                              items: [
-                                DropdownMenuItem(
-                                  value: 'male',
-                                  child: Text(l10n.authGenderMale),
-                                ),
-                                DropdownMenuItem(
-                                  value: 'female',
-                                  child: Text(l10n.authGenderFemale),
-                                ),
-                                DropdownMenuItem(
-                                  value: 'other',
-                                  child: Text(l10n.authGenderOther),
-                                ),
-                              ],
-                              validator:
-                                  (v) =>
-                                      v == null
-                                          ? l10n.authGenderRequired
-                                          : null,
-                              onChanged: (v) => setState(() => _gender = v),
+                        ),
+                        const SizedBox(height: T.s5),
+
+                        AuthField(
+                          label: l10n.authGenderLabel,
+                          child: DropdownButtonFormField<String>(
+                            initialValue: _gender,
+                            // Sizes to the widest item without this, which
+                            // on a narrow phone clips the child away and
+                            // leaves a chevron over an empty box.
+                            isExpanded: true,
+                            style: T.body.copyWith(color: T.ink),
+                            icon: const Icon(
+                              Icons.keyboard_arrow_down_rounded,
+                              color: T.inkMuted,
                             ),
-                          ),
-                          const SizedBox(height: T.s5),
-
-                          AuthField(
-                            label: 'Address',
-                            child: TextFormField(
-                              controller: _addressController,
-                              textCapitalization: TextCapitalization.sentences,
-                              minLines: 2,
-                              maxLines: 3,
-                              style: T.body.copyWith(color: T.ink),
-                              decoration: AuthField.decoration(
-                                hint: 'Where you live',
+                            decoration: AuthField.decoration(hint: 'Select'),
+                            // The server also accepts 'undisclosed' (and
+                            // defaults to it), but the form does not offer
+                            // it — the field is required, so a patient always
+                            // picks one of these three explicitly.
+                            items: [
+                              DropdownMenuItem(
+                                value: 'male',
+                                child: Text(l10n.authGenderMale),
                               ),
-                              validator:
-                                  (v) =>
-                                      (v == null || v.trim().isEmpty)
-                                          ? 'Enter your address'
-                                          : null,
-                            ),
-                          ),
-
-                          _section('Health details', note: 'optional'),
-
-                          Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Expanded(
-                                child: _vital(
-                                  _heightController,
-                                  'Height',
-                                  'cm',
-                                  VitalsValidators.height,
-                                ),
+                              DropdownMenuItem(
+                                value: 'female',
+                                child: Text(l10n.authGenderFemale),
                               ),
-                              const SizedBox(width: T.s3),
-                              Expanded(
-                                child: _vital(
-                                  _weightController,
-                                  'Weight',
-                                  'kg',
-                                  VitalsValidators.weight,
-                                ),
+                              DropdownMenuItem(
+                                value: 'other',
+                                child: Text(l10n.authGenderOther),
                               ),
                             ],
+                            validator:
+                                (v) =>
+                                    v == null ? l10n.authGenderRequired : null,
+                            onChanged: (v) => setState(() => _gender = v),
                           ),
-                          const SizedBox(height: T.s5),
-                          Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Expanded(
-                                child: _vital(
-                                  _systolicController,
-                                  'BP systolic',
-                                  'mmHg',
-                                  VitalsValidators.systolic,
-                                  integer: true,
-                                ),
-                              ),
-                              const SizedBox(width: T.s3),
-                              Expanded(
-                                child: _vital(
-                                  _diastolicController,
-                                  'BP diastolic',
-                                  'mmHg',
-                                  (v) => VitalsValidators.diastolic(
-                                    v,
-                                    systolicText: _systolicController.text,
-                                  ),
-                                  integer: true,
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: T.s5),
-                          Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Expanded(
-                                child: _vital(
-                                  _pulseController,
-                                  'Heart rate',
-                                  'bpm',
-                                  VitalsValidators.pulse,
-                                  integer: true,
-                                ),
-                              ),
-                              const SizedBox(width: T.s3),
-                              Expanded(
-                                child: _vital(
-                                  _spo2Controller,
-                                  'SpO₂',
-                                  '%',
-                                  VitalsValidators.spo2,
-                                  integer: true,
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: T.s5),
-                          _vital(
-                            _sugarController,
-                            'Blood sugar',
-                            'mg/dL',
-                            VitalsValidators.sugar,
-                            integer: true,
-                          ),
+                        ),
+                        const SizedBox(height: T.s5),
 
-                          _section('Anything else', note: 'optional'),
+                        AuthField(
+                          label: 'Address',
+                          child: TextFormField(
+                            controller: _addressController,
+                            textCapitalization: TextCapitalization.sentences,
+                            minLines: 2,
+                            maxLines: 3,
+                            style: T.body.copyWith(color: T.ink),
+                            decoration: AuthField.decoration(
+                              hint: 'Where you live',
+                            ),
+                            validator:
+                                (v) =>
+                                    (v == null || v.trim().isEmpty)
+                                        ? 'Enter your address'
+                                        : null,
+                          ),
+                        ),
 
-                          AuthField(
-                            label: 'Main complaint',
-                            child: TextFormField(
-                              controller: _complaintsController,
-                              textCapitalization: TextCapitalization.sentences,
-                              minLines: 2,
-                              maxLines: 3,
-                              style: T.body.copyWith(color: T.ink),
-                              decoration: AuthField.decoration(
-                                hint: 'What brings you to the clinic',
+                        _section('Health details', note: 'optional'),
+
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Expanded(
+                              child: _vital(
+                                _heightController,
+                                'Height',
+                                'cm',
+                                VitalsValidators.height,
                               ),
                             ),
+                            const SizedBox(width: T.s3),
+                            Expanded(
+                              child: _vital(
+                                _weightController,
+                                'Weight',
+                                'kg',
+                                VitalsValidators.weight,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: T.s5),
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Expanded(
+                              child: _vital(
+                                _systolicController,
+                                'BP systolic',
+                                'mmHg',
+                                VitalsValidators.systolic,
+                                integer: true,
+                              ),
+                            ),
+                            const SizedBox(width: T.s3),
+                            Expanded(
+                              child: _vital(
+                                _diastolicController,
+                                'BP diastolic',
+                                'mmHg',
+                                (v) => VitalsValidators.diastolic(
+                                  v,
+                                  systolicText: _systolicController.text,
+                                ),
+                                integer: true,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: T.s5),
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Expanded(
+                              child: _vital(
+                                _pulseController,
+                                'Heart rate',
+                                'bpm',
+                                VitalsValidators.pulse,
+                                integer: true,
+                              ),
+                            ),
+                            const SizedBox(width: T.s3),
+                            Expanded(
+                              child: _vital(
+                                _spo2Controller,
+                                'SpO₂',
+                                '%',
+                                VitalsValidators.spo2,
+                                integer: true,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: T.s5),
+                        _vital(
+                          _sugarController,
+                          'Blood sugar',
+                          'mg/dL',
+                          VitalsValidators.sugar,
+                          integer: true,
+                        ),
+
+                        _section('Anything else', note: 'optional'),
+
+                        AuthField(
+                          label: 'Main complaint',
+                          child: TextFormField(
+                            controller: _complaintsController,
+                            textCapitalization: TextCapitalization.sentences,
+                            minLines: 2,
+                            maxLines: 3,
+                            style: T.body.copyWith(color: T.ink),
+                            decoration: AuthField.decoration(
+                              hint: 'What brings you to the clinic',
+                            ),
                           ),
-                        ],
+                        ),
                       ],
 
                       if (_errorMessage != null) ...[
@@ -885,48 +807,6 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
               ),
             ),
           ],
-        ],
-      ],
-    );
-  }
-
-  Widget _inviteBlock(AppLocalizations l10n) {
-    if (_inviteVerified) {
-      return _VerifiedRow(
-        value: _inviteController.text.trim(),
-        badge: l10n.authInviteVerified,
-        actionLabel: l10n.authInviteRemove,
-        onAction: _clearInvite,
-      );
-    }
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        AuthField(
-          label: l10n.authInviteLabel,
-          child: TextFormField(
-            controller: _inviteController,
-            textCapitalization: TextCapitalization.characters,
-            style: T.body.copyWith(color: T.ink),
-            decoration: AuthField.decoration(hint: l10n.authInviteHint),
-            onFieldSubmitted: (_) => _validateInvite(),
-          ),
-        ),
-        const SizedBox(height: T.s2),
-        Text(l10n.authInviteHelper, style: T.small.copyWith(color: T.inkFaint)),
-        const SizedBox(height: T.s3),
-        Align(
-          alignment: Alignment.centerRight,
-          child: _InlineAction(
-            label: l10n.authInviteValidateButton,
-            busy: _checkingInvite,
-            onPressed: _validateInvite,
-          ),
-        ),
-        if (_inviteError != null) ...[
-          const SizedBox(height: T.s3),
-          InlineError(message: _inviteError!),
         ],
       ],
     );

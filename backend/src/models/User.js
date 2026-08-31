@@ -110,6 +110,25 @@ const userSchema = new mongoose.Schema(
     registrationNo: { type: String, trim: true, maxlength: 60 },
     signatureAssetId: { type: mongoose.Schema.Types.ObjectId, ref: 'MediaAsset' },
 
+    /// When this phone last confirmed its medication alarms are armed.
+    ///
+    /// The device is the only thing that can know. It reads the platform's
+    /// pending-alarm table — what Android will actually act on, rather than
+    /// what the app remembers asking for — and says so.
+    ///
+    /// This decides how the server's backstop is sent. A phone that confirmed
+    /// recently will draw the reminder itself from a silent data message, and
+    /// the two collapse on a shared notification id. A phone that has not
+    /// confirmed cannot draw anything — its app may be force-stopped, which is
+    /// the failure the backstop exists for — so the server sends one Android
+    /// will draw without the app's help.
+    ///
+    /// Stale rather than false is the safe reading: an old timestamp gets the
+    /// louder envelope, and the cost of being wrong that way is one reminder
+    /// arriving twice instead of not at all.
+    remindersArmedAt: { type: Date },
+    remindersArmedCount: { type: Number, default: 0 },
+
     isActive: { type: Boolean, default: true },
     lastLoginAt: Date,
 
