@@ -7,7 +7,6 @@ import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_spacing.dart';
 import '../../data/medications_repository.dart';
 import '../../domain/medication.dart';
-import '../../domain/strength.dart';
 
 /// Scan a paper prescription into medicines: take a photo or pick one from the
 /// gallery, the server reads it, and the medicines it finds are added with their

@@ -1544,7 +1544,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get deskTotalVisitors => 'Total visitors';
 
   @override
-  String get deskOfferTime => 'Offer a time';
+  String get deskOfferTime => 'Schedule';
 
   @override
   String get deskWaitingForScheduling => 'Waiting for scheduling';

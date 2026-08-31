@@ -2953,7 +2953,7 @@ abstract class AppLocalizations {
   /// No description provided for @deskOfferTime.
   ///
   /// In en, this message translates to:
-  /// **'Offer a time'**
+  /// **'Schedule'**
   String get deskOfferTime;
 
   /// No description provided for @deskWaitingForScheduling.

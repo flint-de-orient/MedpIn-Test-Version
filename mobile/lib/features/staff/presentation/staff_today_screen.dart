@@ -208,7 +208,9 @@ class _DeskHeader extends ConsumerWidget {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        const Expanded(child: ClinicWordmark(subtitleWidget: _DeskStatusLine())),
+        const Expanded(
+          child: ClinicWordmark(subtitleWidget: _DeskStatusLine()),
+        ),
         const SizedBox(width: AppSpacing.sm),
         // The same bell the doctor has. What reaches it differs by role — the
         // desk is told about requests and messages, not about a patient's
@@ -257,9 +259,13 @@ class _DeskStatusLine extends ConsumerWidget {
 
     final String? tail;
     if (status.open && status.closesAt != null) {
-      tail = l10n.deskClosesAt(DateFormat('h:mm a', locale).format(status.closesAt!));
+      tail = l10n.deskClosesAt(
+        DateFormat('h:mm a', locale).format(status.closesAt!),
+      );
     } else if (!status.open && status.opensAt != null) {
-      tail = l10n.deskOpensAt(DateFormat('h:mm a', locale).format(status.opensAt!));
+      tail = l10n.deskOpensAt(
+        DateFormat('h:mm a', locale).format(status.opensAt!),
+      );
     } else {
       tail = null;
     }
@@ -332,11 +338,7 @@ class _DateBar extends StatelessWidget {
 
     return Row(
       children: [
-        Icon(
-          Icons.calendar_today_rounded,
-          size: 15,
-          color: AppColors.primary,
-        ),
+        Icon(Icons.calendar_today_rounded, size: 15, color: AppColors.primary),
         const SizedBox(width: 8),
         Expanded(
           child: Text(
@@ -370,7 +372,6 @@ class _DateBar extends StatelessWidget {
   }
 }
 
-
 /// The white surface every section on this screen sits on.
 class _SectionCard extends StatelessWidget {
   const _SectionCard({
@@ -390,7 +391,9 @@ class _SectionCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: scheme.surface,
         borderRadius: BorderRadius.circular(kSectionRadius),
-        border: Border.all(color: scheme.outlineVariant.withValues(alpha: 0.45)),
+        border: Border.all(
+          color: scheme.outlineVariant.withValues(alpha: 0.45),
+        ),
       ),
       child: child,
     );
@@ -506,7 +509,11 @@ class _UrgentSection extends ConsumerWidget {
                     color: Theme.of(context).colorScheme.surface,
                     shape: BoxShape.circle,
                   ),
-                  child: Icon(Icons.priority_high_rounded, size: 15, color: danger),
+                  child: Icon(
+                    Icons.priority_high_rounded,
+                    size: 15,
+                    color: danger,
+                  ),
                 ),
                 const SizedBox(width: 8),
                 Expanded(
@@ -922,17 +929,11 @@ class _QueueStat extends StatelessWidget {
     );
   }
 }
+
 class _DayRow extends ConsumerWidget {
-  const _DayRow({required this.appointment, this.flat = false});
+  const _DayRow({required this.appointment});
 
   final Appointment appointment;
-
-  /// No border and no card fill, for when the row is already inside one.
-  ///
-  /// The check-in sheet is a list of these on a plain surface; drawing each
-  /// one's outline there stacks a box inside a box inside a sheet, which is
-  /// three frames around one line of text.
-  final bool flat;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -950,16 +951,11 @@ class _DayRow extends ConsumerWidget {
     return Container(
       margin: const EdgeInsets.only(bottom: AppSpacing.sm),
       padding: const EdgeInsets.all(AppSpacing.sm),
-      decoration:
-          flat
-              ? null
-              : BoxDecoration(
-                color: scheme.surfaceContainerLowest,
-                borderRadius: BorderRadius.circular(kInnerRadius),
-                border: Border.all(
-                  color: scheme.outlineVariant.withValues(alpha: 0.4),
-                ),
-              ),
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerLowest,
+        borderRadius: BorderRadius.circular(kInnerRadius),
+        border: Border.all(color: scheme.outlineVariant.withValues(alpha: 0.4)),
+      ),
       child: Row(
         children: [
           SizedBox(
@@ -1013,7 +1009,6 @@ class _DayRow extends ConsumerWidget {
     );
   }
 }
-
 
 /// Who is actually coming in today.
 ///
@@ -1132,7 +1127,8 @@ class _QuickActionsCard extends ConsumerWidget {
     // query, cached separately, that nothing invalidated when a message was
     // read. The tile and the bell could disagree by a wide margin while sitting
     // two inches apart, and the tile was usually the stale one.
-    final unread = ref.watch(clinicianNotificationsProvider).valueOrNull?.messages;
+    final unread =
+        ref.watch(clinicianNotificationsProvider).valueOrNull?.messages;
 
     return _SectionCard(
       child: Column(
@@ -1188,8 +1184,7 @@ class _QuickActionsCard extends ConsumerWidget {
                   title: l10n.deskMessagesLabel,
                   // Null while it loads rather than a confident zero that turns
                   // into 3 a second later.
-                  caption:
-                      unread == null ? '—' : l10n.deskUnreadCount(unread),
+                  caption: unread == null ? '—' : l10n.deskUnreadCount(unread),
                   // `go`, not `push`: Patients is one of this shell's own tabs,
                   // and pushing it stacks a copy while the bar keeps Today lit.
                   onTap: () => context.go('/staff/patients'),
@@ -1701,7 +1696,9 @@ class _PatientPickerSheetState extends ConsumerState<_PatientPickerSheet> {
               error:
                   (e, _) => Center(
                     child: Text(
-                      e is ApiException ? e.message : l10n.deskCouldNotLoadTimes,
+                      e is ApiException
+                          ? e.message
+                          : l10n.deskCouldNotLoadTimes,
                       textAlign: TextAlign.center,
                       style: TextStyle(color: scheme.onSurfaceVariant),
                     ),
@@ -1746,4 +1743,3 @@ class _PatientPickerSheetState extends ConsumerState<_PatientPickerSheet> {
     );
   }
 }
-

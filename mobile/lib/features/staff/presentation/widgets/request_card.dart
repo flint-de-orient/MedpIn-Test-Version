@@ -440,7 +440,10 @@ class _SlotPickerState extends ConsumerState<SlotPicker> {
             ),
             children: [
               Text(
-                l10n.deskOfferTime,
+                // The sheet keeps the descriptive phrase; the button that
+                // opens it is one word, because it sits beside "Decline" and a
+                // pair of actions reads fastest when they are the same length.
+                l10n.deskGiveTime,
                 style: const TextStyle(
                   fontSize: 19,
                   fontWeight: FontWeight.w800,

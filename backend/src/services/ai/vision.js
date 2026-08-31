@@ -215,6 +215,31 @@ const PRESCRIPTION_SCHEMA = {
         required: ['name'],
       },
     },
+    // Who the prescription was written FOR, as printed on it.
+    //
+    // Read so it can be checked, never so it can be used. The clinic files
+    // paper prescriptions onto records by hand, and the one mistake that
+    // matters is filing this patient's slip onto that patient's chart — a
+    // wrong medicine list on a diabetic's record, invisible until it does
+    // harm. The name comes back so the desk can be shown a mismatch; nothing
+    // downstream ever resolves a patient from it.
+    patient: {
+      type: 'object',
+      properties: {
+        name: { type: 'string' },
+        age: { type: 'string' },
+        sex: { type: 'string' },
+      },
+    },
+    // The rest of the page, beside the medicine lines.
+    //
+    // Kept out of `items` deliberately: a diagnosis is not a drug, and a lab
+    // test advised is not one either. They were simply discarded before, which
+    // is why a filed prescription showed the desk a photograph and nothing it
+    // could read without opening it.
+    diagnosis: { type: 'array', items: { type: 'string' } },
+    labTests: { type: 'array', items: { type: 'string' } },
+    advice: { type: 'string' },
     // The letterhead, read as a label rather than as a decision. Everything
     // here is optional: a handwritten slip with no letterhead is still a
     // perfectly good prescription, and a guessed doctor is worse than none.
@@ -250,7 +275,9 @@ Strict rules:
 - "whenText": the timing EXACTLY as written, copied not interpreted — "1 tab each AF Lunch", "1 tab A Dinner", "1 tab before meal", "1 tab each 10 AM". Include the meal or the hour if either is written. This is the most important field on the line after the medicine name: it is what decides when the patient's alarm rings, and "frequency" above deliberately does not carry it.
 - "relationToMeal": before_meal (BF / before food / खाली পেটে), after_meal (AF / after food / খাবারের পরে), with_meal, or any.
 - "durationDays": the number of days if written, e.g. "x 5 days" -> 5, "1 week" -> 7.
-- Read the medicine lines (usually after the ℞ / Rx symbol) for the items. Ignore patient details, diagnosis and general advice.
+- Read the medicine lines (usually after the ℞ / Rx symbol) for "items", and ONLY those lines. A diagnosis is not a medicine and neither is an advised test.
+- Read the patient's own details into "patient": the name exactly as printed, their age and sex if written. This is used to check the prescription is being filed onto the right person's record, so copy it and never guess — an omitted name is safe, an invented one is not.
+- Read any diagnosis into "diagnosis" (one entry per condition), any investigations or blood tests advised into "labTests" (one entry each), and the general instructions — diet, exercise, follow-up, "review after 2 weeks" — into "advice".
 - Also read the letterhead, if there is one, into "prescriber": the doctor's name, their speciality as printed, the clinic name, and the date written. Omit any of these you cannot read — a guessed doctor is worse than a blank one. This is recorded as a label so the patient and their doctors can see where a medicine came from; it never decides which medicines are kept.
 - Extract EVERY medicine on the prescription, whatever it is for. Never leave one out because it looks unrelated to diabetes: a complete list is what makes interactions visible, and the medicine another specialist added is the one most worth knowing about.
 - ONE ITEM PER DRUG. A line joining two drugs with "+" is two medicines, and both must be returned. "Teneligliptin (20) + MF500(SR) — 1 tab each AF Lunch" is two items, each with its own name and strength, and BOTH carry the line's timing. Returning only the first is how a patient ends up with no reminder for the second, which on a diabetes prescription is usually the metformin.
@@ -267,6 +294,10 @@ Strict rules:
   return {
     readable: json.readable !== false,
     items: Array.isArray(json.items) ? json.items : [],
+    patient: json.patient ?? null,
+    diagnosis: Array.isArray(json.diagnosis) ? json.diagnosis : [],
+    labTests: Array.isArray(json.labTests) ? json.labTests : [],
+    advice: json.advice ?? null,
     prescriber: json.prescriber ?? null,
     note: json.note ?? null,
     modelVersion: result.modelVersion,

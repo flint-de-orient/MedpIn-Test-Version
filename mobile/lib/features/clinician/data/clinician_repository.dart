@@ -12,6 +12,7 @@ import '../domain/knowledge_chunk.dart';
 import '../domain/patient_summary.dart';
 import '../../../shared/widgets/notification_list_sheet.dart';
 import '../domain/staff_member.dart';
+import '../domain/prescription_scan.dart';
 
 /// Talks to `/doctor/*` — the clinician (doctor + staff) API: dashboard
 /// overview, the patient directory, and clinical-alert triage.
@@ -238,6 +239,24 @@ class ClinicianRepository {
     );
   }
 
+  /// Reads a photographed prescription without filing anything.
+  ///
+  /// Two calls, because the desk has to see what was read before it is
+  /// written. The thing being checked is whose name is on the paper: filing
+  /// one patient's slip onto another's chart is the mistake that harms
+  /// somebody, and a misfiled prescription looks exactly as correct as a right
+  /// one afterwards.
+  Future<PrescriptionScan> readScannedPrescription({
+    required String patientId,
+    required String assetId,
+  }) async {
+    final json = await _client.postJson(
+      '/patients/$patientId/prescriptions/scan/read',
+      body: {'assetId': assetId},
+    );
+    return PrescriptionScan.fromJson(json);
+  }
+
   /// Files a photograph or PDF of a paper prescription against a patient.
   ///
   /// Two calls on purpose. The upload puts the bytes somewhere and hands back
@@ -249,6 +268,13 @@ class ClinicianRepository {
     required String assetId,
     DateTime? issuedOn,
     String? note,
+    /// What [readScannedPrescription] found and the desk confirmed. All
+    /// optional: an unreadable photograph still files, as an image with no
+    /// detail, which beats refusing to record it.
+    List<ScannedRxItem>? items,
+    List<String>? diagnosis,
+    List<String>? labTests,
+    String? advice,
   }) async {
     await _client.postJson(
       '/patients/$patientId/prescriptions/scan',
@@ -256,6 +282,13 @@ class ClinicianRepository {
         'assetId': assetId,
         if (issuedOn != null) 'issuedOn': issuedOn.toIso8601String(),
         if (note != null && note.trim().isNotEmpty) 'note': note.trim(),
+        if (items != null && items.isNotEmpty)
+          'items': items.map((m) => m.toJson()).toList(),
+        if (diagnosis != null && diagnosis.isNotEmpty) 'diagnosis': diagnosis,
+        if (labTests != null && labTests.isNotEmpty)
+          'labTestsAdvised': labTests,
+        if (advice != null && advice.trim().isNotEmpty)
+          'generalAdvice': advice.trim(),
       },
     );
   }

@@ -21,6 +21,8 @@ import '../../../core/network/api_exception.dart';
 import '../data/clinician_repository.dart';
 import '../../../shared/widgets/authed_image.dart';
 import '../../../shared/widgets/fullscreen_photo.dart';
+import '../domain/prescription_scan.dart';
+import 'widgets/scan_review_sheet.dart';
 
 /// The patient's prescriptions, latest first — each a dated card with a summary
 /// (diagnosis, medicine count, tests, follow-up), expandable to the full
@@ -106,18 +108,6 @@ class _PrescriptionListScreenState
     }
     if (path == null || filename == null || !mounted) return;
 
-    // The date on the paper, not the date it was filed. During the pilot a
-    // week's prescriptions are photographed in one sitting, and stamping them
-    // all with today would put every visit on the wrong day.
-    final issued = await showDatePicker(
-      context: context,
-      initialDate: DateTime.now(),
-      firstDate: DateTime.now().subtract(const Duration(days: 730)),
-      lastDate: DateTime.now(),
-      helpText: 'Date on the prescription',
-    );
-    if (issued == null || !mounted) return;
-
     setState(() => _filing = true);
     final messenger = ScaffoldMessenger.of(context);
     try {
@@ -131,16 +121,62 @@ class _PrescriptionListScreenState
             // one document they most want to open.
             patientId: patientId,
           );
+
+      // Read it before filing it.
+      //
+      // The desk used to be asked for the date first — while holding the paper
+      // it is printed on — and then the photograph went onto the record as an
+      // image and nothing else: no medicines, no tests, no advice, and no check
+      // that the name on it was the patient whose chart was open.
+      //
+      // A failed read is not a failed filing. The image is the record; if the
+      // server cannot read it the sheet says so and files it anyway, which is
+      // what the pilot needs on a bad photograph at five to eight.
+      PrescriptionScan scan;
+      try {
+        scan = await ref
+            .read(clinicianRepositoryProvider)
+            .readScannedPrescription(patientId: patientId, assetId: asset.id);
+      } catch (_) {
+        scan = const PrescriptionScan(
+          readable: false,
+          name: ScanNameCheck(verdict: 'unknown'),
+        );
+      }
+
+      if (!mounted) return;
+      setState(() => _filing = false);
+      final choice = await ScanReviewSheet.show(context, scan);
+      // Backed out. The upload stays — it is owned by the patient and appears
+      // nowhere until a prescription points at it — and they can try again.
+      if (choice == null || !mounted) return;
+      setState(() => _filing = true);
+
       await ref
           .read(clinicianRepositoryProvider)
           .fileScannedPrescription(
             patientId: patientId,
             assetId: asset.id,
-            issuedOn: issued,
+            issuedOn: choice.issuedOn,
+            items: choice.keepDetail ? scan.items : null,
+            diagnosis: choice.keepDetail ? scan.diagnosis : null,
+            labTests: choice.keepDetail ? scan.labTests : null,
+            advice: choice.keepDetail ? scan.advice : null,
           );
       ref.invalidate(patientPrescriptionsProvider(patientId));
+      // The record's medicine list is built from prescriptions, so the screen
+      // behind this one is stale the moment this succeeds.
+      ref.invalidate(patientMedicationsProvider(patientId));
+      ref.invalidate(patientSummaryProvider(patientId));
       messenger.showSnackBar(
-        const SnackBar(content: Text('Prescription filed.')),
+        SnackBar(
+          content: Text(
+            choice.keepDetail && scan.items.isNotEmpty
+                ? 'Filed with ${scan.items.length} '
+                    '${scan.items.length == 1 ? "medicine" : "medicines"}.'
+                : 'Prescription filed.',
+          ),
+        ),
       );
     } catch (e) {
       // Caught wide, not just ApiException: a file picked from a cloud

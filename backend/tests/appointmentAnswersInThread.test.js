@@ -60,3 +60,39 @@ describe('the clinic answers where it was asked', () => {
     assert.match(cancel.slice(0, 2500), /!appt\.scheduledFor/);
   });
 });
+
+describe('and it acknowledges where it was asked', () => {
+  test('a new request writes into the thread', () => {
+    // The clinic answered in the thread and never opened there. A patient asked
+    // — from the chat card or the header button — and the conversation showed
+    // their own message and nothing after it, sometimes for a day. The
+    // commonest response to that silence is to ask again, which the server
+    // folds into the same request, so they hear nothing a second time.
+    assert.match(src, /function acknowledgeInThread\(/);
+    const create = block("'/request',");
+    assert.match(create, /acknowledgeInThread\(appointment, patientId\)/);
+  });
+
+  test('a repeat request acknowledges again', () => {
+    // Somebody asking twice is somebody unsure the first one landed. Answering
+    // the question they are actually asking is worth one more line.
+    const create = block("'/request',");
+    assert.match(create, /acknowledgeInThread\(existing, patientId\)/);
+  });
+
+  test('the hour they asked for is read back', () => {
+    // The part most likely to be lost between a request and a confirmation. A
+    // patient who asked for the evening wants to see the evening was heard.
+    assert.match(src, /appointment\.preferredTime/);
+  });
+
+  test('a failed note never fails the request', () => {
+    // Best-effort, like the two answers. An acknowledgement that throws must
+    // not lose the appointment it is acknowledging.
+    const fn = src.slice(
+      src.indexOf('function acknowledgeInThread('),
+      src.indexOf("'/request',"),
+    );
+    assert.match(fn, /\.catch\(\(\) => \{\}\)/);
+  });
+});

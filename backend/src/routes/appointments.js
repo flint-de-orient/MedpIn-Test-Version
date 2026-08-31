@@ -187,6 +187,48 @@ router.post(
  * `preferredFor` is what the patient asked for, not a promise. Staff confirm it
  * or move it, and the patient is told which.
  */
+
+/**
+ * "We have your request" — in the thread, the moment it is made.
+ *
+ * The clinic already answers there: confirming writes a line, and so does
+ * turning somebody down. The gap was the beginning. A patient asked — from the
+ * chat card or the button in the header — and the conversation showed their own
+ * message and nothing after it, sometimes for a day. Nothing said the clinic
+ * had it. The commonest response to that silence is to ask again, which the
+ * server folds into the same request, so they hear nothing a second time.
+ *
+ * A snackbar is not this. It is gone in four seconds, it is on whatever screen
+ * they were on, and it is not there tomorrow when they wonder whether they
+ * actually sent it. The thread is where they will look.
+ *
+ * Best-effort, like the other two: an acknowledgement that fails must never
+ * fail the request it is acknowledging.
+ */
+function acknowledgeInThread(appointment, patientId) {
+  const day = appointment.preferredFor
+    ? new Date(appointment.preferredFor).toLocaleDateString('en-IN', {
+        weekday: 'long',
+        day: 'numeric',
+        month: 'long',
+        timeZone: 'Asia/Kolkata',
+      })
+    : null;
+
+  // Their preferred hour is read back to them. It is the part most likely to
+  // be lost between a request and a confirmation, and a patient who asked for
+  // the evening wants to see that the evening was heard.
+  const when = [day, appointment.preferredTime].filter(Boolean).join(', ');
+
+  return postCareThreadNote({
+    patientId,
+    author: 'clinic',
+    text: when
+      ? `We have your appointment request for ${when}. The clinic will confirm a time and let you know here.`
+      : 'We have your appointment request. The clinic will confirm a time and let you know here.',
+  }).catch(() => {});
+}
+
 router.post(
   '/request',
   validate({
@@ -236,6 +278,10 @@ router.post(
       existing.mode = mode;
       await existing.save();
       await existing.populate(POPULATE);
+      // Acknowledged again on a repeat, deliberately. Somebody asking a second
+      // time is somebody who is not sure the first one landed, and answering
+      // the question they are actually asking is worth one more line.
+      acknowledgeInThread(existing, patientId);
       return res.json({ appointment: serialise(existing), updated: true });
     }
 
@@ -255,6 +301,8 @@ router.post(
     });
 
     await appointment.populate(POPULATE);
+
+    acknowledgeInThread(appointment, patientId);
 
     // The desk hears first, which is the whole point of the request path: the
     // doctor has already approved the hours, and staff book inside them.

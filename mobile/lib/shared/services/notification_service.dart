@@ -253,15 +253,32 @@ class NotificationService {
     await _plugin.show(_id, title, body, details, payload: payload);
   }
 
-  /// Rebuilds the medication reminder set from [doses] — a rolling window of
-  /// concrete, per-day dose alarms (not a blind daily-repeat), so a slot the
-  /// patient has already taken can simply be left out and today's alarm won't
-  /// nag them. Cancels the previous set first, so re-timing or taking a dose
-  /// takes effect immediately. Idempotent.
+  /// Rebuilds the medication reminder set from [doses]: one daily-repeating
+  /// alarm per distinct slot time, anchored at the next occurrence.
   ///
-  /// Returns how many alarms actually armed, so the caller can detect a silent
-  /// platform failure (e.g. a withheld permission) and react instead of leaving
-  /// the patient un-reminded with no signal.
+  /// This said the opposite until now — "a rolling window of concrete, per-day
+  /// dose alarms (not a blind daily-repeat), so a slot the patient has already
+  /// taken can simply be left out". It is a blind daily repeat, it does not
+  /// skip taken slots, and [buildUpcomingDoses] ignores dose status entirely.
+  /// The design changed on purpose: a repeat survives a reboot and needs no
+  /// re-arming overnight, which is worth more than one that can be silenced for
+  /// a day. Three comments in this path described the old design; this was the
+  /// last of them, and the worst placed, because it sat on the function itself.
+  ///
+  /// Cancels the previous set first, so a re-timed schedule takes effect
+  /// immediately. Idempotent.
+  ///
+  /// ---- The window this opens ------------------------------------------
+  ///
+  /// Cancel-then-re-arm means that between the two, the patient has no alarms
+  /// at all. If the re-arm fails — a withheld notification permission, an OEM
+  /// battery restriction — they are left with none, and the only report is the
+  /// [debugPrint] below, which reaches logcat and no human being.
+  ///
+  /// The count returned is how a caller detects that.
+  /// [refreshAndScheduleMedicationReminders] uses it to retry with backoff;
+  /// the two `syncMedicationReminders` call sites in the medications screen
+  /// still discard it. Nothing yet tells the patient. See the note there.
   Future<int> scheduleMedicationReminders(List<ScheduledDose> doses) async {
     await init();
 
