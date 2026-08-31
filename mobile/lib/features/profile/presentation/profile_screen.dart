@@ -24,6 +24,7 @@ import 'widgets/theme_selector.dart';
 import '../../../shared/providers/theme_provider.dart';
 import 'licenses_screen.dart';
 import '../../../shared/widgets/language_picker.dart';
+import '../../../core/update/version_gate.dart';
 
 class ProfileScreen extends ConsumerStatefulWidget {
   const ProfileScreen({super.key});
@@ -192,7 +193,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Version ${AppConfig.appVersion}',
+                  'Version $runningVersion',
                   style: TextStyle(
                     fontSize: 14,
                     color: scheme.onSurfaceVariant,

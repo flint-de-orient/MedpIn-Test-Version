@@ -20,6 +20,7 @@ import '../../profile/presentation/widgets/theme_selector.dart';
 import '../../../shared/providers/theme_provider.dart';
 import 'widgets/dietician_bell.dart';
 import '../../../shared/widgets/language_picker.dart';
+import '../../../core/update/version_gate.dart';
 
 /// The dietician's profile — the counterpart of the doctor's, minus the clinic
 /// tools they have no business in (alerts, knowledge base, patient feedback).
@@ -452,13 +453,13 @@ class _DieticianProfileScreenState
               ProfileRow(
                 icon: Icons.info_outline_rounded,
                 title: l10n.profileAbout,
-                value: 'v${AppConfig.appVersion}',
+                value: 'v$runningVersion',
                 showDivider: false,
                 onTap:
                     () => showAboutDialog(
                       context: context,
                       applicationName: AppConfig.appName,
-                      applicationVersion: 'v${AppConfig.appVersion}',
+                      applicationVersion: 'v$runningVersion',
                     ),
               ),
             ],

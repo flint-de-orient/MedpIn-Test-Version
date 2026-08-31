@@ -54,7 +54,19 @@ class AppConfig {
   static const String appName = 'MedPin';
 
   /// Shown in Profile → About. Kept in step with `version:` in pubspec.yaml.
-  static const String appVersion = '1.0.0';
+  /// The marketing version — "1.0.0".
+  ///
+  /// Read from the build rather than typed here. It was a hardcoded constant,
+  /// which meant bumping pubspec changed what the store saw and not a word of
+  /// what the app said about itself. The default is the same string it always
+  /// held, so a build made without the flag is no worse than before.
+  ///
+  /// See [runningVersion] for what to actually show a reader: this is half the
+  /// answer, and on a sideloaded pilot it is the less useful half.
+  static const String appVersion = String.fromEnvironment(
+    'APP_VERSION',
+    defaultValue: '1.0.0',
+  );
 
   /// Clinic contact number used by the emergency chat card's "Call clinic"
   /// button. Not part of API_CONTRACT.md (no endpoint exposes clinic

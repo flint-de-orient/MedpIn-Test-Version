@@ -18,6 +18,9 @@ set -euo pipefail
 cd "$(dirname "$0")"
 
 BUILD="$(grep -m1 '^version:' pubspec.yaml | sed 's/.*+//')"
+# Both halves are baked in. NAME used to be read only to print it, while the
+# app carried its own hardcoded '1.0.0' — so bumping pubspec changed what the
+# APK reported and not a word of what the app said about itself.
 NAME="$(grep -m1 '^version:' pubspec.yaml | sed 's/^version: *//; s/+.*//')"
 
 if ! [[ "$BUILD" =~ ^[0-9]+$ ]]; then
@@ -29,7 +32,9 @@ APK="build/app/outputs/flutter-apk/app-arm64-v8a-release.apk"
 BEFORE="$( [ -f "$APK" ] && date -r "$APK" +%s || echo 0 )"
 
 echo "Building ${NAME}+${BUILD}"
-flutter build apk --release --split-per-abi --dart-define="APP_BUILD=${BUILD}"
+flutter build apk --release --split-per-abi \
+  --dart-define="APP_BUILD=${BUILD}" \
+  --dart-define="APP_VERSION=${NAME}"
 
 # Proof, not an exit code.
 #

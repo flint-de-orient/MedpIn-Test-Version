@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-import '../config/app_config.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_spacing.dart';
 import 'version_gate.dart';
@@ -38,12 +37,9 @@ class AppUpdateSection extends ConsumerWidget {
     final status = async.valueOrNull;
 
     // The build actually running, not a constant somebody has to remember to
-    // bump. AppConfig.appVersion is the marketing version and says 1.0.0
-    // whatever is installed.
-    final running =
-        appBuildNumber > 0
-            ? '${AppConfig.appVersion} (${appBuildNumber})'
-            : AppConfig.appVersion;
+    // bump. This was the only screen that got it right; [runningVersion] is
+    // now the one place that knows how, and the other six use it too.
+    final running = runningVersion;
 
     final canUpdate = status?.canUpdate ?? false;
     final known = status != null && (status.latestBuild > 0);

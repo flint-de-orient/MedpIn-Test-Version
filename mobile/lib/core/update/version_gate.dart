@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../shared/providers/core_providers.dart';
+import '../config/app_config.dart';
 
 /// What the server says about app builds, and what this one is.
 ///
@@ -54,6 +55,25 @@ const VersionStatus _allClear = (
 const int appBuildNumber = int.fromEnvironment('APP_BUILD');
 
 const int _bakedBuild = appBuildNumber;
+
+/// What to show a reader who asks which version this is.
+///
+/// "1.0.0 (8112)", or just "1.0.0" when the build number was not baked in.
+///
+/// The build number is the half that matters here. Every APK in this pilot is
+/// 1.0.0 — the marketing version has not moved since the first one — so a
+/// screen showing only that cannot tell 8087 from 8112, which is precisely the
+/// question asked when a phone is behaving oddly. Seven screens showed the
+/// useless half; one showed both, and only because the update card happened to
+/// be written later.
+///
+/// A bare "1.0.0" is therefore also a signal: it means the APK was built
+/// without `--dart-define=APP_BUILD`, so the update check on that handset is
+/// switched off. See [appBuildNumber] and `build_release.sh`.
+String get runningVersion =>
+    appBuildNumber > 0
+        ? '${AppConfig.appVersion} ($appBuildNumber)'
+        : AppConfig.appVersion;
 
 final versionStatusProvider = FutureProvider<VersionStatus>((ref) async {
   final build = _bakedBuild;

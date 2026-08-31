@@ -24,6 +24,7 @@ import 'widgets/panel_ui.dart';
 import '../../../shared/providers/theme_provider.dart';
 import 'widgets/clinician_notification_sheet.dart';
 import '../../../shared/widgets/language_picker.dart';
+import '../../../core/update/version_gate.dart';
 
 /// Full profile for doctor and staff — the clinician counterpart of the patient
 /// [ProfileScreen]: avatar, edit details, appearance, language, app lock, a
@@ -738,13 +739,13 @@ class _ClinicianMoreScreenState extends ConsumerState<ClinicianMoreScreen> {
               ProfileRow(
                 icon: Icons.info_outline_rounded,
                 title: l10n.profileAbout,
-                value: 'v${AppConfig.appVersion}',
+                value: 'v$runningVersion',
                 showDivider: false,
                 onTap:
                     () => showAboutDialog(
                       context: context,
                       applicationName: AppConfig.appName,
-                      applicationVersion: 'v${AppConfig.appVersion}',
+                      applicationVersion: 'v$runningVersion',
                     ),
               ),
             ],
@@ -797,7 +798,7 @@ class _ClinicianMoreScreenState extends ConsumerState<ClinicianMoreScreen> {
           const SizedBox(height: AppSpacing.md),
           Center(
             child: Text(
-              'MedPin v${AppConfig.appVersion}',
+              'MedPin v$runningVersion',
               style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant),
             ),
           ),
