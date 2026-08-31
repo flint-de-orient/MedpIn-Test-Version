@@ -1039,7 +1039,9 @@ router.post(
 
     await DietPlan.updateOne({ _id: plan._id }, { sharedAt: new Date() });
     await PatientProfile.updateOne({ user: req.params.id }, { lastDietReviewAt: new Date() });
-    notifyPatientOfClinicianReply(req.params.id, req.user, content).catch(() => {});
+    notifyPatientOfClinicianReply(req.params.id, req.user, content, {
+      threadKind: 'nutrition',
+    }).catch(() => {});
 
     res.status(201).json({ id: String(message._id) });
   }),
@@ -1185,7 +1187,9 @@ ${note}`;
         content,
         log.photo ? [log.photo] : [],
       );
-      notifyPatientOfClinicianReply(req.params.id, req.user, note).catch(() => {});
+      notifyPatientOfClinicianReply(req.params.id, req.user, note, {
+        threadKind: 'nutrition',
+      }).catch(() => {});
     }
 
     log.reviewedAt = reviewed ? new Date() : null;
@@ -1257,7 +1261,9 @@ router.post(
       { patient: req.params.id, reviewedAt: null },
       { reviewedAt: now, reviewedBy: req.user._id },
     );
-    notifyPatientOfClinicianReply(req.params.id, req.user, req.body.content).catch(() => {});
+    notifyPatientOfClinicianReply(req.params.id, req.user, req.body.content, {
+      threadKind: 'nutrition',
+    }).catch(() => {});
 
     res.status(201).json({ id: String(message._id) });
   }),

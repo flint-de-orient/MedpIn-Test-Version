@@ -143,11 +143,30 @@ class PushService {
       // opens the chat, which is always a safe place to land.
       switch (data['kind']?.toString()) {
         case 'prescription':
+        case 'medication_change':
           router.go('/medications');
         case 'glucose_checkin':
           router.go('/home');
         case 'lab_upload':
           router.go('/profile/tests');
+        // The dietician's thread, which lives at /food-log rather than /chat.
+        //
+        // These fell through to the care thread, so a patient tapping "your
+        // dietician replied" landed in the doctor's conversation and found
+        // nothing new there — the message they were told about was one screen
+        // away, in a thread the notification never mentioned.
+        case 'dietician_reply':
+        case 'nutrition_message':
+        case 'nutrition':
+          router.go('/food-log');
+        // Anything about a time: when it is, that it moved, that one opened.
+        case 'appointment_change_patient':
+        case 'appointment_tomorrow':
+        case 'slot_freed':
+          router.go('/appointments');
+        // The care thread is the safe landing for anything unrecognised — it
+        // is where the clinic talks to them, and an older app meeting a newer
+        // server ends up here rather than nowhere.
         default:
           router.go('/chat');
       }
@@ -161,6 +180,15 @@ class PushService {
     // work for the clinic panel" was notifications that worked and then went
     // nowhere.
     final area = user.role == 'staff' ? '/staff' : '/clinician';
+
+    // The doctor's own day, not a patient. These carry no patientId and used
+    // to fall through to the alerts screen, which is a list of clinical alarms
+    // and says nothing about tomorrow's list.
+    final kind = data['kind']?.toString();
+    if (kind == 'schedule_digest') {
+      router.go(area == '/staff' ? '/staff/today' : '/clinician/appointments');
+      return;
+    }
 
     final patientId = data['patientId']?.toString();
     if (patientId != null && patientId.isNotEmpty) {

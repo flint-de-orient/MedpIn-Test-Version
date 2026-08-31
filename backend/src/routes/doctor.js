@@ -1557,7 +1557,9 @@ router.post(
       $inc: { messageCount: 1 },
       flaggedForReview: false,
     });
-    notifyPatientOfClinicianReply(session.patient, req.user, req.body.content).catch(() => {});
+    notifyPatientOfClinicianReply(session.patient, req.user, req.body.content, {
+      threadKind: session.kind === 'nutrition' ? 'nutrition' : 'care',
+    }).catch(() => {});
 
     res.status(201).json({ ok: true, sessionId: String(session._id) });
   }),

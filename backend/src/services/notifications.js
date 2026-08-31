@@ -286,14 +286,34 @@ export async function notifyPatient(patientId, alert) {
 }
 
 /** The clinic has replied inside the patient's assistant thread. */
-export async function notifyPatientOfClinicianReply(patientId, clinician, content) {
+export async function notifyPatientOfClinicianReply(
+  patientId,
+  clinician,
+  content,
+  { threadKind = 'care' } = {},
+) {
   const patient = await User.findById(patientId).select('deviceTokens').lean();
   await deliver({
     tokens: patient?.deviceTokens ?? [],
     title: `${clinician.name} replied`,
     body: content.slice(0, 180),
     // `kind` lets the app route the tap straight to the conversation.
-    data: { kind: 'clinician_reply', patientId: patientId.toString() },
+    // Which thread this landed in, not who wrote it.
+    //
+    // Every clinician reply said `clinician_reply`, and the app maps that to
+    // the care thread — so a dietician answering "can I eat this?" refreshed
+    // the doctor's conversation and left the nutrition one, the one that had
+    // actually changed, showing nothing. Tapping the notification opened the
+    // wrong thread too. The app already had a `dietician_reply` branch waiting
+    // for a message that was never sent.
+    //
+    // Keyed on the thread rather than the sender's role because a doctor can
+    // step into the nutrition thread to guide a dietician, and when he does the
+    // patient's nutrition thread is still the one to open.
+    data: {
+      kind: threadKind === 'nutrition' ? 'dietician_reply' : 'clinician_reply',
+      patientId: patientId.toString(),
+    },
   });
 }
 
