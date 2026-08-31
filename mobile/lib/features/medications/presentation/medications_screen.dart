@@ -147,9 +147,21 @@ class _MedicationsScreenState extends ConsumerState<MedicationsScreen>
       }
     });
 
-    // Re-arm when today's statuses change too — so marking a dose taken cancels
-    // today's alarm for that slot (the refetched schedule shows it taken, and
-    // the rebuild leaves it out) instead of nagging for a dose already taken.
+    // Re-arm when today's statuses change too.
+    //
+    // This comment used to say that marking a dose taken cancels that day's
+    // alarm for the slot. It does not, and has not since the reminders became
+    // daily repeats: buildUpcomingDoses ignores the statuses entirely — its own
+    // doc says `today` is accepted for call-site compatibility and no longer
+    // used — because a repeat that survives a reboot is worth more than one
+    // that can be silenced for a day, and a patient who ticks a dose early
+    // should still be reminded tomorrow.
+    //
+    // Left in place because it is still the right trigger: a dose logged from
+    // this screen is also the moment a *changed* prescription is most likely to
+    // have arrived, and re-arming here costs nothing. But somebody debugging
+    // "why did the alarm still ring" would have read the old sentence and
+    // believed it.
     ref.listen<AsyncValue<TodaySchedule>>(todayScheduleProvider, (_, next) {
       if (ref.read(appPreferencesProvider).medicationReminders) {
         next.whenData(
