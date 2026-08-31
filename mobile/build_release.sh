@@ -27,6 +27,58 @@ if ! [[ "$BUILD" =~ ^[0-9]+$ ]]; then
   echo "Could not read a build number from pubspec.yaml (got '${BUILD}')" >&2
   exit 1
 fi
+if ! [[ "$NAME" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+  echo "Version must be MAJOR.MINOR.PATCH in pubspec.yaml (got '${NAME}')" >&2
+  exit 1
+fi
+
+# ---- The version moves here, not by hand -----------------------------------
+#
+# This script used to read pubspec and never write it, so every release needed
+# somebody to remember to edit the file first. That is the same class of step as
+# the --dart-define this script exists to stop people forgetting, and it was
+# forgotten in the same way: a dozen builds went out as 1.0.0+n with the number
+# nudged by hand, twice not at all.
+#
+# The build number always increases. It is not a decision — Android refuses to
+# install an APK whose versionCode is not higher than the one already there, so
+# a rebuild that reuses a number is a rebuild nobody can install over the top.
+#
+# The marketing version is a decision, which is why it takes a word rather than
+# climbing on its own. A recompile is not a patch release; 1.0.1 -> 1.0.2 should
+# mean something changed for the person holding the phone. `patch` is the
+# default because most releases are, and it counts past nine the ordinary way:
+# 1.0.9 -> 1.0.10 -> 1.0.11.
+#
+#   ./build_release.sh          1.0.1+8114 -> 1.0.2+8115   (the usual case)
+#   ./build_release.sh minor    1.0.9+8120 -> 1.1.0+8121
+#   ./build_release.sh major    1.9.3+8140 -> 2.0.0+8141
+#   ./build_release.sh same     1.0.2+8115 -> 1.0.2+8116   (rebuild to test)
+BUMP="${1:-patch}"
+IFS='.' read -r MAJOR MINOR PATCH <<< "$NAME"
+
+case "$BUMP" in
+  patch) PATCH=$((PATCH + 1)) ;;
+  minor) MINOR=$((MINOR + 1)); PATCH=0 ;;
+  major) MAJOR=$((MAJOR + 1)); MINOR=0; PATCH=0 ;;
+  same)  ;;
+  *)
+    echo "usage: $0 [patch|minor|major|same]   (default: patch)" >&2
+    exit 1
+    ;;
+esac
+
+PREV="${NAME}+${BUILD}"
+NAME="${MAJOR}.${MINOR}.${PATCH}"
+BUILD=$((BUILD + 1))
+
+# Written before the build, so what is baked into the APK and what is in the
+# repository can never disagree. A build that then fails leaves the number
+# skipped, which costs nothing: build numbers only have to increase, and a gap
+# in the marketing version is cheaper than shipping two different things under
+# one name.
+sed -i "s/^version: .*/version: ${NAME}+${BUILD}/" pubspec.yaml
+echo "Version ${PREV} -> ${NAME}+${BUILD}"
 
 APK="build/app/outputs/flutter-apk/app-arm64-v8a-release.apk"
 BEFORE="$( [ -f "$APK" ] && date -r "$APK" +%s || echo 0 )"
@@ -51,14 +103,7 @@ fi
 
 cat <<EOF
 
-Built ${NAME}+${BUILD}.
+Built ${NAME}
 
-On the server, the matching settings are:
-
-  ANDROID_LATEST_BUILD=${BUILD}
-  ANDROID_LATEST_VERSION=${NAME}
-
-Raise ANDROID_MIN_BUILD to ${BUILD} only when older builds are genuinely broken
-against the server — it locks every older install out of the app entirely, and
-only builds that already carry the gate can be told why.
+On the server:  ANDROID_LATEST_VERSION=${NAME}
 EOF
