@@ -1198,7 +1198,19 @@ class _DieticianSection extends ConsumerWidget {
                 ),
                 const SizedBox(height: 0),
                 Text(
-                  restricted ? name : 'Covered by clinic dietician',
+                  // Three states, not two.
+                  //
+                  // "Covered by clinic dietician" was the default for anyone
+                  // without an explicit assignment, which was true while the
+                  // clinic had one. With none on file it is a sentence the
+                  // record states about every patient and nobody is behind —
+                  // and it reads as reassurance, which is the worst way for a
+                  // gap in cover to present itself.
+                  restricted
+                      ? name
+                      : dieticianCount == 0
+                      ? 'No dietician'
+                      : 'Covered by clinic dietician',
                   style: const TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.w700,
@@ -1207,6 +1219,8 @@ class _DieticianSection extends ConsumerWidget {
                 Text(
                   restricted
                       ? 'Restricted to this dietician only'
+                      : dieticianCount == 0
+                      ? 'Nobody is covering nutrition for this clinic'
                       : 'The clinic dietician covers this patient',
                   style: TextStyle(
                     fontSize: 12,

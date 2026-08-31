@@ -160,6 +160,26 @@ class AppUpdateSection extends ConsumerWidget {
             ],
           ),
 
+          // Said in words rather than implied by a missing bracket.
+          //
+          // An APK built without --dart-define=APP_BUILD reports no build
+          // number, so the gate cannot compare anything and switches itself
+          // off. That used to be visible only as an absent "(8115)" after the
+          // version — which nobody would read as "this phone will never be told
+          // about an update", because it does not say that.
+          if (updateChecksDisabled) ...[
+            const SizedBox(height: 6),
+            Text(
+              'This build cannot check for updates. Rebuild with '
+              'build_release.sh.',
+              style: TextStyle(
+                fontSize: 12,
+                height: 1.35,
+                color: AppColors.warningOn(context),
+              ),
+            ),
+          ],
+
           if (canUpdate && url != null && url.isNotEmpty) ...[
             const SizedBox(height: AppSpacing.md),
             SizedBox(

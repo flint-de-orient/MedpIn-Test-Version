@@ -70,10 +70,16 @@ const int _bakedBuild = appBuildNumber;
 /// A bare "1.0.0" is therefore also a signal: it means the APK was built
 /// without `--dart-define=APP_BUILD`, so the update check on that handset is
 /// switched off. See [appBuildNumber] and `build_release.sh`.
-String get runningVersion =>
-    appBuildNumber > 0
-        ? '${AppConfig.appVersion} ($appBuildNumber)'
-        : AppConfig.appVersion;
+String get runningVersion => AppConfig.appVersion;
+
+/// True when this APK was built without `--dart-define=APP_BUILD`.
+///
+/// The build number used to be printed in brackets after the version, partly so
+/// its absence would show that the flag had been missed. That put a number
+/// nobody outside development reads onto a screen a receptionist looks at — so
+/// the version stands alone and the missing flag says so in words instead,
+/// which was always the clearer way to say it.
+bool get updateChecksDisabled => appBuildNumber <= 0;
 
 final versionStatusProvider = FutureProvider<VersionStatus>((ref) async {
   final build = _bakedBuild;
