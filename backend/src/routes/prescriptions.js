@@ -19,6 +19,7 @@ import { AiUnavailableError } from '../services/ai/gemini.js';
 import { User, ROLES } from '../models/User.js';
 import { ensurePrescriptionPdf } from '../services/prescriptionPdf.js';
 import { paged, pageParams } from '../utils/pagination.js';
+import { resolveDoctor } from '../services/doctorContext.js';
 
 const router = Router({ mergeParams: true });
 router.use(requireAuth, resolvePatientScope);
@@ -396,11 +397,10 @@ router.post(
     });
     if (!asset) throw notFound('That file was not found');
 
-    // The doctor whose prescription this is. Single-doctor clinic today; the
-    // lookup rather than a constant is what keeps a second one possible.
-    const doctor = await User.findOne({ role: ROLES.DOCTOR, isActive: true })
-      .select('_id')
-      .lean();
+    // The doctor whose prescription this is — the field that says who is
+    // answerable for it. `required`, so an ambiguous answer is an error rather
+    // than a coin flip over an attribution on a legal document.
+    const doctor = await resolveDoctor({ actingUser: req.user, required: true });
     if (!doctor) throw notFound('No doctor account to file this against');
 
     const created = await Prescription.create({

@@ -9,6 +9,7 @@ import { User, ROLES } from '../models/User.js';
 import { generateSlots } from '../services/scheduling.js';
 import { forgetClinicIdentity } from '../services/clinicIdentity.js';
 import { dayjs, DATE_RE, TIME_RE } from '../utils/clinicTime.js';
+import { resolveDoctor } from '../services/doctorContext.js';
 
 const router = Router();
 router.use(requireAuth);
@@ -100,8 +101,10 @@ router.post(
   validate({ body: clinicBody }),
   audit('create', 'Clinic'),
   asyncHandler(async (req, res) => {
-    // Tie the schedule to the clinic (the single doctor today).
-    const doctor = await User.findOne({ role: ROLES.DOCTOR }).select('_id').lean();
+    // A doctor adding a clinic is adding their own, which is the case the old
+    // lookup missed: it went hunting for "the doctor" while one was making the
+    // request. Staff adding one falls through to the practice's head doctor.
+    const doctor = await resolveDoctor({ actingUser: req.user });
     const clinic = await Clinic.create({ ...req.body, doctor: doctor?._id });
     res.status(201).json({ clinic: clinic.toPublic() });
   }),

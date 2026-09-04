@@ -23,6 +23,7 @@ import {
 import { ACTIVE_STATUSES, isSlotBookable } from '../services/scheduling.js';
 import { paged, pageParams, dateRange } from '../utils/pagination.js';
 import { postCareThreadNote } from '../services/careThreadNote.js';
+import { resolveDoctor } from '../services/doctorContext.js';
 
 const router = Router();
 router.use(requireAuth);
@@ -109,9 +110,14 @@ router.post(
     const patientId = isPatient(req) ? req.user._id : req.body.patientId;
     if (!patientId) throw badRequest('patientId is required');
 
-    const doctor = req.body.doctorId
-      ? await User.findOne({ _id: req.body.doctorId, role: ROLES.DOCTOR })
-      : await User.findOne({ role: ROLES.DOCTOR });
+    // The chosen clinic already records its doctor, so a booking at the Salt
+    // Lake branch lands on the doctor who sits there rather than on whichever
+    // row the database returned first.
+    const doctor = await resolveDoctor({
+      explicitId: req.body.doctorId,
+      clinicId,
+      required: true,
+    });
     if (!doctor) throw badRequest('No doctor is available for booking');
 
     // An in-clinic visit must land on a real, free slot of the chosen clinic's
@@ -258,7 +264,16 @@ router.post(
     const patientId = isPatient(req) ? req.user._id : req.body.patientId;
     if (!patientId) throw badRequest('patientId is required');
 
-    const doctor = await User.findOne({ role: ROLES.DOCTOR });
+    // No clinic is chosen yet — this is a request, and the desk gives it a time
+    // later. So it goes to the doctor this patient is already under, which is
+    // the one they mean when they ask for an appointment.
+    const enrolled = await PatientProfile.findOne({ user: patientId })
+      .select('assignedDoctor')
+      .lean();
+    const doctor = await resolveDoctor({
+      explicitId: enrolled?.assignedDoctor,
+      required: true,
+    });
     if (!doctor) throw badRequest('No doctor is available for booking');
 
     // One open request at a time. A patient who taps twice, or asks again next
@@ -635,10 +650,15 @@ async function offerFreedSlotToWaitlist(appointment) {
 
     if (!entries.length) return;
 
-    const profiles = await PatientProfile.find({ patient: { $in: entries.map((e) => e.patient._id) } })
-      .select('patient riskScore')
+    // `user`, not `patient` — PatientProfile keys on the User it belongs to and
+    // has no `patient` field at all. Queried by the wrong name this matched
+    // nothing, every risk score came back 0, and the sort below compared zero
+    // to zero: the waitlist was notified in whatever order Mongo returned it,
+    // so the sickest patient had no more claim on a freed slot than anyone else.
+    const profiles = await PatientProfile.find({ user: { $in: entries.map((e) => e.patient._id) } })
+      .select('user riskScore')
       .lean();
-    const risk = new Map(profiles.map((p) => [p.patient.toString(), p.riskScore ?? 0]));
+    const risk = new Map(profiles.map((p) => [p.user.toString(), p.riskScore ?? 0]));
     entries.sort((a, b) => (risk.get(b.patient._id.toString()) ?? 0) - (risk.get(a.patient._id.toString()) ?? 0));
 
     await notifyWaitlistOfFreedSlot(entries, appointment);

@@ -43,6 +43,7 @@ import { paged, pageParams } from '../utils/pagination.js';
 import { logger } from '../config/logger.js';
 import { env } from '../config/env.js';
 import { phoneFromToken } from '../services/otp.js';
+import { resolveDoctor } from '../services/doctorContext.js';
 
 const router = Router();
 router.use(requireAuth, requireClinician);
@@ -638,9 +639,10 @@ router.post(
     // reads out is a credential in a waiting room.
     await user.save();
 
-    // Single-doctor clinic: assign the patient to the doctor so dietician/care
-    // scoping and the worklist behave as they do for a self-signed-up patient.
-    const doctor = await User.findOne({ role: ROLES.DOCTOR }).select('_id').lean();
+    // Assign the patient so dietician/care scoping and the worklist behave as
+    // they do for a self-signed-up patient. A doctor registering someone takes
+    // them on; the desk registering someone falls through to the head doctor.
+    const doctor = await resolveDoctor({ actingUser: req.user });
 
     await PatientProfile.create({
       user: user._id,

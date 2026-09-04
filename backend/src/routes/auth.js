@@ -17,6 +17,7 @@ import { getClinicSettings } from '../models/ClinicSettings.js';
 import { Medication } from '../models/Medication.js';
 import { recomputeSchedule } from '../services/medicationSchedule.js';
 import { toE164 } from '../utils/phone.js';
+import { resolveDoctor } from '../services/doctorContext.js';
 
 const router = Router();
 
@@ -287,7 +288,11 @@ router.post(
     // Only patients get a clinical profile. Neither a dietician nor a
     // receptionist has a diabetes record.
     if (role === ROLES.PATIENT) {
-      const doctor = await User.findOne({ role: ROLES.DOCTOR }).select('_id').lean();
+      // Assignment, not attribution: `assignedDoctor` is optional, and a
+      // patient with none is one the desk assigns later. So this asks without
+      // `required` — an ambiguous answer leaves the field unset rather than
+      // failing a registration.
+      const doctor = await resolveDoctor({});
       const { heightCm, weightKg, systolic, diastolic, pulse, spo2, glucoseMgDl, complaints } = req.body;
       await PatientProfile.create({
         user: user._id,
