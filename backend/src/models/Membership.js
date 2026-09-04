@@ -37,6 +37,63 @@ export const MEMBERSHIP_STATUS = Object.freeze({
   SUSPENDED: 'suspended',
 });
 
+/**
+ * What a membership may do. Stored as a set, not derived from the role.
+ *
+ * The set exists from the first row because retrofitting it later is a
+ * migration across every route that ever asked "is this a doctor". Roles do
+ * not extend: a practice manager needs MANAGE_STAFF without PRESCRIBE, and a
+ * locum needs PRESCRIBE without MANAGE_STAFF. Neither is expressible as a rank.
+ */
+export const PERMISSIONS = Object.freeze({
+  VIEW_PATIENT: 'VIEW_PATIENT',
+  EDIT_RECORD: 'EDIT_RECORD',
+  PRESCRIBE: 'PRESCRIBE',
+  MANAGE_STAFF: 'MANAGE_STAFF',
+  MANAGE_DEPARTMENT: 'MANAGE_DEPARTMENT',
+  VIEW_AUDIT: 'VIEW_AUDIT',
+  SHARE_RECORDS: 'SHARE_RECORDS',
+});
+
+/**
+ * The three presets every membership is seeded from.
+ *
+ * Deliberately not an editor. A permission matrix nobody has asked for is a
+ * support burden and a way to lock a clinic out of its own records on a Sunday,
+ * so the set is stored per row — which is what makes a custom one possible
+ * later — and populated only from these until a customer needs otherwise.
+ *
+ * PRESCRIBE is granted here but gated again at the point of use: a doctor whose
+ * registration number MedPin has not verified holds the permission and still
+ * cannot sign. The permission says what the practice allows; verification says
+ * what the platform allows.
+ */
+const P = PERMISSIONS;
+export const PRESETS = Object.freeze({
+  head: [
+    P.VIEW_PATIENT,
+    P.EDIT_RECORD,
+    P.PRESCRIBE,
+    P.MANAGE_STAFF,
+    P.MANAGE_DEPARTMENT,
+    P.VIEW_AUDIT,
+    P.SHARE_RECORDS,
+  ],
+  clinician: [P.VIEW_PATIENT, P.EDIT_RECORD, P.PRESCRIBE],
+  // The desk registers people, books them and takes their weight. It does not
+  // prescribe, and it does not read the audit log of who looked at whom.
+  desk: [P.VIEW_PATIENT, P.EDIT_RECORD],
+});
+
+/** The preset a role starts from. Owners are heads whatever their role says. */
+export function presetFor({ role, isOwner = false }) {
+  if (isOwner) return [...PRESETS.head];
+  if (role === 'doctor') return [...PRESETS.clinician];
+  // A dietician edits plans and reads the patients assigned to them; the
+  // assignment check lives in /dietician and is not replaced by this.
+  return [...PRESETS.desk];
+}
+
 const membershipSchema = new mongoose.Schema(
   {
     user: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, index: true },
@@ -63,6 +120,18 @@ const membershipSchema = new mongoose.Schema(
     /// person a doctor OR an owner" at every clinical check, and the day
     /// somebody forgets the second half is the day an owner cannot prescribe.
     isOwner: { type: Boolean, default: false },
+
+    /// The actual grant. Seeded from a preset, stored per row.
+    ///
+    /// Read by the authorisation middleware rather than inferred from `role`,
+    /// so that the day a practice needs a manager who administers but does not
+    /// prescribe, it is a value on this row and not a new role threaded through
+    /// every guard in the app.
+    permissions: {
+      type: [String],
+      enum: Object.values(PERMISSIONS),
+      default: [],
+    },
 
     status: {
       type: String,
@@ -99,6 +168,25 @@ membershipSchema.index({ practice: 1, status: 1, role: 1 });
 membershipSchema.methods.isCurrent = function isCurrent() {
   return this.status === MEMBERSHIP_STATUS.ACTIVE && this.endedOn == null;
 };
+
+/**
+ * Whether this membership grants an action, here, now.
+ *
+ * Deliberately one method rather than a permission check and a separate
+ * status check at each call site: a suspended member holding PRESCRIBE would
+ * pass the obvious `permissions.includes(...)` and should not.
+ */
+membershipSchema.methods.can = function can(permission) {
+  return this.isCurrent() && (this.permissions ?? []).includes(permission);
+};
+
+/// Seed the grant on the way in, so no row can exist without one.
+membershipSchema.pre('validate', function seedPermissions(next) {
+  if (!this.permissions?.length) {
+    this.permissions = presetFor({ role: this.role, isOwner: this.isOwner });
+  }
+  next();
+});
 
 /**
  * The practices this person currently belongs to.

@@ -266,11 +266,23 @@ class _Locations extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Closing a clinic is a soft delete — the row stays with `isActive: false`
+    // so appointments already booked there keep a valid reference. So the list
+    // holds places the practice no longer opens, and the heading must not count
+    // them: "2 locations" beside one that says Closed is the screen arguing
+    // with itself.
+    final open = locations.where((l) => l.isActive).toList();
+    final closed = locations.where((l) => !l.isActive).toList();
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _Heading(
-          title: locations.length == 1 ? 'One location' : '${locations.length} locations',
+          title: switch (open.length) {
+            0 => 'No open locations',
+            1 => 'One location',
+            _ => '${open.length} locations',
+          },
           actionLabel: 'Manage',
           onAction: () => context.push('/clinician/clinics'),
         ),
@@ -280,11 +292,27 @@ class _Locations extends StatelessWidget {
             'No locations yet. Patients cannot book until there is one.',
             style: T.small.copyWith(color: T.inkMuted),
           )
-        else
-          for (final loc in locations) ...[
+        else ...[
+          for (final loc in open) ...[
             _LocationRow(location: loc),
-            if (loc != locations.last) const SizedBox(height: T.s3),
+            if (loc != open.last) const SizedBox(height: T.s3),
           ],
+          // Kept visible rather than hidden. A doctor wondering why a clinic
+          // vanished from the app should find it here saying Closed, instead of
+          // concluding it was deleted.
+          if (closed.isNotEmpty) ...[
+            if (open.isNotEmpty) const SizedBox(height: T.s5),
+            Text(
+              closed.length == 1 ? 'Closed' : 'Closed (${closed.length})',
+              style: T.label.copyWith(color: T.inkFaint),
+            ),
+            const SizedBox(height: T.s2),
+            for (final loc in closed) ...[
+              _LocationRow(location: loc),
+              if (loc != closed.last) const SizedBox(height: T.s3),
+            ],
+          ],
+        ],
       ],
     );
   }

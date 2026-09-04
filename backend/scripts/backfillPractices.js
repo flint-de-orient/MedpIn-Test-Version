@@ -29,7 +29,7 @@ import { env } from '../src/config/env.js';
 import { Clinic } from '../src/models/Clinic.js';
 import { Practice, PRACTICE_STATUS, VERIFICATION } from '../src/models/Practice.js';
 import { User, ROLES } from '../src/models/User.js';
-import { Membership, MEMBERSHIP_STATUS } from '../src/models/Membership.js';
+import { Membership, MEMBERSHIP_STATUS, presetFor } from '../src/models/Membership.js';
 
 const apply = process.argv.includes('--apply');
 
@@ -147,6 +147,14 @@ async function main() {
           role: person.role,
           // The head doctor owns the practice. Everyone else is added by them.
           isOwner: String(person._id) === String(headDoctor ?? ''),
+          // Seeded here as well as in the model's pre-validate hook, because
+          // updateOne with upsert never constructs a document and so never
+          // runs it. A row inserted with no grant would be a member who can
+          // do nothing the moment the middleware starts reading grants.
+          permissions: presetFor({
+            role: person.role,
+            isOwner: String(person._id) === String(headDoctor ?? ''),
+          }),
           status: MEMBERSHIP_STATUS.ACTIVE,
           startedOn: new Date(),
           endedOn: null,
