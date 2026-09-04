@@ -20,6 +20,7 @@ import appVersionRoutes from './appVersion.js';
 import dashboardRoutes from './dashboard.js';
 import doctorRoutes from './doctor.js';
 import departmentRoutes from './departments.js';
+import practiceRoutes from './practices.js';
 import dieticianRoutes from './dietician.js';
 import feedbackRoutes from './feedback.js';
 import uploadRoutes from './uploads.js';
@@ -79,6 +80,9 @@ router.use('/doctor', doctorRoutes);
 // Specialties and who practises in them. Its own router: `doctor.js` is
 // already two thousand lines, and a subject with its own models earns one.
 router.use('/departments', departmentRoutes);
+// The practice above the clinics. Separate from `clinics.js`, which is about
+// places and their opening hours; this is about who the practice is.
+router.use('/practices', practiceRoutes);
 router.use('/dietician', dieticianRoutes);
 router.use('/feedback', feedbackRoutes);
 // Prescribing aid: brand -> composition, for autocomplete and the strength check.

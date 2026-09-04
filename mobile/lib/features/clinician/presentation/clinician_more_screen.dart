@@ -538,6 +538,12 @@ class _ClinicianMoreScreenState extends ConsumerState<ClinicianMoreScreen> {
               // afterthoughts, and left the reader guessing which of "Chat
               // review" and "Patient feedback" held the thing they wanted.
               ProfileRow(
+                icon: Icons.local_hospital_outlined,
+                title: 'Practice',
+                subtitle: 'Letterhead, locations and who works here',
+                onTap: () => context.push('/clinician/practice'),
+              ),
+              ProfileRow(
                 icon: Icons.notification_important_outlined,
                 title: 'Clinical alerts',
                 subtitle: 'Readings and symptoms that need a look',
