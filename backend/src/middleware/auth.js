@@ -1,6 +1,7 @@
 import { verifyAccessToken } from '../services/tokens.js';
 import { User, ROLES } from '../models/User.js';
 import { unauthorized, forbidden, asyncHandler } from './errors.js';
+import { assertSamePractice } from './practiceScope.js';
 
 /** Populates req.user from the bearer token. */
 export const requireAuth = asyncHandler(async (req, res, next) => {
@@ -79,6 +80,16 @@ export const resolvePatientScope = asyncHandler(async (req, res, next) => {
   }
   const patient = await User.findOne({ _id: requested, role: ROLES.PATIENT });
   if (!patient) throw forbidden('Unknown patient');
+
+  // "Any patient in the clinic" was true while there was one clinic. With two,
+  // a clinician at one could open records at the other, and every clinical
+  // route funnels through here — so this is where that closes.
+  //
+  // It refuses only on a proven mismatch and permits whenever either side's
+  // practice is unknown, which is every request until the backfill runs. A
+  // check that denied on missing data would lock the working clinic out of its
+  // own records the day it deployed.
+  await assertSamePractice(req, patient._id);
 
   req.patientId = patient._id;
   req.patientUser = patient;
