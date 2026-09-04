@@ -8,6 +8,7 @@ import { audit } from '../middleware/audit.js';
 import { Practice } from '../models/Practice.js';
 import { Clinic } from '../models/Clinic.js';
 import { User, ROLES } from '../models/User.js';
+import { Membership } from '../models/Membership.js';
 import { forgetClinicIdentity } from '../services/clinicIdentity.js';
 
 /**
@@ -59,6 +60,25 @@ const READINESS = [
   { key: 'tagline', blocking: false, label: 'Tagline', prints: 'the line under the name' },
 ];
 
+/** Role counts from a membership aggregate, or null when there are none yet. */
+function countsFrom(rows) {
+  if (!rows?.length) return null;
+  return {
+    doctors: rows.find((r) => r._id === ROLES.DOCTOR)?.count ?? 0,
+    staff: rows.find((r) => r._id === ROLES.STAFF)?.count ?? 0,
+    dieticians: rows.find((r) => r._id === ROLES.DIETICIAN)?.count ?? 0,
+  };
+}
+
+/** The pre-membership answer: every active clinician on the deployment. */
+async function countsFromRoles() {
+  const rows = await User.aggregate([
+    { $match: { role: { $in: [ROLES.DOCTOR, ROLES.STAFF, ROLES.DIETICIAN] }, isActive: true } },
+    { $group: { _id: '$role', count: { $sum: 1 } } },
+  ]);
+  return countsFrom(rows) ?? { doctors: 0, staff: 0, dieticians: 0 };
+}
+
 function readinessOf(practice) {
   const missing = READINESS.filter((f) => !practice?.[f.key]).map((f) => ({
     key: f.key,
@@ -85,16 +105,31 @@ function readinessOf(practice) {
 router.get(
   '/mine',
   asyncHandler(async (req, res) => {
-    // Through the clinician's clinic, since membership does not exist yet.
-    // When it does, this becomes a Membership lookup and nothing else here
-    // changes — which is why the shape is "the practice" and not "the clinic".
-    const clinic = await Clinic.findOne({ isActive: true })
-      .sort({ sortIndex: 1, createdAt: 1 })
+    // The caller's own membership first. Falling back to the primary clinic
+    // covers the window between this deploying and the backfill running — and
+    // any account that predates memberships — so nobody loses the screen
+    // waiting for a migration.
+    const membership = await Membership.findOne({
+      user: req.user.id ?? req.user._id,
+      status: 'active',
+      endedOn: null,
+    })
       .populate('practice')
       .lean();
 
-    const practice =
-      clinic?.practice && typeof clinic.practice === 'object' ? clinic.practice : null;
+    let practice =
+      membership?.practice && typeof membership.practice === 'object'
+        ? membership.practice
+        : null;
+
+    if (!practice) {
+      const clinic = await Clinic.findOne({ isActive: true })
+        .sort({ sortIndex: 1, createdAt: 1 })
+        .populate('practice')
+        .lean();
+      practice =
+        clinic?.practice && typeof clinic.practice === 'object' ? clinic.practice : null;
+    }
 
     if (!practice) {
       // Not an error. It is every deployment that has not run the backfill,
@@ -104,8 +139,8 @@ router.get(
 
     const [locations, people] = await Promise.all([
       Clinic.find({ practice: practice._id }).sort({ sortIndex: 1, createdAt: 1 }).lean(),
-      User.aggregate([
-        { $match: { role: { $in: [ROLES.DOCTOR, ROLES.STAFF, ROLES.DIETICIAN] }, isActive: true } },
+      Membership.aggregate([
+        { $match: { practice: practice._id, status: 'active', endedOn: null } },
         { $group: { _id: '$role', count: { $sum: 1 } } },
       ]),
     ]);
@@ -123,11 +158,9 @@ router.get(
         overridesBrand: Boolean(c.tagline || c.registrationNo || c.logoLightAssetId),
         weeklyHourCount: (c.weeklyHours ?? []).length,
       })),
-      people: {
-        doctors: people.find((p) => p._id === ROLES.DOCTOR)?.count ?? 0,
-        staff: people.find((p) => p._id === ROLES.STAFF)?.count ?? 0,
-        dieticians: people.find((p) => p._id === ROLES.DIETICIAN)?.count ?? 0,
-      },
+      // Memberships when the backfill has run; the global role count until
+      // then, so a practice never reports having nobody in it.
+      people: countsFrom(people) ?? (await countsFromRoles()),
     });
   }),
 );

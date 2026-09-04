@@ -29,6 +29,7 @@ import { env } from '../src/config/env.js';
 import { Clinic } from '../src/models/Clinic.js';
 import { Practice, PRACTICE_STATUS, VERIFICATION } from '../src/models/Practice.js';
 import { User, ROLES } from '../src/models/User.js';
+import { Membership, MEMBERSHIP_STATUS } from '../src/models/Membership.js';
 
 const apply = process.argv.includes('--apply');
 
@@ -79,7 +80,13 @@ async function main() {
   console.log(`  brand taken from: ${primary.name}`);
   console.log(`  practice:         ${founding ? `existing — ${founding.name}` : 'to be created'}`);
   console.log(`  head doctor:      ${headDoctor ? String(headDoctor) : 'none — set it in the admin surface'}`);
+  const clinicianCount = await User.countDocuments({
+    role: { $in: [ROLES.DOCTOR, ROLES.STAFF, ROLES.DIETICIAN] },
+    isActive: true,
+  });
+  console.log(`  people to enrol:  ${clinicianCount}`);
   console.log('\n  brand fields stay on every clinic row; this only copies them up.');
+  console.log('  User.role is copied, never moved — nothing reads memberships yet.');
 
   if (!apply) {
     console.log('\nRe-run with --apply.\n');
@@ -113,7 +120,44 @@ async function main() {
     { $set: { practice: founding._id } },
   );
 
-  console.log(`  linked ${linked.modifiedCount} clinic row(s)\n`);
+  console.log(`  linked ${linked.modifiedCount} clinic row(s)`);
+
+  // Everyone already working here becomes a member of it. Without this the
+  // practice exists with nobody in it, and the first authorisation check that
+  // reads memberships would lock the whole clinic out.
+  //
+  // `User.role` is copied, not moved. Nothing reads memberships for
+  // authorisation yet, and flipping that over in the same commit that creates
+  // the rows is how a clinic finds itself logged out on a Monday morning.
+  const clinicians = await User.find({
+    role: { $in: [ROLES.DOCTOR, ROLES.STAFF, ROLES.DIETICIAN] },
+    isActive: true,
+  })
+    .select('_id role')
+    .lean();
+
+  let enrolled = 0;
+  for (const person of clinicians) {
+    // `$setOnInsert`, so a re-run never resets somebody whose role was
+    // corrected by hand after the first pass.
+    const res = await Membership.updateOne(
+      { user: person._id, practice: founding._id },
+      {
+        $setOnInsert: {
+          role: person.role,
+          // The head doctor owns the practice. Everyone else is added by them.
+          isOwner: String(person._id) === String(headDoctor ?? ''),
+          status: MEMBERSHIP_STATUS.ACTIVE,
+          startedOn: new Date(),
+          endedOn: null,
+        },
+      },
+      { upsert: true },
+    );
+    if (res.upsertedCount) enrolled += 1;
+  }
+
+  console.log(`  enrolled ${enrolled} of ${clinicians.length} clinician(s)`);
   console.log('Done. Nothing was removed from any clinic row.\n');
   await mongoose.disconnect();
 }
