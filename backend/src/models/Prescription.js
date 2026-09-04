@@ -44,6 +44,29 @@ const prescriptionSchema = new mongoose.Schema(
 
     pdfFile: { type: mongoose.Schema.Types.ObjectId, ref: 'MediaAsset' },
 
+    // ---- Letterhead --------------------------------------------------
+    //
+    // The clinic identity as it stood the day this was issued.
+    //
+    // Snapshotted rather than looked up at render time, for the same reason
+    // `chiefComplaint` above is: a prescription is a record of what was
+    // printed on a particular day. Reading the *current* clinic name every
+    // time the PDF is opened would let a settings screen silently
+    // re-letterhead every prescription ever issued — rewriting history by
+    // correcting a typo.
+    //
+    // Absent on rows issued before this existed; those fall back to the
+    // live identity, which is what they were already doing.
+    letterhead: {
+      clinicName: String,
+      tagline: String,
+      doctorName: String,
+      registrationNo: String,
+      phone: String,
+      addressLine: String,
+      city: String,
+    },
+
     /// How this prescription came to exist.
     ///
     /// `composed` is one written in the app: the doctor filled the consult

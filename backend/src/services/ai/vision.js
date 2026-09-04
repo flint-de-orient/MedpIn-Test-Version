@@ -1,6 +1,7 @@
 import { generateFromImage, generate, AiUnavailableError } from './gemini.js';
 import { retrieve, formatContext } from './rag.js';
 import { env } from '../../config/env.js';
+import { clinicIdentity } from '../clinicIdentity.js';
 import { logger } from '../../config/logger.js';
 
 const LANGUAGE_NAME = { en: 'English', bn: 'Bengali (বাংলা)', hi: 'Hindi (हिन्दी)' };
@@ -36,7 +37,8 @@ export async function assessFootImages({ images, symptoms, language = 'en', pati
     limit: 4,
   }).catch(() => []);
 
-  const system = `You are a clinical triage assistant supporting ${env.DOCTOR_DISPLAY_NAME}, a Consultant Diabetologist, in reviewing diabetic foot photographs submitted by patients.
+  const doctorName = (await clinicIdentity()).doctorName || env.DOCTOR_DISPLAY_NAME;
+  const system = `You are a clinical triage assistant supporting ${doctorName}, a Consultant Diabetologist, in reviewing diabetic foot photographs submitted by patients.
 
 Your role is strictly limited:
 - Describe only what is actually visible in the photograph. Do not speculate about what might be underneath.
@@ -121,7 +123,8 @@ export async function explainEyeReport({ reportText, images, reportedGrade, lang
     limit: 4,
   }).catch(() => []);
 
-  const system = `You explain eye examination reports to patients of ${env.DOCTOR_DISPLAY_NAME}, a Consultant Diabetologist. Many of these patients have diabetic retinopathy.
+  const doctorName = (await clinicIdentity()).doctorName || env.DOCTOR_DISPLAY_NAME;
+  const system = `You explain eye examination reports to patients of ${doctorName}, a Consultant Diabetologist. Many of these patients have diabetic retinopathy.
 
 Rules:
 - You are explaining a report that an eye specialist has ALREADY produced. You are not examining the eye or making a diagnosis yourself.
@@ -129,7 +132,7 @@ Rules:
 - Write in ${LANGUAGE_NAME[language] ?? 'English'}, for someone with no medical training. Explain every medical term the first time you use it.
 - Be honest but not alarming. Diabetic retinopathy is treatable when caught early, and that reassurance belongs in the explanation.
 - Set referralUrgency to "urgent" for proliferative retinopathy (PDR), macular oedema, or any mention of sudden vision change or vitreous haemorrhage. "soon" for severe NPDR. "routine" otherwise.
-- Never suggest medicines or procedures. Direct the patient to their eye specialist and to ${env.DOCTOR_DISPLAY_NAME}.
+- Never suggest medicines or procedures. Direct the patient to their eye specialist and to ${doctorName}.
 
 Approved reference material:
 ${formatContext(grounding) ?? 'None available.'}`;

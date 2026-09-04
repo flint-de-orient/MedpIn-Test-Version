@@ -10,6 +10,7 @@ import { classifyGlucose } from '../triage/engine.js';
 import { raiseAlert } from '../alerts.js';
 import { recomputePatientRisk } from '../analytics.js';
 import { env } from '../../config/env.js';
+import { clinicIdentity } from '../clinicIdentity.js';
 import { logger } from '../../config/logger.js';
 
 /**
@@ -57,7 +58,10 @@ const LAB_SCHEMA = {
   required: ['isLabReport', 'summary'],
 };
 
-const SYSTEM = `You transcribe pathology reports for ${env.CLINIC_NAME}. You are a reader, not a clinician.
+// A function, not a const: the module loads once and a practice is per
+// request. Built fresh each call so a second clinic's reports are
+// transcribed for that clinic.
+const buildSystem = (clinicName) => `You transcribe pathology reports for ${clinicName}. You are a reader, not a clinician.
 
 Rules:
 1. Report ONLY values printed on the page. Never estimate, never infer a value from another, never fill a gap with a typical figure. A field you cannot read is simply absent.
@@ -87,7 +91,7 @@ export async function extractLabValues(assetId) {
 
   const buffer = await assetBuffer(asset);
   const result = await generateFromImage({
-    system: SYSTEM,
+    system: buildSystem((await clinicIdentity()).clinicName || env.CLINIC_NAME),
     prompt: 'Transcribe this pathology report.',
     images: [{ mimeType: asset.mimeType, base64: buffer.toString('base64') }],
     responseSchema: LAB_SCHEMA,

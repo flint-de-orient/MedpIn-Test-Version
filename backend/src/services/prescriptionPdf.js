@@ -7,6 +7,7 @@ import dayjs from 'dayjs';
 import utc from 'dayjs/plugin/utc.js';
 import timezone from 'dayjs/plugin/timezone.js';
 import { env } from '../config/env.js';
+import { identitySnapshot } from './clinicIdentity.js';
 import { MediaAsset } from '../models/MediaAsset.js';
 import { Prescription } from '../models/Prescription.js';
 import { PatientProfile } from '../models/PatientProfile.js';
@@ -53,7 +54,7 @@ function frequencyText(freq, relation) {
  * diagnosis, the Rx medicines table, investigations, advice, follow-up, and a
  * signature block (image when the doctor has uploaded one, otherwise a line).
  */
-export function buildPrescriptionPdf({ prescription: p, patient, doctor, profile, signatureImage }) {
+export function buildPrescriptionPdf({ prescription: p, patient, doctor, profile, signatureImage, identity }) {
   return new Promise((resolve, reject) => {
     const doc = new PDFDocument({ size: 'A4', margin: 48 });
     const chunks = [];
@@ -66,8 +67,15 @@ export function buildPrescriptionPdf({ prescription: p, patient, doctor, profile
     const contentW = doc.page.width - M * 2;
 
     // --- Header -----------------------------------------------------------
-    doc.fillColor(TEAL).font('Helvetica-Bold').fontSize(20).text(env.CLINIC_NAME, M, M, { width: contentW });
-    const doctorName = doctor?.name ?? env.DOCTOR_DISPLAY_NAME;
+    // The identity this prescription was issued under. `identity` is the
+    // snapshot taken at issue; the env vars remain the last resort for rows
+    // written before either existed.
+    const clinicName = identity?.clinicName || env.CLINIC_NAME;
+    doc.fillColor(TEAL).font('Helvetica-Bold').fontSize(20).text(clinicName, M, M, { width: contentW });
+    if (identity?.tagline) {
+      doc.fillColor(SLATE).font('Helvetica').fontSize(9.5).text(identity.tagline, { width: contentW });
+    }
+    const doctorName = doctor?.name ?? identity?.doctorName ?? env.DOCTOR_DISPLAY_NAME;
     const credentials = [doctor?.qualifications, doctor?.specialty ?? 'Consultant Physician & Diabetologist']
       .filter(Boolean)
       .join(', ');
@@ -75,10 +83,18 @@ export function buildPrescriptionPdf({ prescription: p, patient, doctor, profile
       width: contentW,
     });
     const contactBits = [
-      doctor?.registrationNo ? `Reg. No: ${doctor.registrationNo}` : null,
-      env.CLINIC_EMERGENCY_PHONE && !env.CLINIC_EMERGENCY_PHONE.includes('0000')
-        ? `Ph: ${env.CLINIC_EMERGENCY_PHONE}`
+      // The doctor's own council number first — it is theirs, not the
+      // practice's — then the practice's as the fallback for a clinic that
+      // records it once rather than per doctor.
+      doctor?.registrationNo || identity?.registrationNo
+        ? `Reg. No: ${doctor?.registrationNo || identity.registrationNo}`
         : null,
+      identity?.addressLine || null,
+      identity?.phone
+        ? `Ph: ${identity.phone}`
+        : env.CLINIC_EMERGENCY_PHONE && !env.CLINIC_EMERGENCY_PHONE.includes('0000')
+          ? `Ph: ${env.CLINIC_EMERGENCY_PHONE}`
+          : null,
     ].filter(Boolean);
     if (contactBits.length) doc.fontSize(9.5).fillColor(SLATE).text(contactBits.join('   ·   '), { width: contentW });
 
@@ -312,7 +328,36 @@ export async function ensurePrescriptionPdf(prescription) {
   ]);
 
   const signatureImage = await loadSignature(doctor?.signatureAssetId);
-  const buffer = await buildPrescriptionPdf({ prescription, patient, doctor, profile, signatureImage });
+
+  // Taken once, at first render, and kept. A prescription re-opened in a year
+  // must print the letterhead it was issued under, not whatever the clinic is
+  // called by then.
+  //
+  // A prescription does not record which location it was written at, so this
+  // resolves the practice's primary one. When it does carry a location, that
+  // id is what belongs here and nothing else changes.
+  const existingLetterhead = prescription.letterhead?.clinicName ? prescription.letterhead : null;
+  const identity = existingLetterhead ?? (await identitySnapshot(null));
+  const letterheadToPersist = existingLetterhead
+    ? null
+    : {
+        clinicName: identity.clinicName,
+        tagline: identity.tagline,
+        doctorName: identity.doctorName,
+        registrationNo: identity.registrationNo,
+        phone: identity.phone,
+        addressLine: identity.addressLine,
+        city: identity.city,
+      };
+
+  const buffer = await buildPrescriptionPdf({
+    prescription,
+    patient,
+    doctor,
+    profile,
+    signatureImage,
+    identity,
+  });
 
   const root = await uploadRoot();
   const key = `${new Date().toISOString().slice(0, 7)}/${crypto.randomUUID()}.pdf`;
@@ -329,7 +374,12 @@ export async function ensurePrescriptionPdf(prescription) {
     mimeType: 'application/pdf',
     sizeBytes: buffer.length,
   });
-  await Prescription.updateOne({ _id: prescription._id }, { pdfFile: asset._id });
+  await Prescription.updateOne(
+    { _id: prescription._id },
+    // Written in the same update as the file it describes, so a prescription
+    // can never hold a PDF rendered from a letterhead it did not record.
+    { pdfFile: asset._id, ...(letterheadToPersist ? { letterhead: letterheadToPersist } : {}) },
+  );
   return { asset, filePath };
 }
 

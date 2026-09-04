@@ -6,6 +6,9 @@ import { retrieve, formatContext } from './rag.js';
 import { generate, generateStream, AiUnavailableError } from './gemini.js';
 import { replyIsWrongLanguage } from './languageGuard.js';
 import { buildSystemPrompt, fallbackReply, languagePrimer, forceLanguageInstruction } from './prompts.js';
+// Who this assistant works for, read from the practice. Cached for a minute
+// inside the service, so this is not a database round trip per message.
+import { clinicIdentity } from '../clinicIdentity.js';
 import { raiseAlert } from '../alerts.js';
 import { detectAppointmentIntent } from '../triage/appointmentIntent.js';
 import { notifyClinicOfPatientMessage } from '../notifications.js';
@@ -274,12 +277,14 @@ export async function handlePatientMessage({ patientId, sessionId, text, languag
     { role: 'user', parts: userParts },
   ];
 
+  const identity = await clinicIdentity();
   const system = buildSystemPrompt({
     language,
     triage,
     patientContext: context.text,
     careTeamNotes,
     groundingContext: formatContext(chunks),
+    identity,
   });
 
   let replyText;
@@ -337,7 +342,7 @@ ${forceLanguageInstruction(language)}`,
     logger.error({ err: err.cause?.message }, 'assistant generation failed; using scripted fallback');
     // In an emergency the scripted emergency text is what matters, not an
     // apology about the service being down.
-    replyText = fallbackReply(triage.urgency === 'emergency' ? 'emergency' : 'unavailable', language);
+    replyText = fallbackReply(triage.urgency === 'emergency' ? 'emergency' : 'unavailable', language, identity);
     isFallback = true;
   }
 
@@ -538,12 +543,14 @@ export async function* streamPatientMessage({ patientId, sessionId, text, langua
     ...languagePrimer(language),
     { role: 'user', parts: userParts },
   ];
+  const identity = await clinicIdentity();
   const system = buildSystemPrompt({
     language,
     triage,
     patientContext: context.text,
     careTeamNotes,
     groundingContext: formatContext(chunks),
+    identity,
   });
 
   yield {
@@ -602,7 +609,7 @@ ${forceLanguageInstruction(language)}`,
     }
   } catch (err) {
     logger.error({ err: err?.cause?.message ?? err?.message }, 'stream generation failed; scripted fallback');
-    replyText = fallbackReply(triage.urgency === 'emergency' ? 'emergency' : 'unavailable', language);
+    replyText = fallbackReply(triage.urgency === 'emergency' ? 'emergency' : 'unavailable', language, identity);
     isFallback = true;
     // Tell the client to discard the partial and show the scripted text.
     yield { type: 'replace', data: replyText };
