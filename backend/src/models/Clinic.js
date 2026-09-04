@@ -104,6 +104,13 @@ const clinicSchema = new mongoose.Schema(
     // today; the ref keeps a multi-doctor build open.
     doctor: { type: mongoose.Schema.Types.ObjectId, ref: 'User', index: true },
 
+    // The practice this location belongs to.
+    //
+    // Nullable, and it stays nullable. A clinic row that predates practices
+    // still resolves its own brand — see [services/clinicIdentity.js] — so a
+    // half-run backfill leaves a working clinic rather than a blank letterhead.
+    practice: { type: mongoose.Schema.Types.ObjectId, ref: 'Practice', default: null, index: true },
+
     slotMinutes: { type: Number, default: 15, min: 5, max: 120 },
     weeklyHours: { type: [weeklyHoursSchema], default: [] },
     overrides: { type: [overrideSchema], default: [] },

@@ -1,4 +1,7 @@
 import { Clinic } from '../models/Clinic.js';
+// Imported for the side effect only: populating `practice` below needs the
+// model registered with mongoose, and nothing else on this path imports it.
+import '../models/Practice.js';
 import { env } from '../config/env.js';
 
 /**
@@ -17,12 +20,71 @@ import { env } from '../config/env.js';
  * The env vars survive as the seed for a clinic that has not filled its profile
  * in yet, which keeps an existing deployment working unchanged on the day this
  * ships.
+ *
+ * ---- Three places a value can come from ---------------------------------
+ *
+ * Location, then practice, then the environment. First non-empty wins.
+ *
+ * The order is the load-bearing part. The settings screen the clinic uses today
+ * writes to the Clinic row; if the practice won, saving that screen would look
+ * like it had done nothing. And it is the right semantics besides — the
+ * practice brand is the default every branch inherits, and a branch with its
+ * own phone number overrides it.
+ *
+ * A clinic with no practice resolves exactly as it did before this existed,
+ * which is what makes the backfill safe to run and safe to half-run.
  */
 
 /** Cached briefly: this is read on every prescription and every AI turn. */
 let cache = null;
 let cachedAt = 0;
 const TTL_MS = 60_000;
+
+/**
+ * Fold a location, its practice and the environment into one identity.
+ *
+ * Pure, and exported for that reason: the fallback order is the part of this
+ * file most likely to be got wrong in a hurry, and a test for it should not
+ * need a database.
+ *
+ * `doc` is a lean Clinic with `practice` populated, or not populated, or
+ * absent entirely. All three are ordinary.
+ */
+export function resolveIdentity(doc, fallbacks = {}) {
+  // Only when it was populated. An unpopulated ref is an ObjectId, and reading
+  // `.name` off one gives undefined — which would silently fall through to the
+  // env var and print the wrong clinic's name on a prescription.
+  const practice = doc?.practice && typeof doc.practice === 'object' && doc.practice.name !== undefined
+    ? doc.practice
+    : null;
+
+  // `||` throughout, not `??`: a field saved as an empty string should fall
+  // through to the next source rather than print a blank letterhead.
+  return {
+    id: doc?._id ?? null,
+    practiceId: practice?._id ?? doc?.practice ?? null,
+    clinicName: doc?.name || practice?.name || fallbacks.CLINIC_NAME,
+    tagline: doc?.tagline || practice?.tagline || null,
+    doctorName:
+      doc?.doctorDisplayName || practice?.doctorDisplayName || fallbacks.DOCTOR_DISPLAY_NAME,
+    // Address and phone belong to the place and have no practice-level answer.
+    // A branch that has not filled its phone in has no phone, and inheriting
+    // head office's would send patients to the wrong building.
+    phone: doc?.phone || null,
+    altPhone: doc?.altPhone || null,
+    addressLine: doc?.addressLine || null,
+    city: doc?.city || null,
+    registrationNo: doc?.registrationNo || practice?.registrationNo || null,
+    logoLightAssetId: doc?.logoLightAssetId ?? practice?.logoLightAssetId ?? null,
+    logoDarkAssetId: doc?.logoDarkAssetId ?? practice?.logoDarkAssetId ?? null,
+    // Reads from whichever row supplied the artwork. Taking the flag from the
+    // practice while the logo came from the location would put a dark chip
+    // behind a mark drawn for a white background.
+    logoNeedsDarkChip: doc?.logoLightAssetId
+      ? Boolean(doc.logoNeedsDarkChip)
+      : Boolean(practice?.logoNeedsDarkChip ?? doc?.logoNeedsDarkChip),
+  };
+}
 
 /**
  * The active clinic's identity, falling back to the environment.
@@ -35,25 +97,13 @@ export async function clinicIdentity(clinicId = null) {
   if (!clinicId && cache && Date.now() - cachedAt < TTL_MS) return cache;
 
   const doc = clinicId
-    ? await Clinic.findById(clinicId).lean()
-    : await Clinic.findOne({ isActive: true }).sort({ sortIndex: 1, createdAt: 1 }).lean();
+    ? await Clinic.findById(clinicId).populate('practice').lean()
+    : await Clinic.findOne({ isActive: true })
+        .sort({ sortIndex: 1, createdAt: 1 })
+        .populate('practice')
+        .lean();
 
-  const identity = {
-    id: doc?._id ?? null,
-    // `||`, not `??`: a clinic saved with an empty name should fall back to the
-    // configured one rather than print a blank letterhead.
-    clinicName: doc?.name || env.CLINIC_NAME,
-    tagline: doc?.tagline || null,
-    doctorName: doc?.doctorDisplayName || env.DOCTOR_DISPLAY_NAME,
-    phone: doc?.phone || null,
-    altPhone: doc?.altPhone || null,
-    addressLine: doc?.addressLine || null,
-    city: doc?.city || null,
-    registrationNo: doc?.registrationNo || null,
-    logoLightAssetId: doc?.logoLightAssetId ?? null,
-    logoDarkAssetId: doc?.logoDarkAssetId ?? null,
-    logoNeedsDarkChip: Boolean(doc?.logoNeedsDarkChip),
-  };
+  const identity = resolveIdentity(doc, env);
 
   if (!clinicId) {
     cache = identity;
