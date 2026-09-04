@@ -19,6 +19,7 @@ import prescriptionRoutes from './prescriptions.js';
 import appVersionRoutes from './appVersion.js';
 import dashboardRoutes from './dashboard.js';
 import doctorRoutes from './doctor.js';
+import departmentRoutes from './departments.js';
 import dieticianRoutes from './dietician.js';
 import feedbackRoutes from './feedback.js';
 import uploadRoutes from './uploads.js';
@@ -75,6 +76,9 @@ router.use('/appointments', appointmentRoutes);
 router.use('/clinics', clinicRoutes);
 router.use('/messages', messageRoutes);
 router.use('/doctor', doctorRoutes);
+// Specialties and who practises in them. Its own router: `doctor.js` is
+// already two thousand lines, and a subject with its own models earns one.
+router.use('/departments', departmentRoutes);
 router.use('/dietician', dieticianRoutes);
 router.use('/feedback', feedbackRoutes);
 // Prescribing aid: brand -> composition, for autocomplete and the strength check.
