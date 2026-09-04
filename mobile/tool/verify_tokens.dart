@@ -7,6 +7,13 @@
 //
 //   dart run tool/verify_tokens.dart            # report and fail on violations
 //   dart run tool/verify_tokens.dart --summary  # counts only, never fails
+//   dart run tool/verify_tokens.dart --max=570  # fail only above a ceiling
+//
+// The ceiling is the ratchet, and it is how this gets run at all. Failing
+// outright on an existing 570 would block every release, so the release script
+// pins today's count and fails anything above it: the debt cannot grow, and
+// every file cleaned lowers the bar behind it. Lower the number in
+// build_release.sh whenever the count drops.
 //
 // Deliberately a lint over source text rather than an analyzer plugin: it needs
 // no package, no analysis server, and it reads in one sitting.
@@ -44,6 +51,8 @@ class Violation {
 
 void main(List<String> args) {
   final summaryOnly = args.contains('--summary');
+  final maxArg = args.firstWhere((a) => a.startsWith('--max='), orElse: () => '');
+  final ceiling = maxArg.isEmpty ? null : int.tryParse(maxArg.substring(6));
   final root = Directory('lib');
   if (!root.existsSync()) {
     stderr.writeln('run me from the mobile/ directory');
@@ -114,6 +123,23 @@ void main(List<String> args) {
 
   if (violations.isEmpty) {
     stdout.writeln('tokens: clean — every value comes from T');
+    return;
+  }
+
+  if (ceiling != null) {
+    final over = violations.length - ceiling;
+    if (over > 0) {
+      stderr.writeln(
+        'tokens: ${violations.length} violations, $over above the ceiling of '
+        '$ceiling. Take the new values from T, or raise the ceiling in '
+        'build_release.sh and say why.',
+      );
+      exit(1);
+    }
+    stdout.writeln(
+      'tokens: ${violations.length} violations, within the ceiling of $ceiling'
+      '${violations.length < ceiling ? ' — lower it to ${violations.length}' : ''}',
+    );
     return;
   }
 

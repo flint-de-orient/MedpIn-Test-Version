@@ -132,13 +132,30 @@ abstract final class T {
   static const Color primaryTint = Color(0xFFEBF1FB);
 
   /// Near-black, warmed very slightly toward the brand. Not #000.
+  // ---- Why these greys are blue, and these semantics are dark ----------
+  //
+  // The neutrals were Tailwind's stock greys — #6B7280, #9CA3AF — beside a
+  // #003399 accent they had nothing to do with. Two things were wrong with
+  // that. They read as unrelated to the brand, and inkFaint measured 2.41:1
+  // against the page: it failed AA for body text and failed the 3.0 bar for
+  // large text too, in an app whose own type scale sits at a 16px floor
+  // because these readers are elderly and many have diabetic retinopathy.
+  // Getting the size right and the colour wrong helps nobody.
+  //
+  // So they are tinted toward the accent and darkened until they clear 4.5:1
+  // on #F7F9FC, the surface they actually sit on. The semantic three were
+  // measured on their own tints, where amber was worst at 2.97:1 — the one
+  // colour in the system whose entire job is to be noticed.
+  //
+  // Ratios on #F7F9FC: inkMuted 6.18, inkFaint 4.50.
+  // On their tints: danger 5.66, warning 4.67, success 5.88.
   static const Color ink = Color(0xFF111827);
 
   /// Secondary text. The single most reliable upgrade over black-everywhere.
-  static const Color inkMuted = Color(0xFF6B7280);
+  static const Color inkMuted = Color(0xFF545E72);
 
   /// Disabled text, placeholders, the faintest legible tier.
-  static const Color inkFaint = Color(0xFF9CA3AF);
+  static const Color inkFaint = Color(0xFF69738A);
 
   /// The page.
   static const Color surface = Color(0xFFF7F9FC);
@@ -149,9 +166,9 @@ abstract final class T {
   /// Hairline dividers and card edges.
   static const Color line = Color(0xFFE5E9F0);
 
-  static const Color danger = Color(0xFFDC2626);
-  static const Color warning = Color(0xFFD97706);
-  static const Color success = Color(0xFF0B8A4E);
+  static const Color danger = Color(0xFFB91C1C);
+  static const Color warning = Color(0xFFB45309);
+  static const Color success = Color(0xFF076B3C);
 
   /// Semantic backgrounds, at the same ~8% weight as [primaryTint].
   static const Color dangerTint = Color(0xFFFDECEC);

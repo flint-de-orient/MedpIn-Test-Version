@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
+import '../../../shared/widgets/load_failed.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/tokens.dart';
 import '../../../shared/providers/preferences_provider.dart';
@@ -114,16 +115,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                 (_, _) => ListView(
                   padding: const EdgeInsets.all(T.s6),
                   children: [
-                    const SizedBox(height: 140),
-                    const Center(
-                      child: Text('Could not load your care summary'),
-                    ),
-                    const SizedBox(height: T.s4),
-                    Center(
-                      child: OutlinedButton(
-                        onPressed: () => ref.invalidate(careSummaryProvider),
-                        child: const Text('Retry'),
-                      ),
+                    const SizedBox(height: T.s12),
+                    LoadFailed(
+                      what: 'your care summary',
+                      onRetry: () => ref.invalidate(careSummaryProvider),
                     ),
                   ],
                 ),

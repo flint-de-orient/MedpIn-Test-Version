@@ -29,9 +29,9 @@ class AppColors {
   /// Neutral #1A1C1E from the palette — the ink, reused as the dark ground.
   static const Color surfaceDark = Color(0xFF141719);
 
-  static const Color danger = Color(0xFFDC2626);
-  static const Color warning = Color(0xFFD97706);
-  static const Color success = Color(0xFF0B8A4E);
+  static const Color danger = Color(0xFFB91C1C);
+  static const Color warning = Color(0xFFB45309);
+  static const Color success = Color(0xFF076B3C);
 
   static const Color dangerBg = Color(0xFFFDE8E8);
   static const Color warningBg = Color(0xFFFEF3C7);

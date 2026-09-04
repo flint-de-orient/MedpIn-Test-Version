@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../shared/widgets/load_failed.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../shared/widgets/auto_refresh.dart';
@@ -96,7 +97,11 @@ class ClinicianDashboardScreen extends ConsumerWidget {
             children: [
               overview.when(
                 loading: () => const _StatsSkeleton(),
-                error: (_, _) => const SizedBox.shrink(),
+                error:
+                    (_, _) => LoadFailed(
+                      what: 'the overview',
+                      onRetry: () => ref.invalidate(overviewProvider),
+                    ),
                 data: (o) => _OverviewSection(overview: o),
               ),
               const SizedBox(height: AppSpacing.lg),
@@ -112,7 +117,14 @@ class ClinicianDashboardScreen extends ConsumerWidget {
                       padding: EdgeInsets.all(AppSpacing.lg),
                       child: Center(child: CircularProgressIndicator()),
                     ),
-                error: (_, _) => const Text('Could not load appointments'),
+                error:
+                    (_, _) => LoadFailed(
+                      what: "today's appointments",
+                      onRetry:
+                          () => ref.invalidate(
+                            appointmentDiaryProvider(upcomingQuery),
+                          ),
+                    ),
                 data: (paged) {
                   final items =
                       paged.items.where((a) => !a.isCancelled).toList()
@@ -156,7 +168,14 @@ class ClinicianDashboardScreen extends ConsumerWidget {
                       padding: EdgeInsets.all(AppSpacing.lg),
                       child: Center(child: CircularProgressIndicator()),
                     ),
-                error: (_, _) => const Text('Could not load alerts'),
+                error:
+                    (_, _) => LoadFailed(
+                      what: 'the alerts',
+                      onRetry:
+                          () => ref.invalidate(
+                            alertsProvider((status: 'open', severity: null)),
+                          ),
+                    ),
                 data: (paged) {
                   if (paged.items.isEmpty) {
                     return const _EmptyCard(

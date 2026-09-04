@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../../shared/widgets/load_failed.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
@@ -86,9 +87,8 @@ class _StaffTodayScreenState extends ConsumerState<StaffTodayScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final requests =
-        ref.watch(appointmentDiaryProvider(_requests)).valueOrNull?.items ??
-        const <Appointment>[];
+    final requestsAsync = ref.watch(appointmentDiaryProvider(_requests));
+    final requests = requestsAsync.valueOrNull?.items ?? const <Appointment>[];
     // Requests are already excluded from the day: they have no scheduledFor, so
     // a date-ranged query cannot match them.
     //
@@ -97,9 +97,14 @@ class _StaffTodayScreenState extends ConsumerState<StaffTodayScreen> {
     // tally of the whole day, and a day's cancellations are exactly what it is
     // being asked about. Filtering once at the top would have made the summary
     // report zero cancellations on every day, for ever.
-    final todayAll =
-        ref.watch(appointmentDiaryProvider(_today)).valueOrNull?.items ??
-        const <Appointment>[];
+    final todayAsync = ref.watch(appointmentDiaryProvider(_today));
+    final todayAll = todayAsync.valueOrNull?.items ?? const <Appointment>[];
+
+    // An empty day and a failed load look identical once `valueOrNull` has
+    // turned the error into null, and on this screen that matters: the desk
+    // reads "no appointments" and tells a patient at the counter there is no
+    // booking. So a failure says so, above everything else.
+    final loadFailed = requestsAsync.hasError || todayAsync.hasError;
     final today =
         todayAll.where((a) => a.status != 'cancelled').toList()
           ..sort((a, b) => a.sortKey.compareTo(b.sortKey));
@@ -137,6 +142,10 @@ class _StaffTodayScreenState extends ConsumerState<StaffTodayScreen> {
                 AppSpacing.lg,
               ),
               children: [
+                if (loadFailed) ...[
+                  LoadFailed(what: "today's list", onRetry: _refresh),
+                  const SizedBox(height: AppSpacing.md),
+                ],
                 // Ordered by what the desk has to answer, in the order they
                 // have to answer it: who needs help this minute, who is waiting
                 // on us, who is coming, what else can I do, how did the day go.

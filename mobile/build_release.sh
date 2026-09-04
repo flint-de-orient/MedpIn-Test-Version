@@ -80,6 +80,15 @@ BUILD=$((BUILD + 1))
 sed -i "s/^version: .*/version: ${NAME}+${BUILD}/" pubspec.yaml
 echo "Version ${PREV} -> ${NAME}+${BUILD}"
 
+# ---- Design-token ceiling -------------------------------------------------
+#
+# The token linter has existed for a while and nothing ran it, so the count
+# drifted to 570 across 86 files. Failing outright would block every release,
+# so this is a ratchet: the debt cannot grow, and every file cleaned lowers the
+# bar behind it. When the run reports a number below the ceiling, lower this.
+TOKEN_CEILING=570
+dart run tool/verify_tokens.dart --max="${TOKEN_CEILING}"
+
 APK="build/app/outputs/flutter-apk/app-arm64-v8a-release.apk"
 BEFORE="$( [ -f "$APK" ] && date -r "$APK" +%s || echo 0 )"
 

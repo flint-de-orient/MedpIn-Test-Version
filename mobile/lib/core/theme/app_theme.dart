@@ -44,7 +44,9 @@ class AppTheme {
         outlineVariant: const Color(0xFFDDE3EA),
         // Secondary text. fromSeed derives a blue-grey here, which reads
         // as a faded version of the brand rather than as neutral prose.
-        onSurfaceVariant: const Color(0xFF6B7280),
+        // Matches T.inkMuted. Was #6B7280, which cleared AA on white by a
+        // hair and not at all on the tinted surfaces it mostly sits on.
+        onSurfaceVariant: const Color(0xFF545E72),
         onSurface: const Color(0xFF111827),
       );
     } else {
