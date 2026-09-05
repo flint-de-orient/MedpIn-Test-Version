@@ -66,8 +66,25 @@ router.get(
   audit('read', 'LabResult'),
   asyncHandler(async (req, res) => {
     const [prescriptions, results] = await Promise.all([
-      Prescription.find({ patient: req.patientId, isActive: true }).select('labTestsAdvised').lean(),
-      LabResult.find({ patient: req.patientId, ...recordWindow(req, 'testedOn') })
+      // Bounded like every other prescription read. What a practice advised
+      // before this one was enrolled is that practice's clinical reasoning, and
+      // "Vitamin D, HbA1c, lipid profile" is a diagnosis said out loud.
+      Prescription.find({
+        patient: req.patientId,
+        isActive: true,
+        ...recordWindow(req, 'issuedOn'),
+      })
+        .select('labTestsAdvised')
+        .lean(),
+      LabResult.find({
+        patient: req.patientId,
+        // `createdAt`, not `analysis.testedOn`. The window asks whether this
+        // record existed during the practice's relationship with the patient,
+        // and upload time answers that; the printed test date can be six weeks
+        // earlier, and is missing entirely on a report the parser could not read
+        // — a filter on it would hide those from everybody.
+        ...recordWindow(req, 'createdAt'),
+      })
         .sort({ createdAt: -1 })
         .limit(100)
         .populate('photo', 'mimeType originalName sizeBytes')
@@ -144,7 +161,7 @@ router.delete(
     const entry = await LabResult.findOne({
       _id: req.params.id,
       patient: req.patientId,
-      ...recordWindow(req, 'testedOn'),
+      ...recordWindow(req, 'createdAt'),
     });
     if (!entry) throw notFound('Report not found');
 

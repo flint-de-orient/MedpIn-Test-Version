@@ -48,7 +48,11 @@ const BOUNDED = [
   ['foot assessments', FootAssessment, 'assessedAt'],
   ['eye reports', EyeReport, 'createdAt'],
   ['lab reports', LabReport, 'testedOn'],
-  ['lab results', LabResult, 'testedOn'],
+  // `createdAt`, not `testedOn`: on this model the printed test date lives at
+  // `analysis.testedOn`, and asking for the top-level name got a count of zero
+  // for every patient — which read as "nothing would be hidden" and meant
+  // "nothing was checked".
+  ['lab results', LabResult, 'createdAt'],
   ['food logs', FoodLog, 'createdAt'],
   ['direct messages', DirectMessage, 'createdAt'],
   ['prescriptions', Prescription, 'issuedOn'],
@@ -87,6 +91,14 @@ async function main() {
   let total = 0;
 
   for (const [label, Model, field] of BOUNDED) {
+    // A path the schema does not have is removed from the filter by
+    // strictQuery, so every count comes back zero and the report says all is
+    // well because it asked nothing. This is how `LabResult.testedOn` passed.
+    if (!Model.schema.path(field)) {
+      console.log(`  ??       —  ${label}: '${field}' is not a path on ${Model.modelName}`);
+      continue;
+    }
+
     let hidden = 0;
     const worst = [];
 
@@ -97,9 +109,21 @@ async function main() {
       if (list) worst.push({ patient, on, n });
     }
 
-    total += hidden;
-    const mark = hidden ? '!!' : '  ';
+    // The other way a row vanishes. Mongo does not match a missing field
+    // against a range, so a legacy row written before this field was required
+    // is dropped by the bound as surely as an old one — and it does not show up
+    // in the count above, because that query cannot see it either.
+    const absent = await Model.countDocuments({
+      patient: { $in: [...earliest.keys()] },
+      [field]: { $exists: false },
+    });
+
+    total += hidden + absent;
+    const mark = hidden || absent ? '!!' : '  ';
     console.log(`  ${mark} ${String(hidden).padStart(6)}  ${label} before enrolledOn (${field})`);
+    if (absent) {
+      console.log(`  !! ${String(absent).padStart(6)}  ${label} with no ${field} at all — also hidden`);
+    }
 
     if (list && worst.length) {
       for (const w of worst.sort((a, b) => b.n - a.n).slice(0, 5)) {

@@ -91,29 +91,66 @@ describe('what is deliberately unbounded, and why', () => {
    */
   const EXEMPT = new Set(['medications.js', 'chat.js']);
 
+  /**
+   * The filter object this `patient: req.patientId` sits in — brace-matched,
+   * not a line window.
+   *
+   * The first version of this test looked six lines either side, which let an
+   * unbounded read hide behind a bounded one. In `labtests.js` two queries sat
+   * in the same `Promise.all`:
+   *
+   *     Prescription.find({ patient: req.patientId, isActive: true })   // <- no window
+   *     LabResult.find({ patient: req.patientId, ...recordWindow(...) })
+   *
+   * The second line vouched for the first, and a practice could read the lab
+   * tests advised by a prescription written before it was enrolled. Proximity
+   * is not scope.
+   */
+  function filterAround(src, at) {
+    let depth = 0;
+    let open = -1;
+    for (let i = at; i >= 0; i -= 1) {
+      if (src[i] === '}') depth += 1;
+      else if (src[i] === '{') {
+        if (depth === 0) { open = i; break; }
+        depth -= 1;
+      }
+    }
+    if (open === -1) return null;
+
+    depth = 0;
+    for (let i = open; i < src.length; i += 1) {
+      if (src[i] === '{') depth += 1;
+      else if (src[i] === '}') {
+        depth -= 1;
+        if (depth === 0) return { open, text: src.slice(open, i + 1) };
+      }
+    }
+    return { open, text: src.slice(open) };
+  }
+
   test('every unbounded clinical read is in a collection we chose to exempt', () => {
     const offenders = [];
 
     for (const f of readdirSync(ROUTES).filter((n) => n.endsWith('.js'))) {
-      const src = readFileSync(path.join(ROUTES, f), 'utf8').split('\n');
+      const src = readFileSync(path.join(ROUTES, f), 'utf8');
 
-      src.forEach((line, i) => {
-        if (!line.includes('patient: req.patientId')) return;
+      for (const m of src.matchAll(/patient: req\.patientId/g)) {
+        const filter = filterAround(src, m.index);
+        if (!filter) continue;
+        if (filter.text.includes('recordWindow')) continue;
 
-        // The whole filter object, not the one line of it that names the
-        // patient — a multi-line filter puts recordWindow on the next line,
-        // and a line-by-line check calls that unbounded.
-        const around = src.slice(Math.max(0, i - 6), i + 7).join('\n');
-        if (around.includes('recordWindow')) return;
+        // What is being done with this filter, taken from just before the brace
+        // it opens on — `Prescription.find(` and friends. A write is not a read,
+        // and bounding one would stop a patient logging a reading on a day their
+        // practice had not yet enrolled them.
+        const call = src.slice(Math.max(0, filter.open - 90), filter.open);
+        if (!/\.(find|findOne|countDocuments|aggregate)\($/.test(call.trimEnd())) continue;
 
-        const ops = around.match(/\.(find|findOne|countDocuments|aggregate)\(/g) ?? [];
-        const writes = around.match(/\.(create|updateOne|updateMany|findOneAndUpdate|findOneAndDelete|deleteMany|deleteOne|insertMany)\(/g) ?? [];
-        // A write is not a read, and bounding one would stop a patient logging
-        // a reading on a day their practice had not yet enrolled them.
-        if (!ops.length || writes.length) return;
-
-        if (!EXEMPT.has(f)) offenders.push(`${f}:${i + 1}  ${line.trim().slice(0, 60)}`);
-      });
+        if (EXEMPT.has(f)) continue;
+        const line = src.slice(0, m.index).split('\n').length;
+        offenders.push(`${f}:${line}  ${filter.text.replace(/\s+/g, ' ').slice(0, 70)}`);
+      }
     }
 
     assert.deepEqual(

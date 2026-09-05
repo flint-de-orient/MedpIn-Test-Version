@@ -33,6 +33,9 @@ import { Practice, PRACTICE_STATUS, VERIFICATION } from '../src/models/Practice.
 import { Membership, MEMBERSHIP_STATUS, presetFor } from '../src/models/Membership.js';
 import { Enrollment, ENROLLMENT_STATUS } from '../src/models/Enrollment.js';
 import { Prescription } from '../src/models/Prescription.js';
+import { GlucoseReading } from '../src/models/GlucoseReading.js';
+import { VitalRecord } from '../src/models/VitalRecord.js';
+import { LabResult } from '../src/models/LabResult.js';
 import { PatientProfile } from '../src/models/PatientProfile.js';
 import { signAccessToken } from '../src/services/tokens.js';
 import { AuditLog } from '../src/models/AuditLog.js';
@@ -139,13 +142,18 @@ async function main() {
   const profile = await PatientProfile.create({ user: rahul._id, assignedDoctor: doctorA._id });
   created.push(['Patient', patient._id], ['PatientProfile', profile._id]);
 
-  // Enrolled at A in March, at B in September — so the retroactivity rule has
-  // something to bite on.
-  const MARCH = new Date('2026-03-01');
-  const SEPTEMBER = new Date('2026-09-01');
+  // A has had this patient for months; B was given access recently. Relative to
+  // today rather than fixed dates, so the harness still means the same thing
+  // next year.
+  const daysAgo = (n) => new Date(Date.now() - n * 86_400_000);
+  const A_ENROLLED = daysAgo(200);
+  const B_ENROLLED = daysAgo(30);
+  const OLD = daysAgo(120); // after A arrived, long before B did
+  const RECENT = daysAgo(1); // after both
+
   for (const [practice, on] of [
-    [practiceA, MARCH],
-    [practiceB, SEPTEMBER],
+    [practiceA, A_ENROLLED],
+    [practiceB, B_ENROLLED],
   ]) {
     const e = await Enrollment.create({
       patient: patient._id,
@@ -156,14 +164,64 @@ async function main() {
     created.push(['Enrollment', e._id]);
   }
 
-  // A prescription A wrote in May — before B was ever given access.
-  const may = await Prescription.create({
-    patient: patient._id,
-    doctor: doctorA._id,
-    referenceNo: `${TAG}-${stamp}`,
-    issuedOn: new Date('2026-05-01'),
-  });
-  created.push(['Prescription', may._id]);
+  /**
+   * Every clinical read the enrolment window bounds, and a pair of rows each.
+   *
+   * ---- Why a pair, and not just the old row ------------------------------
+   *
+   * Checking only that B cannot see the old row proves nothing on its own: a
+   * window filtering on a field the collection does not have, or an enrolment
+   * date read as `undefined` and coerced to now, would hide *everything* and
+   * pass. So each collection gets one row from before B arrived and one from
+   * after, and the check is that B sees exactly the second.
+   *
+   * ---- And not just prescriptions ----------------------------------------
+   *
+   * Eleven collections were bounded in the same commit and the harness covered
+   * one. These four are the ones a clinician actually opens; the rest share
+   * their `recordWindow` call verbatim, and `recordWindow.test.js` fails the
+   * build if any read loses it.
+   */
+  const BOUNDED = [
+    {
+      label: 'prescriptions',
+      path: 'prescriptions',
+      Model: Prescription,
+      make: (when, tag) => ({
+        patient: patient._id,
+        doctor: doctorA._id,
+        referenceNo: tag,
+        issuedOn: when,
+      }),
+    },
+    {
+      label: 'glucose readings',
+      path: 'glucose',
+      Model: GlucoseReading,
+      make: (when) => ({ patient: patient._id, valueMgDl: 137, measuredAt: when }),
+    },
+    {
+      label: 'vitals',
+      path: 'vitals',
+      Model: VitalRecord,
+      make: (when) => ({ patient: patient._id, recordedAt: when }),
+    },
+    {
+      label: 'lab results',
+      path: 'lab-tests',
+      Model: LabResult,
+      make: (when, tag) => ({ patient: patient._id, testName: tag, testedOn: when }),
+    },
+  ];
+
+  for (const b of BOUNDED) {
+    // Recorded one at a time, immediately. Creating both and then registering
+    // both leaves the first row orphaned if the second throws.
+    b.old = await b.Model.create(b.make(OLD, `${TAG}-${stamp}-${b.path}-old`));
+    created.push([b.Model.modelName, b.old._id]);
+    b.recent = await b.Model.create(b.make(RECENT, `${TAG}-${stamp}-${b.path}-new`));
+    created.push([b.Model.modelName, b.recent._id]);
+  }
 
   const tokenA = signAccessToken(doctorA);
   const tokenB = signAccessToken(doctorB);
@@ -181,17 +239,39 @@ async function main() {
     `HTTP ${bReads.status}`,
   );
 
-  // The one that matters most: B is enrolled, so they may open the patient —
-  // but the May prescription predates their access and must not be listed.
-  const bSawMay = JSON.stringify(bReads.body ?? {}).includes(`${TAG}-${stamp}`);
-  check(
-    "Doctor B cannot see A's prescription from before B was enrolled",
-    !bSawMay,
-    bSawMay ? 'the May prescription appeared in B’s list' : '',
-  );
+  console.log('\nWhat each practice may read, and from when:\n');
 
-  const aSawMay = JSON.stringify(aReads.body ?? {}).includes(`${TAG}-${stamp}`);
-  check('Doctor A can see it, because it is theirs', aSawMay);
+  // The id, not a field of it. Every one of these lists serialises `id`, and
+  // matching on that cannot accidentally succeed against a different row.
+  const shows = (body, doc) => JSON.stringify(body ?? {}).includes(String(doc._id));
+
+  for (const b of BOUNDED) {
+    const a = await get(`/patients/${patient._id}/${b.path}`, tokenA);
+    const bb = await get(`/patients/${patient._id}/${b.path}`, tokenB);
+
+    if (a.status !== 200 || bb.status !== 200) {
+      check(`${b.label}: both practices can read the list`, false, `A ${a.status}, B ${bb.status}`);
+      continue;
+    }
+
+    // A has been here throughout, so A sees the lot. If this fails the window
+    // is not discriminating, it is emptying — and the check below would have
+    // passed while hiding the clinic's own history.
+    check(`${b.label}: A sees everything, including the old row`, shows(a.body, b.old) && shows(a.body, b.recent));
+
+    check(
+      `${b.label}: B sees the row from after they were enrolled`,
+      shows(bb.body, b.recent),
+      shows(bb.body, b.recent) ? '' : 'B sees nothing at all — the window is too wide, not too narrow',
+    );
+
+    const leak = shows(bb.body, b.old);
+    check(
+      `${b.label}: B cannot see the row from before`,
+      !leak,
+      leak ? 'A ROW WRITTEN BEFORE B WAS ENROLLED APPEARED IN B’S LIST' : '',
+    );
+  }
 
   console.log('\nA practice with no relationship:\n');
 
@@ -315,15 +395,39 @@ async function cleanup() {
     Enrollment,
     Prescription,
     PatientProfile,
+    GlucoseReading,
+    VitalRecord,
+    LabResult,
   };
   let removed = 0;
+  const unknown = new Set();
+
   for (const [name, id] of created.reverse()) {
+    // A model missing from the map used to throw here, on the line whose whole
+    // job is to run after a failure — one added collection and the harness
+    // leaves its rows behind on the box it was told not to dirty. Named and
+    // counted instead, so the gap is visible rather than fatal.
+    if (!models[name]) {
+      unknown.add(name);
+      continue;
+    }
     await models[name].deleteOne({ _id: id }).catch(() => {});
     removed += 1;
   }
+
   // A belt-and-braces sweep for anything an earlier crashed run left behind.
+  // Tagged rows only, in the collections that carry a name to tag.
   const stray = await User.deleteMany({ name: new RegExp(`^${TAG} `) });
-  console.log(`Cleaned up ${removed} row(s)${stray.deletedCount ? ` and ${stray.deletedCount} stray` : ''}.\n`);
+  const strayRx = await Prescription.deleteMany({ referenceNo: new RegExp(`^${TAG}-`) });
+  const strayLab = await LabResult.deleteMany({ testName: new RegExp(`^${TAG}-`) });
+  const swept = stray.deletedCount + strayRx.deletedCount + strayLab.deletedCount;
+
+  console.log(`Cleaned up ${removed} row(s)${swept ? ` and ${swept} stray` : ''}.`);
+  if (unknown.size) {
+    console.log(`\n  NOT CLEANED: ${[...unknown].join(', ')} — add them to the map in cleanup().`);
+    console.log(`  Find them with { name: /^${TAG} / } or by the ${TAG} prefix.`);
+  }
+  console.log('');
 }
 
 let code = 1;
