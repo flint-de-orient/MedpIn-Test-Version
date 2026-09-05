@@ -15,6 +15,22 @@ const schema = z.object({
 
   JWT_ACCESS_SECRET: z.string().min(16, 'JWT_ACCESS_SECRET must be >= 16 chars'),
   JWT_REFRESH_SECRET: z.string().min(16, 'JWT_REFRESH_SECRET must be >= 16 chars'),
+
+  // The platform admin's own signing key. Separate from the clinic's on
+  // purpose: a clinic token put in front of the admin verifier must fail
+  // signature verification rather than a role check, because there is no role
+  // check to forget. Setting this to the same value as JWT_ACCESS_SECRET
+  // defeats the whole arrangement, and the boot check says so.
+  // Empty is allowed and means the admin panel is switched off — every
+  // deployment that exists today is in that state, and a required secret here
+  // would stop the clinic's own API booting. Set, it must be long: this is the
+  // key to every practice on the platform.
+  ADMIN_JWT_SECRET: z
+    .string()
+    .default('')
+    .refine((v) => v === '' || v.length >= 32, {
+      message: 'ADMIN_JWT_SECRET must be empty (admin disabled) or >= 32 chars',
+    }),
   ACCESS_TOKEN_TTL: z.string().default('30m'),
   REFRESH_TOKEN_TTL: z.string().default('60d'),
 

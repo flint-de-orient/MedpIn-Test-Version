@@ -21,6 +21,7 @@ import dashboardRoutes from './dashboard.js';
 import doctorRoutes from './doctor.js';
 import departmentRoutes from './departments.js';
 import practiceRoutes from './practices.js';
+import adminRoutes from './admin.js';
 import dieticianRoutes from './dietician.js';
 import feedbackRoutes from './feedback.js';
 import uploadRoutes from './uploads.js';
@@ -83,6 +84,11 @@ router.use('/departments', departmentRoutes);
 // The practice above the clinics. Separate from `clinics.js`, which is about
 // places and their opening hours; this is about who the practice is.
 router.use('/practices', practiceRoutes);
+
+// The platform's own surface. Its own login, its own audit log, no clinical
+// data — and a 404 rather than a 401 when ADMIN_JWT_SECRET is unset, so a
+// deployment not running the panel does not advertise that it could.
+router.use('/admin', adminRoutes);
 router.use('/dietician', dieticianRoutes);
 router.use('/feedback', feedbackRoutes);
 // Prescribing aid: brand -> composition, for autocomplete and the strength check.
