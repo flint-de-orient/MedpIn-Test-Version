@@ -298,6 +298,88 @@ async function main() {
     `HTTP ${cReads.status}${cReads.status === 200 ? ' — THIS IS A LEAK' : ''}`,
   );
 
+  console.log('\nThe clinician router, which never went through the middleware:\n');
+
+  /**
+   * A patient of A alone, so there is something B must not see.
+   *
+   * Rahul is shared, which makes him useless here: every answer about him is
+   * "yes" for both practices. Sunita is enrolled at A only, and every check
+   * below asks whether B can reach a patient it has no relationship with.
+   *
+   * These routes matter more than the ones above. `/patients/:id/prescriptions`
+   * goes through `resolvePatientScope`, where the guards live. `/doctor/*`
+   * mounts `requireAuth, requireClinician` and nothing else -- and it is the
+   * surface a doctor actually uses all day.
+   */
+  const sunitaUser = await makeUser('Sunita', ROLES.PATIENT, `+9199${stamp}6`);
+  const sunita = await Patient.create({
+    _id: sunitaUser._id,
+    login: sunitaUser._id,
+    name: 'Sunita',
+    relationship: RELATIONSHIP.SELF,
+  });
+  created.push(['Patient', sunita._id]);
+  const sunitaProfile = await PatientProfile.create({
+    user: sunitaUser._id,
+    assignedDoctor: doctorA._id,
+  });
+  created.push(['PatientProfile', sunitaProfile._id]);
+  const sunitaEnrol = await Enrollment.create({
+    patient: sunita._id,
+    practice: practiceA._id,
+    status: ENROLLMENT_STATUS.ACTIVE,
+    enrolledOn: A_ENROLLED,
+  });
+  created.push(['Enrollment', sunitaEnrol._id]);
+
+  const hasSunita = (body) => JSON.stringify(body ?? {}).includes(String(sunita._id));
+
+  const aList = await get('/doctor/patients?limit=100', tokenA);
+  check("A's patient list contains their own patient", hasSunita(aList.body), `HTTP ${aList.status}`);
+
+  const bList = await get('/doctor/patients?limit=100', tokenB);
+  const listLeak = hasSunita(bList.body);
+  check(
+    "B's patient list does not contain A's patient",
+    !listLeak,
+    listLeak ? "THE OTHER PRACTICE'S REGISTER IS VISIBLE" : `HTTP ${bList.status}`,
+  );
+
+  for (const [label, path] of [
+    ['summary', `/doctor/patients/${sunita._id}/summary`],
+    ['adherence', `/doctor/patients/${sunita._id}/adherence`],
+  ]) {
+    const r = await get(path, tokenB);
+    check(
+      `B cannot open A's patient by id (${label})`,
+      r.status === 403,
+      `HTTP ${r.status}${r.status === 200 ? ' -- THIS IS A LEAK' : ''}`,
+    );
+  }
+
+  /**
+   * The aggregates, which are not scoped yet.
+   *
+   * Listed as known and unfixed in doctorScope.test.js. They are checked here
+   * rather than skipped because a release gate that passes while these leak is
+   * a gate that lies -- the point of running it is to be told no.
+   */
+  for (const [label, path] of [
+    ['worklist', '/doctor/worklist'],
+    ['alerts', '/doctor/alerts'],
+    ['overview', '/doctor/overview'],
+    ['chat review', '/doctor/chat-review'],
+  ]) {
+    const r = await get(path, tokenB);
+    const leak = hasSunita(r.body);
+    check(
+      `B's ${label} does not mention A's patient`,
+      !leak,
+      leak ? 'not yet scoped -- see NOT_YET in doctorScope.test.js' : `HTTP ${r.status}`,
+    );
+  }
+
   console.log('\nRevocation:\n');
 
   await Enrollment.updateOne(
