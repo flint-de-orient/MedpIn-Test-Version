@@ -23,6 +23,7 @@ import '../../medications/presentation/medications_providers.dart';
 import '../domain/care_summary.dart';
 import 'home_providers.dart';
 import 'widgets/appointments_section.dart';
+import 'widgets/household_switcher.dart';
 import 'widgets/home_glucose_chart.dart';
 import '../../../shared/widgets/surfaces.dart';
 
@@ -160,11 +161,27 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                     const SizedBox(height: T.s8),
                     const AppointmentsSection(),
 
+                    // Whose Home this is. Only rendered when the phone carries
+                    // more than one person — a switcher above a single name is
+                    // a control that answers a question nobody asked.
+                    if (care.isHousehold) ...[
+                      const SizedBox(height: T.s8),
+                      HouseholdSwitcher(members: care.household),
+                    ],
+
                     const SizedBox(height: T.s8),
                     _HealthProfileCard(care: care),
-                    const SizedBox(height: T.s8),
-                    _GlucoseSection(labHba1c: care.latestHba1c),
-                    if (care.dietPlan != null) ...[
+
+                    // Cards follow the patient's conditions. Diabetes brings
+                    // the sugar chart, hypertension brings blood pressure, and
+                    // an empty list means the server recorded none — which is
+                    // read as "show everything", not "show nothing". Every
+                    // patient is in that state today.
+                    if (care.shows('glucose')) ...[
+                      const SizedBox(height: T.s8),
+                      _GlucoseSection(labHba1c: care.latestHba1c),
+                    ],
+                    if (care.dietPlan != null && care.shows('diet_plan')) ...[
                       const SizedBox(height: T.s8),
                       _DietPlanCard(plan: care.dietPlan!),
                     ],

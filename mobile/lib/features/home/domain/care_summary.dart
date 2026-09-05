@@ -13,6 +13,9 @@ class CareSummary {
     this.dietPlan,
     this.medications = const [],
     this.recentFoodLogs = const [],
+    this.homeCards = const [],
+    this.conditions = const [],
+    this.household = const [],
   });
 
   final CareProfile profile;
@@ -25,6 +28,33 @@ class CareSummary {
   final PatientDietPlan? dietPlan;
   final List<CareMedication> medications;
   final List<CareFoodLog> recentFoodLogs;
+
+  /// Which cards this patient's Home should show, from their conditions.
+  ///
+  /// Empty means the server recorded none — either the patient has no
+  /// conditions yet or the deployment has not migrated — and empty is read as
+  /// "show everything", not "show nothing". See [shows].
+  final List<String> homeCards;
+
+  /// What the patient is being treated for.
+  final List<PatientConditionSummary> conditions;
+
+  /// Everyone this phone looks after. One entry is the ordinary case and
+  /// renders no switcher at all.
+  final List<HouseholdMember> household;
+
+  /// Whether a card belongs on this patient's Home.
+  ///
+  /// The permissive half matters more than the selective one. An empty card
+  /// list is the pre-migration state and every patient is in it today, so
+  /// reading it as "hide everything" would blank the Home screen of the clinic
+  /// running right now. Cards start being chosen once conditions exist, and not
+  /// a moment before.
+  bool shows(String card) => homeCards.isEmpty || homeCards.contains(card);
+
+  /// True only when this login is responsible for more than one person, which
+  /// is the sole condition under which a switcher appears.
+  bool get isHousehold => household.length > 1;
 
   factory CareSummary.fromJson(Map<String, dynamic> j) => CareSummary(
     profile: CareProfile.fromJson(
@@ -55,6 +85,87 @@ class CareSummary {
             .map(CareFoodLog.fromJson)
             .toList() ??
         const [],
+    homeCards:
+        (j['homeCards'] as List?)?.map((c) => c.toString()).toList() ?? const [],
+    conditions:
+        (j['conditions'] as List?)
+            ?.whereType<Map<String, dynamic>>()
+            .map(PatientConditionSummary.fromJson)
+            .toList() ??
+        const [],
+    household:
+        (j['people'] as List?)
+            ?.whereType<Map<String, dynamic>>()
+            .map(HouseholdMember.fromJson)
+            .toList() ??
+        const [],
+  );
+}
+
+/// One illness the patient is being treated for.
+class PatientConditionSummary {
+  const PatientConditionSummary({
+    required this.key,
+    required this.name,
+    this.detail = const {},
+  });
+
+  final String key;
+  final String name;
+
+  /// Condition-specific facts — `{type: 'type2'}` for diabetes. Displayed and
+  /// never searched, which is why it is loose on both sides of the wire.
+  final Map<String, dynamic> detail;
+
+  /// "Diabetes (Type 2)" when a type is recorded, "Diabetes" when it is not.
+  String get label {
+    final t = detail['type']?.toString();
+    if (t == null || t.isEmpty) return name;
+    return '$name (${_prettyType(t)})';
+  }
+
+  static String _prettyType(String raw) => switch (raw) {
+    'type1' => 'Type 1',
+    'type2' => 'Type 2',
+    'gestational' => 'Gestational',
+    'prediabetes' => 'Prediabetes',
+    _ => raw,
+  };
+
+  factory PatientConditionSummary.fromJson(Map<String, dynamic> j) =>
+      PatientConditionSummary(
+        key: j['key']?.toString() ?? '',
+        name: j['name']?.toString() ?? '',
+        detail:
+            j['detail'] is Map
+                ? Map<String, dynamic>.from(j['detail'] as Map)
+                : const {},
+      );
+}
+
+/// A person this login looks after — themselves, or a child, parent or spouse
+/// whose record lives under their phone number.
+class HouseholdMember {
+  const HouseholdMember({
+    required this.id,
+    required this.name,
+    required this.relationship,
+    required this.isSelf,
+  });
+
+  final String id;
+  final String name;
+  final String relationship;
+
+  /// The account holder, sorted first by the server because the person opening
+  /// the app is usually themselves.
+  final bool isSelf;
+
+  factory HouseholdMember.fromJson(Map<String, dynamic> j) => HouseholdMember(
+    id: j['id']?.toString() ?? '',
+    name: j['name']?.toString() ?? '',
+    relationship: j['relationship']?.toString() ?? 'self',
+    isSelf: j['isSelf'] as bool? ?? false,
   );
 }
 
