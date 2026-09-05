@@ -19,10 +19,21 @@
 
 // Same-origin is wrong here on purpose: this page is served from its own
 // subdomain precisely so it is not the API's origin.
+//
+// 4000 because that is what `PORT` is in the backend's .env and what
+// `npm start` prints. It was 3000 — a plausible default that was simply not
+// this project's, so the panel opened locally and every call failed on a
+// refused connection with nothing to say why.
+//
+// `?api=` overrides it, for the case where the API is on another port or
+// machine. Query-string only: nothing persists it, so a stale value cannot
+// outlive the tab and point a later session somewhere unexpected.
+const LOCAL = new Set(['localhost', '127.0.0.1']);
 const API =
-  location.hostname === 'localhost' || location.hostname === '127.0.0.1'
-    ? 'http://localhost:3000/api/v1'
-    : 'https://clinq.flintdeorient.in/api/v1';
+  new URLSearchParams(location.search).get('api') ??
+  (LOCAL.has(location.hostname)
+    ? 'http://127.0.0.1:4000/api/v1'
+    : 'https://clinq.flintdeorient.in/api/v1');
 
 let token = null;
 let admin = null;

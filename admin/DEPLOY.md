@@ -79,6 +79,17 @@ server {
     add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
     add_header X-Content-Type-Options nosniff always;
     add_header Referrer-Policy no-referrer always;
+
+    # There is no build step, so no filename carries a content hash and nothing
+    # tells a browser that app.js changed. `no-cache` still allows a cached copy,
+    # it just requires revalidating it first — which costs one 304 and removes an
+    # entire class of bug: a stale script calling an endpoint that has moved
+    # fails as "Failed to fetch", which looks like the API is down.
+    #
+    # Server level on purpose. An `add_header` inside `location /` would replace
+    # every directive above rather than adding to them, and the CSP would quietly
+    # stop being sent.
+    add_header Cache-Control "no-cache" always;
     # Nothing here needs a camera, a microphone or a location.
     add_header Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=()" always;
 
