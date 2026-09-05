@@ -57,12 +57,10 @@ export async function membershipOf(req) {
     return null;
   }
 
-  req._membership = await Membership.findOne({
-    user: req.user?._id,
-    practice: practiceId,
-    status: MEMBERSHIP_STATUS.ACTIVE,
-    endedOn: null,
-  });
+  // One definition of "currently a member", on the model. See currentFilter.
+  req._membership = await Membership.findOne(
+    Membership.currentFilter(req.user?._id, practiceId),
+  );
   return req._membership;
 }
 

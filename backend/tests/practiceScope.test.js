@@ -57,8 +57,18 @@ describe('a proven mismatch refuses', () => {
   test('only current memberships count', () => {
     // A receptionist who left in March still has a row. Both halves of
     // "current" are needed: an ended row is `active` and ended.
-    const checks = [...scope.matchAll(/status: MEMBERSHIP_STATUS\.ACTIVE,\s*\n\s*endedOn: null/g)];
-    assert.ok(checks.length >= 2, 'a membership lookup does not exclude ended rows');
+    // Asserted through `currentFilter` rather than by matching the inlined
+    // condition, which is what this did before — and which failed the moment
+    // the three hand-rolled copies were consolidated into one. A test that
+    // pins an implementation blocks the tidy-up it should have encouraged.
+    const lookups = [...scope.matchAll(/Membership\.findOne\(/g)];
+    const filtered = [...scope.matchAll(/Membership\.currentFilter\(/g)];
+    assert.ok(lookups.length >= 2, 'the membership lookups have moved');
+    assert.equal(
+      filtered.length,
+      lookups.length,
+      'a membership lookup here does not go through currentFilter',
+    );
   });
 });
 

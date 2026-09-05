@@ -206,17 +206,21 @@ membershipSchema.pre('validate', function seedPermissions(next) {
 });
 
 /**
- * The practices this person currently belongs to.
+ * The filter that means "currently a member", as a plain object.
  *
- * A static rather than a route helper because authorisation will need it from
- * several places, and the definition of "currently" should exist once.
+ * Exposed rather than kept inside `currentFor`, because three places needed
+ * the same condition and each wrote its own copy — `currentFor`, the practice
+ * resolver and the membership lookup. Three copies of a definition is two
+ * chances for them to drift, and the one that drifts is the one that stops
+ * excluding somebody who left.
  */
-membershipSchema.statics.currentFor = function currentFor(userId) {
-  return this.find({
+membershipSchema.statics.currentFilter = function currentFilter(userId, practiceId = null) {
+  return {
     user: userId,
+    ...(practiceId ? { practice: practiceId } : {}),
     status: MEMBERSHIP_STATUS.ACTIVE,
     endedOn: null,
-  });
+  };
 };
 
 membershipSchema.methods.toPublic = function toPublic() {

@@ -74,12 +74,27 @@ describe('the model', () => {
     assert.ok(idx.some((f) => f.practice === 1 && f.status === 1 && f.role === 1));
   });
 
-  test('currentFor excludes both the invited and the departed', () => {
-    // The definition of "currently" lives once, because authorisation will ask
-    // from several places and two definitions is one bug.
-    const q = Membership.currentFor('000000000000000000000001').getFilter();
+  test('currentFilter excludes both the invited and the departed', () => {
+    // The definition of "currently" lives once. It had been written out three
+    // times — here, in the practice resolver and in the membership lookup —
+    // and three copies is two chances for them to drift, with the one that
+    // drifts being the one that stops excluding somebody who left.
+    const q = Membership.currentFilter('000000000000000000000001');
     assert.equal(q.status, MEMBERSHIP_STATUS.ACTIVE);
     assert.equal(q.endedOn, null);
+    assert.ok(!('practice' in q), 'no practice given should not scope the filter');
+  });
+
+  test('and scopes to a practice when given one', () => {
+    const q = Membership.currentFilter('000000000000000000000001', '000000000000000000000002');
+    assert.equal(String(q.practice), '000000000000000000000002');
+  });
+
+  test('both middleware paths use it rather than their own copy', () => {
+    for (const f of ['authorise.js', 'practiceScope.js']) {
+      const src = readFileSync(new URL(`../src/middleware/${f}`, import.meta.url), 'utf8');
+      assert.match(src, /Membership\.currentFilter\(/, `${f} hand-rolls the filter`);
+    }
   });
 });
 

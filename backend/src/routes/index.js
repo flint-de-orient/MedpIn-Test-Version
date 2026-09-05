@@ -23,6 +23,7 @@ import departmentRoutes from './departments.js';
 import practiceRoutes from './practices.js';
 import adminRoutes from './admin.js';
 import enrolmentRoutes from './enrolments.js';
+import recordRoutes from './records.js';
 import dieticianRoutes from './dietician.js';
 import feedbackRoutes from './feedback.js';
 import uploadRoutes from './uploads.js';
@@ -94,6 +95,10 @@ router.use('/admin', adminRoutes);
 // Confirming a consent code, reading the consent trail, and the patient
 // withdrawing a practice's access.
 router.use('/enrolments', enrolmentRoutes);
+
+// Ending a clinical record, and moving a dependant to their own login. Both
+// change what the record says about a person, so neither is a delete.
+router.use('/records', recordRoutes);
 router.use('/dietician', dieticianRoutes);
 router.use('/feedback', feedbackRoutes);
 // Prescribing aid: brand -> composition, for autocomplete and the strength check.

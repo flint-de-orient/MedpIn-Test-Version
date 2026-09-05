@@ -38,11 +38,7 @@ import { forbidden } from './errors.js';
 export async function practiceOf(req) {
   if (req._practiceId !== undefined) return req._practiceId;
 
-  const row = await Membership.findOne({
-    user: req.user?._id,
-    status: MEMBERSHIP_STATUS.ACTIVE,
-    endedOn: null,
-  })
+  const row = await Membership.findOne(Membership.currentFilter(req.user?._id))
     .select('practice')
     .lean();
 
@@ -62,11 +58,7 @@ export async function practiceOfPatient(patientId) {
     .lean();
   if (!profile?.assignedDoctor) return null;
 
-  const row = await Membership.findOne({
-    user: profile.assignedDoctor,
-    status: MEMBERSHIP_STATUS.ACTIVE,
-    endedOn: null,
-  })
+  const row = await Membership.findOne(Membership.currentFilter(profile.assignedDoctor))
     .select('practice')
     .lean();
 
