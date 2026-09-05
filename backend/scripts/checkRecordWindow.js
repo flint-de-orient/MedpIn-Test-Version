@@ -22,6 +22,7 @@ import mongoose from 'mongoose';
 
 import { env } from '../src/config/env.js';
 import { Enrollment, ENROLLMENT_STATUS } from '../src/models/Enrollment.js';
+import { User, ROLES } from '../src/models/User.js';
 import { GlucoseReading } from '../src/models/GlucoseReading.js';
 import { Hba1cRecord } from '../src/models/Hba1cRecord.js';
 import { VitalRecord } from '../src/models/VitalRecord.js';
@@ -81,6 +82,34 @@ async function main() {
 
   console.log(`\n  ${enrolments.length} active enrolment(s), ${earliest.size} patient(s) dated\n`);
 
+  /**
+   * Patients with no active enrolment anywhere.
+   *
+   * Newly load-bearing. `/doctor/patients` is filtered to the practice's
+   * enrolled patients and `/doctor/patients/:id/summary` runs the enrolment
+   * gate, so a patient without an active row drops off the doctor's list and
+   * answers 403 on their own summary sheet — where yesterday both worked.
+   *
+   * The backfill enrolled everyone it found, so this should be zero. It is the
+   * one number worth reading before restarting, because the failure is a
+   * patient who has simply disappeared from the clinic that treats them.
+   */
+  const enrolled = new Set(enrolments.map((e) => String(e.patient)));
+  const allPatients = await User.find({ role: ROLES.PATIENT, isActive: true })
+    .select('_id name')
+    .lean();
+  const orphans = allPatients.filter((p) => !enrolled.has(String(p._id)));
+
+  if (orphans.length) {
+    console.log(`  !! ${orphans.length} active patient(s) have NO active enrolment.`);
+    console.log('     They will vanish from the doctor’s list and 403 on their summary.\n');
+    for (const p of orphans.slice(0, 10)) console.log(`       ${p._id}  ${p.name}`);
+    if (orphans.length > 10) console.log(`       ... and ${orphans.length - 10} more`);
+    console.log('\n     Fix with: node scripts/backfillEnrollments.js --apply\n');
+  } else {
+    console.log('  Every active patient has an active enrolment.\n');
+  }
+
   const undated = enrolments.filter((e) => !e.enrolledOn).length;
   if (undated) {
     // Not a problem: no date means no bound, and the read is unrestricted the
@@ -133,6 +162,13 @@ async function main() {
   }
 
   console.log('');
+  // An orphaned patient is a deploy blocker in its own right, separate from
+  // anything the window hides.
+  if (orphans.length) {
+    console.log(`  ${orphans.length} patient(s) would disappear from the doctor's list.
+`);
+    process.exitCode = 1;
+  }
   if (total === 0) {
     console.log('  Nothing would be hidden. The bound changes what a second practice\n' +
                 '  can read and nothing about what this one already sees.\n');
@@ -145,7 +181,7 @@ async function main() {
   }
 
   await mongoose.disconnect();
-  process.exitCode = total === 0 ? 0 : 1;
+  if (total !== 0) process.exitCode = 1;
 }
 
 main().catch(async (err) => {
