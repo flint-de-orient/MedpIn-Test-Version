@@ -1,4 +1,6 @@
 import { Enrollment, ENROLLMENT_STATUS } from '../models/Enrollment.js';
+import { ConsentEvent, CONSENT_ACTION, CONSENT_METHOD } from '../models/ConsentEvent.js';
+import { notFound } from '../middleware/errors.js';
 
 /**
  * Which practices a patient belongs to, and what each may see.
@@ -104,4 +106,55 @@ export async function practiceMaySee(practiceId, patientId, { recordDate = null 
   }
 
   return { allowed: true, reason: 'enrolled', enrollment };
+}
+
+/**
+ * The patient withdrawing a practice's access.
+ *
+ * Ends future access and deletes nothing. The prescriptions already written
+ * remain, and remain readable by the practice that wrote them, because a record
+ * one party can erase is not a record. What stops is anything new.
+ *
+ * Revocable by the patient, never by the practice that holds the access —
+ * a clinic that could revoke on a patient's behalf could also decline to.
+ */
+export async function revokeEnrolment({ enrollmentId, actor = null, inApp = true, note = null }) {
+  const enrollment = await Enrollment.findById(enrollmentId);
+  if (!enrollment) throw notFound('That enrolment was not found');
+
+  if (enrollment.status === ENROLLMENT_STATUS.REVOKED) return enrollment;
+
+  enrollment.status = ENROLLMENT_STATUS.REVOKED;
+  enrollment.revokedAt = new Date();
+  enrollment.revokedBy = actor;
+  await enrollment.save();
+
+  await ConsentEvent.record({
+    enrollment: enrollment._id,
+    action: CONSENT_ACTION.REVOKED,
+    actor,
+    method: inApp ? CONSENT_METHOD.IN_APP : CONSENT_METHOD.OTP_DESK,
+    note,
+  });
+
+  return enrollment;
+}
+
+/**
+ * The consent history for one relationship, oldest first.
+ *
+ * The answer to "who granted this, when, and on what basis" — which a status
+ * field cannot give, because it is overwritten at exactly the moment it becomes
+ * worth having.
+ */
+export async function consentHistory(enrollmentId) {
+  const rows = await ConsentEvent.find({ enrollment: enrollmentId }).sort({ at: 1 }).lean();
+  return rows.map((r) => ({
+    action: r.action,
+    method: r.method,
+    wording: r.wording ?? null,
+    actor: r.actor ? String(r.actor) : null,
+    note: r.note ?? null,
+    at: r.at,
+  }));
 }

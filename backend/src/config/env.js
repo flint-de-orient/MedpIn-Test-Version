@@ -91,6 +91,10 @@ const schema = z.object({
   // interchangeable and the text cannot be edited from here.
   MSG91_TEMPLATE_LOGIN: z.string().default(''),
   MSG91_TEMPLATE_REGISTER: z.string().default(''),
+  // Consent for a desk enrolling a patient who already has an account. Empty
+  // until a template is approved with DLT, and the sender falls back to the
+  // registration one meanwhile — see services/sms.js.
+  MSG91_TEMPLATE_ENROL: z.string().default(''),
 
   // Ten minutes, because that is what the approved templates tell the patient
   // ("OTP is valid for 10 minutes only"). The message and the server have to

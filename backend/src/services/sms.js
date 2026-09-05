@@ -17,7 +17,14 @@ export function smsConfigured() {
 }
 
 function templateFor(purpose) {
-  return purpose === 'login' ? env.MSG91_TEMPLATE_LOGIN : env.MSG91_TEMPLATE_REGISTER;
+  if (purpose === 'login') return env.MSG91_TEMPLATE_LOGIN;
+  // `enrol` falls back to the registration template until one of its own is
+  // registered with DLT. India requires every template to be pre-approved, so
+  // this cannot simply be worded differently in code — see MSG91_TEMPLATE_ENROL
+  // in the env config. Falling back keeps enrolment working meanwhile; the
+  // wording is merely less precise than it should be.
+  if (purpose === 'enrol') return env.MSG91_TEMPLATE_ENROL || env.MSG91_TEMPLATE_REGISTER;
+  return env.MSG91_TEMPLATE_REGISTER;
 }
 
 /**

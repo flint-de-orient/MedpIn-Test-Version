@@ -20,7 +20,12 @@ const otpChallengeSchema = new mongoose.Schema(
 
     // Registration and login are separate secrets. A code texted to prove a
     // new number must not open an existing account.
-    purpose: { type: String, enum: ['register', 'login'], required: true },
+    // `enrol` is a desk asking to be linked to a patient who already has an
+    // account elsewhere. Its own purpose rather than reusing `register`,
+    // because there is one live code per number per purpose and an enrolment
+    // code arriving would otherwise burn a registration the patient was
+    // part-way through.
+    purpose: { type: String, enum: ['register', 'login', 'enrol'], required: true },
 
     codeHash: { type: String, required: true },
 
