@@ -8,6 +8,8 @@ import { audit } from '../middleware/audit.js';
 import { Department } from '../models/Department.js';
 import { DoctorDepartment } from '../models/DoctorDepartment.js';
 import { User, ROLES } from '../models/User.js';
+import { PERMISSIONS } from '../models/Membership.js';
+import { requirePermission } from '../middleware/authorise.js';
 
 /**
  * Specialties, and which doctors practise in them.
@@ -67,6 +69,7 @@ router.get(
 router.post(
   '/',
   requireDoctor,
+  requirePermission(PERMISSIONS.MANAGE_DEPARTMENT),
   validate({
     body: z.object({
       key: z
@@ -122,6 +125,7 @@ router.post(
 router.patch(
   '/:id',
   requireDoctor,
+  requirePermission(PERMISSIONS.MANAGE_DEPARTMENT),
   validate({
     body: z.object({
       names: z

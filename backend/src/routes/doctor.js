@@ -2,6 +2,8 @@ import { Router } from 'express';
 import dayjs from 'dayjs';
 import { z } from 'zod';
 import { requireAuth, requireClinician, requireDoctor } from '../middleware/auth.js';
+import { requirePermission } from '../middleware/authorise.js';
+import { PERMISSIONS } from '../models/Membership.js';
 import { validate, q } from '../middleware/validate.js';
 import { asyncHandler, notFound, conflict, badRequest } from '../middleware/errors.js';
 import { audit } from '../middleware/audit.js';
@@ -1870,6 +1872,7 @@ router.get(
 router.post(
   '/staff',
   requireDoctor,
+  requirePermission(PERMISSIONS.MANAGE_STAFF),
   validate({
     body: z.object({
       name: z.string().trim().min(2).max(120),
@@ -1955,6 +1958,7 @@ router.post(
   // create a dietician account. The test that was supposed to catch this
   // matched the GET route of the same name and passed.
   requireDoctor,
+  requirePermission(PERMISSIONS.MANAGE_STAFF),
   validate({
     body: z.object({
       name: z.string().trim().min(2).max(120),

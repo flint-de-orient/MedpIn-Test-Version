@@ -177,7 +177,24 @@ membershipSchema.methods.isCurrent = function isCurrent() {
  * pass the obvious `permissions.includes(...)` and should not.
  */
 membershipSchema.methods.can = function can(permission) {
-  return this.isCurrent() && (this.permissions ?? []).includes(permission);
+  if (!this.isCurrent()) return false;
+
+  // An empty grant means the row predates permissions, not that somebody has
+  // been stripped of everything. Those two states look identical in the data
+  // and only one of them can actually happen: there is no editor, by design,
+  // so nothing can produce a deliberately empty set.
+  //
+  // The rows the backfill wrote before this field existed are all empty. Read
+  // literally, they would deny every action to every member of the practice
+  // that is seeing patients this morning — the precise outage the rest of this
+  // work has been shaped to avoid. So an empty set falls back to the preset the
+  // row's own role and ownership imply, which is what the backfill would have
+  // written had it known to.
+  const granted = this.permissions?.length
+    ? this.permissions
+    : presetFor({ role: this.role, isOwner: this.isOwner });
+
+  return granted.includes(permission);
 };
 
 /// Seed the grant on the way in, so no row can exist without one.

@@ -20,6 +20,8 @@ import { User, ROLES } from '../models/User.js';
 import { ensurePrescriptionPdf } from '../services/prescriptionPdf.js';
 import { paged, pageParams } from '../utils/pagination.js';
 import { resolveDoctor } from '../services/doctorContext.js';
+import { requirePermission } from '../middleware/authorise.js';
+import { PERMISSIONS } from '../models/Membership.js';
 
 const router = Router({ mergeParams: true });
 router.use(requireAuth, resolvePatientScope);
@@ -74,6 +76,7 @@ router.post(
   // The doctor's own act. Staff may look one up and print it; writing one is
   // not theirs, and the record names whoever posted it as the prescriber.
   requireDoctor,
+  requirePermission(PERMISSIONS.PRESCRIBE),
   validate({
     body: z.object({
       appointmentId: z.string().optional(),

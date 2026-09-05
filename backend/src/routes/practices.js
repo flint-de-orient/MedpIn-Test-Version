@@ -8,7 +8,8 @@ import { audit } from '../middleware/audit.js';
 import { Practice } from '../models/Practice.js';
 import { Clinic } from '../models/Clinic.js';
 import { User, ROLES } from '../models/User.js';
-import { Membership } from '../models/Membership.js';
+import { Membership, PERMISSIONS } from '../models/Membership.js';
+import { requirePermission } from '../middleware/authorise.js';
 import { forgetClinicIdentity } from '../services/clinicIdentity.js';
 
 /**
@@ -177,6 +178,8 @@ router.get(
 router.patch(
   '/:id',
   requireDoctor,
+  // The letterhead is practice administration, not a clinical act.
+  requirePermission(PERMISSIONS.MANAGE_STAFF),
   validate({
     body: z.object({
       name: z.string().trim().min(2).max(160).optional(),
