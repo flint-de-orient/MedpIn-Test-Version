@@ -146,7 +146,12 @@ describe('all five questions are answered', () => {
     // brittle whole-body match.
     const body = src.slice(src.indexOf('export async function enrollmentGate'));
     const gate = body.slice(0, body.indexOf('\n}\n') + 2);
-    assert.ok(gate.includes('if (verdict.allowed) return true;'), 'no conditional permit');
+    // Matched on the condition, not the whole line — the permit gained a body
+    // when it started keeping the enrolment for the reads that follow, and a
+    // test pinned to the one-liner failed on an addition it should not care
+    // about.
+    assert.ok(gate.includes('if (verdict.allowed)'), 'no conditional permit');
+    assert.ok(gate.includes('return true;'), 'the permit never returns');
     assert.ok(gate.includes('throw forbidden('), 'the gate cannot refuse');
   });
 

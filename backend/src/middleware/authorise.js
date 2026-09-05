@@ -85,7 +85,13 @@ export async function enrollmentGate(req, patientId, { recordDate = null } = {})
   if (!practiceId) return true;
 
   const verdict = await practiceMaySee(practiceId, patientId, { recordDate });
-  if (verdict.allowed) return true;
+  if (verdict.allowed) {
+    // Kept for the reads that follow. The gate alone answers "may they open
+    // this patient"; a list still has to answer "which of these rows", and
+    // without the enrolment in hand every route would look it up again.
+    req.enrollment = verdict.enrollment ?? null;
+    return true;
+  }
 
   // Which of the four it was, so the log can tell a fumbled link from an
   // expired consent from somebody reaching where they should not.
@@ -146,4 +152,30 @@ export async function authorise(req, { permission, patientId } = {}) {
   }
 
   return membership;
+}
+
+/**
+ * The date filter a clinical list must apply, given who is asking.
+ *
+ * ---- The half of "not retroactive" that was missing ----------------------
+ *
+ * `enrollmentGate` answers whether a practice may open a patient at all. It
+ * cannot answer which of that patient's rows they may see, because it does not
+ * know what is about to be queried — and until this existed, no list asked.
+ *
+ * So the rule was enforced on the door and not on the shelves: a practice that
+ * enrolled Rahul in September could open him and read a prescription written in
+ * May by somebody else. That is the exact thing the enrolment date exists to
+ * prevent, and it was one `$gte` away the whole time.
+ *
+ *   const filter = { patient: req.patientId, ...recordWindow(req, 'issuedOn') };
+ *
+ * Returns `{}` when there is no enrolment to bound by — a patient the migration
+ * has not reached, or a caller with no practice. Unknown never restricts, for
+ * the same reason unknown never denies.
+ */
+export function recordWindow(req, field = 'createdAt') {
+  const from = req.enrollment?.enrolledOn;
+  if (!from) return {};
+  return { [field]: { $gte: new Date(from) } };
 }

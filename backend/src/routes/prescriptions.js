@@ -20,8 +20,8 @@ import { User, ROLES } from '../models/User.js';
 import { ensurePrescriptionPdf } from '../services/prescriptionPdf.js';
 import { paged, pageParams } from '../utils/pagination.js';
 import { resolveDoctor } from '../services/doctorContext.js';
-import { requirePermission } from '../middleware/authorise.js';
 import { PERMISSIONS } from '../models/Membership.js';
+import { requirePermission, recordWindow } from '../middleware/authorise.js';
 
 const router = Router({ mergeParams: true });
 router.use(requireAuth, resolvePatientScope);
@@ -41,7 +41,10 @@ router.get(
   audit('read', 'Prescription'),
   asyncHandler(async (req, res) => {
     const { page, limit, skip } = q(req);
-    const filter = { patient: req.patientId };
+    // Bounded by the asking practice's enrolment. Without this a clinic that
+    // enrolled the patient in September lists a prescription written in May by
+    // somebody else — the door was guarded and the shelves were not.
+    const filter = { patient: req.patientId, ...recordWindow(req, 'issuedOn') };
     const [items, total] = await Promise.all([
       Prescription.find(filter)
         .sort({ issuedOn: -1 })
@@ -61,7 +64,13 @@ router.get(
   '/:id',
   audit('read', 'Prescription'),
   asyncHandler(async (req, res) => {
-    const p = await Prescription.findOne({ _id: req.params.id, patient: req.patientId })
+    const p = await Prescription.findOne({
+      _id: req.params.id,
+      patient: req.patientId,
+      // The same bound on a direct fetch. A list that hides a row while its own
+      // URL still serves it is a filter, not a rule.
+      ...recordWindow(req, 'issuedOn'),
+    })
       .populate('doctor', 'name')
       .populate('uploadedBy', 'name')
       .populate('scanFile', 'mimeType')
