@@ -129,6 +129,11 @@ platformAdminSchema.methods.toPublic = function toPublic() {
     name: this.name,
     isActive: this.isActive,
     lastLoginAt: this.lastLoginAt,
+    // Whether the factor is on, never the secret behind it. The panel needs
+    // this to know which of three states to draw, and `/me` is the only read
+    // that can answer after the factor has just been switched — the sign-in
+    // response is a snapshot of a moment that has passed by then.
+    totpEnabled: Boolean(this.totpEnabled),
   };
 };
 

@@ -1,7 +1,7 @@
 /**
  * MedPin admin — the whole panel.
  *
- * No framework. Three screens with no shared mutable state beyond "am I signed
+ * No framework. Four screens with no shared mutable state beyond "am I signed
  * in" earn neither a build step nor a virtual DOM, and a third toolchain is a
  * real ongoing cost for one developer already running Flutter and Node.
  *
@@ -27,6 +27,7 @@ const API =
 let token = null;
 let admin = null;
 let statusFilter = '';
+let totpEnabled = false;
 
 const $ = (id) => document.getElementById(id);
 
@@ -60,7 +61,12 @@ async function call(path, { method = 'GET', body } = {}) {
     // An expired session should return you to the sign-in screen rather than
     // leaving a dead page behind an error message.
     if (res.status === 401 && token) signOut();
-    throw new Error(data?.error?.message ?? `Request failed (${res.status})`);
+    const err = new Error(data?.error?.message ?? `Request failed (${res.status})`);
+    // The code, not just the sentence. `TOTP_REQUIRED` arrives as a 401 and
+    // means "carry on", where every other 401 here means "start again" — a
+    // caller matching on the wording would break the moment it was reworded.
+    err.code = data?.error?.code ?? null;
+    throw err;
   }
   return data;
 }
@@ -87,8 +93,14 @@ function signOut() {
   admin = null;
   $('mainView').hidden = true;
   $('who').hidden = true;
+  $('resetView').hidden = true;
   $('loginView').hidden = false;
   $('password').value = '';
+  // Both legs reset together. A stale code left in the box would be submitted
+  // with the next attempt and fail for a reason nobody could see.
+  $('totpRow').hidden = true;
+  $('loginTotp').value = '';
+  $('loginBtn').textContent = 'Sign in';
 }
 
 /* ------------------------------------------------------------------- login */
@@ -99,28 +111,118 @@ $('loginForm').addEventListener('submit', async (e) => {
   err.hidden = true;
   $('loginBtn').disabled = true;
 
+  const code = $('loginTotp').value.trim();
+
   try {
     const out = await call('/admin/auth/login', {
       method: 'POST',
-      body: { email: $('email').value.trim(), password: $('password').value },
+      body: {
+        email: $('email').value.trim(),
+        password: $('password').value,
+        ...(code ? { totp: code } : {}),
+      },
     });
-    token = out.token;
-    admin = out.admin;
-
-    $('whoEmail').textContent = admin.email;
-    $('who').hidden = false;
-    $('loginView').hidden = true;
-    $('mainView').hidden = false;
-    $('password').value = '';
-    await loadPractices();
+    signedIn(out);
   } catch (ex) {
-    showError(err, ex.message);
+    // The password was right and the account has a factor. Not a failure —
+    // ask for the code and keep everything else where it is, because clearing
+    // the form and starting over is how a second factor gets turned off again.
+    if (ex.code === 'TOTP_REQUIRED') {
+      $('totpRow').hidden = false;
+      $('loginBtn').textContent = 'Verify';
+      $('loginTotp').value = '';
+      $('loginTotp').focus();
+      showError(err, ex.message);
+    } else {
+      $('loginTotp').value = '';
+      showError(err, ex.message);
+    }
   } finally {
     $('loginBtn').disabled = false;
   }
 });
 
+/** Both ways in end here: the login, and a reset followed by a login. */
+function signedIn(out) {
+  token = out.token;
+  admin = out.admin;
+
+  $('whoEmail').textContent = admin.email;
+  $('who').hidden = false;
+  $('loginView').hidden = true;
+  $('resetView').hidden = true;
+  $('mainView').hidden = false;
+  $('password').value = '';
+  $('loginTotp').value = '';
+  $('totpRow').hidden = true;
+  $('loginBtn').textContent = 'Sign in';
+
+  // The server returns this on every sign-in so the panel can say something.
+  // An account that can suspend every practice on the platform and is held by
+  // a password alone should be told, every time, until it is not.
+  totpEnabled = Boolean(out.totpEnabled ?? admin.totpEnabled);
+
+  // Always the practice list, even for somebody who signed out from the audit
+  // tab. The panel is opened to find out what is waiting.
+  openTab('practices');
+}
+
 $('signOut').addEventListener('click', signOut);
+
+/* ------------------------------------------------------------------- reset */
+
+$('forgotBtn').addEventListener('click', () => {
+  $('resetError').hidden = true;
+  $('resetForm').reset();
+  // Carried across rather than retyped — whoever is here has already told the
+  // page who they are once.
+  $('rEmail').value = $('email').value.trim();
+  $('loginView').hidden = true;
+  $('resetView').hidden = false;
+});
+
+$('backBtn').addEventListener('click', () => {
+  $('resetView').hidden = true;
+  $('loginView').hidden = false;
+});
+
+$('resetForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const err = $('resetError');
+  err.hidden = true;
+
+  const newPassword = $('rPassword').value;
+  if (newPassword.length < 12) {
+    return showError(err, 'Choose a password of at least 12 characters.');
+  }
+
+  $('resetBtn').disabled = true;
+  try {
+    const totp = $('rTotp').value.trim();
+    await call('/admin/auth/reset', {
+      method: 'POST',
+      body: {
+        email: $('rEmail').value.trim(),
+        token: $('rToken').value.trim(),
+        newPassword,
+        ...(totp ? { totp } : {}),
+      },
+    });
+
+    // No session comes back, deliberately: choosing a password is not signing
+    // in. So this lands on the login with the email filled and the rest empty.
+    $('email').value = $('rEmail').value.trim();
+    $('resetForm').reset();
+    $('resetView').hidden = true;
+    $('loginView').hidden = false;
+    $('password').focus();
+    toast('Password changed. Sign in with it.');
+  } catch (ex) {
+    showError(err, ex.message);
+  } finally {
+    $('resetBtn').disabled = false;
+  }
+});
 
 /* --------------------------------------------------------------- practices */
 
@@ -363,15 +465,149 @@ async function loadAudit() {
   }
 }
 
+/* ----------------------------------------------------------------- account */
+
+/**
+ * The account screen, and the only place the second factor can be changed.
+ *
+ * These routes existed before this screen did, which meant enrolling was a
+ * documented curl exercise — and worse, the login had no field for a code, so
+ * turning the factor on locked you out of the panel that turned it on. A route
+ * with no caller is a feature nobody has.
+ */
+async function loadAccount() {
+  try {
+    // `/me` rather than the login response: after enabling or disabling the
+    // factor, the response is the record, and re-reading it means the screen
+    // agrees with the server rather than with what was true at sign-in.
+    const out = await call('/admin/me');
+    admin = out.admin;
+  } catch (ex) {
+    toast(ex.message);
+    return;
+  }
+
+  $('acEmail').textContent = admin.email;
+  $('acName').textContent = admin.name || '—';
+  $('acLast').textContent = admin.lastLoginAt
+    ? new Date(admin.lastLoginAt).toLocaleString()
+    : 'This is the first one.';
+
+  totpEnabled = Boolean(admin.totpEnabled);
+  showTotp(totpEnabled ? 'on' : 'off');
+}
+
+/** One of three: 'off', 'setup' (mid-enrolment), 'on'. */
+function showTotp(state) {
+  $('totpOff').hidden = state !== 'off';
+  $('totpSetup').hidden = state !== 'setup';
+  $('totpOn').hidden = state !== 'on';
+  $('totpState').textContent = {
+    off: 'Off. Your password is the only thing protecting this account.',
+    setup: 'Not on yet — finish by entering a code from the app.',
+    on: 'On. A code from your authenticator app is needed at every sign-in.',
+  }[state];
+  // The nag disappears the moment it is dealt with, not at the next sign-in.
+  $('totpNag').hidden = state === 'on';
+}
+
+$('totpSetupBtn').addEventListener('click', async () => {
+  $('totpError').hidden = true;
+  try {
+    const out = await call('/admin/me/totp/setup', { method: 'POST' });
+    // Grouped in fours. This gets typed into a phone by hand, and an unbroken
+    // run of base32 is where the typing goes wrong.
+    $('totpSecret').textContent = (out.secret.match(/.{1,4}/g) ?? []).join(' ');
+    $('totpSecret').dataset.raw = out.secret;
+    $('enableTotp').value = '';
+    showTotp('setup');
+    $('enableTotp').focus();
+  } catch (ex) {
+    toast(ex.message);
+  }
+});
+
+$('copySecret').addEventListener('click', async () => {
+  try {
+    await navigator.clipboard.writeText($('totpSecret').dataset.raw ?? '');
+    toast('Copied');
+  } catch {
+    // http, or a browser that refuses. The key is on screen either way, which
+    // is the part that matters.
+    toast('Copy is blocked here — type it from the screen.');
+  }
+});
+
+$('totpEnableBtn').addEventListener('click', async () => {
+  const err = $('totpError');
+  err.hidden = true;
+  const code = $('enableTotp').value.trim();
+  if (!/^\d{6}$/.test(code)) return showError(err, 'Six digits from the app.');
+
+  $('totpEnableBtn').disabled = true;
+  try {
+    await call('/admin/me/totp/enable', { method: 'POST', body: { totp: code } });
+    totpEnabled = true;
+    showTotp('on');
+    $('disableTotp').value = '';
+    toast('Two-factor is on');
+  } catch (ex) {
+    showError(err, ex.message);
+  } finally {
+    $('totpEnableBtn').disabled = false;
+  }
+});
+
+$('totpCancelBtn').addEventListener('click', () => {
+  // The secret is on the account now but the factor is off, so nothing is
+  // broken by walking away — starting again mints a new one.
+  showTotp('off');
+});
+
+$('totpDisableBtn').addEventListener('click', async () => {
+  const err = $('disableError');
+  err.hidden = true;
+  const code = $('disableTotp').value.trim();
+  if (!/^\d{6}$/.test(code)) return showError(err, 'Six digits from the app.');
+
+  $('totpDisableBtn').disabled = true;
+  try {
+    await call('/admin/me/totp/disable', { method: 'POST', body: { totp: code } });
+    totpEnabled = false;
+    showTotp('off');
+    toast('Two-factor is off');
+  } catch (ex) {
+    showError(err, ex.message);
+  } finally {
+    $('totpDisableBtn').disabled = false;
+  }
+});
+
+$('nagBtn').addEventListener('click', () => openTab('account'));
+
+/* -------------------------------------------------------------------- tabs */
+
+function openTab(view) {
+  for (const t of document.querySelectorAll('.tab')) {
+    t.classList.toggle('is-on', t.dataset.view === view);
+  }
+  $('practicesView').hidden = view !== 'practices';
+  $('auditView').hidden = view !== 'audit';
+  $('accountView').hidden = view !== 'account';
+  // Not above the screen that fixes it, where it would be a banner pointing at
+  // the button underneath it.
+  $('totpNag').hidden = totpEnabled || view === 'account';
+
+  // Loaded on arrival rather than once at sign-in. Coming back to a tab after
+  // acting on another one should show what is true now, not what was true
+  // several decisions ago.
+  if (view === 'practices') loadPractices();
+  if (view === 'audit') loadAudit();
+  if (view === 'account') loadAccount();
+}
+
 for (const tab of document.querySelectorAll('.tab')) {
-  tab.addEventListener('click', () => {
-    for (const t of document.querySelectorAll('.tab')) t.classList.remove('is-on');
-    tab.classList.add('is-on');
-    const audit = tab.dataset.view === 'audit';
-    $('auditView').hidden = !audit;
-    $('practicesView').hidden = audit;
-    if (audit) loadAudit();
-  });
+  tab.addEventListener('click', () => openTab(tab.dataset.view));
 }
 
 /**

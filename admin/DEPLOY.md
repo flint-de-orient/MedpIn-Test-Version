@@ -98,14 +98,23 @@ Certificate: `certbot --nginx -d admin.medpin.in`.
 
 ## 4. Turn on the second factor
 
-Sign in, then `POST /api/v1/admin/me/totp/setup` returns an `otpauth://` URI to
-scan, and `POST /api/v1/admin/me/totp/enable` with a code from the app switches
-it on. Setup alone does **not** enable it — a secret stored without a verified
-code locks you out the moment you mistype it into the authenticator.
+Sign in, open **Account**, and follow it. The panel shows a setup key to type
+into an authenticator app — as text rather than a QR code, because drawing one
+means putting a library on the page that handles the secret, and this is the one
+page where an extra script is worth avoiding. Every authenticator app takes a
+typed key.
 
-Turning it off needs a current code too, not just a session: otherwise a stolen
+Setup alone does **not** enable it. The factor switches on only after a code
+from the app has been verified, so a mistyped key cannot lock you out of the
+panel that set it up.
+
+Turning it off needs a current code as well as a session: otherwise a stolen
 token can remove the factor protecting the account, which is the same as not
 having one.
+
+Until it is on, the panel says so at the top of every screen. An account that
+can suspend every practice on the platform and is held by a password alone
+should be told, every time.
 
 ## What is protected, and what is not
 
@@ -136,17 +145,20 @@ hand somebody a working reset. It expires in thirty minutes and is spent on
 use — a token that still worked afterwards would be a second password nobody
 knew they had.
 
-Then:
+Hand it over out of band. The person resetting opens the panel, clicks **Lost
+the password?** on the sign-in screen, and spends it there — email, token, new
+password, and a code if the account has a factor.
+
+**Two-factor still applies.** A reset that skipped it would make the second
+factor decorative — anyone holding a leaked token would be past it.
+
+The reset returns no session; it lands back on the sign-in screen. Choosing a
+new password is not signing in, and handing back a token would let a stolen
+reset skip the login it just re-enabled.
+
+The same thing over the wire, if the browser is not available:
 
 ```
 POST /api/v1/admin/auth/reset
 { "email": "...", "token": "...", "newPassword": "...", "totp": "123456" }
 ```
-
-**Two-factor still applies.** A reset that skipped it would make the second
-factor decorative — anyone holding a leaked token would be past it. The `totp`
-field is required whenever the account has one enrolled.
-
-The reset returns no session. Choosing a new password is not signing in, and
-handing back a token would let a stolen reset skip the login it just
-re-enabled.

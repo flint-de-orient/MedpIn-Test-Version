@@ -7,7 +7,7 @@
 <!--
   The platform operator's panel.
 
-  No build step and no framework, deliberately. Three screens with no complex
+  No build step and no framework, deliberately. Four screens with no complex
   state earn neither, and a third build system is a real ongoing cost for a
   solo developer already running Flutter and Node.
 
@@ -49,8 +49,53 @@
       <label for="password">Password</label>
       <input id="password" type="password" autocomplete="current-password" required>
 
+      <!--
+        The second leg. Hidden until the server says the account has a factor,
+        because asking every operator for a code they may not have is a field
+        most of them would have to ignore.
+      -->
+      <div id="totpRow" hidden>
+        <label for="loginTotp">Code from your authenticator app</label>
+        <input id="loginTotp" class="code" inputmode="numeric" autocomplete="one-time-code"
+               maxlength="6" pattern="[0-9]{6}">
+      </div>
+
       <p class="error" id="loginError" hidden></p>
       <button class="primary" type="submit" id="loginBtn">Sign in</button>
+      <button class="link" type="button" id="forgotBtn">Lost the password?</button>
+    </form>
+  </section>
+
+  <!-- Reset ---------------------------------------------------------------
+       Not a link in an inbox. The token is minted on the server and handed
+       over out of band; this is only where it is spent. -->
+  <section id="resetView" class="narrow" hidden>
+    <h1>Set a new password</h1>
+    <p class="lede">
+      There is no reset email. This account can suspend every practice on the
+      platform, and a mailbox is not a strong enough key for that. Someone with
+      access to the server runs <code>scripts/resetAdmin.js</code> and gives you
+      the token.
+    </p>
+    <form id="resetForm" novalidate>
+      <label for="rEmail">Email</label>
+      <input id="rEmail" type="email" autocomplete="username" required>
+
+      <label for="rToken">Reset token</label>
+      <input id="rToken" class="mono" autocomplete="off" spellcheck="false" required>
+
+      <label for="rPassword">New password <span class="opt">12 characters or more</span></label>
+      <input id="rPassword" type="password" autocomplete="new-password" required minlength="12">
+
+      <label for="rTotp">
+        Code from your authenticator app <span class="opt">if you have one</span>
+      </label>
+      <input id="rTotp" class="code" inputmode="numeric" autocomplete="one-time-code"
+             maxlength="6" pattern="[0-9]{6}">
+
+      <p class="error" id="resetError" hidden></p>
+      <button class="primary" type="submit" id="resetBtn">Set the password</button>
+      <button class="link" type="button" id="backBtn">Back to sign in</button>
     </form>
   </section>
 
@@ -59,7 +104,22 @@
     <nav class="tabs">
       <button class="tab is-on" data-view="practices" type="button">Practices</button>
       <button class="tab" data-view="audit" type="button">Audit</button>
+      <button class="tab" data-view="account" type="button">Account</button>
     </nav>
+
+    <!--
+      Shown only while the factor is off. The server returns `totpEnabled` on
+      every sign-in for exactly this: a panel that can suspend every practice on
+      the platform should say so until the account behind it is protected.
+    -->
+    <div id="totpNag" class="nag" hidden>
+      <div>
+        <strong>This account has no second factor.</strong>
+        A password alone stands between anyone who learns it and every practice
+        on the platform.
+      </div>
+      <button class="ghost small" id="nagBtn" type="button">Set one up</button>
+    </div>
 
     <div id="practicesView">
       <div class="head">
@@ -91,6 +151,85 @@
           <tbody></tbody>
         </table>
       </div>
+    </div>
+
+    <!-- Account ---------------------------------------------------------- -->
+    <div id="accountView" hidden>
+      <div class="head"><h1>Account</h1></div>
+
+      <dl class="facts">
+        <dt>Signed in as</dt><dd id="acEmail" class="mono">—</dd>
+        <dt>Name</dt><dd id="acName">—</dd>
+        <dt>Last sign-in</dt><dd id="acLast">—</dd>
+      </dl>
+
+      <section class="panel">
+        <h2>Two-factor</h2>
+        <p class="lede" id="totpState">—</p>
+
+        <!-- Off: nothing started yet. -->
+        <div id="totpOff" hidden>
+          <p class="lede">
+            An authenticator app on your phone — Google Authenticator, Aegis,
+            1Password, any of them. Nothing is sent by SMS.
+          </p>
+          <button class="primary" id="totpSetupBtn" type="button">Set up two-factor</button>
+        </div>
+
+        <!--
+          Mid-enrolment. The key is shown as text rather than a QR code: drawing
+          one needs a library on the page that handles the secret, and this is
+          the one page where an extra script is worth avoiding. Every
+          authenticator app takes a typed setup key.
+        -->
+        <div id="totpSetup" hidden>
+          <p class="lede">
+            In your authenticator app choose <em>enter a setup key</em>, then
+            type this. It is shown once.
+          </p>
+          <div class="key">
+            <code id="totpSecret" class="mono"></code>
+            <button class="ghost small" id="copySecret" type="button">Copy</button>
+          </div>
+          <p class="lede">
+            The app will start showing a six-digit code. Type the current one to
+            finish — until it is verified, two-factor stays off, so a mistyped
+            key cannot lock you out.
+          </p>
+          <label for="enableTotp">Current code</label>
+          <input id="enableTotp" class="code" inputmode="numeric" autocomplete="one-time-code"
+                 maxlength="6" pattern="[0-9]{6}">
+          <p class="error" id="totpError" hidden></p>
+          <div class="row">
+            <button class="primary" id="totpEnableBtn" type="button">Turn it on</button>
+            <button class="ghost" id="totpCancelBtn" type="button">Cancel</button>
+          </div>
+        </div>
+
+        <!-- On. Turning it off needs a code, not just this session. -->
+        <div id="totpOn" hidden>
+          <p class="lede">
+            Turning it off needs a current code as well as this session —
+            otherwise a stolen token could remove the factor protecting the
+            account, which is the same as not having one.
+          </p>
+          <label for="disableTotp">Current code</label>
+          <input id="disableTotp" class="code" inputmode="numeric" autocomplete="one-time-code"
+                 maxlength="6" pattern="[0-9]{6}">
+          <p class="error" id="disableError" hidden></p>
+          <button class="danger" id="totpDisableBtn" type="button">Turn off two-factor</button>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2>This session</h2>
+        <p class="lede">
+          Held in memory only. Closing the tab signs you out, there is no
+          “remember me”, and the server expires it after two hours regardless.
+          That is deliberate for an account that can suspend every practice, and
+          it means signing in again after a refresh.
+        </p>
+      </section>
     </div>
   </section>
 </main>

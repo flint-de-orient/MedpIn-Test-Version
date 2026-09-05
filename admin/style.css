@@ -219,3 +219,63 @@ dialog menu { display: flex; justify-content: flex-end; gap: 0.5rem; padding: 0;
 .diff { white-space: nowrap; }
 .diff s { color: var(--ink-faint); text-decoration-thickness: 1px; }
 .diff b { color: var(--ink); font-weight: 600; }
+
+/* ------------------------------------------------------------------ account */
+
+/* A button that reads as a link. Underlined rather than only coloured: at this
+ * size and weight the accent alone is close to failing on the muted ground, and
+ * "lost the password" is exactly the control somebody is scanning for. */
+.link {
+  display: block; margin: 0.9rem 0 0; padding: 0;
+  background: none; border: 0; color: var(--accent);
+  font-size: 0.9rem; text-decoration: underline; text-underline-offset: 3px;
+}
+
+/* Six digits, tracked apart so a transposition is visible while typing. */
+.code {
+  max-width: 9rem;
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: 1.15rem; letter-spacing: 0.28em;
+}
+
+/* Not a modal and not a toast: it stays until the thing it names is fixed. */
+.nag {
+  display: flex; align-items: center; justify-content: space-between; gap: 1rem;
+  margin-bottom: 1.5rem; padding: 0.85rem 1rem;
+  border: 1px solid var(--warn); border-left-width: 3px;
+  border-radius: var(--r); background: var(--warn-tint);
+  font-size: 0.9rem; color: var(--ink);
+}
+.nag strong { display: block; }
+
+.facts {
+  display: grid; grid-template-columns: max-content 1fr; gap: 0.35rem 1.5rem;
+  margin: 0 0 1.75rem; font-size: 0.9rem;
+}
+.facts dt { color: var(--ink-muted); }
+.facts dd { margin: 0; }
+
+.panel {
+  padding: 1.25rem; margin-bottom: 1rem;
+  border: 1px solid var(--line); border-radius: var(--r);
+  background: var(--surface); box-shadow: var(--shadow);
+}
+.panel .lede { margin-bottom: 0.5rem; font-size: 0.9rem; }
+
+/* The setup key. Wraps rather than scrolls — it is being copied by eye onto a
+ * phone, and a line that runs off the edge is where that goes wrong. */
+.key {
+  display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap;
+  margin: 0.75rem 0; padding: 0.75rem 0.9rem;
+  border: 1px dashed var(--line); border-radius: 8px; background: var(--surface-sub);
+}
+.key code { font-size: 1rem; word-break: break-all; user-select: all; }
+
+.row { display: flex; gap: 0.5rem; margin-top: 1.1rem; }
+.row .primary, .row .danger { margin-top: 0; }
+
+@media (max-width: 34rem) {
+  .nag { flex-direction: column; align-items: flex-start; }
+  .facts { grid-template-columns: 1fr; gap: 0 0; }
+  .facts dd { margin-bottom: 0.6rem; }
+}
