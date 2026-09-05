@@ -52,6 +52,24 @@ const platformAdminSchema = new mongoose.Schema(
     /// to a name and a reason for having had access.
     isActive: { type: Boolean, default: true, index: true },
 
+    /// Second factor. Base32, never selected by default — the same reasoning
+    /// as the password hash, and more so: a leaked TOTP secret is a permanent
+    /// bypass of the factor it exists to provide.
+    totpSecret: { type: String, default: null, select: false },
+
+    /// True once a code has been verified against the secret. Enrolment is not
+    /// complete until the operator has proved their app works, or a mistyped
+    /// setup locks them out of their own panel.
+    totpEnabled: { type: Boolean, default: false },
+
+    /// Consecutive failures, and the wall they build.
+    ///
+    /// The IP rate limit is the first line and it is defeated by rotating
+    /// addresses, which is cheap. This one is per account, so the attacker's
+    /// budget is spent whatever address they come from.
+    failedAttempts: { type: Number, default: 0 },
+    lockedUntil: { type: Date, default: null },
+
     lastLoginAt: { type: Date, default: null },
   },
   { timestamps: true },
@@ -60,6 +78,38 @@ const platformAdminSchema = new mongoose.Schema(
 platformAdminSchema.methods.checkPassword = function checkPassword(plain) {
   if (!this.passwordHash) return false;
   return bcrypt.compare(plain, this.passwordHash);
+};
+
+/// How long the account is shut after repeated failures.
+///
+/// Five attempts then fifteen minutes. Long enough that guessing is hopeless,
+/// short enough that a locked-out operator waits rather than needing a shell on
+/// the server — a lockout only an engineer can lift is one that becomes an
+/// engineer's Sunday.
+const MAX_ATTEMPTS = 5;
+const LOCK_MINUTES = 15;
+
+platformAdminSchema.methods.isLocked = function isLocked() {
+  return Boolean(this.lockedUntil && this.lockedUntil > new Date());
+};
+
+/// Record a failure, locking the account once it has had enough.
+platformAdminSchema.methods.noteFailure = function noteFailure() {
+  this.failedAttempts = (this.failedAttempts ?? 0) + 1;
+  if (this.failedAttempts >= MAX_ATTEMPTS) {
+    this.lockedUntil = new Date(Date.now() + LOCK_MINUTES * 60_000);
+    this.failedAttempts = 0;
+  }
+  return this.save();
+};
+
+/// A success clears the count. Four failures then a correct password is a
+/// person who mistyped, not an attacker who got lucky.
+platformAdminSchema.methods.noteSuccess = function noteSuccess() {
+  this.failedAttempts = 0;
+  this.lockedUntil = null;
+  this.lastLoginAt = new Date();
+  return this.save();
 };
 
 platformAdminSchema.statics.hashPassword = function hashPassword(plain) {

@@ -11,6 +11,7 @@ import { Practice, PRACTICE_STATUS, VERIFICATION } from '../models/Practice.js';
 import { Clinic } from '../models/Clinic.js';
 import { Membership, MEMBERSHIP_STATUS } from '../models/Membership.js';
 import { signAdminToken, secretsAreSeparate } from '../services/adminTokens.js';
+import { generateSecret, verifyTotp, otpauthUri } from '../services/totp.js';
 
 /**
  * The platform's own surface: create a practice, verify it, activate, suspend.
@@ -49,6 +50,9 @@ router.post(
     body: z.object({
       email: z.string().trim().toLowerCase().email(),
       password: z.string().min(8).max(200),
+      // Absent on the first leg. A caller with 2FA enabled is told to send one
+      // rather than being refused as though the password were wrong.
+      totp: z.string().trim().regex(/^\d{6}$/).optional(),
     }),
   }),
   asyncHandler(async (req, res) => {
@@ -60,20 +64,60 @@ router.post(
     }
 
     const admin = await PlatformAdmin.findOne({ email: req.body.email, isActive: true }).select(
-      '+passwordHash',
+      '+passwordHash +totpSecret',
     );
 
-    // One message for both cases. Saying "no such account" tells whoever is
-    // guessing which half of the pair to keep trying.
-    const ok = admin && (await admin.checkPassword(req.body.password));
-    if (!ok) throw unauthorized('Those details do not match an account.');
+    // The account-level wall, checked before the password so a locked account
+    // costs an attacker a request and tells them nothing. The IP limiter above
+    // is the first line and is defeated by rotating addresses, which is cheap;
+    // this one spends their budget whatever address they arrive from.
+    if (admin?.isLocked()) {
+      await AdminAuditLog.record({ admin, action: 'admin.login.locked', req });
+      throw unauthorized('Too many attempts. Try again in a few minutes.');
+    }
 
-    admin.lastLoginAt = new Date();
-    await admin.save();
+    // One message for every failure. Saying "no such account", or "wrong code"
+    // rather than "wrong password", tells whoever is guessing which half of the
+    // pair to keep working on.
+    const REFUSED = 'Those details do not match an account.';
 
+    const passwordOk = admin && (await admin.checkPassword(req.body.password));
+    if (!passwordOk) {
+      // Counted only when the account exists. Incrementing on a guessed email
+      // would let anybody lock out an administrator they could name.
+      if (admin) {
+        await admin.noteFailure();
+        await AdminAuditLog.record({ admin, action: 'admin.login.failed', req });
+      }
+      throw unauthorized(REFUSED);
+    }
+
+    if (admin.totpEnabled) {
+      if (!req.body.totp) {
+        // Not a failure — the password was right. Told apart so the panel can
+        // ask for the code instead of clearing the form and starting over.
+        return res.status(401).json({
+          error: { code: 'TOTP_REQUIRED', message: 'Enter the code from your authenticator app.' },
+        });
+      }
+      if (!verifyTotp(admin.totpSecret, req.body.totp)) {
+        await admin.noteFailure();
+        await AdminAuditLog.record({ admin, action: 'admin.login.failed_totp', req });
+        throw unauthorized(REFUSED);
+      }
+    }
+
+    await admin.noteSuccess();
     await AdminAuditLog.record({ admin, action: 'admin.login', req });
 
-    res.json({ token: signAdminToken(admin), admin: admin.toPublic() });
+    res.json({
+      token: signAdminToken(admin),
+      admin: admin.toPublic(),
+      // Surfaced so the panel can nag. An administrator without a second factor
+      // on the account that can suspend every practice should be reminded every
+      // time they sign in.
+      totpEnabled: admin.totpEnabled,
+    });
   }),
 );
 
@@ -84,6 +128,81 @@ router.get(
   '/me',
   asyncHandler(async (req, res) => {
     res.json({ admin: PlatformAdmin.hydrate(req.admin).toPublic() });
+  }),
+);
+
+/**
+ * Begin enrolling a second factor.
+ *
+ * Returns a secret and stores it, but does not switch the factor on. Enrolment
+ * completes only once a code from the app has been verified — a secret written
+ * to the account without that step locks an operator out of their own panel the
+ * moment they mistype it into the authenticator.
+ */
+router.post(
+  '/me/totp/setup',
+  asyncHandler(async (req, res) => {
+    const admin = await PlatformAdmin.findById(req.admin._id);
+    if (!admin) throw notFound('Account not found');
+
+    if (admin.totpEnabled) {
+      throw badRequest('Two-factor is already on. Turn it off before setting it up again.');
+    }
+
+    const secret = generateSecret();
+    admin.totpSecret = secret;
+    admin.totpEnabled = false;
+    await admin.save();
+
+    await AdminAuditLog.record({ admin: req.admin, action: 'admin.totp.setup_started', req });
+
+    // The secret is returned exactly once, here, so it can be shown as a QR
+    // code. It is never selected by a later read.
+    res.json({ secret, otpauth: otpauthUri({ secret, email: admin.email }) });
+  }),
+);
+
+/** Prove the app works, and switch the factor on. */
+router.post(
+  '/me/totp/enable',
+  validate({ body: z.object({ totp: z.string().trim().regex(/^\d{6}$/) }) }),
+  asyncHandler(async (req, res) => {
+    const admin = await PlatformAdmin.findById(req.admin._id).select('+totpSecret');
+    if (!admin?.totpSecret) throw badRequest('Start the setup first.');
+
+    if (!verifyTotp(admin.totpSecret, req.body.totp)) {
+      throw badRequest('That code is not right. Check your app’s clock and try again.');
+    }
+
+    admin.totpEnabled = true;
+    await admin.save();
+    await AdminAuditLog.record({ admin: req.admin, action: 'admin.totp.enabled', req });
+
+    res.json({ totpEnabled: true });
+  }),
+);
+
+/**
+ * Turn it off — which requires a current code, not just a session.
+ *
+ * A session alone would mean a stolen token can remove the factor protecting
+ * the account, which is the same as not having one.
+ */
+router.post(
+  '/me/totp/disable',
+  validate({ body: z.object({ totp: z.string().trim().regex(/^\d{6}$/) }) }),
+  asyncHandler(async (req, res) => {
+    const admin = await PlatformAdmin.findById(req.admin._id).select('+totpSecret');
+    if (!admin?.totpEnabled) return res.json({ totpEnabled: false });
+
+    if (!verifyTotp(admin.totpSecret, req.body.totp)) throw badRequest('That code is not right.');
+
+    admin.totpEnabled = false;
+    admin.totpSecret = null;
+    await admin.save();
+    await AdminAuditLog.record({ admin: req.admin, action: 'admin.totp.disabled', req });
+
+    res.json({ totpEnabled: false });
   }),
 );
 

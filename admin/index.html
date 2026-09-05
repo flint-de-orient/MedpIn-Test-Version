@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MedPin Admin</title>
+<!--
+  The platform operator's panel.
+
+  No build step and no framework, deliberately. Three screens with no complex
+  state earn neither, and a third build system is a real ongoing cost for a
+  solo developer already running Flutter and Node.
+
+  What it does need is its own origin — served by nginx at admin.medpin.in, not
+  by the clinic's Express server. The separate signing key stops a clinic token
+  authenticating here; a separate origin stops a script on either page reaching
+  the other with the browser's credentials. Half that wall is not a wall.
+-->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
+<link rel="stylesheet" href="./style.css">
+</head>
+<body>
+
+<header class="bar">
+  <div class="brand">
+    <strong>MedPin</strong><span>admin</span>
+  </div>
+  <div class="who" id="who" hidden>
+    <span id="whoEmail"></span>
+    <button class="ghost" id="signOut" type="button">Sign out</button>
+  </div>
+</header>
+
+<main class="page">
+
+  <!-- Sign in ------------------------------------------------------------ -->
+  <section id="loginView" class="narrow">
+    <h1>Sign in</h1>
+    <p class="lede">
+      This panel creates practices and decides whether they may operate. It
+      holds no patient records.
+    </p>
+    <form id="loginForm" novalidate>
+      <label for="email">Email</label>
+      <input id="email" type="email" autocomplete="username" required>
+
+      <label for="password">Password</label>
+      <input id="password" type="password" autocomplete="current-password" required>
+
+      <p class="error" id="loginError" hidden></p>
+      <button class="primary" type="submit" id="loginBtn">Sign in</button>
+    </form>
+  </section>
+
+  <!-- Practices ---------------------------------------------------------- -->
+  <section id="mainView" hidden>
+    <nav class="tabs">
+      <button class="tab is-on" data-view="practices" type="button">Practices</button>
+      <button class="tab" data-view="audit" type="button">Audit</button>
+    </nav>
+
+    <div id="practicesView">
+      <div class="head">
+        <h1>Practices</h1>
+        <button class="primary" id="newBtn" type="button">Add a practice</button>
+      </div>
+
+      <div class="filters" role="group" aria-label="Filter by status">
+        <button class="chip is-on" data-status="" type="button">All</button>
+        <button class="chip" data-status="onboarding" type="button">Onboarding</button>
+        <button class="chip" data-status="active" type="button">Active</button>
+        <button class="chip" data-status="suspended" type="button">Suspended</button>
+      </div>
+
+      <div id="practiceList" class="list" aria-live="polite"></div>
+    </div>
+
+    <div id="auditView" hidden>
+      <div class="head"><h1>Audit</h1></div>
+      <p class="lede">
+        Every action taken in this panel, newest first — including the ones that
+        only looked.
+      </p>
+      <div class="scroll">
+        <table id="auditTable">
+          <thead>
+            <tr><th>When</th><th>Who</th><th>Action</th><th>Reason</th></tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+</main>
+
+<!-- Create ---------------------------------------------------------------- -->
+<dialog id="newDialog">
+  <form method="dialog" id="newForm">
+    <h2>Add a practice</h2>
+    <p class="lede">
+      It arrives onboarding and unverified. Creating a practice is not vouching
+      for it.
+    </p>
+
+    <label for="pName">Practice name</label>
+    <input id="pName" required maxlength="160">
+
+    <label for="pDoctor">Doctor’s printed name <span class="opt">optional</span></label>
+    <input id="pDoctor" maxlength="160">
+
+    <label for="pReg">Registration number <span class="opt">optional</span></label>
+    <input id="pReg" maxlength="60">
+
+    <p class="error" id="newError" hidden></p>
+    <menu>
+      <button value="cancel" class="ghost" type="submit">Cancel</button>
+      <button value="create" class="primary" type="submit">Create</button>
+    </menu>
+  </form>
+</dialog>
+
+<!-- Reason ---------------------------------------------------------------- -->
+<dialog id="reasonDialog">
+  <form method="dialog" id="reasonForm">
+    <h2 id="reasonTitle">Reason</h2>
+    <p class="lede" id="reasonWhy"></p>
+    <label for="reasonText">Reason</label>
+    <textarea id="reasonText" rows="3" maxlength="500" required></textarea>
+    <p class="error" id="reasonError" hidden></p>
+    <menu>
+      <button value="cancel" class="ghost" type="submit">Cancel</button>
+      <button value="ok" class="danger" type="submit" id="reasonOk">Confirm</button>
+    </menu>
+  </form>
+</dialog>
+
+<div class="toast" id="toast" hidden role="status"></div>
+
+<script src="./app.js"></script>
+</body>
+</html>
