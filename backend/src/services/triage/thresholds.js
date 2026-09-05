@@ -51,6 +51,3 @@ export function maxUrgency(a = 'routine', b = 'routine') {
   return URGENCY.indexOf(a) >= URGENCY.indexOf(b) ? a : b;
 }
 
-export function isAtLeast(urgency, floor) {
-  return URGENCY.indexOf(urgency) >= URGENCY.indexOf(floor);
-}

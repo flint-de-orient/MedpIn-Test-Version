@@ -221,17 +221,6 @@ export async function embed(text, { taskType = 'RETRIEVAL_DOCUMENT', title } = {
   return result.embedding.values;
 }
 
-export async function embedBatch(texts, opts = {}) {
-  const out = [];
-  // Sequential with a small gap: the free tier rate-limits aggressively and a
-  // seed run that trips the limit is worse than one that takes a minute.
-  for (const t of texts) {
-    out.push(await embed(t, opts));
-    await new Promise((r) => setTimeout(r, 120));
-  }
-  return out;
-}
-
 /**
  * Streams the reply text chunk by chunk, so the app can show words as they are
  * generated instead of waiting for the whole answer. Yields plain text pieces.

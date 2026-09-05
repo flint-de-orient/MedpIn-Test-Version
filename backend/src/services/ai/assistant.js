@@ -9,6 +9,8 @@ import { buildSystemPrompt, fallbackReply, languagePrimer, forceLanguageInstruct
 // Who this assistant works for, read from the practice. Cached for a minute
 // inside the service, so this is not a database round trip per message.
 import { clinicIdentity } from '../clinicIdentity.js';
+import { assistantContextFor } from './departmentAssistant.js';
+import { threadHasAssistant } from '../threads.js';
 import { raiseAlert } from '../alerts.js';
 import { detectAppointmentIntent } from '../triage/appointmentIntent.js';
 import { notifyClinicOfPatientMessage } from '../notifications.js';
@@ -102,8 +104,13 @@ function categoriesFor(triage) {
  * them is reading it this minute. Gates the reply only — triage and alerting
  * happen before this is ever consulted.
  */
-function assistantShouldReply(session) {
+async function assistantShouldReply(session) {
   if (!session) return true;
+  // A department nobody has written a scope for has no assistant. Not a
+  // general one, not a fallback to the diabetes prompt — silence, and the
+  // thread says so. Checked here rather than by returning an empty prompt,
+  // because an assistant with no remit still answers.
+  if (!(await threadHasAssistant(session))) return false;
   // Off is off, however it was reached.
   if (session.assistantEnabled === false) return false;
   // On, chosen deliberately, outranks presence. A clinician who switches the
@@ -208,7 +215,7 @@ export async function handlePatientMessage({ patientId, sessionId, text, languag
   // clinic has been alerted if it needed to be — but no reply is generated:
   // the person is answering, and a second answer arriving under theirs is how
   // a patient ends up with two different accounts of what to do.
-  if (!assistantShouldReply(session)) {
+  if (!(await assistantShouldReply(session))) {
     session.messageCount = seq;
     session.lastMessageAt = new Date();
     session.highestUrgency = maxUrgency(session.highestUrgency, triage.urgency);
@@ -278,6 +285,19 @@ export async function handlePatientMessage({ patientId, sessionId, text, languag
   ];
 
   const identity = await clinicIdentity();
+
+  // The department this thread belongs to decides what the assistant is. Null
+  // department is the practice's general thread, which keeps the remit the
+  // assistant has always had — see departmentAssistant.js. A department that
+  // has written no scope returns null here and gets no reply at all, which is
+  // the point: an assistant improvising outside its specialty is fluent, and
+  // neither the patient nor the reviewing doctor can tell it is guessing.
+  const departmentContext = await assistantContextFor({
+    departmentId: session.department ?? null,
+    patientId,
+    language,
+  });
+
   const system = buildSystemPrompt({
     language,
     triage,
@@ -285,6 +305,7 @@ export async function handlePatientMessage({ patientId, sessionId, text, languag
     careTeamNotes,
     groundingContext: formatContext(chunks),
     identity,
+    departmentBlock: departmentContext?.promptBlock ?? null,
   });
 
   let replyText;
@@ -481,7 +502,7 @@ export async function* streamPatientMessage({ patientId, sessionId, text, langua
   // toggle would otherwise do nothing at all for any client that streams.
   // Everything above still ran — the message is saved and the clinic alerted
   // if it needed to be — but no reply is generated.
-  if (!assistantShouldReply(session)) {
+  if (!(await assistantShouldReply(session))) {
     session.messageCount = seq;
     session.lastMessageAt = new Date();
     session.highestUrgency = maxUrgency(session.highestUrgency, triage.urgency);
@@ -544,6 +565,19 @@ export async function* streamPatientMessage({ patientId, sessionId, text, langua
     { role: 'user', parts: userParts },
   ];
   const identity = await clinicIdentity();
+
+  // The department this thread belongs to decides what the assistant is. Null
+  // department is the practice's general thread, which keeps the remit the
+  // assistant has always had — see departmentAssistant.js. A department that
+  // has written no scope returns null here and gets no reply at all, which is
+  // the point: an assistant improvising outside its specialty is fluent, and
+  // neither the patient nor the reviewing doctor can tell it is guessing.
+  const departmentContext = await assistantContextFor({
+    departmentId: session.department ?? null,
+    patientId,
+    language,
+  });
+
   const system = buildSystemPrompt({
     language,
     triage,
@@ -551,6 +585,7 @@ export async function* streamPatientMessage({ patientId, sessionId, text, langua
     careTeamNotes,
     groundingContext: formatContext(chunks),
     identity,
+    departmentBlock: departmentContext?.promptBlock ?? null,
   });
 
   yield {

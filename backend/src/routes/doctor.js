@@ -46,6 +46,8 @@ import { logger } from '../config/logger.js';
 import { env } from '../config/env.js';
 import { phoneFromToken } from '../services/otp.js';
 import { resolveDoctor } from '../services/doctorContext.js';
+import { enrolByPhone } from '../services/enrolByPhone.js';
+import { practiceOf } from '../middleware/practiceScope.js';
 
 const router = Router();
 router.use(requireAuth, requireClinician);
@@ -608,7 +610,46 @@ router.post(
   audit('create', 'User'),
   asyncHandler(async (req, res) => {
     const b = req.body;
-    if (await User.phoneTaken(b.phone)) throw conflict('An account with this phone number already exists');
+
+    // A number the desk has seen before is a link, not a collision. Priya at
+    // Dr. Dey's counter and Amit at Dr. Sen's, both typing Rahul's number, are
+    // two practices each needing a relationship with one person — and the old
+    // `conflict` here turned the second of them into a dead end.
+    //
+    // Handled by `enrolByPhone`, which finds or creates the login, finds or
+    // creates the body, and adds an enrolment. A first practice starts
+    // immediately; a second needs the patient's own handset to answer a code,
+    // because that one is reaching for a record it did not create.
+    const known = await User.findByLoginPhone(b.phone).select('_id name').lean();
+    if (known) {
+      const practiceId = await practiceOf(req);
+      if (!practiceId) {
+        // No practice on the caller means the deployment has not migrated, and
+        // there is no relationship to add them to. The old refusal is still the
+        // honest answer in that state.
+        throw conflict('An account with this phone number already exists');
+      }
+
+      const { patient, enrollment, consentRequired } = await enrolByPhone({
+        phone: b.phone,
+        name: b.name,
+        practiceId,
+        enrolledBy: req.user._id,
+      });
+
+      return res.status(200).json({
+        id: String(patient._id),
+        name: known.name,
+        phone: b.phone,
+        // The desk needs to know which of two quite different things happened.
+        existing: true,
+        enrollmentId: String(enrollment._id),
+        consentRequired,
+        message: consentRequired
+          ? 'This patient already uses MedPin. We have texted them a code — ask them to read it out.'
+          : 'This patient is already registered here.',
+      });
+    }
 
     // A token vouches for one number. Taking the token and the phone as two
     // independent fields would let a desk verify one number and register

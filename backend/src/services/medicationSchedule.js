@@ -187,11 +187,6 @@ export function frequencyToSlots(frequency) {
   return ['morning'];
 }
 
-/** Backward-compatible: frequency → concrete times (meal-aware if opts given). */
-export function frequencyToTimes(frequency, { mealTimes, relationToMeal = 'any' } = {}) {
-  return frequencyToSlots(frequency).map((slot) => slotToTime(slot, mealTimes, relationToMeal));
-}
-
 /**
  * Full schedule entries for a prescription item — keeps the `slot` so the times
  * can be re-derived later if the patient changes their meal times.

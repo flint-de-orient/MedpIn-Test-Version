@@ -895,12 +895,3 @@ export async function notifyWaitlistOfFreedSlot(entries, appointment) {
   return { notified: entries.length };
 }
 
-export async function notifyMedicationReminder(patientId, medication) {
-  const patient = await User.findById(patientId).select('deviceTokens').lean();
-  await deliver({
-    tokens: patient?.deviceTokens ?? [],
-    title: 'Medication reminder',
-    body: `Time to take ${medication.name}`,
-    data: { medicationId: medication._id.toString(), kind: 'medication_reminder' },
-  });
-}

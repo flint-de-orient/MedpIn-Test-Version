@@ -22,6 +22,7 @@ import doctorRoutes from './doctor.js';
 import departmentRoutes from './departments.js';
 import practiceRoutes from './practices.js';
 import adminRoutes from './admin.js';
+import enrolmentRoutes from './enrolments.js';
 import dieticianRoutes from './dietician.js';
 import feedbackRoutes from './feedback.js';
 import uploadRoutes from './uploads.js';
@@ -89,6 +90,10 @@ router.use('/practices', practiceRoutes);
 // data — and a 404 rather than a 401 when ADMIN_JWT_SECRET is unset, so a
 // deployment not running the panel does not advertise that it could.
 router.use('/admin', adminRoutes);
+
+// Confirming a consent code, reading the consent trail, and the patient
+// withdrawing a practice's access.
+router.use('/enrolments', enrolmentRoutes);
 router.use('/dietician', dieticianRoutes);
 router.use('/feedback', feedbackRoutes);
 // Prescribing aid: brand -> composition, for autocomplete and the strength check.
