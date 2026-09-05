@@ -1,4 +1,5 @@
 import { Membership, MEMBERSHIP_STATUS } from '../models/Membership.js';
+import { Enrollment, ENROLLMENT_STATUS } from '../models/Enrollment.js';
 import { PatientProfile } from '../models/PatientProfile.js';
 import { forbidden } from './errors.js';
 import { recordDenial } from './recordDenial.js';
@@ -85,6 +86,57 @@ export async function assertSamePractice(req, patientId) {
     recordDenial(req, { reason: 'cross_practice', patientId, practiceId: mine });
     throw forbidden('That patient belongs to a different practice');
   }
+}
+
+/**
+ * A filter fragment restricting a query to this practice's patients.
+ *
+ * ---- Why the lists need their own answer --------------------------------
+ *
+ * `assertSamePractice` guards a patient named in the URL. It cannot guard a
+ * list, because a list names nobody — and `/doctor/patients` was building
+ * `{ role: PATIENT, isActive: true }`, which is every patient on the platform.
+ * With one practice that read correctly. With two it hands a doctor the other
+ * clinic's register, by name, with risk bands against it.
+ *
+ * ---- Permissive on unknown, twice ---------------------------------------
+ *
+ * No practice on the caller means the membership backfill has not reached
+ * them, and restricting would empty the list of a clinic seeing patients right
+ * now. And an Enrollment collection with nothing in it means that backfill has
+ * not run either — in which case an empty `$in` would be indistinguishable
+ * from a clinic with no patients, and would look exactly like data loss.
+ *
+ * A practice that is known, in a database where enrolments exist, gets its own
+ * patients and only those — including none, which is the correct answer for a
+ * second practice on its first day.
+ */
+export async function practicePatients(req, field = '_id') {
+  const practiceId = await practiceOf(req);
+  if (!practiceId) return {};
+
+  if (!(await enrolmentsExist())) return {};
+
+  const ids = await Enrollment.distinct('patient', {
+    practice: practiceId,
+    status: ENROLLMENT_STATUS.ACTIVE,
+  });
+  return { [field]: { $in: ids } };
+}
+
+/**
+ * Has the enrolment backfill run at all?
+ *
+ * Cached once true, because a collection that has rows does not go back to
+ * having none, and this is asked on every list request. Not cached while
+ * false: the migration is followed by a restart, but a developer running it
+ * against a live process should not have to guess why nothing changed.
+ */
+let _enrolmentsExist = false;
+async function enrolmentsExist() {
+  if (_enrolmentsExist) return true;
+  _enrolmentsExist = (await Enrollment.estimatedDocumentCount()) > 0;
+  return _enrolmentsExist;
 }
 
 /**

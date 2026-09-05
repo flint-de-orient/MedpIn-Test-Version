@@ -47,7 +47,8 @@ import { env } from '../config/env.js';
 import { phoneFromToken } from '../services/otp.js';
 import { resolveDoctor } from '../services/doctorContext.js';
 import { enrolByPhone } from '../services/enrolByPhone.js';
-import { practiceOf } from '../middleware/practiceScope.js';
+import { practiceOf, assertSamePractice, practicePatients } from '../middleware/practiceScope.js';
+import { enrollmentGate } from '../middleware/authorise.js';
 
 const router = Router();
 router.use(requireAuth, requireClinician);
@@ -745,6 +746,13 @@ router.post(
   asyncHandler(async (req, res) => {
     const patient = await User.findOne({ _id: req.params.id, role: ROLES.PATIENT }).select('_id').lean();
     if (!patient) throw notFound('Patient not found');
+
+    // The same two questions `resolvePatientScope` asks everywhere else, which
+    // this router never went through. Both refuse only on positive evidence,
+    // so a caller or patient with no practice yet is unaffected.
+    await assertSamePractice(req, patient._id);
+    await enrollmentGate(req, patient._id);
+
     const b = req.body;
 
     const profileSet = {};
@@ -795,7 +803,12 @@ router.get(
   asyncHandler(async (req, res) => {
     const { page, limit, skip, riskBand, search, sort } = q(req);
 
-    const userFilter = { role: ROLES.PATIENT, isActive: true };
+    // This was `{ role: PATIENT, isActive: true }` — every patient on the
+    // platform. Correct while there was one practice; with two it hands a
+    // doctor the other clinic's register, by name, with risk bands against it.
+    const scope = await practicePatients(req);
+
+    const userFilter = { role: ROLES.PATIENT, isActive: true, ...scope };
     if (search) {
       // Escaped so a patient searching for "a.b" cannot inject a regex.
       const safe = search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -810,7 +823,15 @@ router.get(
       .lean();
     const profileMap = new Map(matchingProfiles.map((p) => [p.user.toString(), p]));
 
-    if (riskBand) userFilter._id = { $in: matchingProfiles.map((p) => p.user) };
+    if (riskBand) {
+      // Intersected, not assigned. A plain `userFilter._id = ...` here would
+      // overwrite the practice scope set above, and filtering by risk band
+      // would quietly widen the list to the whole platform — a narrowing
+      // control that broadens is the worst kind of bug to notice.
+      const byRisk = matchingProfiles.map((p) => String(p.user));
+      const allowed = scope._id ? scope._id.$in.map(String) : null;
+      userFilter._id = { $in: allowed ? byRisk.filter((id) => allowed.includes(id)) : byRisk };
+    }
 
     const sortSpec = sort === 'name' ? { name: 1 } : { createdAt: -1 };
     const [users, total] = await Promise.all([
@@ -1013,6 +1034,13 @@ router.get(
   asyncHandler(async (req, res) => {
     const patient = await User.findOne({ _id: req.params.id, role: ROLES.PATIENT }).lean();
     if (!patient) throw notFound('Patient not found');
+
+    // The same two questions `resolvePatientScope` asks everywhere else, which
+    // this router never went through. Both refuse only on positive evidence,
+    // so a caller or patient with no practice yet is unaffected.
+    await assertSamePractice(req, patient._id);
+    await enrollmentGate(req, patient._id);
+
     req.patientId = patient._id;
 
     const [
@@ -1167,6 +1195,13 @@ router.get(
   asyncHandler(async (req, res) => {
     const patient = await User.findOne({ _id: req.params.id, role: ROLES.PATIENT }).select('_id').lean();
     if (!patient) throw notFound('Patient not found');
+
+    // The same two questions `resolvePatientScope` asks everywhere else, which
+    // this router never went through. Both refuse only on positive evidence,
+    // so a caller or patient with no practice yet is unaffected.
+    await assertSamePractice(req, patient._id);
+    await enrollmentGate(req, patient._id);
+
     res.json(await computeAdherence(patient._id, { days: q(req).days }));
   }),
 );
@@ -2053,6 +2088,12 @@ router.patch(
   }),
   audit('update', 'PatientProfile'),
   asyncHandler(async (req, res) => {
+    // Reassigning somebody else's patient to a dietician is a write, and it was
+    // reachable by any signed-in clinician who knew an id. Guarded before
+    // anything is read or changed.
+    await assertSamePractice(req, req.params.id);
+    await enrollmentGate(req, req.params.id);
+
     const { dieticianId, reviewIntervalDays } = req.body;
     const update = {};
     /// Set when this request puts the patient on a dietician's list, so the
