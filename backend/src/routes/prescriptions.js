@@ -215,7 +215,15 @@ router.get(
   '/:id/pdf',
   audit('export', 'Prescription'),
   asyncHandler(async (req, res) => {
-    const p = await Prescription.findOne({ _id: req.params.id, patient: req.patientId }).lean();
+    // The window applies hardest here. This route does not describe a
+    // prescription, it hands the document over — a leak past the list and the
+    // fetch would be caught by a reader; a leak here is a PDF on somebody's
+    // disk.
+    const p = await Prescription.findOne({
+      _id: req.params.id,
+      patient: req.patientId,
+      ...recordWindow(req, 'issuedOn'),
+    }).lean();
     if (!p) throw notFound('Prescription not found');
 
     const { asset, filePath } = await ensurePrescriptionPdf(p);

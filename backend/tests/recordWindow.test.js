@@ -70,41 +70,69 @@ describe('prescriptions are bounded, list and fetch alike', () => {
   });
 });
 
-describe('what is still unbounded, and it must not grow', () => {
+describe('what is deliberately unbounded, and why', () => {
   /**
-   * Clinical reads scoped only by patient, with no enrolment window.
+   * Two collections a clinician reads without a date bound, on purpose.
    *
-   * Fifty-nine of them at the time of writing. Applying the window to all
-   * mechanically would mean guessing a date field per collection and touching
-   * writes as well as reads, which is how a sweeping change breaks something
-   * quietly. So the number is pinned instead: the gap is visible, countable,
-   * and cannot widen while nobody is looking.
+   * `medications` — the sharp one. A doctor meeting a new patient must know
+   * what that patient is currently taking, and a medication started before the
+   * enrolment is still in their body. Hiding it would be a drug-interaction
+   * hazard dressed up as privacy: the whole reason to ask "what are you on" is
+   * that the answer predates you.
    *
-   * Lower this as routes adopt `recordWindow`. It is the same ratchet the token
-   * linter uses, for the same reason.
+   * `chat` — isolated already, and by something stronger. A thread belongs to
+   * an enrolment, so one practice cannot see another's conversation whatever
+   * the dates say. Adding a window on top would truncate a live conversation
+   * mid-thread for no gain.
+   *
+   * Everything else a clinician reads is bounded. The list is short and each
+   * line earns its place; a file appearing here without a reason above is the
+   * exemption becoming a habit.
    */
-  const CEILING = 59;
+  const EXEMPT = new Set(['medications.js', 'chat.js']);
 
-  test('the count has not gone up', () => {
-    let unbounded = 0;
-    const byFile = {};
+  test('every unbounded clinical read is in a collection we chose to exempt', () => {
+    const offenders = [];
 
     for (const f of readdirSync(ROUTES).filter((n) => n.endsWith('.js'))) {
-      const src = readFileSync(path.join(ROUTES, f), 'utf8');
-      const hits = src
-        .split('\n')
-        .filter((l) => l.includes('patient: req.patientId') && !l.includes('recordWindow'));
-      if (hits.length) byFile[f] = hits.length;
-      unbounded += hits.length;
+      const src = readFileSync(path.join(ROUTES, f), 'utf8').split('\n');
+
+      src.forEach((line, i) => {
+        if (!line.includes('patient: req.patientId')) return;
+
+        // The whole filter object, not the one line of it that names the
+        // patient — a multi-line filter puts recordWindow on the next line,
+        // and a line-by-line check calls that unbounded.
+        const around = src.slice(Math.max(0, i - 6), i + 7).join('\n');
+        if (around.includes('recordWindow')) return;
+
+        const ops = around.match(/\.(find|findOne|countDocuments|aggregate)\(/g) ?? [];
+        const writes = around.match(/\.(create|updateOne|updateMany|findOneAndUpdate|findOneAndDelete|deleteMany|deleteOne|insertMany)\(/g) ?? [];
+        // A write is not a read, and bounding one would stop a patient logging
+        // a reading on a day their practice had not yet enrolled them.
+        if (!ops.length || writes.length) return;
+
+        if (!EXEMPT.has(f)) offenders.push(`${f}:${i + 1}  ${line.trim().slice(0, 60)}`);
+      });
     }
 
-    assert.ok(
-      unbounded <= CEILING,
-      `${unbounded} unbounded clinical reads, up from ${CEILING}.\n` +
-        `${JSON.stringify(byFile, null, 2)}\n\n` +
-        'A new read scoped only by patient can show one practice what another wrote.\n' +
-        "Add ...recordWindow(req, '<dateField>') to it, or lower the ceiling if you\n" +
-        'have fixed some and this is now stale.',
+    assert.deepEqual(
+      offenders,
+      [],
+      [
+        '',
+        'Clinical reads scoped only by patient:',
+        '',
+        ...offenders.map((o) => `  ${o}`),
+        '',
+        "Add ...recordWindow(req, '<dateField>'), or exempt the collection above",
+        'with a reason. Unbounded, one practice can read what another wrote.',
+      ].join('\n'),
     );
+  });
+
+  test('the exemption list has not grown', () => {
+    // Two, and both argued. A third should require saying why out loud.
+    assert.equal(EXEMPT.size, 2, 'a collection was exempted without discussion');
   });
 });

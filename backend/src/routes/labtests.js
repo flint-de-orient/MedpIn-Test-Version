@@ -12,6 +12,7 @@ import { Hba1cRecord } from '../models/Hba1cRecord.js';
 import { GlucoseReading } from '../models/GlucoseReading.js';
 import { recomputePatientRisk } from '../services/analytics.js';
 import { reportedNames, isReported } from '../utils/testNames.js';
+import { recordWindow } from '../middleware/authorise.js';
 
 /**
  * The patient's lab tests: the tests the doctor advised (pulled from active
@@ -66,7 +67,7 @@ router.get(
   asyncHandler(async (req, res) => {
     const [prescriptions, results] = await Promise.all([
       Prescription.find({ patient: req.patientId, isActive: true }).select('labTestsAdvised').lean(),
-      LabResult.find({ patient: req.patientId })
+      LabResult.find({ patient: req.patientId, ...recordWindow(req, 'testedOn') })
         .sort({ createdAt: -1 })
         .limit(100)
         .populate('photo', 'mimeType originalName sizeBytes')
@@ -140,7 +141,11 @@ router.delete(
   '/:id',
   audit('delete', 'LabResult'),
   asyncHandler(async (req, res) => {
-    const entry = await LabResult.findOne({ _id: req.params.id, patient: req.patientId });
+    const entry = await LabResult.findOne({
+      _id: req.params.id,
+      patient: req.patientId,
+      ...recordWindow(req, 'testedOn'),
+    });
     if (!entry) throw notFound('Report not found');
 
     const a = entry.analysis ?? {};

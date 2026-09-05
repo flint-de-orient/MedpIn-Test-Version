@@ -15,6 +15,7 @@ import { raiseAlert } from '../services/alerts.js';
 import { glucoseTrends, recomputePatientRisk } from '../services/analytics.js';
 import { paged, pageParams, dateRange } from '../utils/pagination.js';
 import { logger } from '../config/logger.js';
+import { recordWindow } from '../middleware/authorise.js';
 
 // mergeParams so :patientId from the parent mount is visible here.
 const router = Router({ mergeParams: true });
@@ -91,6 +92,7 @@ router.get(
     const { page, limit, skip, from, to, context } = q(req);
     const filter = {
       patient: req.patientId,
+      ...recordWindow(req, 'measuredAt'),
       ...dateRange('measuredAt', { from, to }),
       ...(context ? { context } : {}),
     };
@@ -149,7 +151,7 @@ router.get(
   audit('read', 'Hba1cRecord'),
   asyncHandler(async (req, res) => {
     const { page, limit, skip } = q(req);
-    const filter = { patient: req.patientId };
+    const filter = { patient: req.patientId, ...recordWindow(req, 'testedOn') };
     const [items, total] = await Promise.all([
       Hba1cRecord.find(filter).sort({ testedOn: -1 }).skip(skip).limit(limit),
       Hba1cRecord.countDocuments(filter),
@@ -227,7 +229,11 @@ router.get(
   audit('read', 'VitalRecord'),
   asyncHandler(async (req, res) => {
     const { page, limit, skip, from, to } = q(req);
-    const filter = { patient: req.patientId, ...dateRange('recordedAt', { from, to }) };
+    const filter = {
+      patient: req.patientId,
+      ...recordWindow(req, 'recordedAt'),
+      ...dateRange('recordedAt', { from, to }),
+    };
     const [items, total] = await Promise.all([
       VitalRecord.find(filter).sort({ recordedAt: -1 }).skip(skip).limit(limit).lean(),
       VitalRecord.countDocuments(filter),
@@ -242,7 +248,12 @@ router.get(
   asyncHandler(async (req, res) => {
     const since = dayjs().subtract(q(req).days, 'day').toDate();
     const [records, profile] = await Promise.all([
-      VitalRecord.find({ patient: req.patientId, recordedAt: { $gte: since }, weightKg: { $ne: null } })
+      VitalRecord.find({
+        patient: req.patientId,
+        ...recordWindow(req, 'recordedAt'),
+        recordedAt: { $gte: since },
+        weightKg: { $ne: null },
+      })
         .sort({ recordedAt: 1 })
         .select('weightKg recordedAt')
         .lean(),
@@ -329,6 +340,7 @@ router.get(
     const { page, limit, skip, from, to, kind } = q(req);
     const filter = {
       patient: req.patientId,
+      ...recordWindow(req, 'loggedAt'),
       ...dateRange('loggedAt', { from, to }),
       ...(kind ? { kind } : {}),
     };
@@ -348,6 +360,7 @@ router.get(
     const [logs, profile] = await Promise.all([
       LifestyleLog.find({
         patient: req.patientId,
+        ...recordWindow(req, 'loggedAt'),
         loggedAt: { $gte: day.startOf('day').toDate(), $lte: day.endOf('day').toDate() },
       }).lean(),
       PatientProfile.findOne({ user: req.patientId }).select('targets').lean(),

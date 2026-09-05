@@ -5,6 +5,7 @@ import { validate } from '../middleware/validate.js';
 import { asyncHandler, notFound } from '../middleware/errors.js';
 import { audit } from '../middleware/audit.js';
 import { FoodLog, MEAL_TYPES } from '../models/FoodLog.js';
+import { recordWindow } from '../middleware/authorise.js';
 
 /**
  * The patient's food log — meals they record (a photo and/or a note) for their
@@ -37,7 +38,7 @@ router.get(
   '/',
   audit('read', 'FoodLog'),
   asyncHandler(async (req, res) => {
-    const items = await FoodLog.find({ patient: req.patientId })
+    const items = await FoodLog.find({ patient: req.patientId, ...recordWindow(req, 'createdAt') })
       .sort({ createdAt: -1 })
       .limit(100)
       .populate('photo', 'mimeType')

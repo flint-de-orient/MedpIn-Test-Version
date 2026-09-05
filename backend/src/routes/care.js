@@ -18,6 +18,7 @@ import { buildPatientContext } from '../services/patientContext.js';
 import { raiseAlert } from '../services/alerts.js';
 import { recomputePatientRisk } from '../services/analytics.js';
 import { paged, pageParams } from '../utils/pagination.js';
+import { recordWindow } from '../middleware/authorise.js';
 
 const router = Router({ mergeParams: true });
 router.use(requireAuth, resolvePatientScope);
@@ -133,7 +134,7 @@ router.get(
   audit('read', 'FootAssessment'),
   asyncHandler(async (req, res) => {
     const { page, limit, skip } = q(req);
-    const filter = { patient: req.patientId };
+    const filter = { patient: req.patientId, ...recordWindow(req, 'assessedAt') };
     const [items, total] = await Promise.all([
       FootAssessment.find(filter).sort({ assessedAt: -1 }).skip(skip).limit(limit).lean(),
       FootAssessment.countDocuments(filter),
@@ -146,7 +147,11 @@ router.get(
   '/foot/assessments/:id',
   audit('read', 'FootAssessment'),
   asyncHandler(async (req, res) => {
-    const a = await FootAssessment.findOne({ _id: req.params.id, patient: req.patientId }).lean();
+    const a = await FootAssessment.findOne({
+      _id: req.params.id,
+      patient: req.patientId,
+      ...recordWindow(req, 'assessedAt'),
+    }).lean();
     if (!a) throw notFound('Assessment not found');
     res.json({ assessment: serialiseFoot(a) });
   }),
@@ -157,7 +162,11 @@ router.get(
   '/foot/wounds/:woundKey/progression',
   audit('read', 'FootAssessment'),
   asyncHandler(async (req, res) => {
-    const items = await FootAssessment.find({ patient: req.patientId, woundKey: req.params.woundKey })
+    const items = await FootAssessment.find({
+      patient: req.patientId,
+      ...recordWindow(req, 'assessedAt'),
+      woundKey: req.params.woundKey,
+    })
       .sort({ assessedAt: 1 })
       .lean();
     if (!items.length) throw notFound('No assessments found for this wound');
@@ -259,7 +268,7 @@ router.get(
   audit('read', 'EyeReport'),
   asyncHandler(async (req, res) => {
     const { page, limit, skip } = q(req);
-    const filter = { patient: req.patientId };
+    const filter = { patient: req.patientId, ...recordWindow(req, 'createdAt') };
     const [items, total] = await Promise.all([
       EyeReport.find(filter).sort({ reportDate: -1 }).skip(skip).limit(limit).lean(),
       EyeReport.countDocuments(filter),
@@ -272,7 +281,11 @@ router.get(
   '/eye/reports/:id',
   audit('read', 'EyeReport'),
   asyncHandler(async (req, res) => {
-    const r = await EyeReport.findOne({ _id: req.params.id, patient: req.patientId }).lean();
+    const r = await EyeReport.findOne({
+      _id: req.params.id,
+      patient: req.patientId,
+      ...recordWindow(req, 'createdAt'),
+    }).lean();
     if (!r) throw notFound('Report not found');
     res.json({ report: serialiseEye(r) });
   }),
@@ -364,7 +377,7 @@ router.get(
   audit('read', 'LabReport'),
   asyncHandler(async (req, res) => {
     const { page, limit, skip } = q(req);
-    const filter = { patient: req.patientId };
+    const filter = { patient: req.patientId, ...recordWindow(req, 'testedOn') };
     const [items, total] = await Promise.all([
       LabReport.find(filter).sort({ testedOn: -1 }).skip(skip).limit(limit).lean(),
       LabReport.countDocuments(filter),
@@ -377,7 +390,11 @@ router.get(
   '/labs/:id',
   audit('read', 'LabReport'),
   asyncHandler(async (req, res) => {
-    const r = await LabReport.findOne({ _id: req.params.id, patient: req.patientId }).lean();
+    const r = await LabReport.findOne({
+      _id: req.params.id,
+      patient: req.patientId,
+      ...recordWindow(req, 'testedOn'),
+    }).lean();
     if (!r) throw notFound('Report not found');
     res.json({ report: serialiseLab(r) });
   }),

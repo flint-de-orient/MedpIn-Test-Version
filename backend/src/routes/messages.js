@@ -6,6 +6,7 @@ import { asyncHandler, notFound } from '../middleware/errors.js';
 import { audit } from '../middleware/audit.js';
 import { DirectMessage } from '../models/DirectMessage.js';
 import { User, ROLES } from '../models/User.js';
+import { recordWindow } from '../middleware/authorise.js';
 
 const router = Router();
 router.use(requireAuth);
@@ -128,7 +129,10 @@ router.get(
   resolvePatientScope,
   audit('read', 'DirectMessage'),
   asyncHandler(async (req, res) => {
-    const items = await DirectMessage.find({ patient: req.patientId })
+    const items = await DirectMessage.find({
+      patient: req.patientId,
+      ...recordWindow(req, 'createdAt'),
+    })
       .sort({ createdAt: 1 })
       .populate('sender', 'name')
       .lean();
