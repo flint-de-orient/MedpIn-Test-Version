@@ -70,6 +70,12 @@ const platformAdminSchema = new mongoose.Schema(
     failedAttempts: { type: Number, default: 0 },
     lockedUntil: { type: Date, default: null },
 
+    /// A reset in flight. Hashed, never stored plainly — a database dump must
+    /// not hand somebody a working reset, which is the same reason the password
+    /// is not stored either.
+    resetTokenHash: { type: String, default: null, select: false },
+    resetTokenExpiresAt: { type: Date, default: null },
+
     lastLoginAt: { type: Date, default: null },
   },
   { timestamps: true },

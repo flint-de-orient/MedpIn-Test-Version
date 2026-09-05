@@ -12,6 +12,7 @@ import { Clinic } from '../models/Clinic.js';
 import { Membership, MEMBERSHIP_STATUS } from '../models/Membership.js';
 import { signAdminToken, secretsAreSeparate } from '../services/adminTokens.js';
 import { generateSecret, verifyTotp, otpauthUri } from '../services/totp.js';
+import { completeReset } from '../services/adminReset.js';
 
 /**
  * The platform's own surface: create a practice, verify it, activate, suspend.
@@ -118,6 +119,41 @@ router.post(
       // time they sign in.
       totpEnabled: admin.totpEnabled,
     });
+  }),
+);
+
+/**
+ * Spend a reset token and choose a new password.
+ *
+ * Unauthenticated by necessity — the whole point is that the caller cannot sign
+ * in. Rate-limited like the login for the same reason, and the token is
+ * compared in constant time.
+ *
+ * Two-factor still applies. A reset that skipped it would make the second
+ * factor decorative: anyone holding a leaked token would be past it.
+ */
+router.post(
+  '/auth/reset',
+  loginLimiter,
+  validate({
+    body: z.object({
+      email: z.string().trim().toLowerCase().email(),
+      token: z.string().min(20).max(200),
+      newPassword: z.string().min(12).max(200),
+      totp: z.string().trim().regex(/^\d{6}$/).optional(),
+    }),
+  }),
+  asyncHandler(async (req, res) => {
+    if (!process.env.ADMIN_JWT_SECRET) {
+      return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Not found' } });
+    }
+
+    await completeReset({ ...req.body, verifyTotp });
+
+    // Deliberately no token in the response. Choosing a new password is not
+    // signing in, and handing back a session would let a stolen reset skip the
+    // login it just re-enabled.
+    res.json({ ok: true });
   }),
 );
 

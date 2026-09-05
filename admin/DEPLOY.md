@@ -119,7 +119,34 @@ exists in the namespace at all.
 and there is no "remember me". That is deliberate for an account that can
 suspend every practice, and it means a sign-in after every refresh.
 
-**Still open:** there is no password-reset flow. Losing the password means
-re-running `createAdmin.js` on the server, which needs shell access — acceptable
-while the number of administrators is one or two, and worth revisiting before it
-is more.
+## Losing the password
+
+There is a reset, and it is deliberately not an email link. A link would make
+your mailbox the key to every practice on the platform, protected by somebody
+else's password policy and whatever device it is signed into. This account can
+suspend a clinic; its recovery should not be easier than its login.
+
+```bash
+node scripts/resetAdmin.js you@example.com          # report
+node scripts/resetAdmin.js you@example.com --apply  # mint a token
+```
+
+The token prints once and only its hash is stored, so a database dump does not
+hand somebody a working reset. It expires in thirty minutes and is spent on
+use — a token that still worked afterwards would be a second password nobody
+knew they had.
+
+Then:
+
+```
+POST /api/v1/admin/auth/reset
+{ "email": "...", "token": "...", "newPassword": "...", "totp": "123456" }
+```
+
+**Two-factor still applies.** A reset that skipped it would make the second
+factor decorative — anyone holding a leaked token would be past it. The `totp`
+field is required whenever the account has one enrolled.
+
+The reset returns no session. Choosing a new password is not signing in, and
+handing back a token would let a stolen reset skip the login it just
+re-enabled.

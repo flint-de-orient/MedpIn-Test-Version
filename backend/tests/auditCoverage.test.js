@@ -85,6 +85,12 @@ const EXEMPT = new Map([
     'The same badge, in the other panel, for the same reason.',
   ],
   [
+    'admin.js /auth/reset',
+    'Audited inside completeReset, which is the only place that knows which ' +
+      'of four outcomes occurred — issued, wrong token, wrong code, or done. ' +
+      'The route would have to re-derive that to log it here.',
+  ],
+  [
     'tracking.js /lifestyle/:id',
     'A patient editing their own sleep or steps entry. Self-reported data ' +
       'about themselves; the clinical record it informs is audited where a ' +
