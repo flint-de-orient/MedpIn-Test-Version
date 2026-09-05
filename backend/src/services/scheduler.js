@@ -126,7 +126,57 @@ async function tick() {
  * it — move a clash, prepare for a complex case, start late if the morning is
  * empty. By the time the clinic opens, none of that is possible any more.
  */
+/**
+ * Whether this process is the one that runs the crons.
+ *
+ * ---- The failure this prevents -------------------------------------------
+ *
+ * The scheduler lives inside the API process. Run the API under `pm2 -i max`
+ * and every worker starts its own copy, so a patient with a 9pm insulin
+ * reminder gets it once per CPU core — four prompts to take a dose they should
+ * take once. Nothing errors. Nothing is logged. The only symptom is a patient
+ * being told four times, and the plausible response to that is to take it
+ * again.
+ *
+ * So the guard is here rather than in a deployment note. A note is followed
+ * until the evening somebody scales the API to fix a slow endpoint and does not
+ * think about reminders.
+ *
+ * pm2 numbers its workers in `NODE_APP_INSTANCE`; worker 0 runs the crons and
+ * the rest do not. Unset — a plain `node src/server.js` — means there is one
+ * process and it is this one.
+ *
+ * `RUN_SCHEDULER` overrides both ways, for the step after this: the scheduler
+ * extracted into a process of its own, where the API sets it false and the
+ * worker sets it true.
+ *
+ * ---- What this does not solve -------------------------------------------
+ *
+ * Two *machines*. Each has its own worker 0, so both would run the crons. That
+ * is fine until step 5 of the scaling order — nginx in front of two app servers
+ * — and before then this needs a lock in the database rather than a look at an
+ * environment variable. Written down because the guard reads as complete and is
+ * not.
+ */
+function shouldRunScheduler() {
+  const override = process.env.RUN_SCHEDULER;
+  if (override === 'true') return true;
+  if (override === 'false') return false;
+  return (process.env.NODE_APP_INSTANCE ?? '0') === '0';
+}
+
 export function startScheduler() {
+  if (!shouldRunScheduler()) {
+    // Logged rather than silent: a worker that is deliberately not scheduling
+    // should say so, or the first question during an incident is whether the
+    // crons are running at all.
+    logger.info(
+      { instance: process.env.NODE_APP_INSTANCE ?? null },
+      'scheduler not started in this worker — another process owns the crons',
+    );
+    return () => {};
+  }
+
   const handle = setInterval(tick, TICK_MS);
   // Do not hold the process open on account of the scheduler alone.
   handle.unref?.();
