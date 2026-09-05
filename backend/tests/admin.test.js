@@ -172,3 +172,36 @@ describe('the model', () => {
     assert.ok(!/router\.post\(\s*'\/admins?'/.test(route), 'admins can be created over HTTP');
   });
 });
+
+describe('an audit entry says what changed, not just that something did', () => {
+  test('the model can hold a before and an after', () => {
+    // "Changed permission" with no values records that something happened and
+    // not what. The question asked six months later is always what it used to
+    // be, and a log that cannot answer it is a list of timestamps.
+    const paths = Object.keys(AdminAuditLog.schema.paths);
+    assert.ok(paths.includes('before'), 'no before');
+    assert.ok(paths.includes('after'), 'no after');
+  });
+
+  test('every mutating route captures the old value before writing', () => {
+    // Read after the write, "changed to verified" is all the log can say.
+    const mutations = route.match(/const before = \{ \w+: practice\.\w+ \};/g) ?? [];
+    assert.equal(mutations.length, 2, 'a mutation does not capture its before');
+
+    for (const [, field] of route.matchAll(/const before = \{ (\w+): practice\.\w+ \};/g)) {
+      const after = new RegExp(`after: \{ ${field}: practice\.${field} \}`);
+      assert.match(route, after, `${field} records a before but no after`);
+    }
+  });
+
+  test('creation records no before, rather than an empty one', () => {
+    // So a reader can tell "created" from "changed, but the diff was not
+    // recorded".
+    assert.match(route, /before: null,/);
+  });
+
+  test('the audit endpoint returns both', () => {
+    assert.match(route, /before: r\.before \?\? null,/);
+    assert.match(route, /after: r\.after \?\? null,/);
+  });
+});

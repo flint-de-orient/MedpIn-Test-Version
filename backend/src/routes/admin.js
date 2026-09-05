@@ -287,6 +287,14 @@ router.post(
       resource: 'Practice',
       resourceId: practice._id,
       practice: practice._id,
+      // Nothing existed before this. `null` rather than `{}`, so a reader can
+      // tell "created" from "changed, but the diff was not recorded".
+      before: null,
+      after: {
+        name: practice.name,
+        status: practice.status,
+        verification: practice.verification,
+      },
       req,
     });
 
@@ -320,6 +328,10 @@ router.post(
       throw badRequest('A rejection needs a reason.');
     }
 
+    // Read before the write. Captured after, "changed to verified" is all the
+    // log can say, and the question asked later is always what it used to be.
+    const before = { verification: practice.verification };
+
     practice.verification = req.body.verification;
     practice.verifiedAt = req.body.verification === VERIFICATION.VERIFIED ? new Date() : null;
     await practice.save();
@@ -331,6 +343,8 @@ router.post(
       resourceId: practice._id,
       practice: practice._id,
       reason: req.body.reason ?? null,
+      before,
+      after: { verification: practice.verification },
       req,
     });
 
@@ -363,6 +377,8 @@ router.post(
       throw badRequest('A suspension needs a reason.');
     }
 
+    const before = { status: practice.status };
+
     practice.status = req.body.status;
     await practice.save();
 
@@ -373,6 +389,8 @@ router.post(
       resourceId: practice._id,
       practice: practice._id,
       reason: req.body.reason ?? null,
+      before,
+      after: { status: practice.status },
       req,
     });
 
@@ -403,6 +421,8 @@ router.get(
         action: r.action,
         practice: r.practice ? String(r.practice) : null,
         reason: r.reason ?? null,
+        before: r.before ?? null,
+        after: r.after ?? null,
         at: r.at,
       })),
     });

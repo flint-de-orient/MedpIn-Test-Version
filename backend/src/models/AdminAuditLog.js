@@ -49,6 +49,18 @@ const adminAuditLogSchema = new mongoose.Schema(
     /// no stated reason is one nobody can review afterwards.
     reason: { type: String, trim: true, maxlength: 500, default: null },
 
+    /// What the fields were, and what they became.
+    ///
+    /// "Changed permission" is not an audit entry — it records that something
+    /// happened and not what. The question asked six months later is always
+    /// "what did it used to be", and a log that cannot answer it is a list of
+    /// timestamps.
+    ///
+    /// Only the fields that actually moved, so an entry reads as a diff rather
+    /// than two copies of a document with one difference buried in them.
+    before: { type: mongoose.Schema.Types.Mixed, default: null },
+    after: { type: mongoose.Schema.Types.Mixed, default: null },
+
     ip: { type: String, default: null },
     userAgent: { type: String, default: null },
 
@@ -76,6 +88,8 @@ adminAuditLogSchema.statics.record = function record({
   resourceId = null,
   practice = null,
   reason = null,
+  before = null,
+  after = null,
   req = null,
 }) {
   return this.create({
@@ -86,6 +100,8 @@ adminAuditLogSchema.statics.record = function record({
     resourceId,
     practice,
     reason,
+    before,
+    after,
     ip: req?.ip ?? null,
     userAgent: req?.get?.('user-agent') ?? null,
     at: new Date(),

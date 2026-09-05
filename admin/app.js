@@ -228,7 +228,10 @@ $('practiceList').addEventListener('click', async (e) => {
       // the person who has to write it.
       const isReject = Boolean(reject);
       const reason = await askReason({
-        title: isReject ? 'Reject this practice' : `Suspend ${name}`,
+        // The name again, in the dialog, even though it was on the row that was
+        // clicked. With several practices on screen the row and the dialog are
+        // different moments, and this is the one that does something.
+        title: isReject ? `Reject ${name}` : `Suspend ${name}`,
         why: isReject
           ? 'The applicant sees this. Say what was wrong with the registration.'
           : 'Staff will not be able to sign in. Patients keep their records, prescriptions and reminders.',
@@ -349,13 +352,14 @@ async function loadAudit() {
               <td class="num">${new Date(r.at).toLocaleString()}</td>
               <td>${escapeHtml(r.admin)}</td>
               <td class="mono">${escapeHtml(r.action)}</td>
+              <td>${diffOf(r)}</td>
               <td>${r.reason ? escapeHtml(r.reason) : '<span class="badge mute">—</span>'}</td>
             </tr>`,
           )
           .join('')
-      : '<tr><td colspan="4" class="empty">Nothing recorded yet.</td></tr>';
+      : '<tr><td colspan="5" class="empty">Nothing recorded yet.</td></tr>';
   } catch (ex) {
-    body.innerHTML = `<tr><td colspan="4" class="error">${escapeHtml(ex.message)}</td></tr>`;
+    body.innerHTML = `<tr><td colspan="5" class="error">${escapeHtml(ex.message)}</td></tr>`;
   }
 }
 
@@ -368,6 +372,31 @@ for (const tab of document.querySelectorAll('.tab')) {
     $('practicesView').hidden = audit;
     if (audit) loadAudit();
   });
+}
+
+/**
+ * "active -> suspended", from whichever fields actually moved.
+ *
+ * "Changed permission" with no values is an entry nobody can review, and the
+ * question asked six months later is always what it used to be. Only the keys
+ * that differ, so a row reads as a change rather than two copies of a record.
+ */
+function diffOf(r) {
+  if (!r.after) return '<span class="badge mute">—</span>';
+  // Nothing existed before a creation, and `null` says that rather than
+  // pretending the fields moved from empty.
+  if (!r.before) return '<span class="badge mute">created</span>';
+
+  const moved = Object.keys(r.after).filter((k) => r.before[k] !== r.after[k]);
+  if (!moved.length) return '<span class="badge mute">no change</span>';
+
+  return moved
+    .map(
+      (k) =>
+        `<span class="diff"><s>${escapeHtml(r.before[k] ?? '—')}</s> ` +
+        `<b>${escapeHtml(r.after[k] ?? '—')}</b></span>`,
+    )
+    .join(' ');
 }
 
 /* ------------------------------------------------------------------ escape */

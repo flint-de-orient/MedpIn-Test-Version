@@ -214,3 +214,8 @@ dialog menu { display: flex; justify-content: flex-end; gap: 0.5rem; padding: 0;
   .card .top { flex-direction: column; }
   .head { flex-direction: column; align-items: flex-start; }
 }
+
+/* An audit change, read as a diff rather than two values. */
+.diff { white-space: nowrap; }
+.diff s { color: var(--ink-faint); text-decoration-thickness: 1px; }
+.diff b { color: var(--ink); font-weight: 600; }
