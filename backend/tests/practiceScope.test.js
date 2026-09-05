@@ -90,3 +90,44 @@ describe('it is wired into the one place every clinical route passes', () => {
     assert.match(scope, /if \(req\._practiceId !== undefined\) return req\._practiceId;/);
   });
 });
+
+describe('a refusal leaves a trace', () => {
+  test('both guards record before they throw', () => {
+    // `audit()` wraps a handler, and a guard refuses before the handler runs —
+    // so without this the most interesting line in an audit trail is the one
+    // that never gets written. A clinician reading their own patient is
+    // routine; one being refused another practice's patient is either somebody
+    // fumbling a link or somebody trying.
+    // `auth` here is auth.js, which calls the guards. The guards themselves —
+    // and the recording — live in practiceScope.js and authorise.js.
+    const authorise = readFileSync(
+      new URL('../src/middleware/authorise.js', import.meta.url),
+      'utf8',
+    );
+    for (const [name, src] of [['practiceScope', scope], ['authorise', authorise]]) {
+      const at = src.indexOf('recordDenial(req');
+      assert.ok(at > -1, `${name} does not record its refusals`);
+      const thrown = src.indexOf('throw forbidden(', at);
+      assert.ok(thrown > at, `${name} throws before it records`);
+    }
+  });
+
+  test('the reason is carried, not flattened', () => {
+    // Four things can refuse a read, and a log that says only "denied" cannot
+    // tell an expired consent from somebody reaching where they should not.
+    const authoriseSrc = readFileSync(
+      new URL('../src/middleware/authorise.js', import.meta.url),
+      'utf8',
+    );
+    assert.match(authoriseSrc, /reason: verdict\.reason/);
+    assert.match(scope, /reason: 'cross_practice'/);
+  });
+
+  test('recording can never turn a refusal into an outage', () => {
+    // A 403 must stay a 403 if the audit write fails. Fire-and-forget with the
+    // failure logged, never awaited into the response path.
+    const src = readFileSync(new URL('../src/middleware/recordDenial.js', import.meta.url), 'utf8');
+    assert.match(src, /\.catch\(/);
+    assert.ok(!/await AuditLog\.create/.test(src), 'the denial write is awaited');
+  });
+});

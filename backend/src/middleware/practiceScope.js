@@ -1,6 +1,7 @@
 import { Membership, MEMBERSHIP_STATUS } from '../models/Membership.js';
 import { PatientProfile } from '../models/PatientProfile.js';
 import { forbidden } from './errors.js';
+import { recordDenial } from './recordDenial.js';
 
 /**
  * Keeping one practice's clinicians out of another practice's records.
@@ -78,6 +79,10 @@ export async function assertSamePractice(req, patientId) {
   if (!mine || !theirs) return;
 
   if (mine !== theirs) {
+    // Recorded before it is thrown. A refusal that leaves no trace is the one
+    // entry an audit trail most needs and the one it usually lacks, because
+    // the request never reached the handler that would have logged it.
+    recordDenial(req, { reason: 'cross_practice', patientId, practiceId: mine });
     throw forbidden('That patient belongs to a different practice');
   }
 }

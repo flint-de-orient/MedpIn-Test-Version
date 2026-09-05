@@ -35,6 +35,7 @@ import { Enrollment, ENROLLMENT_STATUS } from '../src/models/Enrollment.js';
 import { Prescription } from '../src/models/Prescription.js';
 import { PatientProfile } from '../src/models/PatientProfile.js';
 import { signAccessToken } from '../src/services/tokens.js';
+import { AuditLog } from '../src/models/AuditLog.js';
 
 const API = process.env.API ?? 'http://localhost:3000/api/v1';
 const TAG = 'ISOTEST';
@@ -229,6 +230,66 @@ async function main() {
 
   const aAfter = await get(`/patients/${patient._id}/prescriptions`, tokenA);
   check('A is untouched by B being revoked', aAfter.status === 200, `HTTP ${aAfter.status}`);
+
+  console.log('\nTokens and identifiers:\n');
+
+  // A well-formed id for a document that does not exist. Should read as "not
+  // found", never as a stack trace or a Mongoose CastError with internals in it.
+  const ghost = new mongoose.Types.ObjectId();
+  const missing = await get(`/patients/${ghost}/prescriptions`, tokenA);
+  check(
+    'An unknown patient id is refused cleanly',
+    missing.status === 403 || missing.status === 404,
+    `HTTP ${missing.status}`,
+  );
+
+  // A malformed id. The failure must be the API's, phrased for a caller, not
+  // the database's phrased for a developer.
+  const malformed = await get('/patients/not-an-id/prescriptions', tokenA);
+  const leaked = JSON.stringify(malformed.body ?? {}).match(/CastError|ObjectId|mongoose|stack/i);
+  check(
+    'A malformed id does not leak internals',
+    !leaked,
+    leaked ? `response mentions ${leaked[0]}` : `HTTP ${malformed.status}`,
+  );
+
+  // The patient's own token against a clinical route for somebody else.
+  const rahulToken = signAccessToken(rahul);
+  const otherPatient = await makeUser('Someone Else', ROLES.PATIENT, `+9199${stamp}5`);
+  const crossPatient = await get(
+    `/patients/${otherPatient._id}/prescriptions`,
+    rahulToken,
+  );
+  check(
+    'A patient cannot read another patient',
+    crossPatient.status === 403,
+    `HTTP ${crossPatient.status}${crossPatient.status === 200 ? ' — THIS IS A LEAK' : ''}`,
+  );
+
+  // A token for a deactivated account must stop working immediately, not at
+  // expiry — otherwise removing somebody leaves them two hours of access.
+  await User.updateOne({ _id: stranger._id }, { $set: { isActive: false } });
+  const deactivated = await get('/clinics', signAccessToken(stranger));
+  check(
+    'A deactivated account is refused at once',
+    deactivated.status === 401,
+    `HTTP ${deactivated.status}`,
+  );
+
+  console.log('\nWhat the log says:\n');
+
+  // A denied cross-practice read is the single most interesting line in an
+  // audit trail, and it is the one usually missing — the request failed, so
+  // nothing wrote it down.
+  const denials = await AuditLog.countDocuments({
+    action: /denied|forbidden/i,
+    createdAt: { $gte: new Date(Date.now() - 120_000) },
+  });
+  check(
+    'Refused cross-practice reads are recorded',
+    denials > 0,
+    denials === 0 ? 'no denial appears in the audit log' : `${denials} recorded`,
+  );
 
   // ---- verdict -----------------------------------------------------------
   const failed = results.filter((r) => !r.passed);

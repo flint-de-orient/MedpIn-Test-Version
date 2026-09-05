@@ -2,6 +2,7 @@ import { Membership, MEMBERSHIP_STATUS } from '../models/Membership.js';
 import { forbidden } from './errors.js';
 import { practiceOf, assertSamePractice } from './practiceScope.js';
 import { practiceMaySee } from '../services/enrollments.js';
+import { recordDenial } from './recordDenial.js';
 
 /**
  * The five questions, asked in one place.
@@ -85,6 +86,10 @@ export async function enrollmentGate(req, patientId, { recordDate = null } = {})
 
   const verdict = await practiceMaySee(practiceId, patientId, { recordDate });
   if (verdict.allowed) return true;
+
+  // Which of the four it was, so the log can tell a fumbled link from an
+  // expired consent from somebody reaching where they should not.
+  recordDenial(req, { reason: verdict.reason, patientId, practiceId });
 
   throw forbidden(
     {

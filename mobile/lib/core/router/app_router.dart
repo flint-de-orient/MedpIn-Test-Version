@@ -8,7 +8,7 @@ import '../../features/auth/presentation/auth_controller.dart';
 import '../../features/auth/presentation/login_screen.dart';
 import '../../features/auth/presentation/doctor_password_login_screen.dart';
 import '../../features/auth/presentation/register_screen.dart';
-import '../../features/chat/presentation/chat_screen.dart';
+import '../../features/chat/presentation/chat_tab.dart';
 import '../../features/chat/presentation/nutrition_chat_screen.dart';
 import '../../features/medications/presentation/medications_screen.dart';
 import '../../features/medications/presentation/dose_history_screen.dart';
@@ -531,7 +531,10 @@ final Provider<GoRouter> appRouterProvider = Provider<GoRouter>((ref) {
             routes: [
               GoRoute(
                 path: '/chat',
-                builder: (context, state) => const ChatScreen(),
+                // ChatTab, not ChatScreen. It resolves to exactly the same
+                // screen for a patient with one conversation — every patient
+                // today — and shows a list the first time there is a choice.
+                builder: (context, state) => const ChatTab(),
               ),
             ],
           ),
