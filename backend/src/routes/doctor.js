@@ -1502,6 +1502,7 @@ router.post(
   '/chat-review/:sessionId/reviewed',
   // Declaring a conversation clinically reviewed is the doctor's judgement.
   requireDoctor,
+  audit('update', 'ChatSession'),
   asyncHandler(async (req, res) => {
     const session = await ChatSession.findByIdAndUpdate(
       req.params.sessionId,
@@ -1624,6 +1625,7 @@ router.post(
   // the desk-privilege sweep. Same false pass as /settings: the guard landed
   // on the GET.
   requireDoctor,
+  audit('create', 'KnowledgeChunk'),
   validate({ body: knowledgeSchema }),
   asyncHandler(async (req, res) => {
     const chunk = await KnowledgeChunk.create({ ...req.body, status: 'pending_review' });
@@ -1640,6 +1642,7 @@ router.patch(
   '/knowledge/:id',
   // See POST /knowledge.
   requireDoctor,
+  audit('update', 'KnowledgeChunk'),
   validate({ body: knowledgeSchema.partial() }),
   asyncHandler(async (req, res) => {
     const chunk = await KnowledgeChunk.findById(req.params.id);
@@ -1669,6 +1672,7 @@ router.post(
   // Approval is the step that puts a passage in front of patients.
   requireDoctor,
   requireClinician,
+  audit('update', 'KnowledgeChunk'),
   asyncHandler(async (req, res) => {
     const chunk = await KnowledgeChunk.findById(req.params.id).select('+embedding');
     if (!chunk) throw notFound('Knowledge entry not found');
@@ -1691,6 +1695,7 @@ router.post(
   '/knowledge/:id/retire',
   // See POST /knowledge.
   requireDoctor,
+  audit('update', 'KnowledgeChunk'),
   asyncHandler(async (req, res) => {
     const chunk = await KnowledgeChunk.findByIdAndUpdate(req.params.id, { status: 'retired' }, { new: true });
     if (!chunk) throw notFound('Knowledge entry not found');

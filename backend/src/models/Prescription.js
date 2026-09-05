@@ -1,5 +1,7 @@
 import mongoose from 'mongoose';
 
+import { clinicalRecord } from './plugins/clinicalRecord.js';
+
 /**
  * A prescription is an immutable clinical record. Corrections create a new
  * version pointing at `supersedes` rather than mutating the original — an
@@ -105,5 +107,12 @@ const prescriptionSchema = new mongoose.Schema(
 );
 
 prescriptionSchema.index({ patient: 1, issuedOn: -1 });
+
+// Voided, corrected or superseded — never deleted. This generalises what
+// `supersedes` above already did for one case, and adds the two it could not
+// express: a prescription issued in error, and one corrected in a detail where
+// both versions matter because the patient may have been dispensed against the
+// first.
+prescriptionSchema.plugin(clinicalRecord);
 
 export const Prescription = mongoose.model('Prescription', prescriptionSchema);

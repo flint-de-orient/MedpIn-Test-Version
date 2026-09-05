@@ -316,6 +316,7 @@ router.get(
 
 router.post(
   '/sessions/:id/archive',
+  audit('update', 'ChatSession'),
   requireAuth,
   asyncHandler(async (req, res) => {
     const updated = await ChatSession.findOneAndUpdate(
@@ -329,6 +330,7 @@ router.post(
 
 router.post(
   '/messages/:id/flag',
+  audit('update', 'ChatMessage'),
   requireAuth,
   asyncHandler(async (req, res) => {
     const message = await ChatMessage.findOneAndUpdate(

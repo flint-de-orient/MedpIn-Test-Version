@@ -11,6 +11,7 @@ import { validate } from '../middleware/validate.js';
 import { asyncHandler, unauthorized, conflict, badRequest, notFound } from '../middleware/errors.js';
 import { requestOtp, verifyOtp, signPhoneToken, phoneFromToken } from '../services/otp.js';
 import { AuditLog } from '../models/AuditLog.js';
+import { audit } from '../middleware/audit.js';
 import { logger } from '../config/logger.js';
 import { env } from '../config/env.js';
 import { getClinicSettings } from '../models/ClinicSettings.js';
@@ -468,6 +469,7 @@ router.delete(
 
 router.patch(
   '/me/profile',
+  audit('update', 'PatientProfile'),
   requireAuth,
   validate({
     body: z.object({
