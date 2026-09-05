@@ -132,6 +132,41 @@ describe('what the content security policy forbids', () => {
   });
 });
 
+describe('cancelling a dialog is not submitting it', () => {
+  /**
+   * Both Cancel buttons were `type="submit"`, closing via
+   * `<form method="dialog">`. That works until the form has a required field:
+   * a submit runs constraint validation first, so on an empty "Add a practice"
+   * the browser refused and Cancel did nothing — on exactly the blank form
+   * somebody most wants to abandon.
+   */
+  test('no Cancel button submits', () => {
+    const submits = [...html.matchAll(/<button[^>]*>\s*Cancel\s*<\/button>/g)]
+      .map((m) => m[0])
+      .filter((b) => !/type="button"/.test(b));
+
+    assert.deepEqual(
+      submits,
+      [],
+      `a Cancel that submits cannot fire on an invalid form:\n  ${submits.join('\n  ')}`,
+    );
+  });
+
+  test('each one names a dialog that exists', () => {
+    // `$(undefined).close()` throws, and the button looks identical.
+    const ids = new Set([...html.matchAll(/<dialog id="([^"]+)"/g)].map((m) => m[1]));
+    const targets = [...html.matchAll(/data-close="([^"]+)"/g)].map((m) => m[1]);
+
+    assert.ok(targets.length >= 2, 'the close buttons went missing');
+    assert.deepEqual(targets.filter((t) => !ids.has(t)), []);
+  });
+
+  test('and something closes them', () => {
+    assert.match(app, /querySelectorAll\('\[data-close\]'\)/);
+    assert.match(app, /\$\(btn\.dataset\.close\)\.close\(\)/);
+  });
+});
+
 describe('the session still does not touch storage', () => {
   test('no localStorage, sessionStorage or cookie', () => {
     // This account can suspend every practice on the platform. A closed tab

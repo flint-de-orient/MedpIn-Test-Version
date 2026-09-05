@@ -254,7 +254,13 @@
 
     <p class="error" id="newError" hidden></p>
     <menu>
-      <button value="cancel" class="ghost" type="submit">Cancel</button>
+      <!--
+        `type="button"`, not a submit. A submit runs the form's constraint
+        validation first, and "Practice name" is required — so on an empty form
+        the browser refused the submit and Cancel did nothing at all. The button
+        that exists to escape the form was held hostage by it.
+      -->
+      <button class="ghost" type="button" data-close="newDialog">Cancel</button>
       <button value="create" class="primary" type="submit">Create</button>
     </menu>
   </form>
@@ -269,7 +275,9 @@
     <textarea id="reasonText" rows="3" maxlength="500" required></textarea>
     <p class="error" id="reasonError" hidden></p>
     <menu>
-      <button value="cancel" class="ghost" type="submit">Cancel</button>
+      <!-- Same reason: the reason textarea is required, so a submit-typed
+           Cancel could never fire on the empty form it needed to escape. -->
+      <button class="ghost" type="button" data-close="reasonDialog">Cancel</button>
       <button value="ok" class="danger" type="submit" id="reasonOk">Confirm</button>
     </menu>
   </form>

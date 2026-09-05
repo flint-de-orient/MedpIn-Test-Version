@@ -383,6 +383,24 @@ for (const chip of document.querySelectorAll('.chip')) {
   });
 }
 
+/* ---------------------------------------------------------------- dialogs */
+
+/**
+ * Cancel, on any dialog.
+ *
+ * These were `type="submit"` with `value="cancel"`, relying on
+ * `<form method="dialog">` to close on submit and on the handler ignoring the
+ * value. That works right up until the form has a required field: a submit runs
+ * constraint validation first, the browser refuses, and Cancel does nothing —
+ * on precisely the empty form somebody most wants to abandon.
+ *
+ * `type="button"` and close it directly. Cancelling is not submitting, and it
+ * should not be routed through the machinery that can veto a submit.
+ */
+for (const btn of document.querySelectorAll('[data-close]')) {
+  btn.addEventListener('click', () => $(btn.dataset.close).close());
+}
+
 /* ------------------------------------------------------------------ create */
 
 $('newBtn').addEventListener('click', () => {
@@ -428,7 +446,9 @@ function askReason({ title, why, confirm }) {
     $('reasonError').hidden = true;
 
     const onSubmit = (e) => {
-      if (e.submitter?.value !== 'ok') return; // cancel closes on its own
+      // Only Confirm submits. Cancel and Escape both fire `close`, which the
+      // handler below turns into a null.
+      if (e.submitter?.value !== 'ok') return;
       const text = $('reasonText').value.trim();
       if (!text) {
         e.preventDefault();
