@@ -6,6 +6,7 @@ import '../../../shared/providers/core_providers.dart';
 import '../domain/chat_message.dart';
 import '../domain/chat_session.dart';
 import '../domain/send_message_result.dart';
+import '../domain/thread_group.dart';
 
 /// Talks to `/chat/*` (API_CONTRACT.md §2).
 class ChatRepository {
@@ -57,6 +58,15 @@ class ChatRepository {
         if (replyToId != null) 'replyTo': replyToId,
       },
     );
+  }
+
+  /// The patient's conversations, grouped by the practice each belongs to.
+  ///
+  /// With one practice this comes back as a single group holding a single
+  /// thread, and the screen opens straight into it. The grouping is in the data
+  /// either way; only the screen counts.
+  Future<ThreadList> getThreads() async {
+    return ThreadList.fromJson(await _client.getJson('/chat/threads'));
   }
 
   Future<Paged<ChatSession>> getSessions({int page = 1, int limit = 50}) async {
@@ -141,3 +151,11 @@ final Provider<ChatRepository> chatRepositoryProvider =
     Provider<ChatRepository>((ref) {
       return ChatRepository(ref.watch(apiClientProvider));
     });
+
+/// The patient's conversations, grouped.
+///
+/// `autoDispose` because it is read when the tab opens and is stale the moment
+/// a message arrives; holding it would show a thread list from an hour ago.
+final threadListProvider = FutureProvider.autoDispose<ThreadList>(
+  (ref) => ref.watch(chatRepositoryProvider).getThreads(),
+);
