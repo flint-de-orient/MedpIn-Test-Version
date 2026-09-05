@@ -113,13 +113,16 @@ describe('the desk bell shows the desk work', () => {
       doctor,
       /const DESK_ALERTS = \{ status: 'open', severity: \{ \$in: \['urgent', 'emergency'\] \} \}/,
     );
-    assert.match(route, /ClinicalAlert\.find\(isDesk \? DESK_ALERTS/);
+    // Matched loosely on purpose. The filter gained a practice scope and the
+    // shape changed; what this test is about is that severity still decides
+    // what the desk sees, not the punctuation around it.
+    assert.match(route, /ClinicalAlert\.find\([\s\S]{0,8}isDesk \? DESK_ALERTS/);
   });
 
   test('appointment requests are shown to staff', () => {
     // Giving a waiting patient a time is most of what a front desk does, and
     // it was in no notification list at all.
-    assert.match(route, /Appointment\.find\(\{ status: 'requested' \}\)/);
+    assert.match(route, /Appointment\.find\(\{ status: 'requested'[,}]/);
     assert.match(route, /kind: 'request'/);
   });
 
@@ -130,8 +133,8 @@ describe('the desk bell shows the desk work', () => {
     // The same filter on both sides. A count computed from a different
     // predicate than the list is exactly how a bell and the sheet it opens
     // came to disagree with each other on one screen.
-    assert.match(route, /ClinicalAlert\.countDocuments\(isDesk \? DESK_ALERTS/);
-    assert.match(route, /isDesk \? 0 : ChatSession\.countDocuments/);
+    assert.match(route, /ClinicalAlert\.countDocuments\([\s\S]{0,8}isDesk \? DESK_ALERTS/);
+    assert.match(route, /isDesk[\s\S]{0,12}\?[\s\S]{0,12}0[\s\S]{0,12}: ChatSession\.countDocuments/);
     assert.match(route, /isDesk \? Appointment\.countDocuments/);
   });
 });

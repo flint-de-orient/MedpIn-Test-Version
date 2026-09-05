@@ -112,16 +112,36 @@ export async function assertSamePractice(req, patientId) {
  * second practice on its first day.
  */
 export async function practicePatients(req, field = '_id') {
+  const ids = await practicePatientIds(req);
+  return ids ? { [field]: { $in: ids } } : {};
+}
+
+/**
+ * The ids themselves, or `null` meaning "do not restrict".
+ *
+ * Cached on the request. The overview screen alone queries eleven collections,
+ * and each wants the same list under a different field name — `patient` on a
+ * reading, `user` on a profile, `_id` on the account. One `distinct` per
+ * request rather than eleven.
+ *
+ * `null` rather than an empty array for the permissive case, because the two
+ * mean opposite things and an empty array is the answer for a practice with no
+ * patients yet. Conflating them is how a guard turns into an outage.
+ */
+export async function practicePatientIds(req) {
+  if (req._practicePatientIds !== undefined) return req._practicePatientIds;
+
   const practiceId = await practiceOf(req);
-  if (!practiceId) return {};
+  if (!practiceId || !(await enrolmentsExist())) {
+    req._practicePatientIds = null;
+    return null;
+  }
 
-  if (!(await enrolmentsExist())) return {};
-
-  const ids = await Enrollment.distinct('patient', {
+  req._practicePatientIds = await Enrollment.distinct('patient', {
     practice: practiceId,
     status: ENROLLMENT_STATUS.ACTIVE,
   });
-  return { [field]: { $in: ids } };
+  return req._practicePatientIds;
 }
 
 /**

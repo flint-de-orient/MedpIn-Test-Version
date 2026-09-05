@@ -47,7 +47,12 @@ import { env } from '../config/env.js';
 import { phoneFromToken } from '../services/otp.js';
 import { resolveDoctor } from '../services/doctorContext.js';
 import { enrolByPhone } from '../services/enrolByPhone.js';
-import { practiceOf, assertSamePractice, practicePatients } from '../middleware/practiceScope.js';
+import {
+  practiceOf,
+  assertSamePractice,
+  practicePatients,
+  practicePatientIds,
+} from '../middleware/practiceScope.js';
 import { enrollmentGate } from '../middleware/authorise.js';
 
 const router = Router();
@@ -112,16 +117,21 @@ router.get(
     // Clinical work, and whether this caller does any.
     const isDesk = req.user.role === ROLES.STAFF;
 
+    // Every collection below reaches a patient through a field called
+    // `patient`, so one list serves all five. Empty when the caller has no
+    // practice yet, which leaves each query exactly as it was.
+    const scope = await practicePatients(req, 'patient');
+
     const [alerts, sessions, flagged, requests] = await Promise.all([
-      ClinicalAlert.find(isDesk ? DESK_ALERTS : { status: 'open' })
+      ClinicalAlert.find({ ...(isDesk ? DESK_ALERTS : { status: 'open' }), ...scope })
         .sort({ createdAt: -1 })
         .limit(30)
         .populate('patient', 'name avatarAssetId')
         .lean(),
-      ChatSession.find({ isArchived: false }).select('_id kind patient').lean(),
+      ChatSession.find({ isArchived: false, ...scope }).select('_id kind patient').lean(),
       isDesk
         ? []
-        : ChatSession.find({ flaggedForReview: true, isArchived: false })
+        : ChatSession.find({ flaggedForReview: true, isArchived: false, ...scope })
             .sort({ lastMessageAt: -1 })
             .limit(20)
             .populate('patient', 'name avatarAssetId')
@@ -129,7 +139,7 @@ router.get(
       // Never filtered by date. A request from last Tuesday that nobody
       // answered is more urgent than one from this morning, not less.
       isDesk
-        ? Appointment.find({ status: 'requested' })
+        ? Appointment.find({ status: 'requested', ...scope })
             .sort({ createdAt: -1 })
             .limit(30)
             .populate('patient', 'name avatarAssetId')
@@ -139,7 +149,7 @@ router.get(
 
     const kindBySession = new Map(sessions.map((x) => [String(x._id), x.kind ?? 'care']));
 
-    const unread = await ChatMessage.find({ role: 'user', seenByClinicAt: null })
+    const unread = await ChatMessage.find({ role: 'user', seenByClinicAt: null, ...scope })
       .sort({ createdAt: -1 })
       .limit(40)
       .populate('patient', 'name avatarAssetId')
@@ -214,10 +224,12 @@ router.get(
     // These are the same three quantities the badge sums, queried directly, so
     // the bell and the sheet it opens can never say different things.
     const [alertTotal, unreadTotal, flaggedTotal, requestTotal] = await Promise.all([
-      ClinicalAlert.countDocuments(isDesk ? DESK_ALERTS : { status: 'open' }),
-      ChatMessage.countDocuments({ role: 'user', seenByClinicAt: null }),
-      isDesk ? 0 : ChatSession.countDocuments({ flaggedForReview: true, isArchived: false }),
-      isDesk ? Appointment.countDocuments({ status: 'requested' }) : 0,
+      ClinicalAlert.countDocuments({ ...(isDesk ? DESK_ALERTS : { status: 'open' }), ...scope }),
+      ChatMessage.countDocuments({ role: 'user', seenByClinicAt: null, ...scope }),
+      isDesk
+        ? 0
+        : ChatSession.countDocuments({ flaggedForReview: true, isArchived: false, ...scope }),
+      isDesk ? Appointment.countDocuments({ status: 'requested', ...scope }) : 0,
     ]);
 
     res.json({
@@ -261,6 +273,18 @@ router.get(
     const dayStart = dayjs().startOf('day').toDate();
     const dayEnd = dayjs().endOf('day').toDate();
 
+    /**
+     * The same patients, under the three field names this screen needs.
+     *
+     * `_id` on an account, `user` on a profile, `patient` on everything
+     * clinical. All three come from one `distinct` cached on the request, and
+     * all three are `{}` when the caller has no practice — which leaves every
+     * headline reading exactly what it read before.
+     */
+    const userScope = await practicePatients(req, '_id');
+    const profileScope = await practicePatients(req, 'user');
+    const scope = await practicePatients(req, 'patient');
+
     const [
       patientCount,
       activeToday,
@@ -273,30 +297,34 @@ router.get(
       urgentUnread,
       riskGroups,
     ] = await Promise.all([
-      User.countDocuments({ role: ROLES.PATIENT, isActive: true }),
-      GlucoseReading.distinct('patient', { measuredAt: { $gte: dayStart } }).then((ids) => ids.length),
+      User.countDocuments({ role: ROLES.PATIENT, isActive: true, ...userScope }),
+      GlucoseReading.distinct('patient', { measuredAt: { $gte: dayStart }, ...scope }).then(
+        (ids) => ids.length,
+      ),
       ClinicalAlert.aggregate([
-        { $match: { status: 'open' } },
+        { $match: { status: 'open', ...scope } },
         { $group: { _id: '$severity', count: { $sum: 1 } } },
       ]),
       Appointment.countDocuments({
         scheduledFor: { $gte: dayStart, $lte: dayEnd },
         status: { $nin: ['cancelled'] },
+        ...scope,
       }),
       // Today's finished consultations — the "Completed" headline.
       Appointment.countDocuments({
         scheduledFor: { $gte: dayStart, $lte: dayEnd },
         status: 'completed',
+        ...scope,
       }),
       // Conversations flagged for the doctor to read — the "Pending" headline.
-      ChatSession.countDocuments({ flaggedForReview: true, isArchived: false }),
+      ChatSession.countDocuments({ flaggedForReview: true, isArchived: false, ...scope }),
       // Patient messages no one at the clinic has opened yet — "New messages".
-      ChatMessage.countDocuments({ role: 'user', seenByClinicAt: null }),
+      ChatMessage.countDocuments({ role: 'user', seenByClinicAt: null, ...scope }),
       // How many of those are in a nutrition thread. The doctor's Patients tab
       // shows only the care conversation; nutrition lives behind Chat review's
       // Nutrition filter. Without the split, the headline counted messages the
       // doctor then could not find anywhere on the screen it was shown.
-      unreadNutritionCount(),
+      unreadNutritionCount(scope),
       // How many unread messages the patient themselves marked urgent.
       //
       // The dashboard used to put the open *alert* count under "Unread
@@ -307,11 +335,15 @@ router.get(
         role: 'user',
         seenByClinicAt: null,
         urgency: { $in: ['urgent', 'emergency'] },
+        ...scope,
       }),
       // Only profiles belonging to an ACTIVE patient. A deactivated or removed
       // patient can leave a lingering profile behind, and counting those inflated
       // the risk donut past the real headcount (the "9 vs 7" on the dashboard).
       PatientProfile.aggregate([
+        // An empty `$match` matches everything, so this reads as no filter at
+        // all when the practice is unknown.
+        { $match: profileScope },
         { $lookup: { from: 'users', localField: 'user', foreignField: '_id', as: 'u' } },
         { $unwind: '$u' },
         { $match: { 'u.isActive': true, 'u.role': ROLES.PATIENT } },
@@ -323,10 +355,10 @@ router.get(
     const byRisk = Object.fromEntries(riskGroups.map((r) => [r._id ?? 'low', r.count]));
 
     const [dietPatients, foodLogsToday, newPatientsToday, reviews, dieticianCount, unassignedCount] = await Promise.all([
-      PatientProfile.countDocuments({ assignedDietician: { $ne: null } }),
-      FoodLog.countDocuments({ createdAt: { $gte: dayStart } }),
-      User.countDocuments({ role: ROLES.PATIENT, createdAt: { $gte: dayStart } }),
-      nutritionReviews(),
+      PatientProfile.countDocuments({ assignedDietician: { $ne: null }, ...profileScope }),
+      FoodLog.countDocuments({ createdAt: { $gte: dayStart }, ...scope }),
+      User.countDocuments({ role: ROLES.PATIENT, createdAt: { $gte: dayStart }, ...userScope }),
+      nutritionReviews(profileScope),
       // Only worth asking about once there is a choice to make.
       //
       // With one dietician the fallbacks answer it: an unassigned patient is
@@ -338,6 +370,7 @@ router.get(
       User.countDocuments({ role: ROLES.DIETICIAN, isActive: true }),
       PatientProfile.countDocuments({
         $or: [{ assignedDietician: null }, { assignedDietician: { $exists: false } }],
+        ...profileScope,
       }),
     ]);
 
@@ -386,12 +419,19 @@ router.get(
   '/analytics',
   asyncHandler(async (req, res) => {
     const days = Math.min(180, Math.max(7, Number(req.query.days) || 30));
-    const key = `d${days}`;
+
+    // The cache is process-wide, so the practice has to be part of the key.
+    // Without it the first clinic to ask for 30 days answers for every clinic
+    // that asks next — a leak with a time limit, which is the hardest kind to
+    // reproduce and the easiest to dismiss.
+    const scope = await practicePatients(req, 'patient');
+    const userScope = await practicePatients(req, '_id');
+    const key = `d${days}:p${(await practiceOf(req)) ?? 'none'}`;
     const now = Date.now();
     if (analyticsCache.key === key && now - analyticsCache.at < ANALYTICS_TTL_MS && analyticsCache.data) {
       return res.json({ ...analyticsCache.data, cached: true });
     }
-    const data = await clinicAnalytics({ days });
+    const data = await clinicAnalytics({ days, scope, userScope });
     analyticsCache = { key, at: now, data };
     res.json({ ...data, cached: false });
   }),
@@ -405,8 +445,10 @@ router.get(
  * review's Nutrition filter. A single "12 unread" sent the doctor to a screen
  * where some of those twelve were not, with nothing to say where they were.
  */
-async function unreadNutritionCount() {
-  const sessions = await ChatSession.find({ kind: 'nutrition' }).select('_id').lean();
+async function unreadNutritionCount(scope = {}) {
+  // Scoping the sessions is enough: the message count below is confined to the
+  // ids this returns, so it inherits the restriction.
+  const sessions = await ChatSession.find({ kind: 'nutrition', ...scope }).select('_id').lean();
   if (sessions.length === 0) return 0;
   return ChatMessage.countDocuments({
     role: 'user',
@@ -424,7 +466,7 @@ async function unreadNutritionCount() {
  * analysis — the app records meals, not sodium, and a card that claimed
  * otherwise would be inventing a number the doctor might act on.
  */
-async function nutritionReviews(limit = 4) {
+async function nutritionReviews(profileScope = {}, limit = 4) {
   // Every patient, on the clinic-wide cadence.
   //
   // This used to require `assignedDietician` and a per-patient
@@ -434,7 +476,7 @@ async function nutritionReviews(limit = 4) {
   // silently disappeared from the doctor's home.
   const { dietReviewIntervalDays: intervalDays } = await getClinicSettings();
 
-  const profiles = await PatientProfile.find({})
+  const profiles = await PatientProfile.find(profileScope)
     // The face too: the card names a patient, and a coloured initial where a
     // photograph exists is a worse card for no reason.
     .populate('user', 'name isActive avatarAssetId')
@@ -495,15 +537,18 @@ async function nutritionReviews(limit = 4) {
 router.get(
   '/worklist',
   asyncHandler(async (req, res) => {
+    const scope = await practicePatients(req, 'patient');
+    const userScope = await practicePatients(req, '_id');
+
     const [patients, flaggedSessions, prescribedIds, recentMeals] = await Promise.all([
-      User.find({ role: ROLES.PATIENT, isActive: true }).select('name createdAt').lean(),
-      ChatSession.find({ flaggedForReview: true, isArchived: false })
+      User.find({ role: ROLES.PATIENT, isActive: true, ...userScope }).select('name createdAt').lean(),
+      ChatSession.find({ flaggedForReview: true, isArchived: false, ...scope })
         .sort({ lastMessageAt: -1 })
         .limit(20)
         .populate('patient', 'name')
         .lean(),
-      Prescription.distinct('patient'),
-      FoodLog.find({})
+      Prescription.distinct('patient', scope),
+      FoodLog.find(scope)
         .sort({ createdAt: -1 })
         .limit(8)
         .populate('patient', 'name')
@@ -1223,7 +1268,11 @@ router.get(
   audit('read', 'ClinicalAlert'),
   asyncHandler(async (req, res) => {
     const { page, limit, skip, status, severity } = q(req);
-    const filter = { ...(status ? { status } : {}), ...(severity ? { severity } : {}) };
+    const filter = {
+      ...(status ? { status } : {}),
+      ...(severity ? { severity } : {}),
+      ...(await practicePatients(req, 'patient')),
+    };
 
     const [items, total] = await Promise.all([
       ClinicalAlert.find(filter)
@@ -1335,6 +1384,7 @@ router.get(
     // to true (only flagged threads), false only when explicitly "false".
     const flagged = req.query.flagged !== 'false';
     const filter = {
+      ...(await practicePatients(req, 'patient')),
       ...(flagged ? { flaggedForReview: true } : {}),
       ...(urgency ? { highestUrgency: urgency } : {}),
       // `nutrition` is an equality match; `care` has to be `$ne: 'nutrition'`
@@ -1478,6 +1528,15 @@ router.get(
   asyncHandler(async (req, res) => {
     const session = await ChatSession.findById(req.params.sessionId).populate('patient', 'name phone').lean();
     if (!session) throw notFound('Conversation not found');
+
+    // A thread arrives by session id rather than patient id, which is the only
+    // reason it looked like a different kind of route. It is not: the thread
+    // belongs to somebody, and the question is the same one.
+    if (session.patient?._id) {
+      await assertSamePractice(req, session.patient._id);
+      await enrollmentGate(req, session.patient._id);
+    }
+
     req.patientId = session.patient?._id;
 
     // Attachments are populated because a food photo *is* the message: without
@@ -1580,12 +1639,22 @@ router.post(
   requireDoctor,
   audit('update', 'ChatSession'),
   asyncHandler(async (req, res) => {
-    const session = await ChatSession.findByIdAndUpdate(
-      req.params.sessionId,
-      { flaggedForReview: false, reviewedBy: req.user._id, reviewedAt: new Date() },
-      { new: true },
-    );
+    // Read first. `findByIdAndUpdate` writes before there is anything to ask
+    // the question about, and marking another practice's conversation reviewed
+    // is a write into their record that also hides it from them.
+    const session = await ChatSession.findById(req.params.sessionId);
     if (!session) throw notFound('Conversation not found');
+
+    if (session.patient) {
+      await assertSamePractice(req, session.patient);
+      await enrollmentGate(req, session.patient);
+    }
+
+    session.flaggedForReview = false;
+    session.reviewedBy = req.user._id;
+    session.reviewedAt = new Date();
+    await session.save();
+
     res.status(204).end();
   }),
 );
@@ -1620,6 +1689,13 @@ router.post(
   asyncHandler(async (req, res) => {
     const session = await ChatSession.findById(req.params.sessionId);
     if (!session || session.isArchived) throw notFound('Conversation not found');
+
+    // Writing into a conversation is the sharpest of these: the message is
+    // attributed to this doctor and the patient sees it as clinical advice.
+    if (session.patient) {
+      await assertSamePractice(req, session.patient);
+      await enrollmentGate(req, session.patient);
+    }
 
     const last = await ChatMessage.findOne({ session: session._id }).sort({ seq: -1 }).select('seq').lean();
     const message = await ChatMessage.create({

@@ -386,7 +386,7 @@ export function isCheckInOverdue(lastReadingAt, intervalDays) {
  * whole result is meant to sit behind a short cache (it changes slowly and the
  * dashboard polls often) — so this never runs on the per-poll hot path.
  */
-export async function clinicAnalytics({ days = 30 } = {}) {
+export async function clinicAnalytics({ days = 30, scope = {}, userScope = {} } = {}) {
   const since = dayjs().subtract(days, 'day').toDate();
   const tz = 'Asia/Kolkata';
   const dayKey = { $dateToString: { format: '%Y-%m-%d', date: '$measuredAt', timezone: tz } };
@@ -394,7 +394,7 @@ export async function clinicAnalytics({ days = 30 } = {}) {
   const [trend, engagement, activePatients] = await Promise.all([
     // Share of readings low / in-range / high, per day, across the whole clinic.
     GlucoseReading.aggregate([
-      { $match: { measuredAt: { $gte: since } } },
+      { $match: { measuredAt: { $gte: since }, ...scope } },
       {
         $group: {
           _id: dayKey,
@@ -427,12 +427,12 @@ export async function clinicAnalytics({ days = 30 } = {}) {
     // Distinct patients who logged at least one reading each day — is monitoring
     // actually happening across the clinic? Two-stage group keeps it distinct.
     GlucoseReading.aggregate([
-      { $match: { measuredAt: { $gte: since } } },
+      { $match: { measuredAt: { $gte: since }, ...scope } },
       { $group: { _id: { day: dayKey, patient: '$patient' } } },
       { $group: { _id: '$_id.day', patients: { $sum: 1 } } },
       { $sort: { _id: 1 } },
     ]),
-    User.find({ role: ROLES.PATIENT, isActive: true }).select('_id').lean(),
+    User.find({ role: ROLES.PATIENT, isActive: true, ...userScope }).select('_id').lean(),
   ]);
 
   // Roster monitoring counts, folded in here so they compute once behind the

@@ -47,28 +47,18 @@ const isScoped = (r) =>
 
 describe('the clinician router asks which practice', () => {
   /**
-   * Aggregates still to do, and the reason they are listed rather than fixed:
-   * each one reaches patients through a different collection — alerts through
-   * Alert, chat review through ChatSession, the worklist and overview through
-   * their own pipelines — so each needs its own field passed to
-   * `practicePatients`, and getting one of those wrong empties a screen the
-   * clinic uses every morning rather than merely leaking on a day that has not
-   * come yet.
+   * Empty, and it stays empty.
    *
-   * They leak the same way the list did. Nothing may be added to this; the only
-   * allowed edit is a deletion.
+   * It held nine aggregates for one commit — the worklist, the overview, the
+   * analytics, the alerts, the notification bell and the four chat-review
+   * routes. Each reached patients through a different collection, so each
+   * needed its own field, which is why they were written down rather than
+   * rushed.
+   *
+   * A name appearing here again is somebody deciding a screen may span
+   * practices. That should be hard to do quietly.
    */
-  const NOT_YET = new Set([
-    'GET /notifications',
-    'GET /overview',
-    'GET /analytics',
-    'GET /worklist',
-    'GET /alerts',
-    'GET /chat-review',
-    'GET /chat-review/:sessionId',
-    'POST /chat-review/:sessionId/reviewed',
-    'POST /chat-review/:sessionId/message',
-  ]);
+  const NOT_YET = new Set([]);
 
   test('every route addressing one patient is guarded', () => {
     // These are the sharp ones: they name a patient, so anyone who learns an id
@@ -99,33 +89,59 @@ describe('the clinician router asks which practice', () => {
     );
   });
 
-  test('the list of unfixed ones only ever shrinks', () => {
-    // A ratchet, not a permission. Nine today; a tenth means somebody added a
-    // route that spans practices and wrote down that it was fine.
-    assert.ok(NOT_YET.size <= 9, `NOT_YET has grown to ${NOT_YET.size}`);
+  test('nothing is exempt', () => {
+    assert.equal(NOT_YET.size, 0, `a route was exempted from practice scoping: ${[...NOT_YET]}`);
+  });
 
-    // And every name in it still refers to a real, still-unscoped route —
-    // otherwise a fixed route keeps its exemption and the count stops meaning
-    // anything.
-    const stale = [...NOT_YET].filter((k) => {
-      const r = routes().find((x) => `${x.method} ${x.path}` === k);
-      return !r || isScoped(r);
-    });
-    assert.deepEqual(stale, [], `fixed or gone — remove from NOT_YET: ${stale.join(', ')}`);
+  test('and every route touching patients is covered by one of the two rules above', () => {
+    // Belt and braces on the two tests' own filters. If a change to
+    // `touchesPatients` stopped matching, both would pass by examining nothing.
+    const covered = routes().filter(touchesPatients);
+    assert.ok(covered.length >= 12, `only ${covered.length} routes look patient-related`);
+    assert.ok(covered.every(isScoped), 'a patient-touching route is unscoped');
   });
 });
 
 describe('the guards still permit when the practice is unknown', () => {
-  test('practicePatients returns an empty filter, not an empty result', () => {
+  test('an unknown practice yields no filter, not an empty result', () => {
     // The whole reason nine migrations landed on a live clinic without a
     // maintenance window. A caller with no membership must be unrestricted, and
     // a database with no enrolments at all means the backfill has not run —
     // where an empty `$in` would look exactly like data loss.
     const scope = readFileSync(new URL('../src/middleware/practiceScope.js', import.meta.url), 'utf8');
-    const fn = scope.slice(scope.indexOf('export async function practicePatients'));
+    const ids = scope.slice(scope.indexOf('export async function practicePatientIds'));
 
-    assert.match(fn.slice(0, 400), /if \(!practiceId\) return \{\};/);
-    assert.match(fn.slice(0, 400), /if \(!\(await enrolmentsExist\(\)\)\) return \{\};/);
+    assert.match(
+      ids.slice(0, 500),
+      /if \(!practiceId \|\| !\(await enrolmentsExist\(\)\)\) \{\s*\n\s*req\._practicePatientIds = null;/,
+    );
+    // `null` and `[]` mean opposite things here — "everyone" and "nobody" — and
+    // the filter builder has to tell them apart.
+    assert.match(scope, /return ids \? \{ \[field\]: \{ \$in: ids \} \} : \{\};/);
+  });
+
+  test('the analytics cache is keyed by practice', () => {
+    // It is process-wide and was keyed on the day range alone, so the first
+    // clinic to ask for 30 days answered for every clinic that asked next — a
+    // leak with a time limit, which is the hardest kind to reproduce.
+    assert.match(src, /const key = `d\$\{days\}:p\$\{\(await practiceOf\(req\)\) \?\? 'none'\}`;/);
+  });
+
+  test('marking a conversation reviewed reads before it writes', () => {
+    // `findByIdAndUpdate` changes the row before anything can be asked about
+    // it, and marking another practice's thread reviewed both writes into their
+    // record and hides it from them.
+    // Order, not the absence of a word: the comment above the fix explains why
+    // `findByIdAndUpdate` is not used, and a negative match on the name finds
+    // the explanation and calls it the bug.
+    const block = src.slice(src.indexOf("'/chat-review/:sessionId/reviewed'")).slice(0, 1200);
+    const read = block.indexOf('ChatSession.findById(');
+    const check = block.indexOf('assertSamePractice(req, session.patient)');
+    const write = block.indexOf('await session.save()');
+
+    assert.ok(read > -1 && check > -1 && write > -1, 'the reviewed route no longer looks like this');
+    assert.ok(read < check, 'it checks before it has a row to check');
+    assert.ok(check < write, 'it writes before it checks');
   });
 
   test('the risk-band filter narrows the practice scope rather than replacing it', () => {
