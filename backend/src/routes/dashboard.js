@@ -16,6 +16,8 @@ import { Prescription } from '../models/Prescription.js';
 import { lastGivenPlan } from '../services/dietPlanLookup.js';
 import { FoodLog } from '../models/FoodLog.js';
 import { getClinicSettings } from '../models/ClinicSettings.js';
+import { conditionsFor } from '../services/patientConditions.js';
+import { patientsForLogin } from '../services/patientsForLogin.js';
 
 const router = Router({ mergeParams: true });
 router.use(requireAuth, resolvePatientScope);
@@ -105,9 +107,51 @@ router.get(
       recommendations: buildRecommendations({ healthScore, trends, adherence, reminders, latest }),
       reminders,
       ...(await careSummary(patientId, profile, latestHba1c, req.user?.email ?? null)),
+
+      // Which cards this patient's Home shows, and who else this phone looks
+      // after. Folded in here for the same reason careSummary is: the screen
+      // renders as one thing, and a patient on a patchy connection should not
+      // watch half of it arrive.
+      //
+      // Both fall back to today's answer when their tables are empty, so this
+      // is additive on a deployment that has not migrated.
+      ...(await homeShape(patientId, profile, req.user?._id)),
     });
   }),
 );
+
+/**
+ * What this patient's Home is made of, and whose Home it is.
+ *
+ * ---- Cards come from conditions -----------------------------------------
+ *
+ * Diabetes brings the sugar chart and the HbA1c tile; hypertension brings
+ * blood pressure; asthma would bring peak flow. No condition brings no cards,
+ * which is the honest answer to a screen full of empty sections — a patient
+ * with nothing recorded should be asked what to track, not shown four charts
+ * with no lines in them.
+ *
+ * ---- The switcher is a list, and usually of one -------------------------
+ *
+ * Always sent, never counted here. One patient renders as no switcher at all;
+ * three render as a chooser. Only the screen decides which, because the day a
+ * grandmother is added the server should not need changing.
+ */
+async function homeShape(patientId, profile, loginId) {
+  const [shape, people] = await Promise.all([
+    conditionsFor(patientId, { profile }),
+    loginId ? patientsForLogin(loginId) : Promise.resolve([]),
+  ]);
+
+  return {
+    homeCards: shape.homeCards,
+    conditions: shape.conditions,
+    // Everyone this login is responsible for, the holder first. A reminder or
+    // a card must be able to name its person: "Aarav · Syrup 5ml", never "time
+    // for your medicine", on a phone carrying three people's prescriptions.
+    people,
+  };
+}
 
 /**
  * The "what my care looks like" half of the home screen: who I am clinically,

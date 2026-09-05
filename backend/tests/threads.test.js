@@ -128,3 +128,30 @@ describe('the migration', () => {
     assert.match(backfill, /if \(!apply\)/);
   });
 });
+
+describe('the app can actually reach any of this', () => {
+  const dashboard = readFileSync(new URL('../src/routes/dashboard.js', import.meta.url), 'utf8');
+  const chat = readFileSync(new URL('../src/routes/chat.js', import.meta.url), 'utf8');
+
+  test('home cards and the family list ride on the existing call', () => {
+    // Not new endpoints. The screen renders as one thing, and a patient on a
+    // patchy connection should not watch half of it arrive.
+    assert.match(dashboard, /async function homeShape/);
+    assert.match(dashboard, /conditionsFor\(patientId, \{ profile \}\)/);
+    assert.match(dashboard, /patientsForLogin\(loginId\)/);
+    assert.match(dashboard, /\.\.\.\(await homeShape\(patientId, profile, req\.user\?\._id\)\)/);
+  });
+
+  test('the grouped thread list is exposed', () => {
+    assert.match(chat, /router\.get\(\s*\n\s*'\/threads'/);
+    assert.match(chat, /threadsFor\(req\.user\._id/);
+  });
+
+  test('the services are no longer dead code', () => {
+    // Both were written a phase early and called by nothing. This is the wiring
+    // that makes A1 and B1 visible to a patient.
+    for (const [name, src] of [['conditionsFor', dashboard], ['patientsForLogin', dashboard]]) {
+      assert.ok(src.includes(name), `${name} is still unused`);
+    }
+  });
+});

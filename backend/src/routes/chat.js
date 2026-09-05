@@ -22,6 +22,7 @@ import { resolveVoiceText } from '../services/voiceText.js';
 import { FoodLog } from '../models/FoodLog.js';
 import { MediaAsset } from '../models/MediaAsset.js';
 import { paged, pageParams } from '../utils/pagination.js';
+import { threadsFor } from '../services/threads.js';
 
 // The dietician assistant's one canned line — asked when a food PHOTO arrives
 // with no meal named — in the patient's language, so it is not the single
@@ -202,6 +203,23 @@ router.get(
       ChatSession.countDocuments(filter),
     ]);
     res.json(paged(items.map(serialiseSession), { page, limit, total }));
+  }),
+);
+
+/**
+ * The patient's conversations, grouped by the practice each belongs to.
+ *
+ * The list a patient sees when they have more than one doctor. With one
+ * practice it returns a single group holding a single thread, which the screen
+ * renders as it always has — straight into the conversation, no chooser. The
+ * grouping is in the data either way; only the screen counts.
+ */
+router.get(
+  '/threads',
+  requireAuth,
+  asyncHandler(async (req, res) => {
+    const groups = await threadsFor(req.user._id, { language: req.user.language ?? 'en' });
+    res.json({ groups });
   }),
 );
 
