@@ -5,14 +5,20 @@ import '../../../shared/models/paged.dart';
 import '../../../shared/providers/core_providers.dart';
 import '../domain/glucose_reading.dart';
 import '../domain/glucose_trends.dart';
+import '../../../shared/providers/active_patient.dart';
 
 /// Talks to `/patients/me/glucose*` (API_CONTRACT.md §3).
 class GlucoseRepository {
-  GlucoseRepository(this._client);
+  GlucoseRepository(this._client, this._patient);
 
   final ApiClient _client;
 
-  static const _base = '/patients/me/glucose';
+  /// `me`, or the id of somebody this login looks after. Held rather than read
+  /// per call so the provider below rebuilds when the active patient changes,
+  /// and everything watching it re-fetches without being told to.
+  final String _patient;
+
+  String get _base => '/patients/$_patient/glucose';
 
   Future<LogGlucoseResult> logReading({
     required num valueMgDl,
@@ -64,5 +70,5 @@ class GlucoseRepository {
 
 final Provider<GlucoseRepository> glucoseRepositoryProvider =
     Provider<GlucoseRepository>((ref) {
-      return GlucoseRepository(ref.watch(apiClientProvider));
+      return GlucoseRepository(ref.watch(apiClientProvider), ref.watch(patientPathProvider));
     });

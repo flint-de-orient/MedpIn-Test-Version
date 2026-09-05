@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/theme/tokens.dart';
 import '../../../../shared/widgets/surfaces.dart';
 import '../../domain/care_summary.dart';
+import '../../../../shared/providers/active_patient.dart';
 
 /// Whose record this phone is showing.
 ///
@@ -19,25 +21,19 @@ import '../../domain/care_summary.dart';
 /// the failure this guards against is a reminder that says "time for your
 /// medicine" on a handset holding three people's prescriptions. So the name is
 /// the largest thing here, and the relationship is the caption under it.
-class HouseholdSwitcher extends StatelessWidget {
-  const HouseholdSwitcher({
-    super.key,
-    required this.members,
-    this.selectedId,
-    this.onSelect,
-  });
+class HouseholdSwitcher extends ConsumerWidget {
+  const HouseholdSwitcher({super.key, required this.members});
 
   final List<HouseholdMember> members;
 
-  /// Null selects the account holder, who the server sorts first.
-  final String? selectedId;
-  final ValueChanged<HouseholdMember>? onSelect;
-
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     if (members.length < 2) return const SizedBox.shrink();
 
-    final selected = selectedId ?? members.first.id;
+    // Null is the account holder, and the server sorts them first — so the
+    // fallback is the first row rather than a sentinel the list may not hold.
+    final active = ref.watch(activePatientProvider);
+    final selected = active ?? members.first.id;
 
     return SectionCard(
       child: Column(
@@ -56,7 +52,18 @@ class HouseholdSwitcher extends StatelessWidget {
                 _MemberChip(
                   member: m,
                   isSelected: m.id == selected,
-                  onTap: onSelect == null ? null : () => onSelect!(m),
+                  // One write. Every repository reads the active patient
+                  // through a provider, so Riverpod re-fetches whatever
+                  // depends on it — Home, glucose, medicines, documents — and
+                  // nothing has to be invalidated by hand. A list of manual
+                  // invalidations is a list somebody eventually adds to
+                  // incompletely.
+                  onTap: () => ref.read(activePatientProvider.notifier).switchTo(
+                        // The account holder is `null`, not their own id, so
+                        // the path stays `me` and reads exactly as it did
+                        // before anybody was added to this phone.
+                        m.isSelf ? null : m.id,
+                      ),
                 ),
             ],
           ),

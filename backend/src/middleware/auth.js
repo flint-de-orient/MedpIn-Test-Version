@@ -3,6 +3,8 @@ import { User, ROLES } from '../models/User.js';
 import { unauthorized, forbidden, asyncHandler } from './errors.js';
 import { assertSamePractice } from './practiceScope.js';
 import { enrollmentGate } from './authorise.js';
+import { loginMayAccess } from '../services/patientsForLogin.js';
+import { recordDenial } from './recordDenial.js';
 
 /** Populates req.user from the bearer token. */
 export const requireAuth = asyncHandler(async (req, res, next) => {
@@ -62,11 +64,29 @@ export const resolvePatientScope = asyncHandler(async (req, res, next) => {
   const requested = req.params.patientId ?? req.query.patientId ?? null;
 
   if (req.user.role === ROLES.PATIENT) {
-    if (requested && requested !== req.user._id.toString() && requested !== 'me') {
-      throw forbidden('You can only access your own health record');
+    const own = !requested || requested === 'me' || requested === req.user._id.toString();
+
+    if (own) {
+      req.patientId = req.user._id;
+      return next();
     }
-    req.patientId = req.user._id;
-    return next();
+
+    // A login may also act for the people it looks after — a child, a parent,
+    // a grandmother who has never touched a phone. Their records live under
+    // this number because there is no other number to reach them on.
+    //
+    // Checked against the Patient table rather than assumed from the request:
+    // without this, a patient could name any id and be served that record, and
+    // the household feature would be a hole rather than a feature.
+    if (await loginMayAccess(req.user._id, requested)) {
+      req.patientId = requested;
+      return next();
+    }
+
+    // Recorded. A patient reaching for a record that is not theirs is worth
+    // knowing about whichever way it happened.
+    recordDenial(req, { reason: 'not_in_household', patientId: requested });
+    throw forbidden('You can only access your own health record');
   }
 
   // Clinician path — DOCTOR or STAFF only. A dietician reaches their assigned

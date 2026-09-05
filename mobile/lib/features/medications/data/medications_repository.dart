@@ -5,14 +5,20 @@ import 'package:http_parser/http_parser.dart';
 import '../../../core/network/api_client.dart';
 import '../../../shared/providers/core_providers.dart';
 import '../domain/medication.dart';
+import '../../../shared/providers/active_patient.dart';
 
 /// Talks to `/patients/me/medications*` (API_CONTRACT.md §4).
 class MedicationsRepository {
-  MedicationsRepository(this._client);
+  MedicationsRepository(this._client, this._patient);
 
   final ApiClient _client;
 
-  static const _base = '/patients/me/medications';
+  /// `me`, or the id of somebody this login looks after. Held rather than read
+  /// per call so the provider rebuilds when the active patient changes, and
+  /// everything watching it re-fetches without being told to.
+  final String _patient;
+
+  String get _base => '/patients/$_patient/medications';
 
   Future<List<Medication>> getMedications() async {
     final json = await _client.getJson(_base);
@@ -164,5 +170,5 @@ class MedicationsRepository {
 
 final Provider<MedicationsRepository> medicationsRepositoryProvider =
     Provider<MedicationsRepository>((ref) {
-      return MedicationsRepository(ref.watch(apiClientProvider));
+      return MedicationsRepository(ref.watch(apiClientProvider), ref.watch(patientPathProvider));
     });

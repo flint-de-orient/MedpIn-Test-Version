@@ -137,3 +137,46 @@ describe('the switcher never branches on count', () => {
     assert.match(service, /if \(String\(loginId\) === String\(patientId\)\) return true;/);
   });
 });
+
+describe('a login may act for its household, and nobody else', () => {
+  const auth = readFileSync(new URL('../src/middleware/auth.js', import.meta.url), 'utf8');
+  const svc = readFileSync(
+    new URL('../src/services/patientsForLogin.js', import.meta.url),
+    'utf8',
+  );
+
+  test('their own record still resolves without a lookup', () => {
+    // The overwhelmingly common case, and it must not gain a database round
+    // trip because a rarer one now exists.
+    assert.match(auth, /const own = !requested \|\| requested === 'me'/);
+    const ownBranch = auth.slice(auth.indexOf('const own ='), auth.indexOf('loginMayAccess'));
+    assert.ok(!ownBranch.includes('await'), 'the self path now waits on a query');
+  });
+
+  test('anyone else is checked against the Patient table', () => {
+    // Not assumed from the request. Without this a patient could name any id
+    // and be served that record, and the household feature would be a hole.
+    assert.match(auth, /await loginMayAccess\(req\.user\._id, requested\)/);
+  });
+
+  test('the check itself permits only self or a row that names this login', () => {
+    assert.match(svc, /if \(String\(loginId\) === String\(patientId\)\) return true;/);
+    assert.match(svc, /Patient\.findOne\(\{ _id: patientId, login: loginId, isActive: true \}\)/);
+  });
+
+  test('a refusal is recorded before it is thrown', () => {
+    const at = auth.indexOf("reason: 'not_in_household'");
+    assert.ok(at > -1, 'a patient reaching outside their household is not recorded');
+    assert.ok(
+      auth.indexOf('You can only access your own health record', at) > at,
+      'it throws before it records',
+    );
+  });
+
+  test('an inactive household member is not reachable', () => {
+    // Somebody removed from a family keeps their record — the row is
+    // soft-deleted — but the login that used to look after them does not keep
+    // the key to it.
+    assert.match(svc, /isActive: true/);
+  });
+});

@@ -4,15 +4,21 @@ import '../../../core/config/app_config.dart';
 import '../../../core/network/api_client.dart';
 import '../../../shared/providers/core_providers.dart';
 import '../domain/patient_prescription.dart';
+import '../../../shared/providers/active_patient.dart';
 
 /// Talks to `/patients/me/prescriptions` — the patient's own issued
 /// prescriptions and their PDFs.
 class PrescriptionsRepository {
-  PrescriptionsRepository(this._client);
+  PrescriptionsRepository(this._client, this._patient);
 
   final ApiClient _client;
 
-  static const _base = '/patients/me/prescriptions';
+  /// `me`, or the id of somebody this login looks after. Held rather than read
+  /// per call so the provider rebuilds when the active patient changes, and
+  /// everything watching it re-fetches without being told to.
+  final String _patient;
+
+  String get _base => '/patients/$_patient/prescriptions';
 
   Future<List<PatientPrescription>> list() async {
     final json = await _client.getJson(_base, query: {'limit': 50});
@@ -33,7 +39,7 @@ class PrescriptionsRepository {
 
 final Provider<PrescriptionsRepository> prescriptionsRepositoryProvider =
     Provider<PrescriptionsRepository>(
-      (ref) => PrescriptionsRepository(ref.watch(apiClientProvider)),
+      (ref) => PrescriptionsRepository(ref.watch(apiClientProvider), ref.watch(patientPathProvider)),
     );
 
 /// The patient's prescriptions, newest first.
