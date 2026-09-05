@@ -77,15 +77,23 @@ router.get(
 /** Bookable slots for a clinic on a clinic-local date. */
 router.get(
   '/:id/slots',
-  validate({ query: z.object({ date: z.string().regex(DATE_RE) }) }),
+  validate({
+    query: z.object({
+      date: z.string().regex(DATE_RE),
+      // Whose diary. Optional, and absent it falls back to the building's
+      // hours — which is every request until a location has more than one
+      // doctor sitting in it.
+      doctorId: z.string().optional(),
+    }),
+  }),
   asyncHandler(async (req, res) => {
     const clinic = await Clinic.findById(req.params.id);
     if (!clinic || (!isClinician(req) && !clinic.isActive)) throw notFound('Clinic not found');
 
-    const date = q(req).date;
+    const { date, doctorId } = q(req);
     if (!dayjs(date, 'YYYY-MM-DD', true).isValid()) throw badRequest('Invalid date');
 
-    const slots = await generateSlots(clinic, date);
+    const slots = await generateSlots(clinic, date, { doctorId: doctorId ?? null });
     res.json({
       clinicId: clinic._id,
       date,

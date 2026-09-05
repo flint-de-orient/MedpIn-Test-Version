@@ -1,5 +1,6 @@
 import { dayjs, inClinicTz, clinicDateTime, clinicDayOfWeek } from '../utils/clinicTime.js';
 import { Appointment } from '../models/Appointment.js';
+import { Availability } from '../models/Availability.js';
 
 /** Statuses that occupy a slot — a cancelled/completed one frees it. */
 export const ACTIVE_STATUSES = ['requested', 'confirmed', 'checked_in', 'in_consultation'];
@@ -62,14 +63,46 @@ export function buildSlotTimes(clinic, dateStr) {
 }
 
 /**
+ * The diary to read for a doctor at a location — theirs, or the building's.
+ *
+ * Availability is per doctor per location, but the clinic still carries the
+ * hours it always did and this falls back to them. That fallback is what lets
+ * the row exist before anything writes one: a location with no availability
+ * rows behaves exactly as it did, so the migration can run late, partially, or
+ * never without a patient losing the ability to book.
+ *
+ * It returns the clinic itself in that case rather than a copy, because the
+ * slot engine reads three fields — `weeklyHours`, `overrides`, `slotMinutes` —
+ * and a Clinic and an Availability both have all three under those names.
+ */
+export async function scheduleFor(clinic, doctorId = null) {
+  if (!doctorId || !clinic?._id) return clinic;
+
+  const own = await Availability.findOne({
+    doctor: doctorId,
+    location: clinic._id,
+    isActive: true,
+  }).lean();
+
+  // A doctor with no diary at this location falls back to the building's hours.
+  // Returning nothing instead would read as "never available", which would take
+  // a working clinic's booking page down the moment this shipped.
+  return own ?? clinic;
+}
+
+/**
  * Bookable slots for a clinic on a clinic-local date, each marked available or
  * not. A slot is unavailable if it is already taken by an active appointment or
  * if its start time has passed.
  *
  * @returns {Promise<{time:string,iso:string,available:boolean}[]>}
  */
-export async function generateSlots(clinic, dateStr, { now = dayjs() } = {}) {
-  const times = buildSlotTimes(clinic, dateStr);
+export async function generateSlots(clinic, dateStr, { now = dayjs(), doctorId = null } = {}) {
+  // Whose diary, then which slots. The appointment lookup below still keys on
+  // the clinic: two doctors at one location hold separate diaries but share the
+  // rooms, and a slot taken is taken.
+  const schedule = await scheduleFor(clinic, doctorId);
+  const times = buildSlotTimes(schedule, dateStr);
   if (!times.length) return [];
 
   const dayStart = clinicDateTime(dateStr, '00:00');
@@ -96,11 +129,11 @@ export async function generateSlots(clinic, dateStr, { now = dayjs() } = {}) {
  * This is the server-side guard that makes booking transactional — the client
  * cannot book a time the schedule does not offer.
  */
-export async function isSlotBookable(clinic, scheduledFor, { now = dayjs() } = {}) {
+export async function isSlotBookable(clinic, scheduledFor, { now = dayjs(), doctorId = null } = {}) {
   const local = inClinicTz(scheduledFor);
   const dateStr = local.format('YYYY-MM-DD');
   const time = local.format('HH:mm');
-  const slots = await generateSlots(clinic, dateStr, { now });
+  const slots = await generateSlots(clinic, dateStr, { now, doctorId });
   const match = slots.find((s) => s.time === time);
   return Boolean(match && match.available);
 }

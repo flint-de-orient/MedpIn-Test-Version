@@ -128,7 +128,7 @@ router.post(
       if (!clinicId) throw badRequest('Please choose a clinic');
       clinic = await Clinic.findOne({ _id: clinicId, isActive: true });
       if (!clinic) throw badRequest('That clinic is not available');
-      if (!(await isSlotBookable(clinic, scheduledFor))) {
+      if (!(await isSlotBookable(clinic, scheduledFor, { doctorId: doctor._id }))) {
         throw badRequest('That time slot is no longer available. Please choose another.');
       }
     }
@@ -385,7 +385,7 @@ router.patch(
     // The same authority a patient booking goes through. A request confirmed
     // onto a time the schedule does not offer is worse than one left pending:
     // the patient is told to come at an hour the doctor is not there.
-    if (!(await isSlotBookable(clinic, scheduledFor))) {
+    if (!(await isSlotBookable(clinic, scheduledFor, { doctorId: appointment.doctor }))) {
       throw badRequest('That time is not free. Please choose another.');
     }
 
@@ -495,7 +495,7 @@ router.patch(
     if (existing.clinic) {
       const clinic = await Clinic.findOne({ _id: existing.clinic, isActive: true });
       if (!clinic) throw badRequest('That clinic is not available');
-      if (!(await isSlotBookable(clinic, req.body.scheduledFor))) {
+      if (!(await isSlotBookable(clinic, req.body.scheduledFor, { doctorId: existing.doctor }))) {
         throw badRequest('That time slot is not available. Please choose another.');
       }
     }
