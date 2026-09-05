@@ -22,6 +22,39 @@ const chatSessionSchema = new mongoose.Schema(
     /// check unless every document has been backfilled.
     kind: { type: String, enum: ['care', 'nutrition'], default: 'care', index: true },
 
+    /// Which practice relationship this conversation belongs to.
+    ///
+    /// A thread hangs off an enrollment, not off a patient, because a patient
+    /// who sees two doctors has two conversations and neither should be able to
+    /// read the other. Null on every session written before enrollments
+    /// existed, and null keeps working: the resolver treats it as the patient's
+    /// one relationship, which is what it was.
+    enrollment: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Enrollment',
+      default: null,
+      index: true,
+    },
+
+    /// Which specialty, within that practice.
+    ///
+    /// Deliberately the department and not the doctor. A thread per doctor
+    /// breaks the moment a department has four of them: a patient messaging
+    /// cardiology and getting whoever is on duty is better served than one
+    /// waiting on a named consultant who is on leave. Any clinician in the
+    /// department may answer, and every message carries its own author — so the
+    /// patient reads "Cardiology — Dr. Sen replied". The continuity they need is
+    /// the department's; the accountability is the author's.
+    ///
+    /// Null means the practice's general thread, which is what a single-
+    /// department clinic has and what every existing session is.
+    department: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Department',
+      default: null,
+      index: true,
+    },
+
     // Rolling summary of older turns, so long conversations stay in context
     // without resending the entire history to the model each turn.
     runningSummary: { type: String, maxlength: 6000 },
@@ -76,5 +109,16 @@ const chatSessionSchema = new mongoose.Schema(
 
 chatSessionSchema.index({ patient: 1, lastMessageAt: -1 });
 chatSessionSchema.index({ patient: 1, kind: 1 });
+
+/// One care thread per enrollment per department. A second is a duplicate, not
+/// a new conversation — a patient returning to the same specialty continues the
+/// thread they already have, with its history.
+///
+/// Sparse, because the overwhelming majority of rows today have neither field
+/// and a plain unique index would collide them all on (null, null).
+chatSessionSchema.index(
+  { enrollment: 1, department: 1, kind: 1 },
+  { unique: true, sparse: true, partialFilterExpression: { enrollment: { $type: 'objectId' } } },
+);
 
 export const ChatSession = mongoose.model('ChatSession', chatSessionSchema);
