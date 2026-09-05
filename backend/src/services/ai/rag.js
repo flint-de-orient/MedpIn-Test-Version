@@ -27,8 +27,28 @@ function cosineSimilarity(a, b) {
   return dot / (Math.sqrt(normA) * Math.sqrt(normB));
 }
 
-async function vectorSearchAtlas(queryVector, { limit, languages, categories }) {
-  const filter = { status: 'approved' };
+/**
+ * Narrow the candidate set before anything is ranked.
+ *
+ * The specification is specific about the order: filtered before ranking, not
+ * after. A passage ranked and then discarded has already been read — the model
+ * saw it, and the retrieval it was cut from is not the retrieval that happened.
+ *
+ * Both scopes are permissive on null. A chunk with no practice is the
+ * platform's and answers everyone; a chunk with no department applies across
+ * all of them, because hypoglycaemia advice is as true in cardiology as in
+ * diabetology.
+ */
+function scopeFilter({ practice = null, department = null } = {}) {
+  const clauses = [];
+  if (practice) clauses.push({ $or: [{ practice: null }, { practice }] });
+  else clauses.push({ practice: null });
+  if (department) clauses.push({ $or: [{ department: null }, { department }] });
+  return clauses.length ? { $and: clauses } : {};
+}
+
+async function vectorSearchAtlas(queryVector, { limit, languages, categories, practice, department }) {
+  const filter = { status: 'approved', ...scopeFilter({ practice, department }) };
   if (languages?.length) filter.language = { $in: languages };
   if (categories?.length) filter.category = { $in: categories };
 
@@ -53,8 +73,8 @@ async function vectorSearchAtlas(queryVector, { limit, languages, categories }) 
   ]);
 }
 
-async function vectorSearchInProcess(queryVector, { limit, languages, categories }) {
-  const filter = { status: 'approved' };
+async function vectorSearchInProcess(queryVector, { limit, languages, categories, practice, department }) {
+  const filter = { status: 'approved', ...scopeFilter({ practice, department }) };
   if (languages?.length) filter.language = { $in: languages };
   if (categories?.length) filter.category = { $in: categories };
 
@@ -91,7 +111,13 @@ async function textSearch(query, { limit, language }) {
  * @param {string[]} [opts.categories] bias retrieval toward specific topics
  * @param {number} [opts.minScore=0.4] drop weak matches rather than grounding on noise
  */
-export async function retrieve(query, { limit = 6, language, categories, minScore = 0.4 } = {}) {
+export async function retrieve(
+  query,
+  // `practice` and `department` narrow the corpus before ranking. Both
+  // default to null, which is the single-practice case and the same pool
+  // the app has always searched.
+  { limit = 6, language, categories, minScore = 0.4, practice = null, department = null } = {},
+) {
   // Search the patient's language AND English in one pool, ranked together.
   //
   // Restricting to a single language crippled non-English questions: the
@@ -108,8 +134,20 @@ export async function retrieve(query, { limit = 6, language, categories, minScor
   try {
     const queryVector = await embed(query, { taskType: 'RETRIEVAL_QUERY' });
     const results = env.USE_ATLAS_VECTOR_SEARCH
-      ? await vectorSearchAtlas(queryVector, { limit, languages: searchLanguages, categories })
-      : await vectorSearchInProcess(queryVector, { limit, languages: searchLanguages, categories });
+      ? await vectorSearchAtlas(queryVector, {
+          limit,
+          languages: searchLanguages,
+          categories,
+          practice,
+          department,
+        })
+      : await vectorSearchInProcess(queryVector, {
+          limit,
+          languages: searchLanguages,
+          categories,
+          practice,
+          department,
+        });
 
     const scored = results.filter((r) => r.score >= minScore);
     if (scored.length > 0) return scored;

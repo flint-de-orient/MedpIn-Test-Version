@@ -54,6 +54,25 @@ const DEPARTMENTS = [
     key: 'diabetology',
     names: { en: 'Diabetes & Endocrinology', bn: 'ডায়াবেটিস ও এন্ডোক্রিনোলজি', hi: 'मधुमेह और एंडोक्राइनोलॉजी' },
     sortIndex: 20,
+    // The only scope written from a real clinic's practice rather than
+    // guessed. It is the existing assistant's remit, moved out of the prompt
+    // file and onto the row, so it survives a second department existing.
+    assistantScope: {
+      role: 'the AI health assistant',
+      covers: [
+        'Diabetes — sugars, insulin, tablets, CGM, hypos and highs, sick-day rules.',
+        'Thyroid — hypo and hyperthyroidism, nodules, goitre, levothyroxine.',
+        'Blood pressure, cholesterol, weight and metabolic health.',
+        'PCOS, adrenal, pituitary, calcium and bone health, gout.',
+        'Complications of the above — kidney, eye, nerve and foot problems.',
+        'Understanding labs and medicines, nutrition, exercise, devices, screening intervals.',
+      ],
+      refuses: [
+        'A skin rash, a cough or cold, a broken bone, an eye infection.',
+        'Mental-health matters unrelated to diabetes, or a child’s illness.',
+        'Starting, stopping or changing any prescribed dose.',
+      ],
+    },
     // The only department whose cards are known, because it is the one the app
     // was built for and these screens already exist.
     homeCards: ['glucose', 'hba1c', 'medications', 'diet_plan'],

@@ -63,6 +63,36 @@ const departmentSchema = new mongoose.Schema(
     /// blood-sugar chart to a paediatric asthma patient.
     homeCards: { type: [String], default: [] },
 
+    /// What this specialty's assistant covers, and what it refuses.
+    ///
+    /// ---- Why this is data and not prose in a prompt file ---------------
+    ///
+    /// The system prompt was written for one clinic and says so: "You ONLY help
+    /// with his areas of practice: Diabetes, Thyroid, PCOS…", then refuses skin
+    /// rashes, coughs, broken bones and children's illness by name. Correct for
+    /// a diabetologist. Fatal for the dermatology practice whose patients are
+    /// told their rash is out of scope.
+    ///
+    /// A specialty an admin adds cannot bring a code change with it, so the
+    /// scope lives on the row the admin creates.
+    ///
+    /// ---- Empty means no assistant, not a general one -------------------
+    ///
+    /// A department nobody has written a scope for gets silence in its thread,
+    /// for the same reason `triageRules` starts empty: an assistant improvising
+    /// cardiology answers out of diabetes guidance is worse than none, because
+    /// the patient cannot tell the difference and neither can the doctor
+    /// reviewing it afterwards.
+    assistantScope: {
+      /// How the assistant introduces itself — "a cardiology assistant".
+      /// Absent, there is no assistant in this department's thread at all.
+      role: { type: String, trim: true, maxlength: 200, default: null },
+      /// What it may help with. One line each in the prompt.
+      covers: { type: [String], default: [] },
+      /// What it must decline and redirect rather than answer badly.
+      refuses: { type: [String], default: [] },
+    },
+
     /// Red-flag rule ids that apply to this department's patients.
     ///
     /// Deliberately empty on a new row, and it stays empty until a clinician in
@@ -116,6 +146,10 @@ departmentSchema.methods.toPublic = function toPublic(language = 'en') {
     names: { en: this.names?.en, bn: this.names?.bn ?? null, hi: this.names?.hi ?? null },
     isShared: this.practice == null,
     homeCards: this.homeCards ?? [],
+    // Whether this department can answer a patient at all. The screen reads it
+    // to say "no assistant in this thread" rather than showing a composer that
+    // silently does nothing.
+    hasAssistant: Boolean(this.assistantScope?.role),
     isActive: this.isActive,
     sortIndex: this.sortIndex,
   };

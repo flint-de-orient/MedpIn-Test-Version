@@ -15,6 +15,28 @@ const knowledgeChunkSchema = new mongoose.Schema(
     content: { type: String, required: true, maxlength: 8000 },
     language: { type: String, enum: ['en', 'bn', 'hi'], default: 'en', index: true },
 
+    /// Who authored this, and who may be answered from it.
+    ///
+    /// Null means shared — the platform's own clinical content, readable by
+    /// every practice. A practice's own passages carry its id and are never
+    /// returned to another, because a clinic's approved wording is its clinical
+    /// voice and lending it out is putting words in somebody else's mouth.
+    practice: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Practice',
+      default: null,
+      index: true,
+    },
+
+    /// Which specialty this belongs to. Null means it applies across all of
+    /// them — hypoglycaemia advice is as true in cardiology as in diabetology.
+    department: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Department',
+      default: null,
+      index: true,
+    },
+
     category: {
       type: String,
       enum: [
