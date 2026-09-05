@@ -22,6 +22,7 @@ import mongoose from 'mongoose';
 
 import { env } from '../src/config/env.js';
 import { Enrollment, ENROLLMENT_STATUS } from '../src/models/Enrollment.js';
+import { Membership, MEMBERSHIP_STATUS } from '../src/models/Membership.js';
 import { User, ROLES } from '../src/models/User.js';
 import { GlucoseReading } from '../src/models/GlucoseReading.js';
 import { Hba1cRecord } from '../src/models/Hba1cRecord.js';
@@ -110,6 +111,49 @@ async function main() {
     console.log('  Every active patient has an active enrolment.\n');
   }
 
+  /**
+   * A practice with clinicians but no enrolled patients.
+   *
+   * The other way these screens go blank, and the one the orphan count above
+   * cannot see. `/doctor/patients` now answers with the enrolments belonging to
+   * the caller's practice, and a clinician whose membership points at practice
+   * X while every patient is enrolled at practice Y gets a correct, empty
+   * answer to the wrong question.
+   *
+   * Nothing in the migrations should produce that — the founding practice
+   * received both the memberships and the enrolments. But "should" is doing all
+   * the work in that sentence, and the symptom is a doctor opening an empty
+   * clinic on a Monday.
+   */
+  const staffed = await Membership.aggregate([
+    { $match: { status: MEMBERSHIP_STATUS.ACTIVE, endedOn: null } },
+    { $group: { _id: '$practice', people: { $sum: 1 } } },
+  ]);
+
+  const perPractice = new Map();
+  for (const e of enrolments) {
+    const k = String(e.practice);
+    perPractice.set(k, (perPractice.get(k) ?? 0) + 1);
+  }
+
+  console.log('  Practices with active staff:\n');
+  let blank = 0;
+  for (const row of staffed) {
+    const k = String(row._id);
+    const n = perPractice.get(k) ?? 0;
+    const mark = n === 0 ? '  !!' : '    ';
+    console.log(`${mark}   ${k}  ${row.people} staff, ${n} enrolled patient(s)`);
+    if (n === 0) blank += 1;
+  }
+  if (!staffed.length) {
+    console.log('      none — no memberships yet, so every guard permits');
+  }
+  if (blank) {
+    console.log(`\n  !! ${blank} practice(s) have staff but nobody enrolled.`);
+    console.log("     Their clinicians will see an empty patient list.\n");
+  }
+  console.log('');
+
   const undated = enrolments.filter((e) => !e.enrolledOn).length;
   if (undated) {
     // Not a problem: no date means no bound, and the read is unrestricted the
@@ -165,8 +209,11 @@ async function main() {
   // An orphaned patient is a deploy blocker in its own right, separate from
   // anything the window hides.
   if (orphans.length) {
-    console.log(`  ${orphans.length} patient(s) would disappear from the doctor's list.
-`);
+    console.log(`  ${orphans.length} patient(s) would disappear from the doctor's list.\n`);
+    process.exitCode = 1;
+  }
+  if (blank) {
+    console.log(`  ${blank} practice(s) would open to an empty patient list.\n`);
     process.exitCode = 1;
   }
   if (total === 0) {
