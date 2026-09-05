@@ -1,6 +1,7 @@
 import { Membership, MEMBERSHIP_STATUS } from '../models/Membership.js';
 import { forbidden } from './errors.js';
 import { practiceOf, assertSamePractice } from './practiceScope.js';
+import { practiceMaySee } from '../services/enrollments.js';
 
 /**
  * The five questions, asked in one place.
@@ -19,16 +20,16 @@ import { practiceOf, assertSamePractice } from './practiceScope.js';
  *      enrolledOn?
  *   5. Does their permission set allow this action?
  *
- * ---- Question 4 is not answered yet, and says so ------------------------
+ * ---- Question 4, answered ------------------------------------------------
  *
- * `Enrollment` does not exist — it is step 9 of the build order and this is
- * step 5. Question 4 is therefore a named hole rather than a silent one:
- * [enrollmentGate] below is the seam it will fill, `authorisationIsComplete`
- * reports false, and a test asserts that it stays false until the model lands.
+ * It was a named hole for as long as `Enrollment` did not exist. It does now,
+ * so [enrollmentGate] asks the real question: is this patient enrolled at this
+ * practice, is that enrollment current, and is the record inside its window.
  *
- * Pretending four questions are five is how a system ends up believing it
- * checks something it does not. Until then, patient scoping is the narrower
- * same-practice check in [practiceScope.js].
+ * The window is the part worth keeping. Access is not retroactive, so a
+ * practice that enrolled a patient in June may not read what another wrote in
+ * May. Without that check an enrollment would be a key to the whole history,
+ * and joining a second clinic would quietly hand them the first one's notes.
  *
  * ---- The permissive rule, again -----------------------------------------
  *
@@ -39,8 +40,8 @@ import { practiceOf, assertSamePractice } from './practiceScope.js';
  * moment memberships exist.
  */
 
-/** False until Enrollment lands. Read by the tests, and by nothing else. */
-export const authorisationIsComplete = false;
+/** All five questions are now answered. Read by the tests, and nothing else. */
+export const authorisationIsComplete = true;
 
 /**
  * The caller's membership at the practice this request concerns.
@@ -66,15 +67,35 @@ export async function membershipOf(req) {
 }
 
 /**
- * Question 4's seam. Answers "yes" today because there is nothing to ask.
+ * Question 4: is the patient enrolled here, currently, and is the record inside
+ * the window that enrollment opened.
  *
- * When `Enrollment` exists this checks that the patient is enrolled at this
- * practice, that the enrollment is ACTIVE, and that the record being read was
- * created after `enrolledOn` — because access is not retroactive, and linking
- * today must not open four years of another doctor's notes.
+ * Throws rather than returning false, so a caller cannot forget to check the
+ * result — the same reasoning that makes the enrollment a required field rather
+ * than an optional one.
+ *
+ * `recordDate` is when the thing being read was created. Omitted, only the
+ * enrollment itself is checked, which is right for "may they open this patient
+ * at all" and wrong for "may they read this particular prescription" — so a
+ * route fetching a dated row should pass it.
  */
-export async function enrollmentGate(/* req, patientId */) {
-  return true;
+export async function enrollmentGate(req, patientId, { recordDate = null } = {}) {
+  const practiceId = await practiceOf(req);
+  // No practice on the caller is the pre-membership state, and unknown never
+  // denies. See the note above.
+  if (!practiceId) return true;
+
+  const verdict = await practiceMaySee(practiceId, patientId, { recordDate });
+  if (verdict.allowed) return true;
+
+  throw forbidden(
+    {
+      not_enrolled: 'That patient is not enrolled at this practice',
+      consent_pending: 'That patient has not yet consented to share their record here',
+      revoked: 'That patient has withdrawn this practice’s access',
+      before_enrolment: 'That record predates this practice’s access to the patient',
+    }[verdict.reason] ?? 'You do not have access to this patient',
+  );
 }
 
 /**

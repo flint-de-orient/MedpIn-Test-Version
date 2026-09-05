@@ -2,6 +2,7 @@ import { verifyAccessToken } from '../services/tokens.js';
 import { User, ROLES } from '../models/User.js';
 import { unauthorized, forbidden, asyncHandler } from './errors.js';
 import { assertSamePractice } from './practiceScope.js';
+import { enrollmentGate } from './authorise.js';
 
 /** Populates req.user from the bearer token. */
 export const requireAuth = asyncHandler(async (req, res, next) => {
@@ -90,6 +91,12 @@ export const resolvePatientScope = asyncHandler(async (req, res, next) => {
   // check that denied on missing data would lock the working clinic out of its
   // own records the day it deployed.
   await assertSamePractice(req, patient._id);
+
+  // Question 4. Same-practice says the caller and the patient belong to one
+  // practice; this says the patient actually granted that practice access, and
+  // has not withdrawn it. The two are different facts and a clinician can pass
+  // the first while failing the second.
+  await enrollmentGate(req, patient._id);
 
   req.patientId = patient._id;
   req.patientUser = patient;

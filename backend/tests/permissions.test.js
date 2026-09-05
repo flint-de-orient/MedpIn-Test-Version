@@ -127,18 +127,32 @@ describe('the guard is wired where it matters', () => {
   });
 });
 
-describe('four questions are not five', () => {
+describe('all five questions are answered', () => {
   test('the middleware says so out loud', () => {
-    // Question 4 needs Enrollment, which is step 9 of the build order. Naming
-    // the hole is the difference between a known gap and a system that believes
-    // it checks something it does not.
-    assert.equal(authorisationIsComplete, false);
+    // This was pinned false while Enrollment did not exist, so that the gap
+    // could not be forgotten. Enrollment exists; the flag moves with it.
+    assert.equal(authorisationIsComplete, true);
   });
 
-  test('the enrollment seam exists and is documented as open', () => {
+  test('question 4 asks the real question', () => {
     const src = readFileSync(new URL('../src/middleware/authorise.js', import.meta.url), 'utf8');
     assert.match(src, /export async function enrollmentGate/);
-    assert.match(src, /Enrollment` does not exist/);
+    // Not a stub any more: it consults the enrollment and refuses.
+    assert.match(src, /practiceMaySee\(practiceId, patientId/);
+    assert.match(src, /throw forbidden\(/);
+
+    // The stub returned true and nothing else. The real one has a conditional
+    // return and a refusal, so counting them distinguishes the two without a
+    // brittle whole-body match.
+    const body = src.slice(src.indexOf('export async function enrollmentGate'));
+    const gate = body.slice(0, body.indexOf('\n}\n') + 2);
+    assert.ok(gate.includes('if (verdict.allowed) return true;'), 'no conditional permit');
+    assert.ok(gate.includes('throw forbidden('), 'the gate cannot refuse');
+  });
+
+  test('it is wired into the one place every clinical route passes', () => {
+    const auth = readFileSync(new URL('../src/middleware/auth.js', import.meta.url), 'utf8');
+    assert.match(auth, /await enrollmentGate\(req, patient\._id\);/);
   });
 });
 
