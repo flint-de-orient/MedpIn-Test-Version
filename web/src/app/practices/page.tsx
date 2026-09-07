@@ -386,7 +386,7 @@ function Detail() {
         title={ask ? `${ask.kind === "reject" ? "Reject" : "Suspend"} ${ask.name}` : ""}
         why={
           ask?.kind === "reject"
-            ? "The applicant sees this. Say what was wrong with the registration."
+            ? "Nobody at the practice sees this — it goes to the audit log. Write it for whoever asks in six months why this was refused."
             : "Staff will not be able to sign in. Patients keep their records, prescriptions and dose reminders — a suspension that silenced a diabetic's insulin alarm would punish the person who did nothing wrong."
         }
         confirmLabel={ask?.kind === "reject" ? "Reject" : "Suspend"}
