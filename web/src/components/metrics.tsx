@@ -1,5 +1,7 @@
 "use client";
 
+import Link from "next/link";
+import { IconChevron } from "@/components/icons";
 import { cn } from "@/lib/utils";
 
 export type Movement = { current: number; previous: number };
@@ -21,6 +23,17 @@ export type Movement = { current: number; previous: number };
  *
  * From nothing to something has no percentage at all, and saying so beats
  * printing ∞ or silently hiding the row.
+ *
+ * ---- A number raises a question, so it leads somewhere -------------------
+ *
+ * "1 patient, one more than 30 days ago" is read and then acted on: which one,
+ * and since when. With `href` the whole card is the link to wherever that is
+ * answered, because a card that navigates only from a small chevron in its
+ * corner is a card most people never discover navigates at all.
+ *
+ * `to` names the destination in words. The card's own text is a label and a
+ * figure, and "Active practices, 1, up 1 more" tells somebody using a screen
+ * reader nothing about where they would land.
  */
 export function MetricCard({
   label,
@@ -28,29 +41,49 @@ export function MetricCard({
   movement,
   hint,
   icon,
+  href,
+  to,
 }: {
   label: string;
   value: number | string;
   movement?: Movement;
   hint?: string;
   icon?: React.ReactNode;
+  href?: string;
+  /** Where the link goes, for a reader who cannot see it move. Required with `href`. */
+  to?: string;
 }) {
   const t = movement ? describe(movement) : null;
 
-  return (
-    <div className="border-border bg-card flex min-w-0 flex-col gap-3 rounded-lg border p-4">
+  const body = (
+    <>
       <div className="flex items-center justify-between gap-2">
         <span className="text-muted-foreground text-[11px] font-medium tracking-[0.06em] uppercase">
           {label}
         </span>
-        {icon ? <span className="text-muted-foreground/70 shrink-0">{icon}</span> : null}
+        {icon ? (
+          <span
+            className={cn(
+              "text-muted-foreground/70 shrink-0 transition-colors",
+              href && "group-hover:text-primary",
+            )}
+          >
+            {icon}
+          </span>
+        ) : null}
       </div>
 
       <span className="tnum truncate text-[27px] leading-none font-semibold tracking-tight">
         {typeof value === "number" ? value.toLocaleString() : value}
       </span>
 
-      <p className="text-muted-foreground min-h-[1rem] text-[11px] leading-snug text-pretty">
+      <p
+        className={cn(
+          "text-muted-foreground min-h-[1rem] text-[11px] leading-snug text-pretty",
+          // The chevron lands in this line's bottom-right corner.
+          href && "pr-5",
+        )}
+      >
         {t ? (
           <>
             <span
@@ -71,7 +104,34 @@ export function MetricCard({
           hint
         )}
       </p>
-    </div>
+    </>
+  );
+
+  const shell = "border-border bg-card flex min-w-0 flex-col gap-3 rounded-lg border p-4";
+
+  if (!href) return <div className={shell}>{body}</div>;
+
+  return (
+    <Link
+      href={href}
+      // The chevron is the affordance; the border and lift are what make the
+      // whole card read as one target rather than decoration around a link.
+      className={cn(
+        shell,
+        "group hover:border-primary/40 hover:bg-secondary/40 relative transition-colors",
+        "focus-visible:ring-ring focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none",
+        "focus-visible:ring-offset-background",
+      )}
+    >
+      {body}
+      <span className="sr-only">— {to}</span>
+      <IconChevron
+        className={cn(
+          "text-muted-foreground/40 group-hover:text-primary absolute right-3 bottom-3 size-3.5",
+          "transition-all group-hover:translate-x-0.5",
+        )}
+      />
+    </Link>
   );
 }
 

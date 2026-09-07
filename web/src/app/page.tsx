@@ -7,7 +7,15 @@ import { useSession } from "@/lib/session";
 import { useAttention } from "@/components/attention";
 import { MetricCard } from "@/components/metrics";
 import { Empty, Failed, Panel, Pill, statusTone, when } from "@/components/primitives";
-import { IconAdmins, IconAlert, IconCheck, IconChevron, IconPractice } from "@/components/icons";
+import {
+  IconAdmins,
+  IconAlert,
+  IconCheck,
+  IconChevron,
+  IconPatients,
+  IconPin,
+  IconPractice,
+} from "@/components/icons";
 import type { Overview, PracticeRow } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -73,29 +81,48 @@ export default function OverviewPage() {
 
       <AttentionPanel items={attention} />
 
+      {/*
+        Every card leads somewhere, and only one of them leads to a list.
+
+        Practices have a register, so "Active practices" opens it filtered to
+        active. The other three have no list and must not grow one — there is no
+        patient screen in this console, and its whole argument for living on its
+        own host is that there is nothing here to read about anybody. So they
+        open the growth chart on their own line, which answers what a trend
+        actually asks: since when, and from what.
+      */}
       <section className="grid min-w-0 grid-cols-2 gap-3 md:grid-cols-4">
         <MetricCard
           label="Active practices"
           value={o?.practices.active ?? 0}
           movement={o?.trends.practices}
           icon={<IconPractice className="size-4" />}
+          href="/practices/?status=active"
+          to="the active practices"
         />
         <MetricCard
           label="Patients"
           value={o?.activeEnrolments ?? 0}
           movement={o?.trends.patients}
-          hint="enrolled across every practice"
+          icon={<IconPatients className="size-4" />}
+          href="/analytics/?line=patients"
+          to="patient growth over time"
         />
         <MetricCard
           label="Staff"
           value={o?.staff ?? 0}
           movement={o?.trends.staff}
           icon={<IconAdmins className="size-4" />}
+          href="/analytics/?line=staff"
+          to="staff growth over time"
         />
         <MetricCard
           label="Locations"
           value={o?.locations ?? 0}
           movement={o?.trends.locations}
+          icon={<IconPin className="size-4" />}
+          href="/analytics/?line=locations"
+          to="location growth over time"
         />
       </section>
 
@@ -162,15 +189,40 @@ export default function OverviewPage() {
         <Panel title="By plan" description="What every practice is on.">
           {o ? (
             <ul className="divide-border divide-y">
-              {(["trial", "solo", "clinic", "hospital"] as const).map((k) => (
-                <li
-                  key={k}
-                  className="flex items-center justify-between px-4 py-2.5 text-[13px]"
-                >
-                  <span className="capitalize">{k}</span>
-                  <span className="tnum font-mono text-xs">{o.plans[k] ?? 0}</span>
-                </li>
-              ))}
+              {(["trial", "solo", "clinic", "hospital"] as const).map((k) => {
+                const n = o.plans[k] ?? 0;
+
+                // A row reading nought leads to a list of nothing. It stays a
+                // row, because a plan with no practices on it is a fact worth
+                // seeing, and it stops being a link because there is nothing
+                // behind it to open.
+                if (n === 0) {
+                  return (
+                    <li
+                      key={k}
+                      className="text-muted-foreground flex items-center justify-between px-4 py-2.5 text-[13px]"
+                    >
+                      <span className="capitalize">{k}</span>
+                      <span className="tnum font-mono text-xs">0</span>
+                    </li>
+                  );
+                }
+
+                return (
+                  <li key={k}>
+                    <Link
+                      href={`/practices/?plan=${k}`}
+                      className="hover:bg-secondary/50 group flex items-center justify-between px-4 py-2.5 text-[13px] transition-colors"
+                    >
+                      <span className="capitalize">{k}</span>
+                      <span className="flex items-center gap-1.5">
+                        <span className="tnum font-mono text-xs">{n}</span>
+                        <IconChevron className="text-muted-foreground/40 group-hover:text-primary size-3 transition-colors" />
+                      </span>
+                    </Link>
+                  </li>
+                );
+              })}
             </ul>
           ) : (
             <div className="px-4 py-8" />

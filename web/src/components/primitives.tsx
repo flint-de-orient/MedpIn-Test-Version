@@ -71,14 +71,23 @@ export function Stat({
   label,
   hint,
   tone,
+  jumpTo,
 }: {
   value: React.ReactNode;
   label: string;
   hint?: string;
   tone?: "waiting";
+  /**
+   * The id of the panel that lists what this counts.
+   *
+   * "Staff 3" and the list of the three are the same fact twice, and on a phone
+   * they are a screen apart because the columns stack. Not every stat has one —
+   * patients are counted and deliberately not listed anywhere in this console.
+   */
+  jumpTo?: string;
 }) {
-  return (
-    <div className="flex flex-col gap-0.5">
+  const inner = (
+    <>
       <span
         className={cn(
           "tnum text-2xl leading-none font-semibold tracking-tight",
@@ -91,7 +100,19 @@ export function Stat({
         {label}
       </span>
       {hint ? <span className="text-muted-foreground text-xs">{hint}</span> : null}
-    </div>
+    </>
+  );
+
+  if (!jumpTo) return <div className="flex flex-col gap-0.5">{inner}</div>;
+
+  return (
+    <a
+      href={`#${jumpTo}`}
+      className="hover:text-primary focus-visible:ring-ring -m-1.5 flex flex-col gap-0.5 rounded-md p-1.5 transition-colors focus-visible:ring-2 focus-visible:outline-none"
+    >
+      {inner}
+      <span className="sr-only">— jump to the list</span>
+    </a>
   );
 }
 
@@ -105,12 +126,15 @@ export function Stat({
  * most of what makes a screen read as a template.
  */
 export function Panel({
+  id,
   title,
   description,
   actions,
   children,
   className,
 }: {
+  /** Anchor, so a count elsewhere on the page can point at the list. */
+  id?: string;
   title?: string;
   description?: string;
   actions?: React.ReactNode;
@@ -119,7 +143,12 @@ export function Panel({
 }) {
   return (
     <section
+      id={id}
       className={cn(
+        // Jumping to a panel puts its header hard against the top of the
+        // viewport, under the sticky bar. This is the offset that leaves it
+        // visible where it lands.
+        id && "scroll-mt-20",
         // `min-w-0` is load-bearing. A grid item defaults to `min-width: auto`,
         // so a panel holding a long unbroken name grows past its column rather
         // than clipping it — and takes the page's width with it, which is how a

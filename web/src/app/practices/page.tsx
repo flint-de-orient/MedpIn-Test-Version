@@ -222,7 +222,11 @@ function Detail() {
 
       <div className="grid min-w-0 gap-5 lg:grid-cols-[1.6fr_1fr]">
         <div className="flex min-w-0 flex-col gap-5">
-          <Panel title="Staff" description="Who works here, and what each of them may do.">
+          <Panel
+            id="staff"
+            title="Staff"
+            description="Who works here, and what each of them may do."
+          >
             {d.members.length === 0 ? (
               <Empty
                 title="Nobody has joined yet"
@@ -275,7 +279,11 @@ function Detail() {
             )}
           </Panel>
 
-          <Panel title="Locations" description="Where this practice sees patients.">
+          <Panel
+            id="locations"
+            title="Locations"
+            description="Where this practice sees patients."
+          >
             {d.locations.length === 0 ? (
               <Empty
                 title="No locations"
@@ -303,6 +311,7 @@ function Detail() {
           </Panel>
 
           <Panel
+            id="departments"
             title="Departments"
             description="Each one can carry its own AI assistant. A department with no scope has no assistant — never a general one."
           >
@@ -357,9 +366,17 @@ function Detail() {
                 label="Ever"
                 hint="including revoked"
               />
-              <Stat value={d.usage.staff} label="Staff" />
-              <Stat value={d.usage.locations} label="Locations" />
-              <Stat value={d.usage.departments} label="Departments" />
+              {/* Patients and Ever are counts of people this console cannot
+                  list and should not learn how to. The other three are the
+                  headline of a panel further down the page — the same fact
+                  twice, a screenful apart once the columns stack. */}
+              <Stat value={d.usage.staff} label="Staff" jumpTo="staff" />
+              <Stat value={d.usage.locations} label="Locations" jumpTo="locations" />
+              <Stat
+                value={d.usage.departments}
+                label="Departments"
+                jumpTo="departments"
+              />
             </div>
           </Panel>
 

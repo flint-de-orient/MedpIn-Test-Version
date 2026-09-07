@@ -1,14 +1,16 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
+import { Suspense, useCallback, useEffect, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { api, ApiError } from "@/lib/api";
 import { Empty, Failed, Panel } from "@/components/primitives";
 import { UsageBar } from "@/components/metrics";
+import { IconChevron } from "@/components/icons";
 import { PLAN_LABELS, type Plan } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
-type Analytics = {
+type AnalyticsData = {
   months: string[];
   series: {
     practices: number[];
@@ -35,18 +37,59 @@ const LINES = [
  * of things that do not divide into a whole, and no sparkline drawn through
  * four points — a decorative graph is worse than no graph, because it looks
  * like evidence.
+ *
+ * ---- Which line and how long live in the URL ----------------------------
+ *
+ * Same as the practice register, and for the same two reasons. The overview's
+ * Patients card has to be able to link at the patients line rather than at the
+ * page — landing on the default and making somebody find the right button is
+ * the same as not linking. And "look at staff over 24 months" becomes something
+ * one operator can send another.
  */
 export default function AnalyticsPage() {
-  const [a, setA] = useState<Analytics | null>(null);
+  // `useSearchParams` suspends, and a static export has no server to fall back
+  // on — without this the whole route fails to prerender.
+  return (
+    <Suspense fallback={<div className="h-[30rem]" />}>
+      <Analytics />
+    </Suspense>
+  );
+}
+
+type LineKey = (typeof LINES)[number]["key"];
+
+function Analytics() {
+  const params = useSearchParams();
+  const router = useRouter();
+
+  const [a, setA] = useState<AnalyticsData | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [months, setMonths] = useState(12);
-  const [line, setLine] = useState<(typeof LINES)[number]["key"]>("practices");
+
+  // Read through a whitelist. A hand-edited ?line=nonsense would otherwise
+  // reach LINES.find(...)! and throw on a null, taking the page down over a
+  // typo in an address bar.
+  const raw = params.get("line");
+  const line: LineKey = LINES.some((l) => l.key === raw) ? (raw as LineKey) : "practices";
+
+  const monthsRaw = Number(params.get("months"));
+  const months = [6, 12, 24].includes(monthsRaw) ? monthsRaw : 12;
+
+  const setParam = useCallback(
+    (key: string, value: string) => {
+      const next = new URLSearchParams(params.toString());
+      next.set(key, value);
+      // `replace`, not `push`: flicking between four lines should not put four
+      // entries in the history somebody then has to press Back through.
+      router.replace(`/analytics/?${next.toString()}`, { scroll: false });
+    },
+    [params, router],
+  );
 
   const load = useCallback(async () => {
     setError(null);
     setA(null);
     try {
-      setA(await api<Analytics>(`/admin/analytics?months=${months}`));
+      setA(await api<AnalyticsData>(`/admin/analytics?months=${months}`));
     } catch (ex) {
       setError((ex as ApiError).message);
     }
@@ -74,7 +117,7 @@ export default function AnalyticsPage() {
           {[6, 12, 24].map((m) => (
             <button
               key={m}
-              onClick={() => setMonths(m)}
+              onClick={() => setParam("months", String(m))}
               className={cn(
                 "rounded-md border px-2.5 py-1 text-xs font-medium transition-colors",
                 months === m
@@ -96,7 +139,7 @@ export default function AnalyticsPage() {
             {LINES.map((l) => (
               <button
                 key={l.key}
-                onClick={() => setLine(l.key)}
+                onClick={() => setParam("line", l.key)}
                 className={cn(
                   "flex items-center gap-1.5 rounded-md border px-2 py-1 text-[11px] font-medium transition-colors",
                   line === l.key
@@ -137,9 +180,19 @@ export default function AnalyticsPage() {
                 <Segment n={a.status.suspended} total={total} className="bg-stopped" />
               </div>
               <dl className="grid grid-cols-3 gap-3 text-[13px]">
-                <Legend label="Active" n={a.status.active} className="bg-ok" />
-                <Legend label="Onboarding" n={a.status.onboarding} className="bg-waiting" />
-                <Legend label="Suspended" n={a.status.suspended} className="bg-stopped" />
+                <Legend label="Active" status="active" n={a.status.active} className="bg-ok" />
+                <Legend
+                  label="Onboarding"
+                  status="onboarding"
+                  n={a.status.onboarding}
+                  className="bg-waiting"
+                />
+                <Legend
+                  label="Suspended"
+                  status="suspended"
+                  n={a.status.suspended}
+                  className="bg-stopped"
+                />
               </dl>
             </div>
           ) : (
@@ -150,15 +203,34 @@ export default function AnalyticsPage() {
         <Panel title="Plans" description="A plan is a name; the caps are what bite.">
           {a ? (
             <ul className="divide-border divide-y">
-              {(Object.keys(PLAN_LABELS) as Plan[]).map((k) => (
-                <li
-                  key={k}
-                  className="flex items-center justify-between px-4 py-2.5 text-[13px]"
-                >
-                  <span>{PLAN_LABELS[k]}</span>
-                  <span className="tnum font-mono text-xs">{a.plans[k] ?? 0}</span>
-                </li>
-              ))}
+              {(Object.keys(PLAN_LABELS) as Plan[]).map((k) => {
+                const n = a.plans[k] ?? 0;
+                if (n === 0) {
+                  return (
+                    <li
+                      key={k}
+                      className="text-muted-foreground flex items-center justify-between px-4 py-2.5 text-[13px]"
+                    >
+                      <span>{PLAN_LABELS[k]}</span>
+                      <span className="tnum font-mono text-xs">0</span>
+                    </li>
+                  );
+                }
+                return (
+                  <li key={k}>
+                    <Link
+                      href={`/practices/?plan=${k}`}
+                      className="hover:bg-secondary/50 group flex items-center justify-between px-4 py-2.5 text-[13px] transition-colors"
+                    >
+                      <span>{PLAN_LABELS[k]}</span>
+                      <span className="flex items-center gap-1.5">
+                        <span className="tnum font-mono text-xs">{n}</span>
+                        <IconChevron className="text-muted-foreground/40 group-hover:text-primary size-3 transition-colors" />
+                      </span>
+                    </Link>
+                  </li>
+                );
+              })}
             </ul>
           ) : (
             <div className="h-40" />
@@ -206,15 +278,46 @@ function Segment({
   return <span className={className} style={{ width: `${(n / total) * 100}%` }} />;
 }
 
-function Legend({ label, n, className }: { label: string; n: number; className: string }) {
-  return (
-    <div className="flex flex-col gap-0.5">
+/**
+ * One band of the status bar, and the way into the practices behind it.
+ *
+ * A breakdown that cannot be opened makes somebody read "Suspended 3", go to
+ * the register, and set the filter by hand — which is the work this panel was
+ * meant to save. Nought is not a link, because there is nothing to open.
+ */
+function Legend({
+  label,
+  status,
+  n,
+  className,
+}: {
+  label: string;
+  status: string;
+  n: number;
+  className: string;
+}) {
+  const inner = (
+    <>
       <dt className="text-muted-foreground flex items-center gap-1.5 text-[11px] uppercase">
         <span aria-hidden className={cn("size-1.5 rounded-full", className)} />
         {label}
       </dt>
       <dd className="tnum font-mono">{n}</dd>
-    </div>
+    </>
+  );
+
+  if (n === 0) {
+    return <div className="text-muted-foreground flex flex-col gap-0.5">{inner}</div>;
+  }
+
+  return (
+    <Link
+      href={`/practices/?status=${status}`}
+      className="hover:bg-secondary/50 -m-1.5 flex flex-col gap-0.5 rounded-md p-1.5 transition-colors"
+    >
+      {inner}
+      <span className="sr-only">— open these practices</span>
+    </Link>
   );
 }
 

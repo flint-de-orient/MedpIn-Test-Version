@@ -1,7 +1,7 @@
 /**
  * The icon set, drawn here rather than installed.
  *
- * Twelve glyphs at one stroke weight on one grid. A library would be 1,500 of
+ * Every glyph at one stroke weight on one grid. A library would be 1,500 of
  * them at a weight chosen by somebody else, and the tell of a template is not
  * that icons exist — it is that they were picked from a sheet rather than
  * chosen for the thing they label.
@@ -59,6 +59,29 @@ export const IconAdmins = ({ className }: Props) => (
     <path d="M16 20v-1.5a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4V20" />
     <circle cx="9" cy="7" r="3.2" />
     <path d="M17.5 14.2a4 4 0 0 1 4.5 4V20M16.5 4.4a3.2 3.2 0 0 1 0 5.9" />
+  </svg>
+);
+
+/**
+ * Patients: a pulse, not a chart.
+ *
+ * The obvious glyph is a clipboard, and it would be a lie — this console holds
+ * no clinical record and the whole argument for putting it on its own host is
+ * that it does not. A heart with a trace through it counts people under care
+ * without implying anything here can read about them.
+ */
+export const IconPatients = ({ className }: Props) => (
+  <svg {...base} className={className}>
+    <path d="M12 20.6C12 20.6 4.5 16 4.5 10.5A4.3 4.3 0 0 1 12 7.6a4.3 4.3 0 0 1 7.5 2.9c0 5.5-7.5 10.1-7.5 10.1Z" />
+    <path d="M4.9 11.6h3.2l1.3-2.6 2.1 5.4 1.5-3.3 1 1.5h5" />
+  </svg>
+);
+
+/** A location: a pin. The product is called MedPin. */
+export const IconPin = ({ className }: Props) => (
+  <svg {...base} className={className}>
+    <path d="M12 21.5s7-5.6 7-11a7 7 0 1 0-14 0c0 5.4 7 11 7 11Z" />
+    <circle cx="12" cy="10.2" r="2.6" />
   </svg>
 );
 
