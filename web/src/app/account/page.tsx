@@ -31,6 +31,9 @@ export default function Account() {
       const out = await api<{ secret: string }>("/admin/me/totp/setup", {
         method: "POST",
       });
+      // A 200 with no key is a server that changed shape. Showing the enrolment
+      // step anyway would ask somebody to type a code derived from nothing.
+      if (!out?.secret) throw new Error("The server did not return a setup key.");
       setSecret(out.secret);
       setCode("");
       setStage("enrolling");
@@ -134,25 +137,54 @@ export default function Account() {
                 this. It is shown once.
               </p>
 
-              <div className="border-border bg-muted/40 flex flex-wrap items-center gap-3 rounded-sm border border-dashed px-3 py-3">
-                <code className="tnum font-mono text-sm break-all select-all">
-                  {(secret.match(/.{1,4}/g) ?? []).join(" ")}
-                </code>
-                <button
-                  type="button"
-                  onClick={async () => {
-                    try {
-                      await navigator.clipboard.writeText(secret);
-                      toast.success("Copied");
-                    } catch {
-                      toast.error("Copy is blocked here — type it from the screen.");
-                    }
-                  }}
-                  className="border-border hover:bg-secondary ml-auto rounded-sm border px-2 py-1 text-xs font-medium transition-colors"
-                >
-                  Copy
-                </button>
-              </div>
+              {/*
+                A blank box where a credential belongs is the worst thing this
+                screen can do: it looks like a rendering quirk and it is
+                indistinguishable from a key that failed to arrive. If there is
+                nothing to show, it says so and offers the way out.
+              */}
+              {secret ? (
+                <div className="border-border bg-muted/40 flex flex-wrap items-center gap-3 rounded-md border border-dashed px-3 py-3">
+                  {/*
+                    Selectable as ordinary text. This was `select-all`, which
+                    reads well — one click takes the whole key — and is selected
+                    atomically, so dragging across it can drop it from the copied
+                    range entirely. A key that vanishes when copied is worse than
+                    one that needs two clicks.
+                  */}
+                  <code className="tnum font-mono text-base leading-relaxed font-medium break-all">
+                    {(secret.match(/.{1,4}/g) ?? []).join(" ")}
+                  </code>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      try {
+                        await navigator.clipboard.writeText(secret);
+                        toast.success("Copied");
+                      } catch {
+                        toast.error("Copy is blocked here — type it from the screen.");
+                      }
+                    }}
+                    className="border-border hover:bg-secondary ml-auto shrink-0 rounded-sm border px-2.5 py-1 text-xs font-medium transition-colors"
+                  >
+                    Copy
+                  </button>
+                </div>
+              ) : (
+                <div className="border-stopped/30 bg-stopped-tint flex flex-wrap items-center gap-3 rounded-md border px-3 py-3">
+                  <p className="text-stopped text-xs leading-relaxed">
+                    The key did not arrive. Nothing has been changed on your
+                    account — start again.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => void begin()}
+                    className="border-border hover:bg-secondary ml-auto shrink-0 rounded-sm border px-2.5 py-1 text-xs font-medium transition-colors"
+                  >
+                    Try again
+                  </button>
+                </div>
+              )}
 
               <p className="text-muted-foreground text-xs leading-relaxed">
                 Shown as text rather than a QR code on purpose: drawing one means a
