@@ -39,7 +39,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html
       lang="en"
-      className={`${sans.variable} ${mono.variable} h-full antialiased`}
+      className={`${sans.variable} ${mono.variable} antialiased`}
       // Dark is opt-in from the toggle, which writes `class="dark"` here.
       // suppressHydrationWarning because that script runs before React does —
       // otherwise the first paint is the wrong theme and it flashes.
@@ -51,7 +51,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
             rather than allowing inline scripts generally. */}
         <script dangerouslySetInnerHTML={{ __html: THEME_BOOTSTRAP }} />
       </head>
-      <body className="bg-background text-foreground flex min-h-full flex-col">
+      <body className="bg-background text-foreground flex min-h-dvh flex-col">
         <Providers>{children}</Providers>
         <Toaster position="bottom-center" />
       </body>

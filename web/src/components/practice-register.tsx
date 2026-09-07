@@ -134,8 +134,8 @@ export function PracticeRegister() {
       </div>
 
       {/* Filters. Every one writes to the URL, so a filtered view is a link. */}
-      <div className="flex flex-wrap items-center gap-2">
-        <label className="border-border bg-card focus-within:border-ring flex h-8 min-w-[13rem] flex-1 items-center gap-2 rounded-md border px-2.5 transition-colors">
+      <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
+        <label className="border-border bg-card focus-within:border-ring flex h-8 w-full items-center gap-2 rounded-md border px-2.5 transition-colors sm:w-auto sm:min-w-[13rem] sm:flex-1">
           <IconSearch className="text-muted-foreground size-3.5 shrink-0" />
           <input
             value={query}
@@ -146,6 +146,7 @@ export function PracticeRegister() {
           />
         </label>
 
+        <div className="flex flex-wrap gap-2">
         <Choice
           label="Status"
           value={status}
@@ -192,10 +193,12 @@ export function PracticeRegister() {
           ]}
         />
 
+        </div>
+
         {filtered ? (
           <Link
             href="/practices/"
-            className="text-primary text-xs underline underline-offset-4"
+            className="text-primary self-start text-xs underline underline-offset-4"
           >
             Clear
           </Link>
@@ -377,7 +380,7 @@ function Choice({
       value={value}
       onChange={(e) => onChange(e.target.value)}
       className={cn(
-        "border-border bg-card h-8 rounded-md border px-2 text-[12px] transition-colors",
+        "border-border bg-card h-8 min-w-0 flex-1 rounded-md border px-2 text-[12px] transition-colors sm:flex-none",
         value ? "border-primary text-foreground" : "text-muted-foreground",
       )}
     >

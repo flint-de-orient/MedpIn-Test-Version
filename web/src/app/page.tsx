@@ -73,7 +73,7 @@ export default function OverviewPage() {
 
       <AttentionPanel items={attention} />
 
-      <section className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <section className="grid grid-cols-2 gap-3 md:grid-cols-4">
         <MetricCard
           label="Active practices"
           value={o?.practices.active ?? 0}

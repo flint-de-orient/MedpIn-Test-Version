@@ -34,7 +34,7 @@ function Gate({ children }: { children: React.ReactNode }) {
    */
   if (restoring) {
     return (
-      <div className="flex min-h-full flex-1 items-center justify-center">
+      <div className="flex flex-1 items-center justify-center">
         <span className="sr-only">Checking your session…</span>
         <span
           aria-hidden

@@ -263,7 +263,7 @@ function LineChart({
   return (
     <div className="flex flex-col">
       <div className="overflow-x-auto px-2 pt-2">
-        <svg viewBox={`0 0 ${W} ${H}`} className="h-[13rem] w-full min-w-[30rem]" aria-hidden>
+        <svg viewBox={`0 0 ${W} ${H}`} className="h-[11rem] w-full min-w-[22rem] sm:h-[13rem]" aria-hidden>
           <defs>
             <linearGradient id={id} x1="0" y1="0" x2="0" y2="1">
               <stop offset="0%" stopColor={stroke} stopOpacity="0.16" />

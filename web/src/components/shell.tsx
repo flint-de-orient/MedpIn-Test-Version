@@ -71,7 +71,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
   usePaletteShortcut(useCallback(() => setPalette(true), []));
 
   return (
-    <div className="flex min-h-full">
+    <div className="flex flex-1">
       <Sidebar
         path={path}
         className="border-border bg-sidebar hidden w-[15rem] shrink-0 border-r lg:flex"
@@ -237,7 +237,7 @@ function TopBar({ onMenu, onSearch }: { onMenu: () => void; onSearch: () => void
           behave differently. */}
       <button
         onClick={onSearch}
-        className="border-border text-muted-foreground hover:bg-secondary/60 flex h-9 w-full max-w-[22rem] items-center gap-2 rounded-md border px-3 text-[13px] transition-colors"
+        className="border-border text-muted-foreground hover:bg-secondary/60 hidden h-9 w-full max-w-[22rem] min-w-0 items-center gap-2 rounded-md border px-3 text-[13px] transition-colors sm:flex"
       >
         <IconSearch className="size-4 shrink-0" />
         <span className="truncate">Search practices, staff, locations…</span>
@@ -251,7 +251,7 @@ function TopBar({ onMenu, onSearch }: { onMenu: () => void; onSearch: () => void
         <ThemeToggle />
         <span className="bg-border mx-1 hidden h-5 w-px sm:block" />
         <span
-          className="text-muted-foreground hidden max-w-[14rem] truncate font-mono text-xs md:inline"
+          className="text-muted-foreground hidden max-w-[12rem] truncate font-mono text-xs lg:inline xl:max-w-[16rem]"
           title={admin?.email}
         >
           {admin?.email}

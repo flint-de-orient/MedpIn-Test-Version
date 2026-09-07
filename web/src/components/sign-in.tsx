@@ -19,7 +19,7 @@ import { Wordmark } from "@/components/icons";
 export function SignIn() {
   const [mode, setMode] = useState<"login" | "reset">("login");
   return (
-    <div className="flex min-h-full flex-1 flex-col">
+    <div className="flex flex-1 flex-col">
       <header className="border-border border-b px-5 py-3">
         <div className="mx-auto flex max-w-[78rem] items-center gap-2.5">
           <Wordmark className="h-6 w-auto" />
