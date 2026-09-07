@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/network/api_exception.dart';
@@ -588,6 +587,14 @@ class _AddDieticianSheetState extends ConsumerState<_AddDieticianSheet> {
   String? _phoneToken;
   final _password = TextEditingController();
 
+  /// Off by default, exactly as on the desk account.
+  ///
+  /// This was the one form in the app that made somebody else's password
+  /// mandatory. A dietician has their own phone and has just answered a code on
+  /// it, so the number is the credential; a password the doctor invents and
+  /// reads out travels by word of mouth and is one the doctor then knows.
+  bool _setPassword = false;
+
   /// Hidden until the first submit attempt, exactly as the login and register
   /// forms behave — errors that appear while someone is still typing the first
   /// character read as the form scolding them.
@@ -626,7 +633,7 @@ class _AddDieticianSheetState extends ConsumerState<_AddDieticianSheet> {
           .addDietician(
             name: _name.text.trim(),
             phoneToken: token,
-            password: _password.text,
+            password: _setPassword ? _password.text : null,
           );
       if (!mounted) return;
       Navigator.pop(context, true);
@@ -663,7 +670,7 @@ class _AddDieticianSheetState extends ConsumerState<_AddDieticianSheet> {
             ),
             const SizedBox(height: 4),
             Text(
-              'They can sign in with this number and password.',
+              'They sign in with a code texted to this number.',
               style: TextStyle(fontSize: 14, color: scheme.onSurfaceVariant),
             ),
             const SizedBox(height: AppSpacing.lg),
@@ -691,43 +698,61 @@ VerifiedPhoneField(
               label: 'Their mobile number',
               onToken: (t) => setState(() => _phoneToken = t),
             ),
-            const SizedBox(height: AppSpacing.md),
-            TextFormField(
-              controller: _password,
-              obscureText: _obscure,
-              textInputAction: TextInputAction.done,
-              maxLength: AuthValidators.maxPasswordLength,
-              onFieldSubmitted: (_) => _saving ? null : _save(),
-              decoration: InputDecoration(
-                labelText: 'Password',
-                prefixIcon: const Icon(Icons.lock_outline_rounded),
-                counterText: '',
-                // The rule stated before it is broken. It was only ever shown
-                // as a validation error after a short password had been typed
-                // and submitted, which teaches the requirement by failing the
-                // person rather than by telling them.
-                helperText:
-                    'At least ${AuthValidators.minPasswordLength} characters. '
-                    'They can change it after signing in.',
-                helperMaxLines: 2,
-                suffixIcon: IconButton(
-                  onPressed: () => setState(() => _obscure = !_obscure),
-                  icon: Icon(
-                    _obscure
-                        ? Icons.visibility_outlined
-                        : Icons.visibility_off_outlined,
+            const SizedBox(height: AppSpacing.sm),
+            SwitchListTile.adaptive(
+              value: _setPassword,
+              onChanged: (v) => setState(() => _setPassword = v),
+              contentPadding: EdgeInsets.zero,
+              title: const Text(
+                'Set a password',
+                style: TextStyle(fontSize: 15),
+              ),
+              subtitle: Text(
+                'Only if they cannot receive a text. Otherwise they sign in '
+                'with a code, like everyone else.',
+                style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant),
+              ),
+            ),
+            if (_setPassword) ...[
+              const SizedBox(height: AppSpacing.sm),
+              TextFormField(
+                controller: _password,
+                obscureText: _obscure,
+                textInputAction: TextInputAction.done,
+                maxLength: AuthValidators.maxPasswordLength,
+                onFieldSubmitted: (_) => _saving ? null : _save(),
+                decoration: InputDecoration(
+                  labelText: 'Password',
+                  prefixIcon: const Icon(Icons.lock_outline_rounded),
+                  counterText: '',
+                  // The rule stated before it is broken. It was only ever shown
+                  // as a validation error after a short password had been typed
+                  // and submitted, which teaches the requirement by failing the
+                  // person rather than by telling them.
+                  helperText:
+                      'At least ${AuthValidators.minPasswordLength} characters. '
+                      'They can change it after signing in.',
+                  helperMaxLines: 2,
+                  suffixIcon: IconButton(
+                    onPressed: () => setState(() => _obscure = !_obscure),
+                    icon: Icon(
+                      _obscure
+                          ? Icons.visibility_outlined
+                          : Icons.visibility_off_outlined,
+                    ),
                   ),
                 ),
+                validator: (v) {
+                  if (!_setPassword) return null;
+                  final password = v ?? '';
+                  if (password.isEmpty) return 'Set a password for them.';
+                  if (password.length < AuthValidators.minPasswordLength) {
+                    return 'At least ${AuthValidators.minPasswordLength} characters.';
+                  }
+                  return null;
+                },
               ),
-              validator: (v) {
-                final password = v ?? '';
-                if (password.isEmpty) return 'Set a password for them.';
-                if (password.length < AuthValidators.minPasswordLength) {
-                  return 'At least ${AuthValidators.minPasswordLength} characters.';
-                }
-                return null;
-              },
-            ),
+            ],
             if (_serverError != null) ...[
               const SizedBox(height: AppSpacing.sm),
               Text(

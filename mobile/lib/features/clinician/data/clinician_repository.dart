@@ -372,14 +372,21 @@ class ClinicianRepository {
   /// a regex tests the shape of a phone number and nothing about who holds it,
   /// and one mistyped digit used to produce a working clinical account bound to
   /// a stranger's handset — who could then receive its login code.
+  /// The password is optional, as it is for a desk account. A dietician has
+  /// their own phone and has just answered a code on it; one the doctor invents
+  /// and reads out is a credential travelling by word of mouth.
   Future<({String id, String name})> addDietician({
     required String name,
     required String phoneToken,
-    required String password,
+    String? password,
   }) async {
     final json = await _client.postJson(
       '/doctor/dieticians',
-      body: {'name': name, 'phoneToken': phoneToken, 'password': password},
+      body: {
+        'name': name,
+        'phoneToken': phoneToken,
+        if (password != null && password.isNotEmpty) 'password': password,
+      },
     );
     return (
       id: json['id']?.toString() ?? '',

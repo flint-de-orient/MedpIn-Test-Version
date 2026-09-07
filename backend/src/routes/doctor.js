@@ -2179,7 +2179,16 @@ router.post(
       name: z.string().trim().min(2).max(120),
       // Proof the number was answered, not a number. See above.
       phoneToken: z.string().min(20),
-      password: z.string().min(8, 'At least 8 characters').max(128),
+      // Optional, and it was required — the one creation path in the app that
+      // made somebody else's password mandatory.
+      //
+      // A dietician has their own phone; the number they just answered a code
+      // on is the credential. Forcing a password here meant the doctor invented
+      // one for a colleague and read it out, which is a credential travelling
+      // by word of mouth and one the doctor then knows. The desk account has
+      // the switch because a handset living on a counter has no personal phone
+      // to receive a code on. That reason does not apply to a clinician.
+      password: z.string().min(8, 'At least 8 characters').max(128).optional(),
     }),
   }),
   audit('create', 'User'),
@@ -2197,8 +2206,31 @@ router.post(
         aiDisclaimerAcceptedAt: new Date(),
       },
     });
-    await user.setPassword(password);
+    if (password) await user.setPassword(password);
     await user.save();
+
+    /**
+     * The membership, which is what actually puts them in a practice.
+     *
+     * Staff creation has done this since the tenant model landed and this route
+     * never did, which was invisible while the dietician list was unscoped —
+     * an account belonging to nobody showed up in every practice, so it showed
+     * up in the right one too.
+     *
+     * Scoping that list turned the leak into a disappearance: the dietician was
+     * created, the request succeeded, and the screen behind the sheet stayed
+     * empty. Same missing line, opposite symptom.
+     */
+    const practiceId = await practiceOf(req);
+    if (practiceId) {
+      await joinPractice({
+        user: user._id,
+        practice: practiceId,
+        role: ROLES.DIETICIAN,
+        addedBy: req.user._id,
+      });
+    }
+
     res.status(201).json({ id: String(user._id), name: user.name, phone: user.phone });
   }),
 );
