@@ -846,21 +846,32 @@ router.get(
     const now = Date.now();
     const since = (days) => new Date(now - days * 86_400_000);
     const window30 = since(30);
-    const window60 = since(60);
 
     /**
-     * A trend is two counts, not a stored series.
+     * A trend is the total now against the total a month ago.
      *
-     * "Up 12% on last month" is the last thirty days against the thirty before
-     * them, computed from `createdAt` on rows that already exist. Keeping a
-     * daily snapshot table would be more precise and would also be a second
-     * source of truth that can drift from the first — and nothing on this
-     * screen needs a resolution finer than "more than before, or fewer".
+     * ---- Not arrivals in one window against arrivals in the previous one ---
+     *
+     * That is what this did first, and it produced "Locations 2 — down 2",
+     * which is a sentence about a deletion that never happened. Both locations
+     * were created between thirty and sixty days ago, so the recent window held
+     * none and the older one held two.
+     *
+     * The card shows a total. A trend beside a total has to describe how that
+     * total moved, or the two halves of one card are measuring different things
+     * and the reader is left to notice.
+     *
+     * ---- Still two counts, not a stored series ----------------------------
+     *
+     * The total a month ago is the rows that existed a month ago, which for
+     * data nothing deletes is `createdAt < window30`. A daily snapshot table
+     * would be more precise and would also be a second source of truth that can
+     * drift from the first.
      */
     const movement = async (Model, filter = {}) => {
       const [current, previous] = await Promise.all([
-        Model.countDocuments({ ...filter, createdAt: { $gte: window30 } }),
-        Model.countDocuments({ ...filter, createdAt: { $gte: window60, $lt: window30 } }),
+        Model.countDocuments(filter),
+        Model.countDocuments({ ...filter, createdAt: { $lt: window30 } }),
       ]);
       return { current, previous };
     };
@@ -888,7 +899,7 @@ router.get(
       movement(Practice),
       movement(Membership, { status: MEMBERSHIP_STATUS.ACTIVE, endedOn: null }),
       movement(Clinic),
-      enrolmentMovement(window30, window60),
+      enrolmentMovement(window30),
     ]);
 
     const tally = (rows) => Object.fromEntries(rows.map((r) => [r._id ?? 'unknown', r.count]));

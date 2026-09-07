@@ -41,15 +41,17 @@ export async function platformPatientCount() {
 }
 
 /**
- * New enrolments in two adjacent windows, for a trend.
+ * Active enrolments now, and how many of them existed a month ago.
  *
- * Counts only. Same boundary as the rest of this module: there is no function
- * here that can return who.
+ * The same shape as every other trend on that screen, and for the same reason:
+ * a card showing a total needs a trend about that total. Counting arrivals per
+ * window instead produced "2 — down 2" for rows nothing had deleted.
  */
-export async function enrolmentMovement(from, previousFrom) {
+export async function enrolmentMovement(from) {
+  const active = { status: ENROLLMENT_STATUS.ACTIVE };
   const [current, previous] = await Promise.all([
-    Enrollment.countDocuments({ createdAt: { $gte: from } }),
-    Enrollment.countDocuments({ createdAt: { $gte: previousFrom, $lt: from } }),
+    Enrollment.countDocuments(active),
+    Enrollment.countDocuments({ ...active, createdAt: { $lt: from } }),
   ]);
   return { current, previous };
 }

@@ -65,7 +65,7 @@ export function MetricCard({
             >
               {t.arrow} {t.text}
             </span>
-            <span className="text-muted-foreground">vs previous 30 days</span>
+            <span className="text-muted-foreground">vs 30 days ago</span>
           </>
         ) : hint ? (
           <span className="text-muted-foreground">{hint}</span>
