@@ -278,21 +278,28 @@ export default function Account() {
       </Panel>
 
       <Panel title="This session">
-        <p className="text-muted-foreground px-4 py-4 text-xs leading-relaxed">
-          Held in memory only. Closing the tab signs you out, there is no
-          &ldquo;remember me&rdquo;, and the server expires it after two hours
-          regardless. That is deliberate for an account that can suspend every
-          practice, and it means signing in again after a refresh.
-          <br />
-          <br />
-          There is no &ldquo;sign out everywhere&rdquo;. The token is not tracked
-          server-side, so once issued it is valid for its full two hours and nothing
-          can revoke it early. If one leaked, the remedy is to wait it out or rotate{" "}
-          <code className="font-mono text-[11px]">ADMIN_JWT_SECRET</code>, which signs
-          everyone out at once. That is why the expiry is short and the session does
-          not persist: when you cannot revoke, the next best thing is not lasting
-          long.
-        </p>
+        <div className="text-muted-foreground flex flex-col gap-2 px-4 py-4 text-xs leading-relaxed">
+          <p>
+            Kept in a cookie your browser will not let this page read, so a
+            refresh keeps you signed in and nothing that runs script here can
+            take the session. It lasts two hours and then asks again.
+          </p>
+          <p>
+            <strong className="text-foreground">Sign out</strong> ends it in this
+            browser. It does not end it anywhere else: the session is not tracked
+            on the server, so a copy taken beforehand stays valid until it
+            expires. There is no “sign out everywhere”, and a button offering one
+            would be doing less than it claimed.
+          </p>
+          <p>
+            If a session were ever taken, the remedies are to wait out the two
+            hours or rotate{" "}
+            <code className="font-mono text-[11px]">ADMIN_JWT_SECRET</code> on the
+            server, which ends every session at once. That is why two hours is
+            short: when you cannot revoke one, the next best thing is that it does
+            not last.
+          </p>
+        </div>
       </Panel>
     </div>
   );
