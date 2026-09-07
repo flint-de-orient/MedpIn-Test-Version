@@ -39,6 +39,17 @@ function sourceUnder(dir) {
 
 const app = sourceUnder(WEB);
 
+/**
+ * The same source with every run of whitespace collapsed.
+ *
+ * Prose in JSX is wrapped by the formatter, so a sentence on screen is two or
+ * three lines in the file with indentation between them. Matching a phrase
+ * against the raw source therefore tests where prettier chose to break, which
+ * is not a behaviour anybody wants pinned — it broke the moment a paragraph was
+ * reworded and rewrapped.
+ */
+const prose = app.replace(/\s+/g, ' ');
+
 /** Every path the admin API answers on, taken from the router itself. */
 function declaredRoutes() {
   return [
@@ -114,7 +125,7 @@ describe('the second factor can be turned on and survived', () => {
     assert.match(app, /\/admin\/me\/totp\/setup/);
     assert.match(app, /\/admin\/me\/totp\/enable/);
     assert.match(app, /secret\.match/, 'the setup key is never shown');
-    assert.match(app, /a mistyped key cannot lock you out/);
+    assert.match(prose, /a mistyped key cannot lock you out/);
   });
 
   test('turning it off asks for a code too', () => {
@@ -125,20 +136,20 @@ describe('the second factor can be turned on and survived', () => {
 
   test('an account without one is told, on every screen', () => {
     assert.match(app, /!totpEnabled/);
-    assert.match(app, /no second factor/i);
+    assert.match(prose, /no second factor/i);
   });
 });
 
 describe('the reset can be finished in the browser', () => {
   test('there is a form, not only a shell command', () => {
     assert.match(app, /\/admin\/auth\/reset/);
-    assert.match(app, /Reset token/);
+    assert.match(prose, /Reset token/);
   });
 
   test('and it does not pretend to sign you in', () => {
     // The route returns no session on purpose, and the screen says so rather
     // than jumping to a page it has no session to load.
-    assert.match(app, /Choosing a password is not signing in/);
+    assert.match(prose, /Choosing a password is not signing in/);
   });
 });
 
