@@ -38,7 +38,7 @@ export function MetricCard({
   const t = movement ? describe(movement) : null;
 
   return (
-    <div className="border-border bg-card flex flex-col gap-3 rounded-lg border p-4">
+    <div className="border-border bg-card flex min-w-0 flex-col gap-3 rounded-lg border p-4">
       <div className="flex items-center justify-between gap-2">
         <span className="text-muted-foreground text-[11px] font-medium tracking-[0.06em] uppercase">
           {label}
@@ -46,16 +46,16 @@ export function MetricCard({
         {icon ? <span className="text-muted-foreground/70 shrink-0">{icon}</span> : null}
       </div>
 
-      <span className="tnum text-[27px] leading-none font-semibold tracking-tight">
+      <span className="tnum truncate text-[27px] leading-none font-semibold tracking-tight">
         {typeof value === "number" ? value.toLocaleString() : value}
       </span>
 
-      <div className="flex min-h-[1rem] items-center gap-1.5 text-[11px]">
+      <p className="text-muted-foreground min-h-[1rem] text-[11px] leading-snug text-pretty">
         {t ? (
           <>
             <span
               className={cn(
-                "font-medium tabular-nums",
+                "font-medium whitespace-nowrap tabular-nums",
                 t.direction === "up"
                   ? "text-ok"
                   : t.direction === "down"
@@ -64,13 +64,13 @@ export function MetricCard({
               )}
             >
               {t.arrow} {t.text}
-            </span>
-            <span className="text-muted-foreground">vs 30 days ago</span>
+            </span>{" "}
+            vs 30 days ago
           </>
-        ) : hint ? (
-          <span className="text-muted-foreground">{hint}</span>
-        ) : null}
-      </div>
+        ) : (
+          hint
+        )}
+      </p>
     </div>
   );
 }

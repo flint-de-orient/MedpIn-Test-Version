@@ -1140,7 +1140,19 @@ router.get(
     const [pendingVerification, onboarding, weakAdmins, capped] = await Promise.all([
       Practice.countDocuments({ verification: VERIFICATION.PENDING }),
       Practice.countDocuments({ status: PRACTICE_STATUS.ONBOARDING }),
-      PlatformAdmin.countDocuments({ isActive: true, totpEnabled: { $ne: true } }),
+      /**
+       * No second factor of any kind.
+       *
+       * Not `totpEnabled` alone. An operator who registered a passkey and never
+       * touched an authenticator app is protected, and telling them otherwise
+       * is a warning about something they have already done — which teaches
+       * them to ignore the section.
+       */
+      PlatformAdmin.countDocuments({
+        isActive: true,
+        totpEnabled: { $ne: true },
+        $or: [{ passkeys: { $exists: false } }, { passkeys: { $size: 0 } }],
+      }),
       practicesNearCapacity(),
     ]);
 
@@ -1188,7 +1200,9 @@ router.get(
         kind: 'security',
         severity: 'waiting',
         title: `${weakAdmins} administrator${weakAdmins === 1 ? ' has' : 's have'} no second factor`,
-        detail: 'A password alone stands between anyone who learns it and every practice.',
+        detail:
+          'A password alone stands between anyone who learns it and every practice. ' +
+          'A passkey takes about ten seconds and needs nothing installed.',
         href: '/admins/',
         count: weakAdmins,
       });

@@ -88,7 +88,7 @@ export default function Account() {
       </div>
 
       <Panel title="You">
-        <dl className="grid grid-cols-2 gap-x-6 gap-y-4 px-4 py-4 sm:grid-cols-3">
+        <dl className="grid grid-cols-1 gap-x-6 gap-y-4 px-4 py-4 sm:grid-cols-3">
           <Field label="Name">{admin.name || "—"}</Field>
           <Field label="Email" mono>
             {admin.email}

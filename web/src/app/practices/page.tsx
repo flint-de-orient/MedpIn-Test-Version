@@ -193,8 +193,8 @@ function Detail() {
         </div>
       </Panel>
 
-      <div className="grid gap-5 lg:grid-cols-[1.6fr_1fr]">
-        <div className="flex flex-col gap-5">
+      <div className="grid min-w-0 gap-5 lg:grid-cols-[1.6fr_1fr]">
+        <div className="flex min-w-0 flex-col gap-5">
           <Panel title="Staff" description="Who works here, and what each of them may do.">
             {d.members.length === 0 ? (
               <Empty
@@ -308,7 +308,7 @@ function Detail() {
           </Panel>
         </div>
 
-        <div className="flex flex-col gap-5">
+        <div className="flex min-w-0 flex-col gap-5">
           <Panel title="Usage">
             <div className="grid grid-cols-2 gap-x-4 gap-y-5 px-4 py-4">
               <Stat

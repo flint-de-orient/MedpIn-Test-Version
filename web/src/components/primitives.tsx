@@ -120,12 +120,16 @@ export function Panel({
   return (
     <section
       className={cn(
-        "border-border bg-card rounded-md border",
+        // `min-w-0` is load-bearing. A grid item defaults to `min-width: auto`,
+        // so a panel holding a long unbroken name grows past its column rather
+        // than clipping it — and takes the page's width with it, which is how a
+        // phone ends up scrolling sideways with the status badge off the edge.
+        "border-border bg-card min-w-0 rounded-md border",
         className,
       )}
     >
       {title ? (
-        <header className="border-border flex items-start justify-between gap-4 border-b px-4 py-3">
+        <header className="border-border flex flex-wrap items-start justify-between gap-x-4 gap-y-2 border-b px-4 py-3">
           <div className="min-w-0">
             <h2 className="text-[13px] font-semibold tracking-tight">{title}</h2>
             {description ? (
@@ -158,11 +162,13 @@ export function Field({
   mono?: boolean;
 }) {
   return (
-    <div className="flex flex-col gap-1">
+    <div className="flex min-w-0 flex-col gap-1">
       <dt className="text-muted-foreground text-[11px] tracking-[0.04em] uppercase">
         {label}
       </dt>
-      <dd className={cn("text-sm", mono && "font-mono tnum text-[13px]")}>{children}</dd>
+      <dd className={cn("text-sm break-words", mono && "font-mono tnum text-[13px]")}>
+        {children}
+      </dd>
     </div>
   );
 }

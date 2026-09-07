@@ -73,7 +73,7 @@ export default function OverviewPage() {
 
       <AttentionPanel items={attention} />
 
-      <section className="grid grid-cols-2 gap-3 md:grid-cols-4">
+      <section className="grid min-w-0 grid-cols-2 gap-3 md:grid-cols-4">
         <MetricCard
           label="Active practices"
           value={o?.practices.active ?? 0}
@@ -99,7 +99,7 @@ export default function OverviewPage() {
         />
       </section>
 
-      <div className="grid gap-5 lg:grid-cols-[1.4fr_1fr]">
+      <div className="grid min-w-0 gap-5 lg:grid-cols-[1.4fr_1fr]">
         <Panel
           title="Recently added"
           description="The five newest practices."

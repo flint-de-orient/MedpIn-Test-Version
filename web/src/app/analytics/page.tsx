@@ -127,7 +127,7 @@ export default function AnalyticsPage() {
         )}
       </Panel>
 
-      <div className="grid gap-5 lg:grid-cols-2">
+      <div className="grid min-w-0 gap-5 lg:grid-cols-2">
         <Panel title="Status" description="Every practice, by whether it may operate.">
           {a && total > 0 ? (
             <div className="flex flex-col gap-3 px-4 py-4">
