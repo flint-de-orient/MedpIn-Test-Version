@@ -132,10 +132,11 @@ export default function Account() {
 
           {stage === "enrolling" ? (
             <>
-              <p className="text-muted-foreground text-xs leading-relaxed">
-                In your authenticator app choose <em>enter a setup key</em>, then type
-                this. It is shown once.
-              </p>
+              <Step n={1} title="Add this key to your authenticator app">
+                Open Google Authenticator, Aegis, 1Password — any of them — and
+                choose <em>enter a setup key</em> rather than scanning. It is shown
+                once and never again.
+              </Step>
 
               {/*
                 A blank box where a credential belongs is the worst thing this
@@ -186,19 +187,20 @@ export default function Account() {
                 </div>
               )}
 
-              <p className="text-muted-foreground text-xs leading-relaxed">
-                Shown as text rather than a QR code on purpose: drawing one means a
-                library on the page that handles the secret, and this is the one page
-                where an extra script is worth refusing. Every authenticator app takes
-                a typed key.
-              </p>
+              <Step n={2} title="Then type the six digits it shows you">
+                The app starts generating a new code every thirty seconds. Type the
+                current one here — that is what proves it has the key correctly.
+                Until it is verified two-factor stays off, so a mistyped key cannot
+                lock you out.
+              </Step>
 
               <Code
-                label="Current code"
+                label="Code from the app"
                 value={code}
                 onChange={setCode}
                 error={error}
-                hint="Until it is verified, two-factor stays off — so a mistyped key cannot lock you out."
+                autoFocus
+                onEnter={() => void enable()}
               />
 
               <div className="flex gap-2">
@@ -220,6 +222,13 @@ export default function Account() {
                   Cancel
                 </button>
               </div>
+
+              <p className="text-muted-foreground border-border border-t pt-3 text-[11px] leading-relaxed">
+                Shown as text rather than a QR code on purpose: drawing one means a
+                library on the page that handles the secret, and this is the one page
+                where an extra script is worth refusing. Every authenticator app takes
+                a typed key.
+              </p>
             </>
           ) : null}
 
@@ -230,7 +239,13 @@ export default function Account() {
                 otherwise a stolen token could remove the factor protecting the
                 account, which is the same as not having one.
               </p>
-              <Code label="Current code" value={code} onChange={setCode} error={error} />
+              <Code
+                label="Code from the app"
+                value={code}
+                onChange={setCode}
+                error={error}
+                onEnter={() => void disable()}
+              />
               <button
                 onClick={() => void disable()}
                 disabled={busy}
@@ -264,38 +279,95 @@ export default function Account() {
   );
 }
 
+function Step({
+  n,
+  title,
+  children,
+}: {
+  n: number;
+  title: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="flex gap-3">
+      <span
+        aria-hidden
+        className="bg-accent text-accent-foreground tnum mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold"
+      >
+        {n}
+      </span>
+      <div className="min-w-0">
+        <p className="text-[13px] font-medium">{title}</p>
+        <p className="text-muted-foreground mt-0.5 text-xs leading-relaxed">{children}</p>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * The six digits.
+ *
+ * ---- Made obvious, because it was not -----------------------------------
+ *
+ * This was a 9rem box under a small label, with a paragraph about QR codes
+ * between it and the key it belongs to. The report was "I did not find any
+ * place to paste the code" — the field was there and the layout had hidden it.
+ *
+ * Wider, taller, monospaced and tracked, with a placeholder showing the shape
+ * of what goes in. An empty box says "something goes here"; `000000` says what.
+ */
 function Code({
   label,
   value,
   onChange,
   error,
   hint,
+  autoFocus,
+  onEnter,
 }: {
   label: string;
   value: string;
   onChange: (v: string) => void;
   error: string | null;
   hint?: string;
+  autoFocus?: boolean;
+  onEnter?: () => void;
 }) {
   return (
     <div className="flex flex-col gap-1.5">
-      <span className="text-muted-foreground text-[11px] tracking-[0.04em] uppercase">
+      <label
+        htmlFor="totp-code"
+        className="text-muted-foreground text-[11px] tracking-[0.04em] uppercase"
+      >
         {label}
-      </span>
+      </label>
       <input
+        id="totp-code"
         inputMode="numeric"
         autoComplete="one-time-code"
         maxLength={6}
+        placeholder="000000"
+        autoFocus={autoFocus}
         value={value}
         onChange={(e) => onChange(e.target.value.replace(/\D/g, ""))}
+        // Six digits and a button is a form. Enter should submit it rather than
+        // leaving somebody typing a code and then hunting for the mouse.
+        onKeyDown={(e) => {
+          if (e.key === "Enter" && onEnter) {
+            e.preventDefault();
+            onEnter();
+          }
+        }}
+        aria-invalid={Boolean(error)}
+        aria-describedby={error ? "totp-error" : undefined}
         className={cn(
           textInput,
-          "tnum max-w-[9rem] font-mono text-lg tracking-[0.3em]",
+          "tnum h-12 max-w-[11rem] text-center font-mono text-2xl tracking-[0.35em] placeholder:tracking-[0.35em] placeholder:opacity-35",
           error && "border-stopped",
         )}
       />
       {error ? (
-        <span role="alert" className="text-stopped text-xs">
+        <span id="totp-error" role="alert" className="text-stopped text-xs">
           {error}
         </span>
       ) : hint ? (
