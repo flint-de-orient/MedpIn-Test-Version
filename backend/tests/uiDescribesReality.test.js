@@ -125,3 +125,56 @@ describe('what the console says about the setup key is true', () => {
     assert.match(setup.slice(0, 900), /admin\.totpEnabled = false;/);
   });
 });
+
+
+describe('what the console says about verification is true', () => {
+  /** The body of the route that records a verification decision. */
+  const decision = routes.slice(
+    routes.indexOf("'/practices/:id/verification'"),
+    routes.indexOf("'/practices/:id/status'"),
+  );
+
+  test('the route it belongs to is still there', () => {
+    assert.ok(decision.length > 400, 'the verification route moved; the slice below reads nothing');
+  });
+
+  test('“nothing to verify” is a refusal, not only a sentence on screen', () => {
+    // The wizard tells an operator creating a practice with no registration
+    // number that it cannot be marked verified. That was written as an
+    // explanation of a rule that did not exist: the route stamped verified on
+    // anything, so the copy was describing a restraint nobody was under.
+    assert.match(prose, /nothing to verify against a council register/);
+    assert.match(decision, /VERIFICATION\.VERIFIED &&[\s\S]{0,80}registrationOnFile/);
+  });
+
+  test('and it refuses before it writes', () => {
+    // A guard after the save records the decision and then complains about it.
+    const guard = decision.indexOf('registrationOnFile(practice)');
+    const write = decision.indexOf('await practice.save()');
+    assert.ok(guard > 0 && write > 0, 'the guard or the save is gone');
+    assert.ok(guard < write, 'the practice is saved before the number is checked for');
+  });
+
+  test('all three places a number can live are looked in', () => {
+    // A solo practice normally has it on the doctor and nowhere else — the
+    // person is the practice. Looking only at Practice.registrationNo would
+    // refuse to verify the commonest kind of customer there is.
+    const helper = routes.slice(
+      routes.indexOf('async function registrationOnFile('),
+      routes.indexOf('Record that the registration has been checked'),
+    );
+    assert.match(helper, /practice\.registrationNo/);
+    assert.match(helper, /membersOf\(/);
+    assert.match(helper, /Clinic\.findOne\(/);
+  });
+
+  test('only “verified” is refused', () => {
+    // Pending and rejected are both honest things to say about a practice that
+    // has produced no paperwork, and rejected is the one you actually want to
+    // reach when it never produces any.
+    assert.ok(
+      !/VERIFICATION\.(PENDING|REJECTED)[^\n]*registrationOnFile/.test(decision),
+      'a practice with no number cannot even be marked pending or rejected',
+    );
+  });
+});

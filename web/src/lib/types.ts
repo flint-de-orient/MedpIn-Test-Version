@@ -56,6 +56,14 @@ export type PracticeDetail = {
   practice: Practice;
   isFounding: boolean;
   notes: string;
+  /**
+   * The number verification would be checked against, and whose it is.
+   *
+   * null means there is none anywhere — not on the practice, not on a doctor,
+   * not on a location — so there is nothing a verification could have checked
+   * and the server refuses to record one.
+   */
+  registration: { number: string; where: string } | null;
   usage: {
     patients: number;
     patientsEver: number;

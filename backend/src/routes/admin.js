@@ -904,6 +904,44 @@ router.post(
 );
 
 /**
+ * The registration number this practice would be verified against, if any.
+ *
+ * It can sit in three places and any one of them is enough: on the practice, on
+ * one of its doctors (which is what a solo practice normally has — the person
+ * is the practice), or on a location, which is the establishment licence rather
+ * than a council registration but is still a number somebody can look up.
+ *
+ * Returns null when there is nothing on file anywhere. That is the case the
+ * caller cares about, and it is not the same as "not yet checked".
+ */
+async function registrationOnFile(practice) {
+  if (practice.registrationNo?.trim()) {
+    return { number: practice.registrationNo.trim(), where: 'the practice' };
+  }
+
+  const members = await membersOf(practice._id);
+  const doctor = members.find((m) => m.user?.registrationNo?.trim());
+  if (doctor) {
+    return {
+      number: doctor.user.registrationNo.trim(),
+      where: doctor.user.name ?? 'a doctor',
+    };
+  }
+
+  const clinic = await Clinic.findOne({
+    practice: practice._id,
+    registrationNo: { $exists: true, $nin: [null, ''] },
+  })
+    .select('name registrationNo')
+    .lean();
+  if (clinic) {
+    return { number: clinic.registrationNo.trim(), where: clinic.name ?? 'a location' };
+  }
+
+  return null;
+}
+
+/**
  * Record that the registration has been checked, or refused.
  *
  * Verification and access stay separate fields, and this route only touches the
@@ -927,6 +965,23 @@ router.post(
     // nobody can review and the applicant cannot answer.
     if (req.body.verification === VERIFICATION.REJECTED && !req.body.reason) {
       throw badRequest('A rejection needs a reason.');
+    }
+
+    /*
+     * Verified means somebody looked a number up on a council register and it
+     * was real, current, and this doctor's. With no number on file anywhere
+     * there was no lookup, so the audit line "admin.practice.verified" would be
+     * recording a check that did not happen — and that line is what somebody
+     * relies on later when asking who vouched for this practice.
+     *
+     * Only VERIFIED is refused. PENDING and REJECTED are both honest things to
+     * say about a practice that has produced no paperwork.
+     */
+    if (req.body.verification === VERIFICATION.VERIFIED && !(await registrationOnFile(practice))) {
+      throw badRequest(
+        'No registration number on file for this practice, its doctors or its ' +
+          'locations, so there is nothing to have checked. Add the number first.',
+      );
     }
 
     // Read before the write. Captured after, "changed to verified" is all the
@@ -1103,6 +1158,12 @@ router.get(
       activePatientCount(practice._id),
     ]);
 
+    // Asked, not re-derived. The header used to print "no registration number"
+    // from practice.registrationNo alone, which is blank for most solo
+    // practices — the number is on the doctor. It said nothing was on file for
+    // practices that could be verified perfectly well.
+    const registration = await registrationOnFile(practice);
+
     await AdminAuditLog.record({
       admin: req.admin,
       action: 'admin.practice.read',
@@ -1114,6 +1175,9 @@ router.get(
       practice: practice.toPublic(),
       isFounding: Boolean(practice.isFounding),
       notes: practice.notes ?? '',
+      // null when there is nothing to check against a register, which is what
+      // makes "Mark verified" unavailable rather than merely unwise.
+      registration,
       usage: {
         patients: activePatients,
         patientsEver: patients,

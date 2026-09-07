@@ -78,3 +78,6 @@ mobile/android/*.keystore
 mobile/android/app/*.jks
 mobile/android/app/*.keystore
 .env.backup*
+
+# TypeScript incremental build cache — regenerated on every build
+web/tsconfig.tsbuildinfo

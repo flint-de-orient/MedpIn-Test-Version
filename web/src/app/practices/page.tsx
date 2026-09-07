@@ -126,8 +126,15 @@ function Detail() {
               ) : null}
             </div>
             <p className="text-muted-foreground mt-1 font-mono text-xs">
-              {p.registrationNo ?? "no registration number"} · created{" "}
-              <span title={fullWhen(p.createdAt)}>{when(p.createdAt)}</span>
+              {/* Was p.registrationNo alone, which is blank on most solo
+                  practices because the number is the doctor's. It read as
+                  "nothing on file" for practices that were fine. */}
+              {d.registration ? (
+                <span title={`On ${d.registration.where}`}>{d.registration.number}</span>
+              ) : (
+                "no registration number"
+              )}{" "}
+              · created <span title={fullWhen(p.createdAt)}>{when(p.createdAt)}</span>
             </p>
           </div>
 
@@ -145,6 +152,17 @@ function Detail() {
         title="Decisions"
         description="Verification says a doctor is who they claim. Status says whether the practice may operate. They are different facts, and neither implies the other."
       >
+        {!d.registration ? (
+          // A greyed button with a tooltip is unreadable on a phone, where
+          // there is no hover. The reason it is greyed goes on the screen.
+          <p className="text-waiting border-border bg-waiting-tint border-b px-4 py-2.5 text-xs leading-relaxed">
+            No registration number on this practice, its doctors or its locations,
+            so there is nothing to check against a register and this cannot be
+            marked verified. Add it under <strong>Edit details</strong>, or the
+            doctor can add their own from their profile in the app.
+          </p>
+        ) : null}
+
         <div className="flex flex-wrap gap-2 px-4 py-3.5">
           {p.verification !== "verified" ? (
             <Action
@@ -156,6 +174,15 @@ function Detail() {
                 )
               }
               busy={busy}
+              // The server refuses this with no number on file. Offering it
+              // anyway and explaining afterwards makes the operator find out
+              // by being told no.
+              disabled={!d.registration}
+              title={
+                d.registration
+                  ? `Check ${d.registration.number} against the council register first`
+                  : "Nothing to check — no registration number on this practice, its doctors or its locations"
+              }
             >
               Mark verified
             </Action>
@@ -450,19 +477,32 @@ function Action({
   busy,
   primary,
   destructive,
+  disabled,
+  title,
 }: {
   children: React.ReactNode;
   onClick: () => void;
   busy?: boolean;
   primary?: boolean;
   destructive?: boolean;
+  /**
+   * Unavailable for a reason of its own, as distinct from busy.
+   *
+   * Always pass `title` with it. A greyed control that will not say why is
+   * worse than one that fails on click, because there is nothing to read and
+   * nothing to do about it.
+   */
+  disabled?: boolean;
+  title?: string;
 }) {
   return (
     <button
       onClick={onClick}
-      disabled={busy}
+      disabled={busy || disabled}
+      title={title}
       className={
-        "rounded-sm px-3 py-1.5 text-[13px] font-medium transition-colors disabled:opacity-55 " +
+        "rounded-sm px-3 py-1.5 text-[13px] font-medium transition-colors " +
+        "disabled:cursor-not-allowed disabled:opacity-55 " +
         (primary
           ? "bg-primary text-primary-foreground"
           : destructive

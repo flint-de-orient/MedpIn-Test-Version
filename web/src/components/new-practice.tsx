@@ -316,13 +316,37 @@ export function NewPracticeDialog({
         </dl>
       ) : null}
 
-      {step === 3 ? (
-        <p className="text-muted-foreground text-xs leading-relaxed">
-          The doctor becomes the practice&apos;s owner and can sign in with that
-          number straight away. They add their own staff, doctors and locations —
-          this console does not, because the person hiring knows who they are
-          hiring.
+      {step === 3 && !reg.trim() && !docReg.trim() ? (
+        <p className="text-waiting border-waiting/30 bg-waiting-tint rounded-md border px-3 py-2 text-xs leading-relaxed">
+          <strong className="font-semibold">No registration number.</strong> There is
+          nothing to verify against a council register, so this practice cannot be
+          marked verified — and a prescription it issues will print without one,
+          which is not a valid document. The doctor can add theirs from their own
+          profile, or you can add it here later.
         </p>
+      ) : null}
+
+      {step === 3 ? (
+        <div className="text-muted-foreground flex flex-col gap-2 text-xs leading-relaxed">
+          <p>
+            The doctor becomes the practice&apos;s owner and can sign in with that
+            number straight away. They add their own staff, doctors and locations —
+            this console does not, because the person hiring knows who they are
+            hiring.
+          </p>
+          <p>
+            {/*
+              The starting state above says what it will be and not what to do
+              about it, which is the question it produces. Two separate
+              decisions, and neither implies the other.
+            */}
+            <strong className="text-foreground">Then two decisions are yours.</strong>{" "}
+            <em>Verified</em> means you checked the registration number against the
+            council register — creating a practice is not that check.{" "}
+            <em>Active</em> means its staff may sign in. Both are on the
+            practice&apos;s own screen, and neither implies the other.
+          </p>
+        </div>
       ) : null}
     </Modal>
   );
