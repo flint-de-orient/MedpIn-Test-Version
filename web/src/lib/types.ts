@@ -135,6 +135,8 @@ export type Admin = {
   name: string;
   isActive: boolean;
   lastLoginAt: string | null;
+  emailVerifiedAt: string | null;
+  emailVerified: boolean;
   totpEnabled: boolean;
   passkeys: Passkey[];
   /** True when anything protects the account beyond the password. */

@@ -27,7 +27,13 @@ import {
   COOKIE_NAMES,
 } from '../services/adminSession.js';
 import { generateSecret, verifyTotp, otpauthUri } from '../services/totp.js';
-import { completeReset } from '../services/adminReset.js';
+import {
+  completeReset,
+  requestResetByEmail,
+  sendEmailVerification,
+  completeEmailVerification,
+} from '../services/adminReset.js';
+import { mailConfigured } from '../services/mailer.js';
 import {
   registrationOptions,
   verifyRegistration,
@@ -66,6 +72,24 @@ const router = Router();
  * what happened when the passkey route was added and declared its own copy.
  */
 const REFUSED = 'Those details do not match an account.';
+
+/**
+ * Where the console lives, for the links in emails.
+ *
+ * Configured, never derived from the request. A link built from a forged Host
+ * header points at somebody else's server, arrives looking exactly like the
+ * real one, and collects the password it asks for.
+ */
+function consoleUrl() {
+  const url = process.env.ADMIN_CONSOLE_URL;
+  if (!url) {
+    throw badRequest(
+      'This server cannot send a reset link: ADMIN_CONSOLE_URL is not set. ' +
+        'Use scripts/resetAdmin.js instead.',
+    );
+  }
+  return url;
+}
 
 /** The one unauthenticated route here, and the one worth brute-forcing. */
 const loginLimiter = rateLimit({
@@ -189,6 +213,65 @@ router.post(
       // time they sign in.
       totpEnabled: admin.totpEnabled,
     });
+  }),
+);
+
+/**
+ * Ask for a reset link.
+ *
+ * ---- The same answer whatever happens -----------------------------------
+ *
+ * Unknown address, known address, mail server refusing the message: all `ok`.
+ * "No account with that email" is a free membership check for anybody deciding
+ * which addresses are worth attacking, and this is the one endpoint that would
+ * hand it over.
+ *
+ * Rate-limited with the login, because it is the same thing being probed.
+ */
+router.post(
+  '/auth/forgot',
+  loginLimiter,
+  validate({ body: z.object({ email: z.string().trim().toLowerCase().email() }) }),
+  asyncHandler(async (req, res) => {
+    if (!process.env.ADMIN_JWT_SECRET) {
+      return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Not found' } });
+    }
+
+    await requestResetByEmail(req.body.email, { consoleUrl: consoleUrl() });
+
+    res.json({
+      ok: true,
+      // Whether a message could have been delivered at all is a fact about the
+      // server, not about the address, so it is safe to return and saves an
+      // operator waiting for mail from a box with no SMTP configured.
+      mailConfigured: mailConfigured(),
+    });
+  }),
+);
+
+/**
+ * Confirm an email address.
+ *
+ * Unauthenticated: the link is opened wherever the mail was read, which is
+ * rarely the browser holding the session. It confirms an address the account
+ * already had — it grants nothing and changes no credential.
+ */
+router.post(
+  '/auth/email/verify',
+  loginLimiter,
+  validate({
+    body: z.object({
+      email: z.string().trim().toLowerCase().email(),
+      token: z.string().min(20).max(200),
+    }),
+  }),
+  asyncHandler(async (req, res) => {
+    if (!process.env.ADMIN_JWT_SECRET) {
+      return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Not found' } });
+    }
+    const admin = await completeEmailVerification(req.body);
+    await AdminAuditLog.record({ admin, action: 'admin.email.verified', req });
+    res.json({ ok: true });
   }),
 );
 
@@ -352,6 +435,29 @@ router.get(
   '/me',
   asyncHandler(async (req, res) => {
     res.json({ admin: PlatformAdmin.hydrate(req.admin).toPublic() });
+  }),
+);
+
+/**
+ * Send a confirmation to the address on this account.
+ *
+ * Authenticated, so an operator confirms their own address and nobody else's —
+ * and so that a stranger cannot use this to post mail to an arbitrary inbox.
+ */
+router.post(
+  '/me/email/verify/send',
+  asyncHandler(async (req, res) => {
+    const admin = await PlatformAdmin.findById(req.admin._id);
+    if (!admin) throw notFound('Account not found');
+    if (admin.emailVerifiedAt) return res.json({ ok: true, alreadyVerified: true });
+
+    const { expiresAt } = await sendEmailVerification(admin, { consoleUrl: consoleUrl() });
+    await AdminAuditLog.record({
+      admin: req.admin,
+      action: 'admin.email.verification_sent',
+      req,
+    });
+    res.json({ ok: true, expiresAt, mailConfigured: mailConfigured() });
   }),
 );
 

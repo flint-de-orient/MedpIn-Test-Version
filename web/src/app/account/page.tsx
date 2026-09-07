@@ -91,7 +91,14 @@ export default function Account() {
         <dl className="grid grid-cols-1 gap-x-6 gap-y-4 px-4 py-4 sm:grid-cols-3">
           <Field label="Name">{admin.name || "—"}</Field>
           <Field label="Email" mono>
-            {admin.email}
+            <span className="flex flex-wrap items-center gap-1.5">
+              {admin.email}
+              {admin.emailVerified ? (
+                <Pill tone="ok">confirmed</Pill>
+              ) : (
+                <Pill tone="waiting">unconfirmed</Pill>
+              )}
+            </span>
           </Field>
           <Field label="Last sign-in">
             <span title={fullWhen(admin.lastLoginAt)}>
@@ -100,6 +107,8 @@ export default function Account() {
           </Field>
         </dl>
       </Panel>
+
+      {!admin.emailVerified ? <VerifyEmail email={admin.email} /> : null}
 
       <PasskeyPanel />
 
@@ -304,6 +313,71 @@ export default function Account() {
           </p>
         </div>
       </Panel>
+    </div>
+  );
+}
+
+/**
+ * Confirming the address on the account.
+ *
+ * ---- Why it matters here and not for a patient -------------------------
+ *
+ * This address is where a password reset goes. An unconfirmed one is what an
+ * administrator typed for somebody else — almost always right, occasionally a
+ * transposition, and a reset link sent to a transposition goes to a stranger.
+ *
+ * It does not gate the reset. Requiring confirmation before recovery would
+ * strand the account that predates this feature, which is the account most
+ * likely to need recovering.
+ */
+function VerifyEmail({ email }: { email: string }) {
+  const [state, setState] = useState<"idle" | "sending" | "sent">("idle");
+  const [note, setNote] = useState<string | null>(null);
+
+  async function send() {
+    setState("sending");
+    setNote(null);
+    try {
+      const out = await api<{ ok: true; mailConfigured?: boolean }>(
+        "/admin/me/email/verify/send",
+        { method: "POST" },
+      );
+      setState("sent");
+      if (out.mailConfigured === false) {
+        setNote(
+          "This server has no mail configured, so nothing was sent. The link is in the server log.",
+        );
+      }
+    } catch (ex) {
+      setState("idle");
+      toast.error((ex as ApiError).message);
+    }
+  }
+
+  return (
+    <div className="border-waiting bg-waiting-tint flex flex-col gap-2 rounded-lg border border-l-[3px] px-4 py-3">
+      <p className="text-[13px]">
+        <strong className="font-semibold">This address is not confirmed.</strong>{" "}
+        <span className="text-muted-foreground">
+          A password reset would be emailed to <span className="font-mono">{email}</span>.
+          Confirm it so a mistyped address is found now rather than on the day you
+          need it.
+        </span>
+      </p>
+      {state === "sent" ? (
+        <p className="text-muted-foreground text-xs leading-relaxed">
+          Sent. Open the link in that message — it works for a day.
+          {note ? ` ${note}` : ""}
+        </p>
+      ) : (
+        <button
+          onClick={() => void send()}
+          disabled={state === "sending"}
+          className="border-waiting/40 hover:bg-waiting/10 w-fit rounded-sm border px-2.5 py-1 text-xs font-medium transition-colors disabled:opacity-55"
+        >
+          {state === "sending" ? "Sending..." : "Send a confirmation email"}
+        </button>
+      )}
     </div>
   );
 }

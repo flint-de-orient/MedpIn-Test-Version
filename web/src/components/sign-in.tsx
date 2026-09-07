@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api, ApiError } from "@/lib/api";
 import { useSession } from "@/lib/session";
 import type { LoginResult } from "@/lib/types";
@@ -18,7 +18,55 @@ import { signInWithPasskey, type PublicKeyCredentialRequestOptionsJSON } from "@
  * login.
  */
 export function SignIn() {
-  const [mode, setMode] = useState<"login" | "reset">("login");
+  const [mode, setMode] = useState<"login" | "forgot" | "reset">("login");
+
+  /**
+   * A reset link opens straight into the form that spends it.
+   *
+   * The alternative is an operator reading a token out of an email and typing
+   * forty-three characters into a box, which is not a thing anybody does
+   * correctly at the moment they have already lost a password.
+   *
+   * Read once on mount and cleared from the address bar, so the token does not
+   * sit in browser history or travel with a pasted URL.
+   */
+  const [prefill, setPrefill] = useState<{ email: string; token: string } | null>(null);
+
+  const [verified, setVerified] = useState<"ok" | "failed" | null>(null);
+
+  useEffect(() => {
+    const q = new URLSearchParams(window.location.search);
+    const clean = () => window.history.replaceState({}, "", window.location.pathname);
+
+    const reset = q.get("reset");
+    if (reset) {
+      setPrefill({ email: q.get("email") ?? "", token: reset });
+      setMode("reset");
+      clean();
+      return;
+    }
+
+    /**
+     * A confirmation link is spent here, on the way past.
+     *
+     * It grants nothing — it marks an address the account already had as
+     * belonging to whoever reads that inbox — so it does not need a session,
+     * and requiring one would mean the link only works in the browser the
+     * operator happened to be signed into.
+     */
+    const verify = q.get("verify");
+    const email = q.get("email");
+    if (verify && email) {
+      clean();
+      api("/admin/auth/email/verify", {
+        method: "POST",
+        anonymous: true,
+        body: { email, token: verify },
+      })
+        .then(() => setVerified("ok"))
+        .catch(() => setVerified("failed"));
+    }
+  }, []);
   return (
     <div className="flex flex-1 flex-col">
       <header className="border-border border-b px-5 py-3">
@@ -31,11 +79,31 @@ export function SignIn() {
       </header>
 
       <div className="flex flex-1 items-center justify-center px-5 py-10">
-        <div className="w-full max-w-[23rem]">
+        <div className="flex w-full max-w-[23rem] flex-col gap-4">
+          {verified ? (
+            <p
+              role="status"
+              className={
+                verified === "ok"
+                  ? "border-ok/25 bg-ok-tint rounded-sm border px-3 py-2 text-xs leading-relaxed"
+                  : "text-stopped border-stopped/25 bg-stopped-tint rounded-sm border px-3 py-2 text-xs leading-relaxed"
+              }
+            >
+              {verified === "ok"
+                ? "Email confirmed. Sign in as usual."
+                : "That confirmation link is not valid or has expired. Send another from the Account screen."}
+            </p>
+          ) : null}
+
           {mode === "login" ? (
-            <LoginForm onForgot={() => setMode("reset")} />
+            <LoginForm onForgot={() => setMode("forgot")} />
+          ) : mode === "forgot" ? (
+            <ForgotForm
+              onBack={() => setMode("login")}
+              onHaveToken={() => setMode("reset")}
+            />
           ) : (
-            <ResetForm onBack={() => setMode("login")} />
+            <ResetForm onBack={() => setMode("login")} prefill={prefill} />
           )}
         </div>
       </div>
@@ -214,11 +282,140 @@ function LoginForm({ onForgot }: { onForgot: () => void }) {
   );
 }
 
+/* ------------------------------------------------------------------ forgot */
+
+/**
+ * Ask for a link.
+ *
+ * The answer is the same whether the address has an account or not. Saying
+ * otherwise turns this into a free membership check for anybody deciding which
+ * addresses are worth attacking, and this is the one endpoint that would hand
+ * that over.
+ */
+function ForgotForm({
+  onBack,
+  onHaveToken,
+}: {
+  onBack: () => void;
+  onHaveToken: () => void;
+}) {
+  const [email, setEmail] = useState("");
+  const [sent, setSent] = useState<{ mailConfigured: boolean } | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    setBusy(true);
+    setError(null);
+    try {
+      const out = await api<{ ok: true; mailConfigured: boolean }>("/admin/auth/forgot", {
+        method: "POST",
+        anonymous: true,
+        body: { email: email.trim() },
+      });
+      setSent({ mailConfigured: out.mailConfigured });
+    } catch (ex) {
+      setError((ex as ApiError).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (sent) {
+    return (
+      <div className="flex flex-col gap-4">
+        <h1 className="text-lg font-semibold tracking-tight">Check your email</h1>
+        <p className="text-muted-foreground text-xs leading-relaxed">
+          If <span className="font-mono">{email.trim()}</span> has an account, a link
+          is on its way. It works once and stops working in thirty minutes.
+        </p>
+        <p className="text-muted-foreground text-xs leading-relaxed">
+          You will still need your passkey or authenticator code to finish. The link
+          on its own cannot get anybody into the account, which is what makes it safe
+          to send one at all.
+        </p>
+        {!sent.mailConfigured ? (
+          <p className="text-waiting border-waiting/30 bg-waiting-tint rounded-sm border px-3 py-2 text-xs leading-relaxed">
+            This server has no mail configured, so nothing was actually sent. The
+            link is in the server log, or mint one with{" "}
+            <code className="font-mono text-[11px]">scripts/resetAdmin.js</code>.
+          </p>
+        ) : null}
+        <button
+          onClick={onBack}
+          className="bg-primary text-primary-foreground self-start rounded-sm px-3 py-2 text-sm font-medium"
+        >
+          Back to sign in
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <form onSubmit={submit} noValidate className="flex flex-col gap-4">
+      <div>
+        <h1 className="text-lg font-semibold tracking-tight">Reset your password</h1>
+        <p className="text-muted-foreground mt-1 text-xs leading-relaxed">
+          We will email a link to the address on your account.
+        </p>
+      </div>
+
+      <div>
+        <Label htmlFor="f-email">Email</Label>
+        <input
+          id="f-email"
+          type="email"
+          autoComplete="username"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          className={inputCls}
+          required
+          autoFocus
+        />
+      </div>
+
+      {error ? <Problem>{error}</Problem> : null}
+
+      <button
+        type="submit"
+        disabled={busy}
+        className="bg-primary text-primary-foreground rounded-sm px-3 py-2 text-sm font-medium transition-opacity disabled:opacity-55"
+      >
+        {busy ? "Sending..." : "Email me a link"}
+      </button>
+
+      <div className="flex flex-wrap gap-x-4 gap-y-1">
+        <button
+          type="button"
+          onClick={onBack}
+          className="text-primary text-xs underline underline-offset-4"
+        >
+          Back to sign in
+        </button>
+        <button
+          type="button"
+          onClick={onHaveToken}
+          className="text-muted-foreground text-xs underline underline-offset-4"
+        >
+          I already have a token
+        </button>
+      </div>
+    </form>
+  );
+}
+
 /* ------------------------------------------------------------------- reset */
 
-function ResetForm({ onBack }: { onBack: () => void }) {
-  const [email, setEmail] = useState("");
-  const [token, setToken] = useState("");
+function ResetForm({
+  onBack,
+  prefill,
+}: {
+  onBack: () => void;
+  prefill?: { email: string; token: string } | null;
+}) {
+  const [email, setEmail] = useState(prefill?.email ?? "");
+  const [token, setToken] = useState(prefill?.token ?? "");
   const [password, setPassword] = useState("");
   const [totp, setTotp] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -279,11 +476,9 @@ function ResetForm({ onBack }: { onBack: () => void }) {
       <div>
         <h1 className="text-lg font-semibold tracking-tight">Set a new password</h1>
         <p className="text-muted-foreground mt-1 text-xs leading-relaxed">
-          There is no reset email. This account can suspend every practice on the
-          platform, and a mailbox is not a strong enough key for that. Someone with
-          access to the server runs{" "}
-          <code className="font-mono text-[11px]">scripts/resetAdmin.js</code> and
-          gives you the token.
+          {prefill
+            ? "The link filled this in. Choose a password, then confirm with your passkey or authenticator code."
+            : "Paste the token from the email, or one minted on the server with scripts/resetAdmin.js."}
         </p>
       </div>
 

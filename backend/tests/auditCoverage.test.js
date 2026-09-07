@@ -91,6 +91,13 @@ const EXEMPT = new Map([
       'The route would have to re-derive that to log it here.',
   ],
   [
+    'admin.js /auth/forgot',
+    'Audited inside requestResetByEmail. The route cannot record it without ' +
+      'first learning whether the address has an account — which is the one ' +
+      'fact this endpoint exists not to reveal, and would be sitting in the ' +
+      'log either way.',
+  ],
+  [
     'tracking.js /lifestyle/:id',
     'A patient editing their own sleep or steps entry. Self-reported data ' +
       'about themselves; the clinical record it informs is audited where a ' +

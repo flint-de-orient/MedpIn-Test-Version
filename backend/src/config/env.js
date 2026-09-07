@@ -91,6 +91,30 @@ const schema = z.object({
   // the doctor is onboarding).
   DIETICIAN_INVITE_CODE: z.string().min(4).default('CLINQ-DIET-2026'),
 
+  // ---- Email ---------------------------------------------------------------
+  //
+  // Only the operator console sends any: a password reset and an address
+  // confirmation. Patients and clinicians are reached by SMS and push, because
+  // a clinic's patients do not reliably have email and do reliably have a
+  // phone.
+  //
+  // Unset means the message is written to the log rather than delivered, so the
+  // flow can be exercised without a mail account. See services/mailer.js.
+  SMTP_HOST: z.string().default(''),
+  SMTP_PORT: z.coerce.number().int().default(587),
+  SMTP_USER: z.string().default(''),
+  SMTP_PASS: z.string().default(''),
+  /// The From address. Falls back to SMTP_USER, which is right for most
+  /// providers and wrong for the ones that require a verified sender.
+  SMTP_FROM: z.string().default(''),
+
+  /// Where the console lives, for the links in those emails.
+  ///
+  /// Not derived from the request: a reset link built from a forged Host header
+  /// is a reset link pointing at somebody else's server, and the recipient
+  /// cannot tell.
+  ADMIN_CONSOLE_URL: z.string().default(''),
+
   // ---- SMS one-time passcodes (MSG91) ------------------------------------
   //
   // Left blank in development on purpose. With no auth key the OTP service

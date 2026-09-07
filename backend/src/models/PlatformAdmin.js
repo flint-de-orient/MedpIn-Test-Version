@@ -99,6 +99,18 @@ const platformAdminSchema = new mongoose.Schema(
     passkeyChallenge: { type: String, default: null, select: false },
     passkeyChallengeExpiresAt: { type: Date, default: null, select: false },
 
+    /**
+     * Whether this address has been proved to belong to whoever holds it.
+     *
+     * An unverified address is one an administrator typed for somebody else.
+     * It is almost always right and occasionally a transposition, and a reset
+     * link sent to a transposition goes to a stranger — so the console says
+     * which addresses are confirmed and which are somebody's best recollection.
+     */
+    emailVerifiedAt: { type: Date, default: null },
+    emailVerifyTokenHash: { type: String, default: null, select: false },
+    emailVerifyExpiresAt: { type: Date, default: null },
+
     /// A reset in flight. Hashed, never stored plainly — a database dump must
     /// not hand somebody a working reset, which is the same reason the password
     /// is not stored either.
@@ -158,6 +170,8 @@ platformAdminSchema.methods.toPublic = function toPublic() {
     name: this.name,
     isActive: this.isActive,
     lastLoginAt: this.lastLoginAt,
+    emailVerifiedAt: this.emailVerifiedAt ?? null,
+    emailVerified: Boolean(this.emailVerifiedAt),
     // Whether the factor is on, never the secret behind it. The panel needs
     // this to know which of three states to draw, and `/me` is the only read
     // that can answer after the factor has just been switched — the sign-in
