@@ -8,6 +8,7 @@ import { useTheme } from "@/lib/theme";
 import { cn } from "@/lib/utils";
 import { CommandPalette, usePaletteShortcut } from "@/components/command-palette";
 import { AttentionBell } from "@/components/attention";
+import { Alert } from "@/components/primitives";
 import {
   IconAccount,
   IconAdmins,
@@ -123,21 +124,20 @@ export function Shell({ children }: { children: React.ReactNode }) {
 
 function TotpNag() {
   return (
-    <div className="border-waiting bg-waiting-tint mb-5 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-l-[3px] px-4 py-3">
-      <p className="text-[13px]">
-        <strong className="font-semibold">This account has no second factor.</strong>{" "}
-        <span className="text-muted-foreground">
-          A password alone stands between anyone who learns it and every practice on
-          the platform.
-        </span>
-      </p>
-      <Link
-        href="/account/"
-        className="border-waiting/40 hover:bg-waiting/10 shrink-0 rounded-sm border px-2.5 py-1 text-xs font-medium transition-colors"
-      >
-        Set one up
-      </Link>
-    </div>
+    <Alert
+      title="This account has no second factor"
+      className="mb-5"
+      action={
+        <Link
+          href="/account/"
+          className="border-border bg-card hover:bg-secondary rounded-sm border px-2.5 py-1 text-xs font-medium transition-colors"
+        >
+          Set one up
+        </Link>
+      }
+    >
+      A password alone stands between anyone who learns it and every practice.
+    </Alert>
   );
 }
 

@@ -113,6 +113,22 @@ export const IconAlert = ({ className }: Props) => (
   </svg>
 );
 
+/** A caution triangle. The glyph on a banner that is not an error. */
+export const IconWarning = ({ className }: Props) => (
+  <svg {...base} className={className}>
+    <path d="M10.3 3.9 2.4 17.4A2 2 0 0 0 4.1 20.4h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z" />
+    <path d="M12 9.3v4.2M12 16.9h.01" />
+  </svg>
+);
+
+/** An i in a ring, for a definition somebody can open and close. */
+export const IconInfo = ({ className }: Props) => (
+  <svg {...base} className={className}>
+    <circle cx="12" cy="12" r="9" />
+    <path d="M12 16.2v-4.6M12 8.2h.01" />
+  </svg>
+);
+
 export const IconCheck = ({ className }: Props) => (
   <svg {...base} className={className}>
     <path d="m4.5 12.5 5 5 10-11" />

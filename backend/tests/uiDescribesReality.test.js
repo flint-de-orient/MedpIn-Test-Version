@@ -143,7 +143,11 @@ describe('what the console says about verification is true', () => {
     // number that it cannot be marked verified. That was written as an
     // explanation of a rule that did not exist: the route stamped verified on
     // anything, so the copy was describing a restraint nobody was under.
-    assert.match(prose, /nothing to verify against a council register/);
+    // The wording moved when the paragraph became a banner with a title and one
+    // line. What is pinned is the claim, not the sentence it was first made in:
+    // somewhere on screen it says a practice with no number cannot be verified.
+    assert.match(prose, /No registration number/);
+    assert.match(prose, /Nothing to check against a register, so this cannot be verified/);
     assert.match(decision, /VERIFICATION\.VERIFIED &&[\s\S]{0,80}registrationOnFile/);
   });
 

@@ -85,8 +85,8 @@ export function SignIn() {
               role="status"
               className={
                 verified === "ok"
-                  ? "border-ok/25 bg-ok-tint rounded-sm border px-3 py-2 text-xs leading-relaxed"
-                  : "text-stopped border-stopped/25 bg-stopped-tint rounded-sm border px-3 py-2 text-xs leading-relaxed"
+                  ? "text-ok-ink border-l-ok bg-ok-tint rounded-sm border-l-2 px-3 py-2 text-xs leading-relaxed"
+                  : "text-stopped-ink border-l-stopped bg-stopped-tint rounded-sm border-l-2 px-3 py-2 text-xs leading-relaxed"
               }
             >
               {verified === "ok"
@@ -148,7 +148,7 @@ function Problem({ children }: { children: React.ReactNode }) {
       // Announced, because a message that only appears visually is invisible to
       // whoever is using a screen reader and cannot see the form clear itself.
       role="alert"
-      className="text-stopped border-stopped/25 bg-stopped-tint animate-in fade-in-0 rounded-md border px-3 py-2 text-xs leading-relaxed duration-150"
+      className="text-stopped-ink border-l-stopped bg-stopped-tint animate-in fade-in-0 rounded-md border-l-2 px-3 py-2 text-xs leading-relaxed duration-150"
     >
       {children}
     </p>
@@ -426,7 +426,7 @@ function ForgotForm({
           to send one at all.
         </p>
         {!sent.mailConfigured ? (
-          <p className="text-waiting border-waiting/30 bg-waiting-tint rounded-sm border px-3 py-2 text-xs leading-relaxed">
+          <p className="text-waiting-ink border-waiting/30 bg-waiting-tint rounded-sm border-l-2 px-3 py-2 text-xs leading-relaxed">
             This server has no mail configured, so nothing was actually sent. The
             link is in the server log, or mint one with{" "}
             <code className="font-mono text-[11px]">scripts/resetAdmin.js</code>.

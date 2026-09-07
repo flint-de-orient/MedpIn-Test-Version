@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { api, ApiError } from "@/lib/api";
 import { Modal, Field, textInput } from "@/components/form";
+import { Alert, Info } from "@/components/primitives";
 import { cn } from "@/lib/utils";
 
 /**
@@ -142,6 +143,16 @@ export function NewPracticeDialog({
     if (step === 2) {
       if (docName.trim().length < 2) return setError("The doctor needs a name.");
       if (phone.trim().length < 8) return setError("Enter the doctor's phone number.");
+
+      // Already answered. Coming back here from the review step — which the
+      // Back button does, and which "Add one" on the warning now does too —
+      // used to land on the code field holding a code the server had already
+      // consumed, so Verify failed on a number that was verified.
+      if (phoneToken) {
+        setStep(3);
+        return;
+      }
+
       if (!sent) return void sendCode();
       if (!/^\d{4,8}$/.test(code.trim())) return setError("Enter the code that was texted.");
       return void confirmCode();
@@ -155,9 +166,11 @@ export function NewPracticeDialog({
       : step === 2
         ? busy
           ? "Please wait…"
-          : sent
-            ? "Verify"
-            : "Text a code"
+          : phoneToken
+            ? "Next"
+            : sent
+              ? "Verify"
+              : "Text a code"
         : busy
           ? "Creating…"
           : "Create practice";
@@ -169,10 +182,10 @@ export function NewPracticeDialog({
       title="Add a practice"
       description={
         step === 1
-          ? "It arrives onboarding and unverified. Creating a practice is not vouching for it."
+          ? "Name the practice. You will add its head doctor next."
           : step === 2
-            ? "A practice needs somebody who can run it, and their number has to be answered rather than typed."
-            : "Check this before it exists. There is no delete."
+            ? "They will own the practice and sign in with this number."
+            : "Confirm the details below. Everything except the phone number can be changed later."
       }
       onSubmit={submit}
       confirmLabel={confirmLabel}
@@ -231,32 +244,13 @@ export function NewPracticeDialog({
             />
           </Field>
 
-          {!sent ? (
-            <>
-              <Field label="Qualifications" hint="optional — prints on prescriptions">
-                <input
-                  className={textInput}
-                  value={quals}
-                  onChange={(e) => setQuals(e.target.value)}
-                  maxLength={120}
-                  placeholder="MBBS, MD"
-                />
-              </Field>
-              <Field label="Their registration number" hint="optional — what verification checks">
-                <input
-                  className={`${textInput} font-mono text-[13px]`}
-                  value={docReg}
-                  onChange={(e) => setDocReg(e.target.value)}
-                  maxLength={60}
-                />
-              </Field>
-              <p className="text-muted-foreground text-xs leading-relaxed">
-                Continuing texts a code to that number. It has to be answered — a
-                mistyped digit would hand this practice, and every patient in it, to
-                whoever owns the number typed instead.
-              </p>
-            </>
-          ) : (
+          {/*
+            Three states here, and it had two. A number that has been answered
+            is settled: the code box is gone, the optional fields come back so
+            they can still be filled in, and changing the number is a deliberate
+            act that throws the token away.
+          */}
+          {sent && !phoneToken ? (
             <>
               <Field label="Code from the text">
                 <input
@@ -273,10 +267,9 @@ export function NewPracticeDialog({
                 />
               </Field>
               {sent.simulated ? (
-                <p className="text-waiting border-waiting/30 bg-waiting-tint rounded-sm border px-3 py-2 text-xs leading-relaxed">
-                  No SMS credentials on this server, so nothing was sent. The code is
-                  in the server log.
-                </p>
+                <Alert title="Nothing was sent">
+                  No SMS credentials on this server — the code is in the server log.
+                </Alert>
               ) : (
                 <p className="text-muted-foreground text-xs leading-relaxed">
                   Sent to <span className="font-mono">{phone.trim()}</span>. Ask the
@@ -294,6 +287,47 @@ export function NewPracticeDialog({
                 Wrong number — change it
               </button>
             </>
+          ) : (
+            <>
+              {phoneToken ? (
+                <p className="text-ok-ink bg-ok-tint border-l-ok rounded-sm border-l-2 px-3 py-2 text-xs">
+                  <span className="font-mono">{phone.trim()}</span> confirmed.{" "}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSent(null);
+                      setCode("");
+                      setPhoneToken(null);
+                    }}
+                    className="underline underline-offset-4"
+                  >
+                    Use a different number
+                  </button>
+                </p>
+              ) : null}
+              <Field label="Qualifications" hint="optional — prints on prescriptions">
+                <input
+                  className={textInput}
+                  value={quals}
+                  onChange={(e) => setQuals(e.target.value)}
+                  maxLength={120}
+                  placeholder="MBBS, MD"
+                />
+              </Field>
+              <Field label="Their registration number" hint="optional — what verification checks">
+                <input
+                  className={`${textInput} font-mono text-[13px]`}
+                  value={docReg}
+                  onChange={(e) => setDocReg(e.target.value)}
+                  maxLength={60}
+                />
+              </Field>
+              {!phoneToken ? (
+                <p className="text-muted-foreground text-xs leading-relaxed">
+                  Continuing sends a verification code to this number.
+                </p>
+              ) : null}
+            </>
           )}
         </>
       ) : null}
@@ -310,43 +344,52 @@ export function NewPracticeDialog({
             <span className="text-ok text-[11px]">confirmed</span>
           </Row>
           {quals.trim() ? <Row label="Qualifications">{quals.trim()}</Row> : null}
-          <Row label="Starts as">
-            <span className="text-muted-foreground">onboarding · unverified</span>
-          </Row>
+          {/*
+            Two facts, each with its definition behind it rather than in a
+            paragraph underneath. "Why does it say unverified" was a real
+            question, and the answer belongs on the word that raised it.
+          */}
+          <div className="flex flex-col gap-2 px-3 py-2">
+            <div className="flex items-baseline justify-between gap-4">
+              <dt className="text-muted-foreground text-[11px] tracking-[0.04em] uppercase">
+                Starts as
+              </dt>
+              <dd className="flex flex-wrap items-center justify-end gap-x-3 gap-y-1.5">
+                <Info term={<span className="text-waiting-ink">onboarding</span>}>
+                  Staff cannot sign in until you activate it, on the practice&apos;s
+                  own screen.
+                </Info>
+                <Info term={<span className="text-muted-foreground">unverified</span>}>
+                  Nobody has checked the registration number against the medical
+                  council register yet. Creating a practice is not that check.
+                </Info>
+              </dd>
+            </div>
+          </div>
         </dl>
       ) : null}
 
       {step === 3 && !reg.trim() && !docReg.trim() ? (
-        <p className="text-waiting border-waiting/30 bg-waiting-tint rounded-md border px-3 py-2 text-xs leading-relaxed">
-          <strong className="font-semibold">No registration number.</strong> There is
-          nothing to verify against a council register, so this practice cannot be
-          marked verified — and a prescription it issues will print without one,
-          which is not a valid document. The doctor can add theirs from their own
-          profile, or you can add it here later.
-        </p>
+        <Alert
+          title="No registration number"
+          action={
+            <button
+              type="button"
+              onClick={() => setStep(2)}
+              className="border-border bg-card hover:bg-secondary rounded-sm border px-2.5 py-1 text-xs font-medium transition-colors"
+            >
+              Add one
+            </button>
+          }
+        >
+          Needed to verify this practice, and printed on its prescriptions.
+        </Alert>
       ) : null}
 
       {step === 3 ? (
-        <div className="text-muted-foreground flex flex-col gap-2 text-xs leading-relaxed">
-          <p>
-            The doctor becomes the practice&apos;s owner and can sign in with that
-            number straight away. They add their own staff, doctors and locations —
-            this console does not, because the person hiring knows who they are
-            hiring.
-          </p>
-          <p>
-            {/*
-              The starting state above says what it will be and not what to do
-              about it, which is the question it produces. Two separate
-              decisions, and neither implies the other.
-            */}
-            <strong className="text-foreground">Then two decisions are yours.</strong>{" "}
-            <em>Verified</em> means you checked the registration number against the
-            council register — creating a practice is not that check.{" "}
-            <em>Active</em> means its staff may sign in. Both are on the
-            practice&apos;s own screen, and neither implies the other.
-          </p>
-        </div>
+        <p className="text-muted-foreground text-xs leading-relaxed">
+          The head doctor becomes the owner and adds their own staff and locations.
+        </p>
       ) : null}
     </Modal>
   );
@@ -368,7 +411,7 @@ function Steps({ current }: { current: Step }) {
                 on
                   ? "bg-primary text-primary-foreground"
                   : done
-                    ? "bg-ok-tint text-ok"
+                    ? "bg-ok-tint text-ok-ink"
                     : "bg-muted text-muted-foreground",
               )}
             >

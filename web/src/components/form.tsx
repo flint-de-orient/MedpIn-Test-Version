@@ -113,7 +113,7 @@ export function Modal({
           {error ? (
             <p
               role="alert"
-              className="text-stopped border-stopped/25 bg-stopped-tint rounded-sm border px-3 py-2 text-xs leading-relaxed"
+              className="text-stopped-ink border-l-stopped bg-stopped-tint rounded-sm border-l-2 px-3 py-2 text-xs leading-relaxed"
             >
               {error}
             </p>

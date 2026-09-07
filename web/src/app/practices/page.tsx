@@ -8,17 +8,19 @@ import { api, ApiError } from "@/lib/api";
 import type { Member, PracticeDetail } from "@/lib/types";
 import { PLAN_LABELS } from "@/lib/types";
 import {
+  Alert,
   Empty,
   Failed,
   Field,
+  Info,
   Loading,
   Panel,
   Pill,
   Stat,
+  fullWhen,
   statusTone,
   verificationTone,
   when,
-  fullWhen,
 } from "@/components/primitives";
 import { ReasonDialog } from "@/components/form";
 import { PlanDialog } from "@/components/plan-dialog";
@@ -117,8 +119,6 @@ function Detail() {
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
               <h1 className="text-xl font-semibold tracking-tight">{p.name}</h1>
-              <Pill tone={statusTone(p.status)}>{p.status}</Pill>
-              <Pill tone={verificationTone(p.verification)}>{p.verification}</Pill>
               {d.isFounding ? (
                 <Pill tone="accent" className="uppercase">
                   founding
@@ -147,25 +147,72 @@ function Detail() {
         </div>
       </div>
 
-      {/* Decisions first. This is what the screen is opened for. */}
-      <Panel
-        title="Decisions"
-        description="Verification says a doctor is who they claim. Status says whether the practice may operate. They are different facts, and neither implies the other."
-      >
+      {/*
+        Decisions first. This is what the screen is opened for.
+
+        ---- The bottom of this card is buttons and nothing else -----------
+
+        It used to be a paragraph defining two words, then an amber block of
+        prose, then the buttons. By the time somebody reached the row they had
+        read a definition they already knew and a warning about a field, and
+        the four things they came to do were below the fold on a phone.
+
+        The definitions are now behind the two words they define, opened by
+        whoever does not know them and invisible to whoever does. The warning
+        is one line. What is left above the buttons is the state, in a row.
+      */}
+      <Panel title="Decisions">
+        <div className="border-border flex flex-wrap items-center gap-x-5 gap-y-2 border-b px-4 py-2.5 text-xs">
+          <Info
+            term={
+              <span className="flex items-center gap-1.5">
+                <span className="text-muted-foreground">Verification</span>
+                <Pill tone={verificationTone(p.verification)}>{p.verification}</Pill>
+              </span>
+            }
+          >
+            Whether somebody has checked this doctor&apos;s registration number
+            against the medical council register. It says nothing about whether the
+            practice may operate.
+          </Info>
+
+          <Info
+            term={
+              <span className="flex items-center gap-1.5">
+                <span className="text-muted-foreground">Status</span>
+                <Pill tone={statusTone(p.status)}>{p.status}</Pill>
+              </span>
+            }
+          >
+            Whether the practice&apos;s staff may sign in and work. A practice can
+            be active and unverified, which is the honest state of one that is
+            running while its paperwork is checked.
+          </Info>
+        </div>
+
         {!d.registration ? (
-          // A greyed button with a tooltip is unreadable on a phone, where
-          // there is no hover. The reason it is greyed goes on the screen.
-          <p className="text-waiting border-border bg-waiting-tint border-b px-4 py-2.5 text-xs leading-relaxed">
-            No registration number on this practice, its doctors or its locations,
-            so there is nothing to check against a register and this cannot be
-            marked verified. Add it under <strong>Edit details</strong>, or the
-            doctor can add their own from their profile in the app.
-          </p>
+          <Alert
+            title="No registration number"
+            className="mx-4 mt-3.5"
+            action={
+              <button
+                onClick={() => setEditing(true)}
+                className="border-border bg-card hover:bg-secondary rounded-sm border px-2.5 py-1 text-xs font-medium transition-colors"
+              >
+                Add one
+              </button>
+            }
+          >
+            Nothing to check against a register, so this cannot be verified.
+          </Alert>
         ) : null}
 
+        {/* Strictly actions, in weight order: the one to do, the ones to
+            think about, and the one that stops a clinic working. */}
         <div className="flex flex-wrap gap-2 px-4 py-3.5">
           {p.verification !== "verified" ? (
             <Action
+              primary
               onClick={() =>
                 void act(
                   `/admin/practices/${p.id}/verification`,
@@ -188,15 +235,9 @@ function Detail() {
             </Action>
           ) : null}
 
-          {p.verification !== "rejected" ? (
-            <Action onClick={() => setAsk({ kind: "reject", name: p.name })} busy={busy}>
-              Reject
-            </Action>
-          ) : null}
-
           {p.status !== "active" ? (
             <Action
-              primary
+              primary={p.verification === "verified"}
               onClick={() =>
                 void act(
                   `/admin/practices/${p.id}/status`,
@@ -208,15 +249,29 @@ function Detail() {
             >
               Activate
             </Action>
-          ) : (
-            <Action
-              destructive
-              onClick={() => setAsk({ kind: "suspend", name: p.name })}
-              busy={busy}
-            >
-              Suspend
-            </Action>
-          )}
+          ) : null}
+
+          <span className="ml-auto flex flex-wrap gap-2">
+            {p.verification !== "rejected" ? (
+              <Action
+                destructive
+                onClick={() => setAsk({ kind: "reject", name: p.name })}
+                busy={busy}
+              >
+                Reject
+              </Action>
+            ) : null}
+
+            {p.status === "active" ? (
+              <Action
+                destructive
+                onClick={() => setAsk({ kind: "suspend", name: p.name })}
+                busy={busy}
+              >
+                Suspend
+              </Action>
+            ) : null}
+          </span>
         </div>
       </Panel>
 

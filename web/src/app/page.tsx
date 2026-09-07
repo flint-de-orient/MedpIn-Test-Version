@@ -6,7 +6,7 @@ import { api, ApiError } from "@/lib/api";
 import { useSession } from "@/lib/session";
 import { useAttention } from "@/components/attention";
 import { MetricCard } from "@/components/metrics";
-import { Empty, Failed, Panel, Pill, statusTone, when } from "@/components/primitives";
+import { Alert, Empty, Failed, Panel, Pill, statusTone, when } from "@/components/primitives";
 import {
   IconAdmins,
   IconAlert,
@@ -246,15 +246,9 @@ function AttentionPanel({
 
   if (items.length === 0) {
     return (
-      <div className="border-ok/25 bg-ok-tint flex items-center gap-2.5 rounded-lg border px-4 py-3">
-        <IconCheck className="text-ok size-4 shrink-0" />
-        <p className="text-[13px]">
-          <strong className="font-semibold">Nothing is waiting on you.</strong>{" "}
-          <span className="text-muted-foreground">
-            Every practice is decided and every administrator has a second factor.
-          </span>
-        </p>
-      </div>
+      <Alert tone="ok" title="Nothing is waiting on you">
+        Every practice is decided and every administrator has a second factor.
+      </Alert>
     );
   }
 

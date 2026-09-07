@@ -141,7 +141,7 @@ export function MemberDialog({
       ) : null}
 
       {perms.length === 0 ? (
-        <p className="text-waiting border-waiting/30 bg-waiting-tint rounded-sm border px-3 py-2 text-xs leading-relaxed">
+        <p className="text-waiting-ink border-waiting/30 bg-waiting-tint rounded-sm border-l-2 px-3 py-2 text-xs leading-relaxed">
           An empty list falls back to the role's default rather than denying
           everything. To actually restrict this person, suspend the membership
           instead.

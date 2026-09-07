@@ -27,10 +27,13 @@
   --color-border-strong: var(--border-strong);
   --color-ok: var(--ok);
   --color-ok-tint: var(--ok-tint);
+  --color-ok-ink: var(--ok-ink);
   --color-waiting: var(--waiting);
   --color-waiting-tint: var(--waiting-tint);
+  --color-waiting-ink: var(--waiting-ink);
   --color-stopped: var(--stopped);
   --color-stopped-tint: var(--stopped-tint);
+  --color-stopped-ink: var(--stopped-ink);
   --color-input: var(--input);
   --color-border: var(--border);
   --color-destructive: var(--destructive);
@@ -110,13 +113,23 @@
   --destructive-foreground: #ffffff;
 
   /* The app's semantic trio, under names that say what they mean here: a
-     practice that is running, one waiting on a person, one stopped. */
+     practice that is running, one waiting on a person, one stopped.
+
+     Three roles each, because one colour cannot do all three jobs. `--x` is the
+     accent — the icon, the left edge of a banner, the fill of a bar — and needs
+     3:1. `--x-ink` is text sitting ON `--x-tint`, and needs 4.5:1 there. Using
+     the accent for both is what made the amber banner hard to read: #b45309 on
+     #fef3c7 is 4.67:1, which passes and still looks like effort. #78350f on the
+     same tint is 9.3:1, which does not. */
   --ok: #076b3c;
   --ok-tint: #e3f5ec;
-  --waiting: #b45309;
+  --ok-ink: #064e3b;
+  --waiting: #d97706;
   --waiting-tint: #fef3c7;
+  --waiting-ink: #78350f;
   --stopped: #b91c1c;
   --stopped-tint: #fde8e8;
+  --stopped-ink: #7f1d1d;
 
   /* outlineVariant, and Tokens.line one step softer for rows inside a table. */
   --border: #dde3ea;
@@ -172,14 +185,23 @@
   --destructive: #f87171;
   --destructive-foreground: #141719;
 
-  /* The app's *Light variants for the foreground and *BgDark for the tint —
-     its own pairing, not a guess at one. */
+  /* The app's *Light variants for the accent, its *Light lightened again for
+     ink, and a wash rather than a fixed colour for the tint.
+
+     The fixed dark tints were the muddy part: #3a2a0a is a flat brown that
+     punches a hole in whatever card it lands on, and it does not change when
+     the surface under it does. A wash of the accent at 8% sits on the surface
+     instead — which is the reasoning the app already wrote down for
+     `mintFillDark`, applied to the other three. */
   --ok: #34d399;
-  --ok-tint: #0c2a1e;
-  --waiting: #fbbf24;
-  --waiting-tint: #3a2a0a;
+  --ok-tint: rgb(52 211 153 / 0.08);
+  --ok-ink: #a7f3d0;
+  --waiting: #f59e0b;
+  --waiting-tint: rgb(245 158 11 / 0.08);
+  --waiting-ink: #fde68a;
   --stopped: #f87171;
-  --stopped-tint: #3f1414;
+  --stopped-tint: rgb(248 113 113 / 0.08);
+  --stopped-ink: #fecaca;
 
   --border: #2c3945;
   --border-strong: #43525f;

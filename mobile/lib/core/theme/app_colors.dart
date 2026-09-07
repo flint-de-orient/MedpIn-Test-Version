@@ -55,6 +55,38 @@ class AppColors {
   static const Color warningLight = Color(0xFFFBBF24);
   static const Color successLight = Color(0xFF34D399);
 
+  /// The accent tier: what draws the eye to a banner, at 3:1 or better against
+  /// the page. Not text. [warning] at #B45309 was doing both jobs and doing
+  /// neither well — dark enough to look muddy as an icon, light enough to be
+  /// effortful as a paragraph.
+  static const Color dangerAccent = Color(0xFFB91C1C);
+  static const Color warningAccent = Color(0xFFD97706);
+  static const Color successAccent = Color(0xFF076B3C);
+
+  static const Color dangerAccentDark = Color(0xFFF87171);
+  static const Color warningAccentDark = Color(0xFFF59E0B);
+  static const Color successAccentDark = Color(0xFF34D399);
+
+  /// The ink tier: text sitting ON a semantic tint, at 4.5:1 or better against
+  /// that tint rather than against the page.
+  ///
+  /// [Tokens] already records the problem this solves — the semantic three were
+  /// "measured on their own tints, where amber was worst at 2.97:1 — the one
+  /// colour in the system whose entire job is to be noticed". Darkening the
+  /// accent until it passed made the accent worse. Two colours, two jobs:
+  /// #78350F on #FEF3C7 is 9.3:1, and #D97706 stays free to be seen.
+  ///
+  /// Used by the operator console today. The app's own alert cards still pair
+  /// [warning] with [warningBg]; they should move to these when they are next
+  /// touched, which is why the values live here rather than in the console.
+  static const Color dangerInk = Color(0xFF7F1D1D);
+  static const Color warningInk = Color(0xFF78350F);
+  static const Color successInk = Color(0xFF064E3B);
+
+  static const Color dangerInkDark = Color(0xFFFECACA);
+  static const Color warningInkDark = Color(0xFFFDE68A);
+  static const Color successInkDark = Color(0xFFA7F3D0);
+
   /// Mint fill's dark counterpart. Not a fixed colour but a wash of the bright
   /// green, so it sits on whatever surface it lands on instead of punching a
   /// pale hole in a dark card.

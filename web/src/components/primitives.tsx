@@ -1,5 +1,7 @@
 "use client";
 
+import { useId, useState } from "react";
+import { IconCheck, IconInfo, IconWarning } from "@/components/icons";
 import { cn } from "@/lib/utils";
 
 /**
@@ -16,9 +18,9 @@ import { cn } from "@/lib/utils";
 type Tone = "ok" | "waiting" | "stopped" | "muted" | "accent";
 
 const TONE: Record<Tone, string> = {
-  ok: "text-ok bg-ok-tint",
-  waiting: "text-waiting bg-waiting-tint",
-  stopped: "text-stopped bg-stopped-tint",
+  ok: "text-ok-ink bg-ok-tint",
+  waiting: "text-waiting-ink bg-waiting-tint",
+  stopped: "text-stopped-ink bg-stopped-tint",
   accent: "text-accent-foreground bg-accent",
   muted: "text-muted-foreground bg-muted",
 };
@@ -113,6 +115,150 @@ export function Stat({
       {inner}
       <span className="sr-only">— jump to the list</span>
     </a>
+  );
+}
+
+/* -------------------------------------------------------------------- alert */
+
+const ALERT_TONE = {
+  waiting: {
+    edge: "border-l-waiting",
+    surface: "bg-waiting-tint",
+    ink: "text-waiting-ink",
+    icon: "text-waiting",
+  },
+  stopped: {
+    edge: "border-l-stopped",
+    surface: "bg-stopped-tint",
+    ink: "text-stopped-ink",
+    icon: "text-stopped",
+  },
+  ok: {
+    edge: "border-l-ok",
+    surface: "bg-ok-tint",
+    ink: "text-ok-ink",
+    icon: "text-ok",
+  },
+} as const;
+
+// A caution triangle on an all-clear says the opposite of the words beside it,
+// and the icon is what somebody who cannot separate green from amber reads.
+
+/**
+ * One banner, three tones, and a hard limit on how much it may say.
+ *
+ * ---- Why it takes a title and a line, not children ----------------------
+ *
+ * The amber boxes it replaces were paragraphs: the problem, what it means
+ * legally, and what to do about it, in one block of 11px text inside a flat
+ * fill. Nobody reads that. It is skipped precisely because it looks like the
+ * small print it was written as.
+ *
+ * So the shape is fixed. `title` is the fact, in three or four words, and it is
+ * the only thing that has to be read. `children` is one line saying why it
+ * matters. Anything longer belongs in a definition somebody can open, and
+ * anything actionable belongs in `action` — a warning that explains a fix in
+ * prose is a button that was never built.
+ *
+ * ---- And the colour does not carry the meaning alone -------------------
+ *
+ * A left edge, an icon and a tint. The edge is what makes it read as a banner
+ * at a glance rather than a tinted paragraph, and the icon is what says which
+ * kind it is to somebody who cannot separate amber from red.
+ */
+export function Alert({
+  tone = "waiting",
+  title,
+  children,
+  action,
+  className,
+}: {
+  tone?: keyof typeof ALERT_TONE;
+  title: string;
+  /** One line. Not a paragraph — see above. */
+  children?: React.ReactNode;
+  action?: React.ReactNode;
+  className?: string;
+}) {
+  const t = ALERT_TONE[tone];
+  return (
+    <div
+      // `alert` would interrupt a screen reader mid-sentence for something that
+      // was on the page before they arrived. These describe a state, they do
+      // not announce a change.
+      role="note"
+      className={cn(
+        "flex items-start gap-2.5 rounded-md border border-l-2 px-3 py-2.5",
+        "border-border/60",
+        t.edge,
+        t.surface,
+        className,
+      )}
+    >
+      {tone === "ok" ? (
+        <IconCheck className={cn("mt-px size-4 shrink-0", t.icon)} />
+      ) : (
+        <IconWarning className={cn("mt-px size-4 shrink-0", t.icon)} />
+      )}
+      <div className={cn("min-w-0 flex-1 text-xs leading-relaxed", t.ink)}>
+        <p className="font-semibold">{title}</p>
+        {children ? <p className="mt-0.5 opacity-90">{children}</p> : null}
+      </div>
+      {action ? <div className="shrink-0 self-center">{action}</div> : null}
+    </div>
+  );
+}
+
+/* --------------------------------------------------------------------- info */
+
+/**
+ * A word, and its definition one tap away.
+ *
+ * ---- Why not a tooltip -------------------------------------------------
+ *
+ * A tooltip is a hover, and half of this console is read on a phone where
+ * there is no hover. The other half of the time it is a definition somebody
+ * wants to keep on screen while they look at the thing it defines, which a
+ * tooltip actively prevents by vanishing.
+ *
+ * So it is a disclosure: the term stays put, the definition appears under it,
+ * and it stays until it is dismissed. Same behaviour with a mouse, a finger or
+ * a keyboard, which is one behaviour to get right instead of three.
+ */
+export function Info({
+  term,
+  children,
+  className,
+}: {
+  term: React.ReactNode;
+  children: React.ReactNode;
+  className?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const id = useId();
+
+  return (
+    <span className={cn("inline-flex flex-col items-start gap-1", className)}>
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        aria-controls={id}
+        className="text-muted-foreground hover:text-foreground focus-visible:ring-ring inline-flex items-center gap-1 rounded-sm transition-colors focus-visible:ring-2 focus-visible:outline-none"
+      >
+        {term}
+        <IconInfo className="size-3 shrink-0 opacity-70" />
+        <span className="sr-only">{open ? "Hide the definition" : "What this means"}</span>
+      </button>
+      {open ? (
+        <span
+          id={id}
+          className="text-muted-foreground border-border bg-muted/50 block rounded-sm border px-2 py-1.5 text-[11px] leading-relaxed font-normal normal-case"
+        >
+          {children}
+        </span>
+      ) : null}
+    </span>
   );
 }
 

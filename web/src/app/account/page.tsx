@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { api, ApiError } from "@/lib/api";
 import { useSession } from "@/lib/session";
-import { Field, Panel, Pill, when, fullWhen } from "@/components/primitives";
+import { Alert, Field, Panel, Pill, fullWhen, when } from "@/components/primitives";
 import { textInput } from "@/components/form";
 import { cn } from "@/lib/utils";
 import { PasskeyPanel } from "@/components/passkey-panel";
@@ -203,19 +203,21 @@ export default function Account() {
                   </button>
                 </div>
               ) : (
-                <div className="border-stopped/30 bg-stopped-tint flex flex-wrap items-center gap-3 rounded-md border px-3 py-3">
-                  <p className="text-stopped text-xs leading-relaxed">
-                    The key did not arrive. Nothing has been changed on your
-                    account — start again.
-                  </p>
-                  <button
-                    type="button"
-                    onClick={() => void begin()}
-                    className="border-border hover:bg-secondary ml-auto shrink-0 rounded-sm border px-2.5 py-1 text-xs font-medium transition-colors"
-                  >
-                    Try again
-                  </button>
-                </div>
+                <Alert
+                  tone="stopped"
+                  title="The key did not arrive"
+                  action={
+                    <button
+                      type="button"
+                      onClick={() => void begin()}
+                      className="border-border bg-card hover:bg-secondary rounded-sm border px-2.5 py-1 text-xs font-medium transition-colors"
+                    >
+                      Try again
+                    </button>
+                  }
+                >
+                  Nothing has been changed on your account.
+                </Alert>
               )}
 
               <Step n={2} title="Then type the six digits it shows you">
@@ -355,15 +357,10 @@ function VerifyEmail({ email }: { email: string }) {
   }
 
   return (
-    <div className="border-waiting bg-waiting-tint flex flex-col gap-2 rounded-lg border border-l-[3px] px-4 py-3">
-      <p className="text-[13px]">
-        <strong className="font-semibold">This address is not confirmed.</strong>{" "}
-        <span className="text-muted-foreground">
-          A password reset would be emailed to <span className="font-mono">{email}</span>.
-          Confirm it so a mistyped address is found now rather than on the day you
-          need it.
-        </span>
-      </p>
+    <div className="flex flex-col gap-2">
+      <Alert title="This address is not confirmed">
+        A password reset would go to <span className="font-mono">{email}</span>.
+      </Alert>
       {state === "sent" ? (
         <p className="text-muted-foreground text-xs leading-relaxed">
           Sent. Open the link in that message — it works for a day.
