@@ -41,10 +41,29 @@ describe('the cookie itself', () => {
     assert.match(session, /sameSite: 'strict'/);
   });
 
-  test('scoped to the admin API, not the whole site', () => {
+  test('the session is scoped to the admin API, not the whole site', () => {
     // A session cookie attached to every image and font request is a session
     // cookie in more logs than it needs to be.
-    assert.match(session, /path: '\/api\/v1\/admin'/);
+    assert.match(session, /const SESSION_PATH = '\/api\/v1\/admin'/);
+    assert.match(session, /res\.cookie\(SESSION[\s\S]{0,160}path: SESSION_PATH/);
+  });
+
+  test('but the readable half is rooted at /, or the page cannot read it', () => {
+    // `document.cookie` only returns cookies whose path matches the *document's*
+    // path. The console is served from `/`, so a CSRF cookie scoped to
+    // `/api/v1/admin` is attached to every API request and invisible to the page
+    // that has to echo it — and every write is refused as a forgery.
+    //
+    // Widening it costs nothing: this is not a secret to keep, it is a value an
+    // attacker on another origin cannot read, and that comes from the origin.
+    assert.match(session, /res\.cookie\(CSRF[\s\S]{0,900}path: '\/'/);
+  });
+
+  test('and both are cleared on the paths they were set on', () => {
+    // clearCookie with a different path writes a second empty cookie and leaves
+    // the original in place — signing out would appear to do nothing.
+    assert.match(session, /clearCookie\(SESSION[\s\S]{0,80}path: SESSION_PATH/);
+    assert.match(session, /clearCookie\(CSRF[\s\S]{0,80}path: '\/'/);
   });
 
   test('secure in production, and not only there', () => {

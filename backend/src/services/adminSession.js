@@ -85,6 +85,14 @@ export function cookiesFrom(req) {
   return out;
 }
 
+/**
+ * The session cookie's path.
+ *
+ * Not the whole site: a session cookie attached to every image and font request
+ * is a session cookie in more logs than it needs to be.
+ */
+const SESSION_PATH = '/api/v1/admin';
+
 function base(req) {
   return {
     // `secure` everywhere except plain-http localhost, where it would stop the
@@ -96,10 +104,6 @@ function base(req) {
       req.secure ||
       req.get('x-forwarded-proto') === 'https',
     sameSite: 'strict',
-    // Not the whole site. The console is served from the same host in
-    // production, and a session cookie sent with every image and font request
-    // is a session cookie in more logs than it needs to be.
-    path: '/api/v1/admin',
   };
 }
 
@@ -110,14 +114,32 @@ export function setSessionCookies(req, res, { token, csrf }) {
   res.cookie(SESSION, token, {
     ...opts,
     httpOnly: true, // the entire point: script cannot read it
+    path: SESSION_PATH,
     maxAge: MAX_AGE_MS,
   });
 
+  /**
+   * The anti-forgery half, readable and rooted at `/`.
+   *
+   * ---- Why not the same narrow path as the session ----------------------
+   *
+   * `document.cookie` only returns cookies whose path matches the *document's*
+   * path. The console is served from `/`, so a cookie scoped to
+   * `/api/v1/admin` is invisible to it — the browser would faithfully attach
+   * the cookie to API requests while the page could never read the value it
+   * has to echo in the header, and every write would be refused as forgery.
+   *
+   * A path that is right for the credential is wrong for the thing that has to
+   * be read, which is why they are set separately rather than sharing `base`.
+   *
+   * Widening it costs nothing: this is not a secret to be kept, it is a value
+   * an attacker on another origin cannot read. That property comes from the
+   * origin, not from the path.
+   */
   res.cookie(CSRF, csrf, {
     ...opts,
-    // Readable on purpose — the page has to echo it back in a header, and a
-    // header is the thing a cross-site request cannot forge.
     httpOnly: false,
+    path: '/',
     maxAge: MAX_AGE_MS,
   });
 }
@@ -131,9 +153,11 @@ export function setSessionCookies(req, res, { token, csrf }) {
  * rather than implied by a button that looks like it does more.
  */
 export function clearSessionCookies(req, res) {
+  // Cleared on the same paths they were set on. A clearCookie with a different
+  // path writes a second, empty cookie and leaves the original in place.
   const opts = base(req);
-  res.clearCookie(SESSION, { ...opts, httpOnly: true });
-  res.clearCookie(CSRF, { ...opts, httpOnly: false });
+  res.clearCookie(SESSION, { ...opts, httpOnly: true, path: SESSION_PATH });
+  res.clearCookie(CSRF, { ...opts, httpOnly: false, path: '/' });
 }
 
 /** Constant-time compare, because this is a secret being checked. */
