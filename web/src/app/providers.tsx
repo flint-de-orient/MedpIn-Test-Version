@@ -22,7 +22,28 @@ export function Providers({ children }: { children: React.ReactNode }) {
 }
 
 function Gate({ children }: { children: React.ReactNode }) {
-  const { admin } = useSession();
+  const { admin, restoring } = useSession();
+
+  /**
+   * Restoring is not the same as signed out.
+   *
+   * The session lives in an `httpOnly` cookie the page cannot read, so on load
+   * the app has to ask the server whether one exists. Rendering the sign-in
+   * form during that moment would flash a login at somebody who is already
+   * signed in — which is exactly the friction the cookie was meant to remove.
+   */
+  if (restoring) {
+    return (
+      <div className="flex min-h-full flex-1 items-center justify-center">
+        <span className="sr-only">Checking your session…</span>
+        <span
+          aria-hidden
+          className="border-border border-t-primary size-5 animate-spin rounded-full border-2"
+        />
+      </div>
+    );
+  }
+
   if (!admin) return <SignIn />;
   return <Shell>{children}</Shell>;
 }

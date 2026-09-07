@@ -1,4 +1,5 @@
 import { verifyAdminToken, secretsAreSeparate } from '../services/adminTokens.js';
+import { cookiesFrom, csrfMatches, COOKIE_NAMES } from '../services/adminSession.js';
 import { PlatformAdmin } from '../models/PlatformAdmin.js';
 import { unauthorized, forbidden, asyncHandler } from './errors.js';
 
@@ -36,13 +37,48 @@ export const requireAdmin = asyncHandler(async (req, res, next) => {
     );
   }
 
-  const header = req.get('authorization') ?? '';
-  const [scheme, token] = header.split(' ');
-  if (scheme?.toLowerCase() !== 'bearer' || !token) throw unauthorized();
+  /**
+   * The cookie first, then the header.
+   *
+   * A browser sends the cookie by itself, which is what makes the session
+   * survive a reload. `Authorization` stays supported for the things that are
+   * not a browser — a shell script, a health probe, `curl` while debugging —
+   * and those cannot be forged across sites because nothing sends them
+   * automatically.
+   */
+  const cookies = cookiesFrom(req);
+  const fromCookie = cookies[COOKIE_NAMES.SESSION];
+
+  let token = fromCookie;
+  if (!token) {
+    const header = req.get('authorization') ?? '';
+    const [scheme, bearer] = header.split(' ');
+    if (scheme?.toLowerCase() !== 'bearer' || !bearer) throw unauthorized();
+    token = bearer;
+  }
 
   // Verified against the admin key. A clinic token fails here on the signature,
   // not on a claim — there is no role check to forget.
   const payload = verifyAdminToken(token);
+
+  /**
+   * Anti-forgery, on the requests that change something.
+   *
+   * Only when the credential came from a cookie: a bearer token is not attached
+   * by the browser, so a cross-site request carrying one had to be written by
+   * somebody who already had it.
+   *
+   * A GET is exempt because it changes nothing — and because every read here is
+   * already logged, so a forged one is visible rather than silent.
+   */
+  const mutating = !['GET', 'HEAD', 'OPTIONS'].includes(req.method);
+  if (fromCookie && mutating) {
+    if (!payload.csrf || !csrfMatches(req.get('x-csrf-token'), payload.csrf)) {
+      throw forbidden(
+        'This request did not come from the console. Reload the page and try again.',
+      );
+    }
+  }
 
   const admin = await PlatformAdmin.findById(payload.sub).lean();
   if (!admin || !admin.isActive) throw unauthorized('Account is inactive');

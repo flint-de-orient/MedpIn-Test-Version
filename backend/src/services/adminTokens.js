@@ -26,12 +26,22 @@ const ISSUER = 'medpin-admin';
 /** Short by design. This is the account that can suspend a whole practice. */
 const TTL = '2h';
 
-export function signAdminToken(admin) {
+export function signAdminToken(admin, { csrf = null } = {}) {
   return jwt.sign(
     // No role claim, because there is only one kind of admin. A role here would
     // be a field somebody later branches on, and the branch nobody tests is the
     // one that grants too much.
-    { sub: String(admin._id), name: admin.name, email: admin.email },
+    //
+    // `csrf` is the one exception, and it is not a permission: it binds the
+    // anti-forgery value into the signed session so a planted cookie cannot
+    // match it. Absent for a bearer token, which is not sent automatically by a
+    // browser and therefore cannot be forged across sites in the first place.
+    {
+      sub: String(admin._id),
+      name: admin.name,
+      email: admin.email,
+      ...(csrf ? { csrf } : {}),
+    },
     env.ADMIN_JWT_SECRET,
     { expiresIn: TTL, issuer: ISSUER },
   );

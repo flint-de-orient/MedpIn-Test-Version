@@ -119,7 +119,14 @@ export type Admin = {
 };
 
 export type LoginResult = {
+  /**
+   * Returned for callers that are not a browser. The console ignores both of
+   * these: its session is an httpOnly cookie the page cannot read, and the CSRF
+   * value is read from its own readable cookie rather than held in memory,
+   * so that a reload restores everything without a second sign-in.
+   */
   token: string;
+  csrf: string;
   admin: Admin;
   totpEnabled: boolean;
 };

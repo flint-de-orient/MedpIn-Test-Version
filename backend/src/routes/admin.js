@@ -16,7 +16,14 @@ import {
   everPatientCount,
   platformPatientCount,
 } from '../services/practiceUsage.js';
-import { signAdminToken, secretsAreSeparate } from '../services/adminTokens.js';
+import { signAdminToken, verifyAdminToken, secretsAreSeparate } from '../services/adminTokens.js';
+import {
+  setSessionCookies,
+  clearSessionCookies,
+  newCsrfToken,
+  cookiesFrom,
+  COOKIE_NAMES,
+} from '../services/adminSession.js';
 import { generateSecret, verifyTotp, otpauthUri } from '../services/totp.js';
 import { completeReset } from '../services/adminReset.js';
 
@@ -117,8 +124,25 @@ router.post(
     await admin.noteSuccess();
     await AdminAuditLog.record({ admin, action: 'admin.login', req });
 
+    /**
+     * The session goes in an httpOnly cookie, and the CSRF value beside it.
+     *
+     * The token used to be handed to the page, which held it in a variable and
+     * lost it on every reload. A cookie the page cannot read is stronger than
+     * one it can — and it survives the reload, so an operator opening the
+     * Account tab is not asked to sign in again.
+     */
+    const csrf = newCsrfToken();
+    setSessionCookies(req, res, { token: signAdminToken(admin, { csrf }), csrf });
+
     res.json({
+      /**
+       * Still returned, for the callers that are not a browser: a shell script,
+       * a probe, `curl` while debugging. A browser ignores it and uses the
+       * cookie, which is why nothing in the console stores this any more.
+       */
       token: signAdminToken(admin),
+      csrf,
       admin: admin.toPublic(),
       // Surfaced so the panel can nag. An administrator without a second factor
       // on the account that can suspend every practice should be reminded every
@@ -159,6 +183,51 @@ router.post(
     // Deliberately no token in the response. Choosing a new password is not
     // signing in, and handing back a session would let a stolen reset skip the
     // login it just re-enabled.
+    res.json({ ok: true });
+  }),
+);
+
+/**
+ * Sign out.
+ *
+ * Unauthenticated on purpose. Requiring a valid session to end one means an
+ * operator whose session has already expired cannot clear the stale cookie,
+ * and clearing a cookie for somebody who was not signed in does nothing.
+ *
+ * It ends the session in *this browser*. It does not revoke the token: nothing
+ * here tracks issued ones, so a copy taken beforehand stays valid until it
+ * expires. The Account screen says that in words rather than leaving a button
+ * to imply more than it does.
+ */
+router.post(
+  '/auth/logout',
+  asyncHandler(async (req, res) => {
+    if (!process.env.ADMIN_JWT_SECRET) {
+      return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Not found' } });
+    }
+
+    /**
+     * Recorded when we can tell who it was, which is nearly always.
+     *
+     * Best effort on purpose: an expired or malformed cookie must still clear.
+     * A sign-out that failed because the audit write failed would leave the
+     * operator holding the session they were trying to drop.
+     */
+    try {
+      const token = cookiesFrom(req)[COOKIE_NAMES.SESSION];
+      if (token) {
+        const payload = verifyAdminToken(token);
+        await AdminAuditLog.record({
+          admin: { _id: payload.sub, email: payload.email },
+          action: 'admin.logout',
+          req,
+        });
+      }
+    } catch {
+      // An expired session signing out is the ordinary case, not an error.
+    }
+
+    clearSessionCookies(req, res);
     res.json({ ok: true });
   }),
 );
