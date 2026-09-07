@@ -114,12 +114,31 @@ export default function Account() {
         <div className="flex flex-col gap-4 px-4 py-4">
           {stage === "off" ? (
             <>
-              <p className="text-muted-foreground text-xs leading-relaxed">
-                An authenticator app on your phone — Google Authenticator, Aegis,
-                1Password, any of them. Nothing is sent by SMS: a code that arrives
-                as a text is a code your mobile operator can be talked into
-                redirecting.
-              </p>
+              <div className="text-muted-foreground flex flex-col gap-2 text-xs leading-relaxed">
+                <p>
+                  You will need an <strong className="text-foreground">authenticator
+                  app</strong> on your phone. Install one from the Play Store or App
+                  Store first — <strong className="text-foreground">Google
+                  Authenticator</strong> is the usual choice, and 2FAS, Ente Auth or
+                  Microsoft Authenticator all work the same way. If you already use a
+                  password manager it can probably do this too.
+                </p>
+                <p>
+                  {/*
+                    Said plainly because it is the thing people wait for. Somebody
+                    expecting a text sits on this screen doing nothing, and the
+                    screen previously explained why SMS is a bad idea without ever
+                    saying where the code does come from.
+                  */}
+                  <strong className="text-foreground">
+                    Nothing will be sent to you.
+                  </strong>{" "}
+                  No text message, no email. The app generates the code on your phone
+                  from the key below, which is why it works with no signal — and why
+                  a code that arrived as a text would be a code your mobile operator
+                  can be talked into redirecting.
+                </p>
+              </div>
               <button
                 onClick={() => void begin()}
                 disabled={busy}
