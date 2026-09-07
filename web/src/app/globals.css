@@ -1,0 +1,239 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-sans);
+  --font-mono: var(--font-mono);
+  --font-heading: var(--font-sans);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-border-strong: var(--border-strong);
+  --color-ok: var(--ok);
+  --color-ok-tint: var(--ok-tint);
+  --color-waiting: var(--waiting);
+  --color-waiting-tint: var(--waiting-tint);
+  --color-stopped: var(--stopped);
+  --color-stopped-tint: var(--stopped-tint);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
+}
+
+/* ---------------------------------------------------------------------------
+ * MedPin operator console — the palette.
+ *
+ * Not shadcn's neutral grey, and deliberately not the generic SaaS indigo. The
+ * accent is #003399, carried over from the clinic app so an operator moving
+ * between the two reads them as one product rather than two vendors.
+ *
+ * ---- Light is paper. Dark is an instrument. -----------------------------
+ *
+ * The two are not one palette inverted. Light mode is warm off-white with near
+ * black text — a register, something printed and filed. Dark mode is a cool
+ * slate with the accent lifted well past its light value, because #003399 on a
+ * dark ground is unreadable and "the same blue" would be the wrong loyalty.
+ *
+ * Every neutral carries a trace of the accent hue (265) rather than being pure
+ * grey. Pure #888 beside a saturated navy looks like two unrelated decisions.
+ * ------------------------------------------------------------------------- */
+
+:root {
+  /* Paper, and the two surfaces that sit on it. Three levels, no more: the
+     ground, a raised surface, and a recessed one. A fourth is where a layout
+     starts looking like tabs inside tabs. */
+  --background: oklch(0.985 0.002 265);
+  --foreground: oklch(0.185 0.012 265);
+
+  --card: oklch(1 0 0);
+  --card-foreground: var(--foreground);
+  --popover: oklch(1 0 0);
+  --popover-foreground: var(--foreground);
+
+  /* #003399. Reserved for state and for the one primary action on a screen —
+     never for decoration, which is how an accent stops meaning anything. */
+  --primary: oklch(0.36 0.168 265);
+  --primary-foreground: oklch(0.99 0.002 265);
+
+  --secondary: oklch(0.955 0.004 265);
+  --secondary-foreground: oklch(0.28 0.02 265);
+
+  --muted: oklch(0.962 0.004 265);
+  /* 4.9:1 on --background. Supporting text is de-emphasised by colour rather
+     than by shrinking it, so it stays legible on a clinic laptop. */
+  --muted-foreground: oklch(0.505 0.017 265);
+
+  --accent: oklch(0.945 0.014 265);
+  --accent-foreground: oklch(0.32 0.12 265);
+
+  --destructive: oklch(0.505 0.192 27);
+  --destructive-foreground: oklch(0.99 0 0);
+
+  /* The three states a practice can be in, plus the one that needs a person.
+     Named for what they mean here, not for the colour, so a row reads as a
+     decision rather than as a hue. */
+  --ok: oklch(0.46 0.108 155);
+  --ok-tint: oklch(0.955 0.028 155);
+  --waiting: oklch(0.545 0.132 68);
+  --waiting-tint: oklch(0.965 0.038 78);
+  --stopped: oklch(0.505 0.192 27);
+  --stopped-tint: oklch(0.962 0.024 27);
+
+  --border: oklch(0.905 0.006 265);
+  /* One step darker than --border: a hairline dividing rows inside a table is
+     doing less work than the line around the table. */
+  --border-strong: oklch(0.855 0.008 265);
+  --input: oklch(0.895 0.006 265);
+  --ring: oklch(0.36 0.168 265);
+
+  /* 6px. Sharp enough to read as an instrument; a 16px radius on a data table
+     is the single clearest tell of a template. */
+  --radius: 0.375rem;
+
+  --sidebar: oklch(0.972 0.004 265);
+  --sidebar-foreground: var(--foreground);
+  --sidebar-primary: var(--primary);
+  --sidebar-primary-foreground: var(--primary-foreground);
+  --sidebar-accent: var(--accent);
+  --sidebar-accent-foreground: var(--accent-foreground);
+  --sidebar-border: var(--border);
+  --sidebar-ring: var(--ring);
+
+  --chart-1: oklch(0.36 0.168 265);
+  --chart-2: oklch(0.52 0.115 235);
+  --chart-3: oklch(0.63 0.09 210);
+  --chart-4: oklch(0.72 0.075 190);
+  --chart-5: oklch(0.80 0.055 175);
+}
+
+.dark {
+  --background: oklch(0.165 0.012 265);
+  --foreground: oklch(0.945 0.004 265);
+
+  --card: oklch(0.205 0.014 265);
+  --card-foreground: var(--foreground);
+  --popover: oklch(0.225 0.015 265);
+  --popover-foreground: var(--foreground);
+
+  /* Lifted a long way. #003399 on this ground is a hole in the screen, and
+     keeping "the same blue" would be loyalty to a hex code rather than to the
+     thing it was chosen to do. */
+  --primary: oklch(0.70 0.145 262);
+  --primary-foreground: oklch(0.17 0.02 265);
+
+  --secondary: oklch(0.262 0.015 265);
+  --secondary-foreground: oklch(0.93 0.006 265);
+
+  --muted: oklch(0.255 0.014 265);
+  --muted-foreground: oklch(0.712 0.018 265);
+
+  --accent: oklch(0.285 0.032 265);
+  --accent-foreground: oklch(0.86 0.07 262);
+
+  --destructive: oklch(0.695 0.168 24);
+  --destructive-foreground: oklch(0.16 0.01 265);
+
+  --ok: oklch(0.735 0.128 158);
+  --ok-tint: oklch(0.268 0.045 158);
+  --waiting: oklch(0.795 0.128 80);
+  --waiting-tint: oklch(0.278 0.045 78);
+  --stopped: oklch(0.715 0.152 24);
+  --stopped-tint: oklch(0.272 0.055 24);
+
+  --border: oklch(0.298 0.013 265);
+  --border-strong: oklch(0.352 0.015 265);
+  --input: oklch(0.322 0.014 265);
+  --ring: oklch(0.70 0.145 262);
+
+  --sidebar: oklch(0.188 0.013 265);
+  --sidebar-foreground: var(--foreground);
+  --sidebar-primary: var(--primary);
+  --sidebar-primary-foreground: var(--primary-foreground);
+  --sidebar-accent: var(--accent);
+  --sidebar-accent-foreground: var(--accent-foreground);
+  --sidebar-border: var(--border);
+  --sidebar-ring: var(--ring);
+
+  --chart-1: oklch(0.70 0.145 262);
+  --chart-2: oklch(0.68 0.105 232);
+  --chart-3: oklch(0.70 0.085 205);
+  --chart-4: oklch(0.74 0.070 188);
+  --chart-5: oklch(0.79 0.055 172);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+  html {
+    @apply font-sans;
+  }
+}
+
+@layer base {
+  /*
+   * Numbers line up in a column or they are decoration. Every id,
+   * reference, count and timestamp in this console is tabular, which is
+   * most of what is on screen.
+   */
+  .tnum {
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: "tnum";
+  }
+
+  /* A focus ring that is visible on both grounds without being a glow. */
+  :focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+  }
+
+  /* Motion explains where something came from. Anyone who has asked not to
+     see it gets none, and nothing here depends on it to be usable. */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}
