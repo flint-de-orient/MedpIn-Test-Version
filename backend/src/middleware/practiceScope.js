@@ -1,6 +1,7 @@
 import { Membership, MEMBERSHIP_STATUS } from '../models/Membership.js';
 import { Enrollment, ENROLLMENT_STATUS } from '../models/Enrollment.js';
 import { PatientProfile } from '../models/PatientProfile.js';
+import { Clinic } from '../models/Clinic.js';
 import { forbidden } from './errors.js';
 import { recordDenial } from './recordDenial.js';
 
@@ -157,6 +158,97 @@ async function enrolmentsExist() {
   if (_enrolmentsExist) return true;
   _enrolmentsExist = (await Enrollment.estimatedDocumentCount()) > 0;
   return _enrolmentsExist;
+}
+
+/** The same question about memberships, cached the same way and for the same reason. */
+let _membershipsExist = false;
+async function membershipsExist() {
+  if (_membershipsExist) return true;
+  _membershipsExist = (await Membership.estimatedDocumentCount()) > 0;
+  return _membershipsExist;
+}
+
+/** And about locations: has anything been linked to a practice yet? */
+let _clinicsLinked = false;
+async function clinicsAreLinked() {
+  if (_clinicsLinked) return true;
+  _clinicsLinked = (await Clinic.countDocuments({ practice: { $ne: null } })) > 0;
+  return _clinicsLinked;
+}
+
+/* ------------------------------------------------------------- the staff */
+
+/**
+ * The user ids holding a current membership of a practice.
+ *
+ * ---- Patients are not the only thing that leaks ------------------------
+ *
+ * `practicePatients` was written for the patient register and it is only half
+ * the problem. A practice is also its people and its buildings, and both were
+ * read with no filter at all: `/doctor/dieticians` returned every dietician on
+ * the platform and `/clinics` returned every location. A doctor who signed in
+ * to a practice created ten minutes earlier saw another clinic's dietician by
+ * name and phone number, and both of its addresses.
+ *
+ * That is worse than the patient list it sits beside, because it needs no
+ * patient data to be wrong — a brand new practice with nobody in it and no
+ * records at all still showed somebody else's staff.
+ *
+ * ---- Permissive on unknown, the same as everything else -----------------
+ *
+ * `null` means do not restrict. A caller with no membership is one the backfill
+ * has not reached; a database with no memberships at all has not been migrated.
+ * Restricting in either case empties the screen of a clinic running right now.
+ */
+export async function memberIdsOf(practiceId, roles = null) {
+  if (!practiceId) return null;
+
+  const rows = await Membership.find({
+    practice: practiceId,
+    status: MEMBERSHIP_STATUS.ACTIVE,
+    endedOn: null,
+    ...(roles ? { role: { $in: [].concat(roles) } } : {}),
+  })
+    .select('user')
+    .lean();
+
+  // No rows can mean "this practice has no dietician", which is a real answer
+  // and must restrict to nothing. It can also mean the backfill has not run,
+  // which must not. The collection being empty is what tells them apart.
+  if (!rows.length && !(await membershipsExist())) return null;
+
+  return rows.map((r) => r.user);
+}
+
+/**
+ * A filter fragment restricting a query to the caller's own colleagues.
+ *
+ * `roles` is one role or several. Omit it for everybody in the practice.
+ */
+export async function practiceMembers(req, roles = null, field = '_id') {
+  const ids = await memberIdsOf(await practiceOf(req), roles);
+  return ids ? { [field]: { $in: ids } } : {};
+}
+
+/* ---------------------------------------------------------- the buildings */
+
+/**
+ * A filter fragment restricting a query to the caller's own locations.
+ *
+ * Strict once the backfill has linked anything, and that is deliberate. A
+ * `Clinic` with no practice is not "unknown, therefore allowed" the way a
+ * missing membership is — `POST /clinics` has stamped the practice on every
+ * location created since practices existed, so an unlinked row today is one
+ * that predates them. Showing those to a practice that did not open them is
+ * exactly the leak this closes.
+ *
+ * When nothing anywhere is linked the backfill has not run, and this gets out
+ * of the way rather than emptying the screen.
+ */
+export async function practiceClinics(req, field = 'practice') {
+  const practiceId = await practiceOf(req);
+  if (!practiceId || !(await clinicsAreLinked())) return {};
+  return { [field]: practiceId };
 }
 
 /**

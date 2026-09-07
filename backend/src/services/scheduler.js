@@ -6,6 +6,7 @@ import { Appointment } from '../models/Appointment.js';
 import { ACTIVE_STATUSES } from './scheduling.js';
 import { notifyClinicOfTomorrowSchedule, notifyVisitTomorrow } from './notifications.js';
 import { User, ROLES } from '../models/User.js';
+import { practiceOfPatient, memberIdsOf } from '../middleware/practiceScope.js';
 import { logger } from '../config/logger.js';
 
 dayjs.extend(utc);
@@ -72,15 +73,41 @@ async function sendVisitReminders() {
 
   if (!due.length) return;
 
-  // Once, not once per appointment: a clinic with forty tomorrow would
-  // otherwise make forty identical queries for the same doctor.
-  const doctors = await User.find({ role: ROLES.DOCTOR, isActive: true })
-    .select('deviceTokens')
-    .lean();
-  const doctorTokens = doctors.flatMap((d) => d.deviceTokens ?? []);
+  /**
+   * The doctors to copy in, for the practice this patient belongs to.
+   *
+   * Still once rather than once per appointment — a clinic with forty tomorrow
+   * made forty identical queries before the cache — but keyed by practice
+   * instead of shared by everybody. Reminding one clinic's doctor about another
+   * clinic's patient by name is the same leak as the digest above, one
+   * appointment at a time.
+   *
+   * `null` keys the unknown bucket, which is every patient with no assigned
+   * doctor and is the behaviour this had before.
+   */
+  const tokenCache = new Map();
+  async function doctorTokensFor(patient) {
+    const patientId = patient?._id ?? patient ?? null;
+    const key = patientId ? ((await practiceOfPatient(patientId)) ?? null) : null;
+    if (tokenCache.has(key)) return tokenCache.get(key);
+
+    const ids = await memberIdsOf(key, ROLES.DOCTOR);
+    const doctors = await User.find({
+      role: ROLES.DOCTOR,
+      isActive: true,
+      ...(ids ? { _id: { $in: ids } } : {}),
+    })
+      .select('deviceTokens')
+      .lean();
+
+    const tokens = doctors.flatMap((d) => d.deviceTokens ?? []);
+    tokenCache.set(key, tokens);
+    return tokens;
+  }
 
   for (const appt of due) {
     try {
+      const doctorTokens = await doctorTokensFor(appt.patient);
       await notifyVisitTomorrow(appt, { patient: appt.patient, doctorTokens });
       // Marked after the send, so a push that throws is retried on the next
       // tick rather than silently skipped for good.

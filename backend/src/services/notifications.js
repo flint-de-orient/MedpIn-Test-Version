@@ -5,6 +5,7 @@ import { logger } from '../config/logger.js';
 import { PatientProfile } from '../models/PatientProfile.js';
 import { ChatSession } from '../models/ChatSession.js';
 import { ChatMessage } from '../models/ChatMessage.js';
+import { practiceOfPatient, memberIdsOf } from '../middleware/practiceScope.js';
 
 /**
  * Notification transport.
@@ -285,10 +286,45 @@ export async function sendLabUploadNudgePush({ patient, tests }) {
   });
 }
 
-export async function notifyClinicStaff(alert) {
-  const staff = await User.find({ role: { $in: [ROLES.DOCTOR, ROLES.STAFF] }, isActive: true })
-    .select('deviceTokens name')
+/**
+ * The people at a patient's own practice who should be woken up.
+ *
+ * ---- Every fan-out in this file was the whole platform ------------------
+ *
+ * `User.find({ role: DOCTOR, isActive: true })` is the right query for a clinic
+ * and the wrong one for a product with two of them. Once a second practice
+ * existed, its doctor's phone buzzed with the first one's emergencies — and the
+ * body of that push carries a patient's name and the first 180 characters of
+ * what is wrong with them.
+ *
+ * That is a worse leak than the screens, because it needs nobody to go looking.
+ * It arrives on a lock screen belonging to somebody with no relationship to the
+ * patient at all.
+ *
+ * ---- Permissive on unknown, like every other guard here ----------------
+ *
+ * A patient with no practice — no assigned doctor yet — falls back to everyone,
+ * which is today's behaviour for today's single clinic. It narrows the moment
+ * there is something to narrow to.
+ */
+async function staffFor(patientId, roles) {
+  const wanted = [].concat(roles);
+  const practiceId = patientId ? await practiceOfPatient(patientId) : null;
+  const ids = await memberIdsOf(practiceId, wanted);
+
+  return User.find({
+    role: { $in: wanted },
+    isActive: true,
+    ...(ids ? { _id: { $in: ids } } : {}),
+  })
+    .select('_id deviceTokens name')
     .lean();
+}
+
+export async function notifyClinicStaff(alert) {
+  // An alert names its patient, and that patient names the practice whose
+  // phones should ring.
+  const staff = await staffFor(alert.patient, [ROLES.DOCTOR, ROLES.STAFF]);
 
   const tokens = staff.flatMap((s) => s.deviceTokens ?? []);
   await deliver({
@@ -325,12 +361,7 @@ export async function notifyClinicOfPatientMessage(patientId, text, { escalated 
   // this would be a change to the assistant's context object to suit a push.
   const patient = await User.findById(patientId).select('name').lean();
 
-  const staff = await User.find({
-    role: { $in: [ROLES.DOCTOR, ROLES.STAFF] },
-    isActive: true,
-  })
-    .select('deviceTokens')
-    .lean();
+  const staff = await staffFor(patientId, [ROLES.DOCTOR, ROLES.STAFF]);
 
   const tokens = staff.flatMap((s) => s.deviceTokens ?? []);
   if (!tokens.length) return { delivered: 0 };
@@ -488,9 +519,7 @@ async function dieticiansFor(patientId, { urgency } = {}) {
     return one ? [one] : [];
   }
 
-  const dieticians = await User.find({ role: ROLES.DIETICIAN, isActive: true })
-    .select('_id deviceTokens')
-    .lean();
+  const dieticians = await staffFor(patientId, ROLES.DIETICIAN);
   if (dieticians.length === 0) return [];
 
   // Only the ones whose scope is the clinic. A dietician with their own named
@@ -663,17 +692,17 @@ export async function notifyClinicOfAppointmentChange(appointment, patientName, 
   // recreate the bottleneck the request path exists to remove. A confirmed or
   // cancelled appointment does reach him — that is his day changing.
   const deskOnly = opts.deskOnly === true;
-  let staff = await User.find({
-    role: deskOnly ? ROLES.STAFF : { $in: [ROLES.DOCTOR, ROLES.STAFF] },
-    isActive: true,
-  })
-    .select('deviceTokens')
-    .lean();
+
+  // Populated on some call paths and a bare id on others.
+  const patientId = appointment.patient?._id ?? appointment.patient ?? null;
+
+  let staff = await staffFor(patientId, deskOnly ? ROLES.STAFF : [ROLES.DOCTOR, ROLES.STAFF]);
 
   // A clinic with no staff account yet is every clinic on its first day. A
-  // request nobody is told about is worse than one that interrupts the doctor.
+  // request nobody is told about is worse than one that interrupts the doctor
+  // — but it is still only this practice's doctor.
   if (deskOnly && staff.length === 0) {
-    staff = await User.find({ role: ROLES.DOCTOR, isActive: true }).select('deviceTokens').lean();
+    staff = await staffFor(patientId, ROLES.DOCTOR);
   }
 
   // A request carries a preferred day and no time. Printing a time for it —
@@ -826,10 +855,20 @@ export async function notifyVisitTomorrow(appointment, { patient, doctorTokens =
   return { delivered: results.reduce((n, r) => n + (r?.delivered ?? 0), 0) };
 }
 
+/**
+ * Tomorrow's list, to the doctors whose day it is.
+ *
+ * ---- One digest per practice, not one digest ---------------------------
+ *
+ * This is a cron over every appointment in the system, so before scoping it
+ * counted them all and told every doctor on the platform the total. A practice
+ * with three patients tomorrow was told it had forty, and the "first at" time
+ * belonged to a clinic on the other side of the city.
+ *
+ * Wrong in both directions at once: it leaks the other practice's volume and it
+ * misinforms about your own.
+ */
 export async function notifyClinicOfTomorrowSchedule(appointments) {
-  const doctors = await User.find({ role: ROLES.DOCTOR, isActive: true }).select('deviceTokens').lean();
-  const tokens = doctors.flatMap((d) => d.deviceTokens ?? []);
-
   // Nothing tomorrow: say nothing.
   //
   // A push every night of a clinic's every closed day, saying that nothing is
@@ -839,18 +878,53 @@ export async function notifyClinicOfTomorrowSchedule(appointments) {
   // reason this exists.
   if (!appointments.length) return { delivered: 0, skipped: 'empty' };
 
-  const first = new Date(appointments[0].scheduledFor).toLocaleTimeString('en-IN', {
-    hour: '2-digit',
-    minute: '2-digit',
-    timeZone: 'Asia/Kolkata',
-  });
+  // Grouped by the practice each appointment's patient belongs to. `null` is
+  // the unknown bucket and keeps the old behaviour — one digest to everybody —
+  // for a database where nothing is enrolled yet.
+  const byPractice = new Map();
+  for (const appt of appointments) {
+    const patientId = appt.patient?._id ?? appt.patient ?? null;
+    const key = patientId ? ((await practiceOfPatient(patientId)) ?? null) : null;
+    if (!byPractice.has(key)) byPractice.set(key, []);
+    byPractice.get(key).push(appt);
+  }
 
-  await deliver({
-    tokens,
-    title: `Tomorrow: ${appointments.length} appointment${appointments.length === 1 ? '' : 's'}`,
-    body: `First at ${first}.`,
-    data: { kind: 'schedule_digest', count: String(appointments.length) },
-  });
+  let delivered = 0;
+
+  for (const [practiceId, theirs] of byPractice) {
+    const ids = await memberIdsOf(practiceId, ROLES.DOCTOR);
+    const doctors = await User.find({
+      role: ROLES.DOCTOR,
+      isActive: true,
+      ...(ids ? { _id: { $in: ids } } : {}),
+    })
+      .select('deviceTokens')
+      .lean();
+
+    const tokens = doctors.flatMap((d) => d.deviceTokens ?? []);
+    if (!tokens.length) continue;
+
+    // Sorted per group: the caller sorted the whole list, and the earliest of
+    // all of them is not the earliest of this practice's.
+    const first = new Date(
+      theirs.reduce((a, b) => (new Date(a.scheduledFor) <= new Date(b.scheduledFor) ? a : b))
+        .scheduledFor,
+    ).toLocaleTimeString('en-IN', {
+      hour: '2-digit',
+      minute: '2-digit',
+      timeZone: 'Asia/Kolkata',
+    });
+
+    const out = await deliver({
+      tokens,
+      title: `Tomorrow: ${theirs.length} appointment${theirs.length === 1 ? '' : 's'}`,
+      body: `First at ${first}.`,
+      data: { kind: 'schedule_digest', count: String(theirs.length) },
+    });
+    delivered += out?.delivered ?? 0;
+  }
+
+  return { delivered };
 }
 
 /**

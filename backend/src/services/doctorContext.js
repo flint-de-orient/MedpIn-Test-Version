@@ -2,6 +2,7 @@ import { User, ROLES } from '../models/User.js';
 import { Membership, MEMBERSHIP_STATUS } from '../models/Membership.js';
 import { Clinic } from '../models/Clinic.js';
 import { conflict } from '../middleware/errors.js';
+import { memberIdsOf } from '../middleware/practiceScope.js';
 
 /**
  * Which doctor a thing belongs to.
@@ -124,12 +125,21 @@ export async function resolveDoctor({
     }
   }
 
-  // 5. The only one there is.
+  // 5. The only one there is — in this practice.
+  //
+  // Unscoped, this asked whether the *platform* had exactly one doctor, and
+  // answered no as soon as a second practice existed. Every solo practice then
+  // got "More than one doctor could be meant here" for a question with one
+  // possible answer, and the one before that it could have picked a stranger.
   //
   // Capped at two: this exists to tell "exactly one" from "more than one", and
-  // reading every doctor on the platform to count them would get slower with
-  // each practice onboarded.
-  const doctors = await User.find({ role: ROLES.DOCTOR, isActive: true })
+  // reading every doctor to count them gets slower with each practice.
+  const mine = await memberIdsOf(practiceId, ROLES.DOCTOR);
+  const doctors = await User.find({
+    role: ROLES.DOCTOR,
+    isActive: true,
+    ...(mine ? { _id: { $in: mine } } : {}),
+  })
     .select('_id name')
     .limit(2)
     .lean();

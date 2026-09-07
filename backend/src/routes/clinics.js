@@ -5,7 +5,7 @@ import { validate, q } from '../middleware/validate.js';
 import { asyncHandler, notFound, badRequest } from '../middleware/errors.js';
 import { audit } from '../middleware/audit.js';
 import { Clinic } from '../models/Clinic.js';
-import { practiceOf } from '../middleware/practiceScope.js';
+import { practiceOf, practiceClinics } from '../middleware/practiceScope.js';
 import { User, ROLES } from '../models/User.js';
 import { generateSlots } from '../services/scheduling.js';
 import { forgetClinicIdentity } from '../services/clinicIdentity.js';
@@ -56,11 +56,30 @@ const clinicBody = z.object({
   sortIndex: z.number().int().optional(),
 });
 
-/** List clinics. Patients see only active ones; clinicians see everything. */
+/**
+ * List clinics. Patients see only active ones; clinicians see inactive too.
+ *
+ * ---- Both halves of that sentence were wrong ---------------------------
+ *
+ * `isClinician(req) ? {} : { isActive: true }` is every location on the
+ * platform. A doctor in a practice created that morning opened the Clinics
+ * screen and read another practice's two addresses, one of them marked
+ * inactive — a building they have no relationship to, its opening days, and
+ * its slot length.
+ *
+ * The patient side leaked the same rows for the same reason. A patient belongs
+ * to a practice through their enrolment, and the clinics they may book at are
+ * that practice's; every other practice's addresses were in the list they pick
+ * from.
+ */
 router.get(
   '/',
   asyncHandler(async (req, res) => {
-    const filter = isClinician(req) ? {} : { isActive: true };
+    const scope = await practiceClinics(req);
+    const filter = {
+      ...scope,
+      ...(isClinician(req) ? {} : { isActive: true }),
+    };
     const clinics = await Clinic.find(filter).sort({ sortIndex: 1, name: 1 });
     res.json({ items: clinics.map((c) => c.toPublic()) });
   }),

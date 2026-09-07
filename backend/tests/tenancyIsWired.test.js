@@ -122,7 +122,18 @@ describe('and every one of those still permits when the practice is unknown', ()
    * take the screen away from the clinic seeing patients right now.
    */
   test('staff scoping', () => {
-    assert.match(doctor, /if \(!practiceId\) return \{\};/);
+    // The rule moved. It lived in doctor.js when the staff list was the only
+    // list of people that was scoped at all; it is now in the shared helper
+    // that the dietician list, the clinic list and every push notification
+    // ask, so this reads the one place instead of one of five copies.
+    const scope = readFileSync(
+      new URL('../src/middleware/practiceScope.js', import.meta.url),
+      'utf8',
+    );
+    assert.match(scope, /export async function memberIdsOf/);
+    assert.match(scope, /if \(!practiceId\) return null;/);
+    assert.match(scope, /if \(!rows\.length && !\(await membershipsExist\(\)\)\) return null;/);
+    assert.match(doctor, /return practiceMembers\(req, ROLES\.STAFF\);/);
   });
 
   test('locations', () => {

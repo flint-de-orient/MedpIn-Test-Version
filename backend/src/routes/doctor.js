@@ -52,6 +52,7 @@ import {
   assertSamePractice,
   practicePatients,
   practicePatientIds,
+  practiceMembers,
 } from '../middleware/practiceScope.js';
 import { enrollmentGate } from '../middleware/authorise.js';
 import { joinPractice } from '../services/memberships.js';
@@ -368,7 +369,14 @@ router.get(
       // being obvious and starts being whoever replied first — a clinical
       // allocation arrived at by accident, and one the patient cannot be told
       // in advance because nobody has made it.
-      User.countDocuments({ role: ROLES.DIETICIAN, isActive: true }),
+      // Scoped for the same reason the list is: a count of other people's
+      // staff is a smaller leak than their names and still not this
+      // practice's number.
+      User.countDocuments({
+        role: ROLES.DIETICIAN,
+        isActive: true,
+        ...(await practiceMembers(req, ROLES.DIETICIAN)),
+      }),
       PatientProfile.countDocuments({
         $or: [{ assignedDietician: null }, { assignedDietician: { $exists: false } }],
         ...profileScope,
@@ -1255,31 +1263,13 @@ router.get(
 /**
  * The staff accounts belonging to the caller's practice.
  *
- * Permissive on unknown, like everything else: no practice on the caller means
- * the membership backfill has not reached them, and restricting would empty the
- * staff list of a clinic running right now.
+ * This used to be the only place in the codebase that scoped people rather than
+ * patients, which is why it was the only list of people that did not leak. It
+ * now delegates to the shared helper so the dietician list, the clinic list and
+ * every push notification get the same answer from the same code.
  */
 async function practiceStaffFilter(req) {
-  const practiceId = await practiceOf(req);
-  if (!practiceId) return {};
-
-  const rows = await Membership.find({
-    practice: practiceId,
-    role: ROLES.STAFF,
-    status: MEMBERSHIP_STATUS.ACTIVE,
-    endedOn: null,
-  })
-    .select('user')
-    .lean();
-
-  // No memberships at all means the backfill has not run, and an empty `$in`
-  // is indistinguishable from a practice with no desk.
-  if (!rows.length) {
-    const anyAnywhere = await Membership.estimatedDocumentCount();
-    if (!anyAnywhere) return {};
-  }
-
-  return { _id: { $in: rows.map((r) => r.user) } };
+  return practiceMembers(req, ROLES.STAFF);
 }
 
 // ---------------------------------------------------------------------------
@@ -1955,13 +1945,22 @@ const serialiseChunk = (c) => ({
 // Dietician assignment
 // ---------------------------------------------------------------------------
 
-/** Dieticians the doctor can assign a patient to. */
+/**
+ * Dieticians the doctor can assign a patient to.
+ *
+ * Scoped, and it was not. This read was `{ role: DIETICIAN, isActive: true }`
+ * with nothing else in it — every dietician on the platform, by name and phone
+ * number, to any doctor who asked. A practice created minutes earlier, with no
+ * patients and no staff of its own, opened this screen onto somebody else's
+ * dietician.
+ */
 router.get(
   '/dieticians',
   // Creating a clinical account outright.
   requireDoctor,
   asyncHandler(async (req, res) => {
-    const items = await User.find({ role: ROLES.DIETICIAN, isActive: true })
+    const scope = await practiceMembers(req, ROLES.DIETICIAN);
+    const items = await User.find({ role: ROLES.DIETICIAN, isActive: true, ...scope })
       .select('name phone avatarAssetId')
       .sort({ name: 1 })
       .lean();
