@@ -2,13 +2,24 @@
 #
 # Build the operator console and ship it.
 #
-# The CSP names the hashes of the inline scripts *this* build emitted, so the
-# export and the policy have to travel together. Uploading one without the other
-# gives a page that loads and then refuses to run its own scripts — which looks
-# like the app is broken and reads nowhere except the browser console.
+# ---- The server runs Apache -------------------------------------------------
 #
-# That coupling is the whole reason this is a script rather than five commands
-# in a document somebody follows at 11pm.
+# nginx is installed on that box and stopped, and it must stay stopped: starting
+# it collides with Apache on 80 and 443 and takes down every site on the server.
+# Earlier versions of this script reloaded nginx and wrote the policy into
+# /etc/nginx/snippets/, which Apache never reads — so the CSP was silently inert
+# rather than wrong, which is worse.
+#
+# ---- Why a script rather than a list of commands ----------------------------
+#
+# The policy names the SHA-256 hashes of the inline scripts that one particular
+# build emitted, so the export and the policy are a single artefact in two
+# files. Upload one without the other and the page loads and then refuses to run
+# its own scripts — which looks like the app is broken and reads nowhere except
+# the browser console.
+#
+# The build runs here, on a laptop. Nothing about the Next toolchain lands on
+# production; what ships is static files.
 #
 #   ./deploy.sh root@vps.example.com
 #   ./deploy.sh root@vps.example.com --dry-run
@@ -26,18 +37,17 @@ fi
 
 API_ORIGIN="${API_ORIGIN:-https://clinq.flintdeorient.in}"
 WEB_ROOT="${WEB_ROOT:-/var/www/medpin-admin}"
-CSP_PATH="${CSP_PATH:-/etc/nginx/snippets/medpin-admin-csp.conf}"
+# Apache reads conf-enabled only for server-wide config; this one is Included
+# by the vhost so it applies to this site alone. See DEPLOY.md.
+CSP_PATH="${CSP_PATH:-/etc/apache2/conf-available/medpin-admin-csp.conf}"
 
 cd "$(dirname "$0")"
 
 echo "==> Building against ${API_ORIGIN}"
 npm ci
 npm run build
-API_ORIGIN="$API_ORIGIN" node scripts/csp.mjs
+API_ORIGIN="$API_ORIGIN" node scripts/csp.mjs --apache
 
-# A build that emitted no inline scripts means the export changed shape and the
-# policy is now allowing nothing it needs to. csp.mjs exits non-zero for that;
-# `set -e` has already stopped us. This is the belt.
 test -s out/csp.conf || { echo "csp.conf is empty — refusing to ship" >&2; exit 1; }
 test -f out/index.html || { echo "no index.html — refusing to ship" >&2; exit 1; }
 
@@ -46,28 +56,43 @@ echo "==> Policy for this build"
 grep -o "script-src[^;]*" out/csp.conf | head -1
 echo
 
-# The policy first. A new policy with an old page refuses scripts the page does
-# not have, which is harmless; an old policy with a new page refuses the ones it
-# does, which is an outage. So the order matters, and this is the safe one.
+echo "==> Checking the server is the one we think it is"
+# Cheap, and it would have caught the four sets of nginx instructions that were
+# written for this box before anybody noticed it does not run nginx.
+ssh "$SERVER" 'set -e
+  if ! command -v apache2ctl >/dev/null 2>&1; then
+    echo "apache2ctl not found — this box may not be the Apache server" >&2; exit 1
+  fi
+  if systemctl is-active --quiet nginx; then
+    echo "nginx is RUNNING. Two servers cannot both hold 80/443." >&2; exit 1
+  fi
+  apache2ctl -M 2>/dev/null | grep -q headers_module || {
+    echo "mod_headers is not enabled. Run: a2enmod headers && systemctl reload apache2" >&2
+    exit 1
+  }'
+
+# The policy first. A new policy against an old page refuses scripts the page
+# does not have, which is harmless; an old policy against a new page refuses the
+# ones it does, which is an outage. Only one of those orders is safe.
 echo "==> Uploading the policy"
 rsync -av $DRY out/csp.conf "${SERVER}:${CSP_PATH}"
 
 echo "==> Uploading the site"
-# --delete so chunks from previous builds do not accumulate forever. Without it
-# a browser holding a stale HTML file keeps finding the old chunks and never
-# notices it should have reloaded.
+# --delete so chunks from previous builds do not accumulate in _next/static
+# forever. Without it a browser holding a stale HTML file keeps finding the old
+# ones and never notices it should have reloaded.
 rsync -av $DRY --delete --exclude csp.conf out/ "${SERVER}:${WEB_ROOT}/"
 
 if [[ -n "$DRY" ]]; then
   echo
-  echo "Dry run. Nothing was written and nginx was not reloaded."
+  echo "Dry run. Nothing was written and Apache was not reloaded."
   exit 0
 fi
 
-echo "==> Reloading nginx"
-# `nginx -t` first: a bad config that is reloaded takes the site down, and a bad
-# config that is merely tested does not.
-ssh "$SERVER" 'nginx -t && systemctl reload nginx'
+echo "==> Reloading Apache"
+# configtest first: a broken config that is reloaded takes down every site on
+# this box, not just this one. A broken config that is merely tested does not.
+ssh "$SERVER" 'apache2ctl configtest && systemctl reload apache2'
 
 echo
 echo "Done. Open the console, sign in, and reload with the browser console open."

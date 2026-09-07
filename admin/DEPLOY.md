@@ -1,7 +1,21 @@
 # Deploying the admin panel
 
+> **Superseded, and the nginx below never applied.**
+>
+> This panel is replaced by the Next.js console in [`../web/`](../web/DEPLOY.md).
+> Use that document.
+>
+> Everything here describing the server is wrong in the same way: **the VPS runs
+> Apache**. nginx is installed there and stopped, and starting it would collide
+> with Apache on 80 and 443 and take down every site on the box. The server block
+> below was never read by anything, so the Content-Security-Policy it sets was
+> not merely misconfigured — it was absent, which looks exactly like a permissive
+> one.
+>
+> Kept only until the old panel is removed. Do not copy configuration out of it.
+
 Static files. No build step, no `npm install`, nothing to compile — copy the
-directory and point nginx at it.
+directory and serve it.
 
 The panel is **off by default**: without `ADMIN_JWT_SECRET` set on the API, every
 route under `/api/v1/admin` answers `404`, and the panel says so plainly rather
