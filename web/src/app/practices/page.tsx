@@ -24,15 +24,32 @@ import { ReasonDialog } from "@/components/form";
 import { PlanDialog } from "@/components/plan-dialog";
 import { MemberDialog } from "@/components/member-dialog";
 import { EditPracticeDialog } from "@/components/edit-practice";
+import { PracticeRegister } from "@/components/practice-register";
 
+/**
+ * One route, two screens.
+ *
+ * `/practices/` is the register; `/practices/?id=…` is one practice. A static
+ * export cannot pre-render `/practices/[id]` without knowing every id at build
+ * time, and a console whose URLs are fixed at build time is a console that
+ * cannot show a practice created afterwards.
+ *
+ * A query parameter costs nothing an operator can see and keeps every link
+ * shareable, which a client-only route would not.
+ */
 export default function Page() {
   // `useSearchParams` suspends, and a static export has no server to fall back
   // on — without this the whole route fails to prerender.
   return (
     <Suspense fallback={<Loading rows={5} />}>
-      <Detail />
+      <Switch />
     </Suspense>
   );
+}
+
+function Switch() {
+  const id = useSearchParams().get("id");
+  return id ? <Detail /> : <PracticeRegister />;
 }
 
 type Ask =
@@ -81,20 +98,6 @@ function Detail() {
     [load],
   );
 
-  if (!id) {
-    return (
-      <Empty
-        title="No practice chosen"
-        hint="Open one from the register."
-        action={
-          <Link href="/" className="text-primary text-xs underline underline-offset-4">
-            Back to practices
-          </Link>
-        }
-      />
-    );
-  }
-
   if (error) return <Failed message={error} retry={() => void load()} />;
   if (!d) return <Loading rows={5} />;
 
@@ -104,7 +107,7 @@ function Detail() {
     <div className="flex flex-col gap-5">
       <div>
         <Link
-          href="/"
+          href="/practices/"
           className="text-muted-foreground hover:text-foreground text-xs transition-colors"
         >
           ← Practices

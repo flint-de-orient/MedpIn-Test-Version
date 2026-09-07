@@ -15,6 +15,8 @@ import {
   activePatientCount,
   everPatientCount,
   platformPatientCount,
+  enrolmentMovement,
+  enrolmentCumulative,
 } from '../services/practiceUsage.js';
 import { signAdminToken, verifyAdminToken, secretsAreSeparate } from '../services/adminTokens.js';
 import {
@@ -841,18 +843,53 @@ router.patch(
 router.get(
   '/overview',
   asyncHandler(async (req, res) => {
-    const weekAgo = new Date(Date.now() - 7 * 86_400_000);
+    const now = Date.now();
+    const since = (days) => new Date(now - days * 86_400_000);
+    const window30 = since(30);
+    const window60 = since(60);
 
-    const [byStatus, byVerification, byPlan, patients, newPractices, staff, admins] =
-      await Promise.all([
-        Practice.aggregate([{ $group: { _id: '$status', count: { $sum: 1 } } }]),
-        Practice.aggregate([{ $group: { _id: '$verification', count: { $sum: 1 } } }]),
-        Practice.aggregate([{ $group: { _id: '$plan', count: { $sum: 1 } } }]),
-        platformPatientCount(),
-        Practice.countDocuments({ createdAt: { $gte: weekAgo } }),
-        Membership.countDocuments({ status: MEMBERSHIP_STATUS.ACTIVE, endedOn: null }),
-        PlatformAdmin.countDocuments({ isActive: true }),
+    /**
+     * A trend is two counts, not a stored series.
+     *
+     * "Up 12% on last month" is the last thirty days against the thirty before
+     * them, computed from `createdAt` on rows that already exist. Keeping a
+     * daily snapshot table would be more precise and would also be a second
+     * source of truth that can drift from the first — and nothing on this
+     * screen needs a resolution finer than "more than before, or fewer".
+     */
+    const movement = async (Model, filter = {}) => {
+      const [current, previous] = await Promise.all([
+        Model.countDocuments({ ...filter, createdAt: { $gte: window30 } }),
+        Model.countDocuments({ ...filter, createdAt: { $gte: window60, $lt: window30 } }),
       ]);
+      return { current, previous };
+    };
+
+    const [
+      byStatus,
+      byVerification,
+      byPlan,
+      patients,
+      staff,
+      locations,
+      admins,
+      practiceMove,
+      staffMove,
+      locationMove,
+      enrolMove,
+    ] = await Promise.all([
+      Practice.aggregate([{ $group: { _id: '$status', count: { $sum: 1 } } }]),
+      Practice.aggregate([{ $group: { _id: '$verification', count: { $sum: 1 } } }]),
+      Practice.aggregate([{ $group: { _id: '$plan', count: { $sum: 1 } } }]),
+      platformPatientCount(),
+      Membership.countDocuments({ status: MEMBERSHIP_STATUS.ACTIVE, endedOn: null }),
+      Clinic.countDocuments({}),
+      PlatformAdmin.countDocuments({ isActive: true }),
+      movement(Practice),
+      movement(Membership, { status: MEMBERSHIP_STATUS.ACTIVE, endedOn: null }),
+      movement(Clinic),
+      enrolmentMovement(window30, window60),
+    ]);
 
     const tally = (rows) => Object.fromEntries(rows.map((r) => [r._id ?? 'unknown', r.count]));
 
@@ -862,8 +899,197 @@ router.get(
       plans: tally(byPlan),
       activeEnrolments: patients,
       staff,
+      locations,
       admins,
-      newPracticesThisWeek: newPractices,
+      trends: {
+        practices: practiceMove,
+        staff: staffMove,
+        locations: locationMove,
+        patients: enrolMove,
+      },
+      newPracticesThisWeek: await Practice.countDocuments({ createdAt: { $gte: since(7) } }),
+    });
+  }),
+);
+
+/**
+ * What is waiting on a person, with enough detail to act on it.
+ *
+ * The brief for this screen is three questions: what is happening, what needs
+ * my attention, what do I do next. The counts above answer the first. This
+ * answers the second, and each item carries the link that answers the third —
+ * an alert that cannot be acted on from where it appears is a worry, not a
+ * task.
+ *
+ * Every item is derived, never stored. A dismissible notification table would
+ * need a rule for when something comes back, and the honest rule is "when it is
+ * still true", which is what recomputing already means.
+ */
+router.get(
+  '/attention',
+  asyncHandler(async (req, res) => {
+    const [pendingVerification, onboarding, weakAdmins, capped] = await Promise.all([
+      Practice.countDocuments({ verification: VERIFICATION.PENDING }),
+      Practice.countDocuments({ status: PRACTICE_STATUS.ONBOARDING }),
+      PlatformAdmin.countDocuments({ isActive: true, totpEnabled: { $ne: true } }),
+      practicesNearCapacity(),
+    ]);
+
+    const items = [];
+
+    if (pendingVerification) {
+      items.push({
+        kind: 'verification',
+        severity: 'waiting',
+        title: `${pendingVerification} practice${pendingVerification === 1 ? '' : 's'} awaiting verification`,
+        detail: 'Nobody can be told they are approved until somebody decides.',
+        href: '/practices/?verification=pending',
+        count: pendingVerification,
+      });
+    }
+
+    if (onboarding) {
+      items.push({
+        kind: 'onboarding',
+        severity: 'waiting',
+        title: `${onboarding} practice${onboarding === 1 ? '' : 's'} still onboarding`,
+        detail: 'Created but never activated. Their staff cannot sign in yet.',
+        href: '/practices/?status=onboarding',
+        count: onboarding,
+      });
+    }
+
+    for (const p of capped) {
+      items.push({
+        kind: 'capacity',
+        // At the cap is a refusal happening now; near it is a warning.
+        severity: p.used >= p.cap ? 'stopped' : 'waiting',
+        title:
+          p.used >= p.cap
+            ? `${p.name} has reached its patient limit`
+            : `${p.name} is near its patient limit`,
+        detail: `${p.used} of ${p.cap}. Registration is refused at the cap, with the number named.`,
+        href: `/practices/?id=${p.id}`,
+        count: p.used,
+      });
+    }
+
+    if (weakAdmins) {
+      items.push({
+        kind: 'security',
+        severity: 'waiting',
+        title: `${weakAdmins} administrator${weakAdmins === 1 ? ' has' : 's have'} no second factor`,
+        detail: 'A password alone stands between anyone who learns it and every practice.',
+        href: '/admins/',
+        count: weakAdmins,
+      });
+    }
+
+    res.json({ items });
+  }),
+);
+
+/**
+ * Practices at or approaching their patient cap.
+ *
+ * Only those with a cap set, which today is none of them — a practice with no
+ * limit cannot be near one, and reporting "0 of unlimited" as a warning would
+ * make the whole section noise on day one.
+ */
+async function practicesNearCapacity(threshold = 0.8) {
+  const capped = await Practice.find({ 'limits.patients': { $ne: null } })
+    .select('name limits')
+    .lean();
+  if (!capped.length) return [];
+
+  const rows = await Promise.all(
+    capped.map(async (p) => ({
+      id: String(p._id),
+      name: p.name,
+      cap: p.limits.patients,
+      used: await activePatientCount(p._id),
+    })),
+  );
+
+  return rows
+    .filter((r) => r.cap > 0 && r.used / r.cap >= threshold)
+    .sort((a, b) => b.used / b.cap - a.used / a.cap);
+}
+
+/**
+ * Growth, month by month.
+ *
+ * ---- Cumulative, not new-per-month ---------------------------------------
+ *
+ * "How many practices exist" is the question an operator actually has. A bar
+ * chart of sign-ups per month answers a different one, and reads as a collapse
+ * whenever a good month is followed by an ordinary one.
+ *
+ * ---- Twelve buckets, built from createdAt --------------------------------
+ *
+ * No snapshot table. A second store of the same fact drifts from the first, and
+ * the first is already here. The cost is that a deleted row rewrites history,
+ * which is acceptable when nothing here is ever deleted.
+ */
+router.get(
+  '/analytics',
+  validate({ query: z.object({ months: z.coerce.number().int().min(3).max(24).default(12) }) }),
+  asyncHandler(async (req, res) => {
+    const months = q(req).months;
+
+    // Month starts, oldest first. A clinic-local boundary would matter for a
+    // daily chart; at this resolution it does not.
+    const now = new Date();
+    const starts = [];
+    for (let i = months - 1; i >= 0; i -= 1) {
+      starts.push(new Date(now.getFullYear(), now.getMonth() - i, 1));
+    }
+
+    const endOfRange = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+
+    const [practices, memberships, locations, patients, byPlan, capped] = await Promise.all([
+      Practice.find({}).select('createdAt status').lean(),
+      Membership.find({ status: MEMBERSHIP_STATUS.ACTIVE, endedOn: null })
+        .select('createdAt')
+        .lean(),
+      Clinic.find({}).select('createdAt').lean(),
+      enrolmentCumulative(starts, endOfRange),
+      Practice.aggregate([{ $group: { _id: '$plan', count: { $sum: 1 } } }]),
+      Practice.find({ 'limits.patients': { $ne: null } }).select('name limits').lean(),
+    ]);
+
+    const endOf = (i) => starts[i + 1] ?? endOfRange;
+
+    /** How many existed at the end of each month. */
+    const cumulative = (rows) =>
+      starts.map((_, i) => rows.filter((r) => new Date(r.createdAt) < endOf(i)).length);
+
+    const utilisation = await Promise.all(
+      capped.map(async (p) => ({
+        id: String(p._id),
+        name: p.name,
+        cap: p.limits.patients,
+        used: await activePatientCount(p._id),
+      })),
+    );
+
+    res.json({
+      months: starts.map((d) => d.toISOString().slice(0, 7)),
+      series: {
+        practices: cumulative(practices),
+        staff: cumulative(memberships),
+        locations: cumulative(locations),
+        patients,
+      },
+      status: {
+        active: practices.filter((p) => p.status === PRACTICE_STATUS.ACTIVE).length,
+        onboarding: practices.filter((p) => p.status === PRACTICE_STATUS.ONBOARDING).length,
+        suspended: practices.filter((p) => p.status === PRACTICE_STATUS.SUSPENDED).length,
+      },
+      plans: Object.fromEntries(byPlan.map((r) => [r._id ?? 'unknown', r.count])),
+      // Only practices with a cap. One without cannot be near a limit, and
+      // reporting "0 of unlimited" would make the section noise.
+      utilisation: utilisation.sort((a, b) => b.used / b.cap - a.used / a.cap),
     });
   }),
 );

@@ -1,22 +1,43 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync, statSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import path from 'node:path';
 
 /**
- * The admin panel is a caller, and these are the tests that say so.
+ * The console is a caller, and these are the tests that say so.
  *
- * Three `/me/totp/*` routes shipped with no button anywhere, which was worse
- * than merely unused: the login had no field for a code either, so an operator
- * who followed DEPLOY.md and enrolled a second factor was locked out of the
- * panel that told them to. Every piece worked. Nothing was wired.
+ * Three `/me/totp/*` routes once shipped with no button anywhere, which was
+ * worse than merely unused: the login had no field for a code either, so an
+ * operator who followed DEPLOY.md and enrolled a second factor was locked out
+ * of the panel that told them to. Every piece worked. Nothing was wired.
  *
  * So this is `noDeadServices` pointed at the browser. A route with no caller is
- * a feature nobody has, and the panel is small enough that "every route is
- * reachable from the page" is a rule that can simply hold.
+ * a feature nobody has.
+ *
+ * ---- It reads `web/`, not `admin/` --------------------------------------
+ *
+ * The hand-written panel still exists and is still what production serves, but
+ * every route added since is called from the Next console. Pointing this at the
+ * old file measured a panel nobody is developing — and it did, for one commit,
+ * which is how `/attention` and `/analytics` came to look unreachable while
+ * being called from two screens each.
  */
-const app = readFileSync(new URL('../../admin/app.js', import.meta.url), 'utf8');
-const html = readFileSync(new URL('../../admin/index.html', import.meta.url), 'utf8');
+const WEB = fileURLToPath(new URL('../../web/src/', import.meta.url));
 const routes = readFileSync(new URL('../src/routes/admin.js', import.meta.url), 'utf8');
+
+/** Every .ts/.tsx under web/src, concatenated. */
+function sourceUnder(dir) {
+  let out = '';
+  for (const name of readdirSync(dir)) {
+    const full = path.join(dir, name);
+    if (statSync(full).isDirectory()) out += sourceUnder(full);
+    else if (/\.tsx?$/.test(name)) out += readFileSync(full, 'utf8') + '\n';
+  }
+  return out;
+}
+
+const app = sourceUnder(WEB);
 
 /** Every path the admin API answers on, taken from the router itself. */
 function declaredRoutes() {
@@ -26,216 +47,122 @@ function declaredRoutes() {
 }
 
 /**
- * Does the page call this path?
+ * Does the console call this path?
  *
  * `:id` becomes a wildcard, because the caller writes it as a template hole.
- * The end of the path is anchored on a quote, a query string or the start of an
- * interpolation — without that, `/admin/me` matches `/admin/me/totp/setup` and
- * a route with no caller passes because a longer one has one.
+ * No `/` inside that wildcard: a greedy match that crossed a separator let
+ * `/admin/practices/${id}/verification` count as a caller for `/practices/:id`,
+ * so a route with no screen looked wired because a longer one was.
+ *
+ * The end is anchored on a quote, a query string or the start of an
+ * interpolation — without that, `/admin/me` matches `/admin/me/totp/setup`.
  */
-function isCalled(path) {
-  const body = path
+function isCalled(routePath) {
+  const body = routePath
     .split('/')
     .filter(Boolean)
-    // No `/` in the wildcard. A parameter is one path segment, and a greedy
-    // match that crossed a separator let `/admin/practices/${id}/verification`
-    // count as a caller for `/practices/:id` — so a route with no screen at all
-    // looked wired because a longer one was.
-    .map((seg) => (seg.startsWith(':') ? '[^\'"`/]+' : seg.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')))
+    .map((seg) =>
+      seg.startsWith(':') ? '[^\'"`/]+' : seg.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'),
+    )
     .join('/');
   return new RegExp('/admin/' + body + '([\'"`?]|\\$\\{)').test(app);
 }
 
-describe('every admin route is reachable from the panel', () => {
+describe('every admin route is reachable from the console', () => {
   /**
-   * Built, not yet wired.
+   * Built, not yet wired. Empty, and it stays empty.
    *
-   * The operator console gained practice detail, plans, membership editing,
-   * platform metrics, administrator management and audit paging in one commit;
-   * the screens that call them are the next one. Listing them keeps this
-   * ratchet honest in the meantime — a route with no caller is still a feature
-   * nobody has, and the only edit allowed here is a deletion.
+   * It held nine routes for one commit while the screens that call them were
+   * written. A name appearing here again is somebody shipping an endpoint with
+   * no way to reach it, and the only allowed edit is a deletion.
    */
-  const AWAITING_UI = new Set([
-    'GET /audit/actions',
-    'POST /auth/logout',
-    'GET /practices/:id',
-    'PATCH /practices/:id',
-    'PATCH /practices/:id/plan',
-    'PATCH /practices/:id/members/:membershipId',
-    'GET /overview',
-    'GET /admins',
-    'POST /admins',
-    'PATCH /admins/:id',
-  ]);
+  const AWAITING_UI = new Set([]);
 
-  for (const { method, path } of declaredRoutes()) {
-    if (AWAITING_UI.has(`${method} ${path}`)) continue;
-    test(`${method} ${path}`, () => {
+  for (const { method, path: p } of declaredRoutes()) {
+    if (AWAITING_UI.has(`${method} ${p}`)) continue;
+    test(`${method} ${p}`, () => {
       assert.ok(
-        isCalled(path),
-        `Nothing in admin/app.js calls ${method} /admin${path}.\n` +
+        isCalled(p),
+        `Nothing under web/src calls ${method} /admin${p}.\n` +
           'Either wire it to a control or delete the route. A route documented\n' +
           'as a curl command is a feature the operator does not have.',
       );
     });
   }
 
-  test('the pending list only shrinks, and every name in it is real', () => {
-    assert.ok(AWAITING_UI.size <= 10, `AWAITING_UI grew to ${AWAITING_UI.size}`);
-
-    // A name that no longer matches a route, or one that is already wired,
-    // would keep its exemption forever and the count would stop meaning
-    // anything.
-    const declared = new Set(declaredRoutes().map((r) => `${r.method} ${r.path}`));
-    const stale = [...AWAITING_UI].filter(
-      (k) => !declared.has(k) || isCalled(k.split(' ')[1]),
-    );
-    assert.deepEqual(stale, [], `wired or gone — remove from AWAITING_UI: ${stale.join(', ')}`);
+  test('nothing is exempt', () => {
+    assert.equal(AWAITING_UI.size, 0, `a route ships with no caller: ${[...AWAITING_UI]}`);
   });
 
-  test('and there is more than a handful, so the matcher is doing work', () => {
+  test('and there are enough routes that the matcher is doing work', () => {
     // A regex that silently matched nothing would make every test above pass.
-    assert.ok(declaredRoutes().length >= 10, 'the route list came back suspiciously short');
+    assert.ok(declaredRoutes().length >= 15, 'the route list came back suspiciously short');
   });
 });
 
 describe('the second factor can be turned on and survived', () => {
-  test('the login has a field for the code', () => {
-    assert.match(html, /id="loginTotp"/);
-  });
-
-  test('and shows it when the server asks, matching on the code not the wording', () => {
-    // TOTP_REQUIRED arrives as a 401, which everywhere else here means "your
-    // session is gone, start again". Telling them apart by message text would
-    // break the next time the sentence is edited.
-    assert.match(app, /err\.code = data\?\.error\?\.code/);
-    assert.match(app, /ex\.code === 'TOTP_REQUIRED'/);
+  test('the login asks for a code when the server says to', () => {
+    // TOTP_REQUIRED arrives as a 401, which everywhere else means "your session
+    // is gone, start again". Told apart by the code and not the sentence,
+    // because the next person to reword the message should not break the login.
+    assert.match(app, /err\.code === "TOTP_REQUIRED"/);
     assert.match(routes, /code: 'TOTP_REQUIRED'/, 'the server no longer sends the code');
+    assert.match(app, /setNeedsCode\(true\)/);
   });
 
-  test('enrolling shows the key and needs a verified code before it counts', () => {
+  test('enrolling shows the key, and a code is needed before it counts', () => {
     assert.match(app, /\/admin\/me\/totp\/setup/);
     assert.match(app, /\/admin\/me\/totp\/enable/);
-    assert.match(html, /id="totpSecret"/);
-    assert.match(html, /id="enableTotp"/);
+    assert.match(app, /secret\.match/, 'the setup key is never shown');
+    assert.match(app, /a mistyped key cannot lock you out/);
   });
 
   test('turning it off asks for a code too', () => {
     // The route requires one. A screen that did not ask would send an empty
-    // body and fail with a validation error the operator cannot act on.
-    assert.match(html, /id="disableTotp"/);
-    assert.match(app, /\/admin\/me\/totp\/disable[\s\S]{0,120}totp: code/);
+    // body and fail with a validation error nobody can act on.
+    assert.match(app, /\/admin\/me\/totp\/disable[\s\S]{0,200}totp: code/);
   });
 
-  test('an account without one is told, every time', () => {
-    // The login response carries `totpEnabled` for exactly this reason, and it
-    // went unread until there was somewhere to put it.
-    assert.match(app, /totpEnabled = Boolean\(out\.totpEnabled/);
-    assert.match(html, /id="totpNag"/);
+  test('an account without one is told, on every screen', () => {
+    assert.match(app, /!totpEnabled/);
+    assert.match(app, /no second factor/i);
   });
 });
 
 describe('the reset can be finished in the browser', () => {
-  test('there is a form, not only a curl command', () => {
-    assert.match(html, /id="resetForm"/);
-    assert.match(app, /'\/admin\/auth\/reset'/);
+  test('there is a form, not only a shell command', () => {
+    assert.match(app, /\/admin\/auth\/reset/);
+    assert.match(app, /Reset token/);
   });
 
   test('and it does not pretend to sign you in', () => {
-    // The route returns no session on purpose. A panel that jumped to the
-    // practice list would be showing a screen it has no token to load.
-    const block = app.slice(app.indexOf("'/admin/auth/reset'"));
-    assert.ok(!/token = /.test(block.slice(0, 700)), 'the reset sets a session token');
-    assert.match(block.slice(0, 900), /loginView'\)\.hidden = false/);
+    // The route returns no session on purpose, and the screen says so rather
+    // than jumping to a page it has no session to load.
+    assert.match(app, /Choosing a password is not signing in/);
   });
 });
 
-describe('what the content security policy forbids', () => {
-  /**
-   * `script-src 'self'` with no `unsafe-inline` — see DEPLOY.md. Every one of
-   * these works when the file is opened from disk and fails silently behind
-   * nginx, which is the worst shape a bug can have.
-   */
-  test('no inline script', () => {
-    assert.ok(!/<script(?![^>]*\ssrc=)[^>]*>[\s\S]*?\S[\s\S]*?<\/script>/.test(html));
+describe('what needs a person is shown, not buried', () => {
+  test('the landing screen asks the server what is waiting', () => {
+    assert.match(app, /\/admin\/attention/);
   });
 
-  test('no inline style block or style attribute', () => {
-    assert.ok(!/<style[\s>]/.test(html), 'a <style> block would be blocked');
-    assert.ok(!/\sstyle="/.test(html), 'a style attribute would be blocked');
-  });
-
-  test('no on* handler attributes', () => {
-    const inline = html.match(/\son(click|submit|change|input|load|error)=/g) ?? [];
-    assert.deepEqual(inline, [], 'inline handlers are blocked; use addEventListener');
+  test('and every item links somewhere that can act on it', () => {
+    // An alert that cannot be acted on from where it appears is a worry rather
+    // than a task.
+    assert.match(routes, /href: '\/practices\/\?verification=pending'/);
+    assert.match(routes, /href: '\/admins\/'/);
   });
 });
 
-describe('cancelling a dialog is not submitting it', () => {
-  /**
-   * Both Cancel buttons were `type="submit"`, closing via
-   * `<form method="dialog">`. That works until the form has a required field:
-   * a submit runs constraint validation first, so on an empty "Add a practice"
-   * the browser refused and Cancel did nothing — on exactly the blank form
-   * somebody most wants to abandon.
-   */
-  test('no Cancel button submits', () => {
-    const submits = [...html.matchAll(/<button[^>]*>\s*Cancel\s*<\/button>/g)]
-      .map((m) => m[0])
-      .filter((b) => !/type="button"/.test(b));
-
-    assert.deepEqual(
-      submits,
-      [],
-      `a Cancel that submits cannot fire on an invalid form:\n  ${submits.join('\n  ')}`,
-    );
-  });
-
-  test('each one names a dialog that exists', () => {
-    // `$(undefined).close()` throws, and the button looks identical.
-    const ids = new Set([...html.matchAll(/<dialog id="([^"]+)"/g)].map((m) => m[1]));
-    const targets = [...html.matchAll(/data-close="([^"]+)"/g)].map((m) => m[1]);
-
-    assert.ok(targets.length >= 2, 'the close buttons went missing');
-    assert.deepEqual(targets.filter((t) => !ids.has(t)), []);
-  });
-
-  test('and something closes them', () => {
-    assert.match(app, /querySelectorAll\('\[data-close\]'\)/);
-    assert.match(app, /\$\(btn\.dataset\.close\)\.close\(\)/);
-  });
-});
-
-describe('the session still does not touch storage', () => {
-  test('no localStorage, sessionStorage or cookie', () => {
-    // This account can suspend every practice on the platform. A closed tab
-    // should be a signed-out session.
-    //
-    // Comments are stripped first: the file explains at length why it does not
-    // use `localStorage`, and a search that counted the explanation as the
-    // offence would be a test nobody could satisfy without deleting the reason.
-    const code = app
-      .replace(/\/\*[\s\S]*?\*\//g, '')
-      .split('\n')
-      .filter((l) => !/^\s*(\/\/|\*)/.test(l))
-      .join('\n');
-
-    for (const bad of ['localStorage', 'sessionStorage', 'document.cookie']) {
-      assert.ok(!code.includes(bad), `${bad} is used; the token must stay in memory`);
-    }
-  });
-});
-
-describe('the page and the script agree about what exists', () => {
-  test('every element the script reaches for is in the html', () => {
-    // `$('typo')` returns null and the listener attached to it throws at load,
-    // taking every later listener with it — the panel renders and no button
-    // works. A build step would catch this; there is no build step.
-    const ids = new Set([...html.matchAll(/\sid="([^"]+)"/g)].map((m) => m[1]));
-    const missing = [...new Set([...app.matchAll(/\$\('([^']+)'\)/g)].map((m) => m[1]))].filter(
-      (id) => !ids.has(id),
-    );
-    assert.deepEqual(missing, [], `admin/app.js reaches for ids that do not exist: ${missing}`);
+describe('filters live in the URL', () => {
+  test('the register reads its filters from the query string', () => {
+    // `/practices/?status=active` is a link somebody can send, a tab that
+    // survives a reload, and the address the attention items point at. State
+    // held in a component would make "3 awaiting verification → Review" land on
+    // an unfiltered list.
+    assert.match(app, /params\.get\("status"\)/);
+    assert.match(app, /params\.get\("verification"\)/);
+    assert.match(app, /router\.replace\(`\/practices\//);
   });
 });

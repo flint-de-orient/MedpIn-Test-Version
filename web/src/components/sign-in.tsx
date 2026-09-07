@@ -5,6 +5,7 @@ import { api, ApiError } from "@/lib/api";
 import { useSession } from "@/lib/session";
 import type { LoginResult } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import { Wordmark } from "@/components/icons";
 
 /**
  * The way in, and the way back in.
@@ -20,9 +21,9 @@ export function SignIn() {
   return (
     <div className="flex min-h-full flex-1 flex-col">
       <header className="border-border border-b px-5 py-3">
-        <div className="mx-auto flex max-w-[78rem] items-baseline gap-1.5 tracking-tight">
-          <span className="text-[15px] font-bold">MedPin</span>
-          <span className="text-muted-foreground text-[11px] tracking-[0.08em] uppercase">
+        <div className="mx-auto flex max-w-[78rem] items-center gap-2.5">
+          <Wordmark className="h-6 w-auto" />
+          <span className="border-border text-muted-foreground border-l pl-2.5 text-[11px] tracking-[0.08em] uppercase">
             operator
           </span>
         </div>

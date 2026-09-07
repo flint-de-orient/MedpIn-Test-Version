@@ -39,3 +39,40 @@ export async function everPatientCount(practiceId) {
 export async function platformPatientCount() {
   return Enrollment.countDocuments({ status: ENROLLMENT_STATUS.ACTIVE });
 }
+
+/**
+ * New enrolments in two adjacent windows, for a trend.
+ *
+ * Counts only. Same boundary as the rest of this module: there is no function
+ * here that can return who.
+ */
+export async function enrolmentMovement(from, previousFrom) {
+  const [current, previous] = await Promise.all([
+    Enrollment.countDocuments({ createdAt: { $gte: from } }),
+    Enrollment.countDocuments({ createdAt: { $gte: previousFrom, $lt: from } }),
+  ]);
+  return { current, previous };
+}
+
+/**
+ * How many enrolments existed at the end of each month.
+ *
+ * Takes the boundaries rather than deciding them, so the caller keeps its own
+ * calendar and this module keeps its rule: it hands back counts, never rows.
+ *
+ * An earlier version returned a closure to defer the bucketing. That was one
+ * cleverness too many — a function arriving through a destructured `Promise.all`
+ * reads as a value until it is called, and the helper checker was right not to
+ * recognise it.
+ */
+export async function enrolmentCumulative(starts, end) {
+  const rows = await Enrollment.find({ createdAt: { $gte: starts[0] } })
+    .select('createdAt')
+    .lean();
+  const before = await Enrollment.countDocuments({ createdAt: { $lt: starts[0] } });
+
+  return starts.map((_, i) => {
+    const boundary = starts[i + 1] ?? end;
+    return before + rows.filter((r) => new Date(r.createdAt) < boundary).length;
+  });
+}

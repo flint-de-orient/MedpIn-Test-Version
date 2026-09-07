@@ -80,13 +80,28 @@ export type PracticeDetail = {
   members: Member[];
 };
 
+export type Movement = { current: number; previous: number };
+
 export type Overview = {
   practices: Record<string, number>;
   verification: Record<string, number>;
   plans: Record<string, number>;
   activeEnrolments: number;
   staff: number;
+  locations: number;
   admins: number;
+  /**
+   * The last thirty days against the thirty before them, computed from
+   * `createdAt` rather than a stored series. Nothing on these screens needs a
+   * resolution finer than "more than before, or fewer", and a snapshot table
+   * would be a second source of truth that can drift from the first.
+   */
+  trends: {
+    practices: Movement;
+    staff: Movement;
+    locations: Movement;
+    patients: Movement;
+  };
   newPracticesThisWeek: number;
 };
 

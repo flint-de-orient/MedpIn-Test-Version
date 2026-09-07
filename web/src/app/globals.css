@@ -56,144 +56,150 @@
 }
 
 /* ---------------------------------------------------------------------------
- * MedPin operator console — the palette.
+ * MedPin operator console — the palette, taken from the phone app.
  *
- * Not shadcn's neutral grey, and deliberately not the generic SaaS indigo. The
- * accent is #003399, carried over from the clinic app so an operator moving
- * between the two reads them as one product rather than two vendors.
+ * These are the same hex values as mobile/lib/core/theme/. Not "inspired by":
+ * the same numbers, so a doctor who uses the app and an operator who uses this
+ * are looking at one product rather than two that were briefed similarly.
  *
- * ---- Light is paper. Dark is an instrument. -----------------------------
+ * Written as hex rather than converted to OKLCH for exactly that reason — a
+ * converted value is a value somebody has to re-derive to check, and the two
+ * files drift the first time anybody rounds differently.
  *
- * The two are not one palette inverted. Light mode is warm off-white with near
- * black text — a register, something printed and filed. Dark mode is a cool
- * slate with the accent lifted well past its light value, because #003399 on a
- * dark ground is unreadable and "the same blue" would be the wrong loyalty.
+ * ---- Where the app's own reasoning is preserved -------------------------
  *
- * Every neutral carries a trace of the accent hue (265) rather than being pure
- * grey. Pure #888 beside a saturated navy looks like two unrelated decisions.
+ * The app pulls its light surfaces back to near-neutral on purpose: Material
+ * derives every surface from the seed, and a saturated blue primary washes the
+ * whole light theme faintly blue — fine for a brand app, wrong for a clinical
+ * one. That decision is carried over rather than re-litigated here.
+ *
+ * The accent is #003399 in light and #4DA3FF in dark, which is the app's own
+ * `primary` / `primaryDark` pair. Keeping one hex across both themes would be
+ * loyalty to a number rather than to the thing it was chosen to do; #003399 on
+ * a dark ground is a hole in the screen.
  * ------------------------------------------------------------------------- */
 
 :root {
-  /* Paper, and the two surfaces that sit on it. Three levels, no more: the
-     ground, a raised surface, and a recessed one. A fourth is where a layout
-     starts looking like tabs inside tabs. */
-  --background: oklch(0.985 0.002 265);
-  --foreground: oklch(0.185 0.012 265);
+  /* surface / surfaceContainerLowest / surfaceContainer */
+  --background: #fbfcfd;
+  --foreground: #111827;
 
-  --card: oklch(1 0 0);
-  --card-foreground: var(--foreground);
-  --popover: oklch(1 0 0);
-  --popover-foreground: var(--foreground);
+  --card: #ffffff;
+  --card-foreground: #111827;
+  --popover: #ffffff;
+  --popover-foreground: #111827;
 
-  /* #003399. Reserved for state and for the one primary action on a screen —
-     never for decoration, which is how an accent stops meaning anything. */
-  --primary: oklch(0.36 0.168 265);
-  --primary-foreground: oklch(0.99 0.002 265);
+  /* AppColors.primary */
+  --primary: #003399;
+  --primary-foreground: #ffffff;
 
-  --secondary: oklch(0.955 0.004 265);
-  --secondary-foreground: oklch(0.28 0.02 265);
+  --secondary: #f2f5f8;
+  --secondary-foreground: #111827;
 
-  --muted: oklch(0.962 0.004 265);
-  /* 4.9:1 on --background. Supporting text is de-emphasised by colour rather
-     than by shrinking it, so it stays legible on a clinic laptop. */
-  --muted-foreground: oklch(0.505 0.017 265);
+  --muted: #f7f9fb;
+  /* AppColors/Tokens.inkMuted — 4.9:1 on the ground. Supporting text is
+     de-emphasised by colour, not by shrinking it, so it stays legible on a
+     clinic laptop in a bright room. */
+  --muted-foreground: #545e72;
 
-  --accent: oklch(0.945 0.014 265);
-  --accent-foreground: oklch(0.32 0.12 265);
+  /* AppColors.accentSoft, with the app's accent for the text on it. */
+  --accent: #f0f7ff;
+  --accent-foreground: #003399;
 
-  --destructive: oklch(0.505 0.192 27);
-  --destructive-foreground: oklch(0.99 0 0);
+  --destructive: #b91c1c;
+  --destructive-foreground: #ffffff;
 
-  /* The three states a practice can be in, plus the one that needs a person.
-     Named for what they mean here, not for the colour, so a row reads as a
-     decision rather than as a hue. */
-  --ok: oklch(0.46 0.108 155);
-  --ok-tint: oklch(0.955 0.028 155);
-  --waiting: oklch(0.545 0.132 68);
-  --waiting-tint: oklch(0.965 0.038 78);
-  --stopped: oklch(0.505 0.192 27);
-  --stopped-tint: oklch(0.962 0.024 27);
+  /* The app's semantic trio, under names that say what they mean here: a
+     practice that is running, one waiting on a person, one stopped. */
+  --ok: #076b3c;
+  --ok-tint: #e3f5ec;
+  --waiting: #b45309;
+  --waiting-tint: #fef3c7;
+  --stopped: #b91c1c;
+  --stopped-tint: #fde8e8;
 
-  --border: oklch(0.905 0.006 265);
-  /* One step darker than --border: a hairline dividing rows inside a table is
-     doing less work than the line around the table. */
-  --border-strong: oklch(0.855 0.008 265);
-  --input: oklch(0.895 0.006 265);
-  --ring: oklch(0.36 0.168 265);
+  /* outlineVariant, and Tokens.line one step softer for rows inside a table. */
+  --border: #dde3ea;
+  --border-strong: #cbd4de;
+  --input: #dde3ea;
+  --ring: #003399;
 
   /* 6px. Sharp enough to read as an instrument; a 16px radius on a data table
-     is the single clearest tell of a template. */
+     is the clearest single tell of a template. */
   --radius: 0.375rem;
 
-  --sidebar: oklch(0.972 0.004 265);
-  --sidebar-foreground: var(--foreground);
-  --sidebar-primary: var(--primary);
-  --sidebar-primary-foreground: var(--primary-foreground);
-  --sidebar-accent: var(--accent);
-  --sidebar-accent-foreground: var(--accent-foreground);
-  --sidebar-border: var(--border);
-  --sidebar-ring: var(--ring);
+  --sidebar: #f7f9fb;
+  --sidebar-foreground: #111827;
+  --sidebar-primary: #003399;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #f0f7ff;
+  --sidebar-accent-foreground: #003399;
+  --sidebar-border: #dde3ea;
+  --sidebar-ring: #003399;
 
-  --chart-1: oklch(0.36 0.168 265);
-  --chart-2: oklch(0.52 0.115 235);
-  --chart-3: oklch(0.63 0.09 210);
-  --chart-4: oklch(0.72 0.075 190);
-  --chart-5: oklch(0.80 0.055 175);
+  /* A ramp from the brand blue outward, so four series on one chart stay
+     related instead of looking like four different products. */
+  --chart-1: #003399;
+  --chart-2: #1d6fd0;
+  --chart-3: #4da3ff;
+  --chart-4: #38a3a5;
+  --chart-5: #7d8fa8;
 }
 
 .dark {
-  --background: oklch(0.165 0.012 265);
-  --foreground: oklch(0.945 0.004 265);
+  /* AppColors.surfaceDark and the app's surfaceContainer ladder. */
+  --background: #141719;
+  --foreground: #e6edf3;
 
-  --card: oklch(0.205 0.014 265);
-  --card-foreground: var(--foreground);
-  --popover: oklch(0.225 0.015 265);
-  --popover-foreground: var(--foreground);
+  --card: #16202b;
+  --card-foreground: #e6edf3;
+  --popover: #1b2631;
+  --popover-foreground: #e6edf3;
 
-  /* Lifted a long way. #003399 on this ground is a hole in the screen, and
-     keeping "the same blue" would be loyalty to a hex code rather than to the
-     thing it was chosen to do. */
-  --primary: oklch(0.70 0.145 262);
-  --primary-foreground: oklch(0.17 0.02 265);
+  /* AppColors.primaryDark / the app's onPrimary. */
+  --primary: #4da3ff;
+  --primary-foreground: #001b3d;
 
-  --secondary: oklch(0.262 0.015 265);
-  --secondary-foreground: oklch(0.93 0.006 265);
+  --secondary: #212d39;
+  --secondary-foreground: #e6edf3;
 
-  --muted: oklch(0.255 0.014 265);
-  --muted-foreground: oklch(0.712 0.018 265);
+  --muted: #1b2631;
+  --muted-foreground: #a3b2c0;
 
-  --accent: oklch(0.285 0.032 265);
-  --accent-foreground: oklch(0.86 0.07 262);
+  --accent: #13203a;
+  --accent-foreground: #8cc2ff;
 
-  --destructive: oklch(0.695 0.168 24);
-  --destructive-foreground: oklch(0.16 0.01 265);
+  --destructive: #f87171;
+  --destructive-foreground: #141719;
 
-  --ok: oklch(0.735 0.128 158);
-  --ok-tint: oklch(0.268 0.045 158);
-  --waiting: oklch(0.795 0.128 80);
-  --waiting-tint: oklch(0.278 0.045 78);
-  --stopped: oklch(0.715 0.152 24);
-  --stopped-tint: oklch(0.272 0.055 24);
+  /* The app's *Light variants for the foreground and *BgDark for the tint —
+     its own pairing, not a guess at one. */
+  --ok: #34d399;
+  --ok-tint: #0c2a1e;
+  --waiting: #fbbf24;
+  --waiting-tint: #3a2a0a;
+  --stopped: #f87171;
+  --stopped-tint: #3f1414;
 
-  --border: oklch(0.298 0.013 265);
-  --border-strong: oklch(0.352 0.015 265);
-  --input: oklch(0.322 0.014 265);
-  --ring: oklch(0.70 0.145 262);
+  --border: #2c3945;
+  --border-strong: #43525f;
+  --input: #43525f;
+  --ring: #4da3ff;
 
-  --sidebar: oklch(0.188 0.013 265);
-  --sidebar-foreground: var(--foreground);
-  --sidebar-primary: var(--primary);
-  --sidebar-primary-foreground: var(--primary-foreground);
-  --sidebar-accent: var(--accent);
-  --sidebar-accent-foreground: var(--accent-foreground);
-  --sidebar-border: var(--border);
-  --sidebar-ring: var(--ring);
+  --sidebar: #121a23;
+  --sidebar-foreground: #e6edf3;
+  --sidebar-primary: #4da3ff;
+  --sidebar-primary-foreground: #001b3d;
+  --sidebar-accent: #13203a;
+  --sidebar-accent-foreground: #8cc2ff;
+  --sidebar-border: #2c3945;
+  --sidebar-ring: #4da3ff;
 
-  --chart-1: oklch(0.70 0.145 262);
-  --chart-2: oklch(0.68 0.105 232);
-  --chart-3: oklch(0.70 0.085 205);
-  --chart-4: oklch(0.74 0.070 188);
-  --chart-5: oklch(0.79 0.055 172);
+  --chart-1: #4da3ff;
+  --chart-2: #6fbaff;
+  --chart-3: #38a3a5;
+  --chart-4: #5ec4c6;
+  --chart-5: #a3b2c0;
 }
 
 @layer base {
