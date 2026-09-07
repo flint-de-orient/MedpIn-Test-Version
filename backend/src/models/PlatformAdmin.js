@@ -70,6 +70,35 @@ const platformAdminSchema = new mongoose.Schema(
     failedAttempts: { type: Number, default: 0 },
     lockedUntil: { type: Date, default: null },
 
+    /**
+     * Passkeys, as an alternative second factor to the code from an app.
+     *
+     * An array because a laptop and a phone are two credentials for one
+     * account, and losing one should not mean losing the account — which is the
+     * exact failure the TOTP path has, where a lost phone needs somebody with
+     * shell access.
+     *
+     * The public key is stored, so a dump of this collection lets nobody sign
+     * in as anybody: the private half never leaves the authenticator.
+     */
+    passkeys: [
+      {
+        credentialId: { type: String, required: true },
+        publicKey: { type: String, required: true },
+        counter: { type: Number, default: 0 },
+        transports: { type: [String], default: [] },
+        /// What the operator called it. "Work laptop" is the difference between
+        /// removing the right key and guessing.
+        name: { type: String, trim: true, maxlength: 60, default: 'Passkey' },
+        createdAt: { type: Date, default: Date.now },
+        lastUsedAt: { type: Date, default: null },
+      },
+    ],
+
+    /// One ceremony's challenge. Single-use and short — see passkeys.js.
+    passkeyChallenge: { type: String, default: null, select: false },
+    passkeyChallengeExpiresAt: { type: Date, default: null, select: false },
+
     /// A reset in flight. Hashed, never stored plainly — a database dump must
     /// not hand somebody a working reset, which is the same reason the password
     /// is not stored either.
@@ -134,6 +163,18 @@ platformAdminSchema.methods.toPublic = function toPublic() {
     // that can answer after the factor has just been switched — the sign-in
     // response is a snapshot of a moment that has passed by then.
     totpEnabled: Boolean(this.totpEnabled),
+    /**
+     * The keys, without the keys. Enough to list and name and remove one; not
+     * enough to be worth intercepting.
+     */
+    passkeys: (this.passkeys ?? []).map((p) => ({
+      id: p.credentialId,
+      name: p.name,
+      createdAt: p.createdAt,
+      lastUsedAt: p.lastUsedAt ?? null,
+    })),
+    /// True when anything at all protects this account beyond the password.
+    hasSecondFactor: Boolean(this.totpEnabled) || (this.passkeys ?? []).length > 0,
   };
 };
 

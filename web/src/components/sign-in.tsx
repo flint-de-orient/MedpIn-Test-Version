@@ -6,6 +6,7 @@ import { useSession } from "@/lib/session";
 import type { LoginResult } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { Wordmark } from "@/components/icons";
+import { signInWithPasskey, type PublicKeyCredentialRequestOptionsJSON } from "@/lib/passkey";
 
 /**
  * The way in, and the way back in.
@@ -100,6 +101,30 @@ function LoginForm({ onForgot }: { onForgot: () => void }) {
       signIn(out);
     } catch (ex) {
       const err = ex as ApiError;
+
+      /**
+       * The password was right and this account has a passkey.
+       *
+       * The prompt is raised straight away rather than showing a "use your
+       * passkey" button: the browser requires a user gesture, and the submit
+       * that got here is one. An extra click would only exist to be clicked.
+       */
+      if (err.code === "PASSKEY_REQUIRED" && err.options) {
+        try {
+          signIn(
+            await signInWithPasskey(
+              email.trim(),
+              err.options as PublicKeyCredentialRequestOptionsJSON,
+            ),
+          );
+          return;
+        } catch (pk) {
+          setError((pk as ApiError).message);
+          setBusy(false);
+          return;
+        }
+      }
+
       if (err.code === "TOTP_REQUIRED") {
         // Not a failure: the password was right. Everything else stays put,
         // because clearing the form and starting over is how a second factor

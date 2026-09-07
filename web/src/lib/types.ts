@@ -122,6 +122,13 @@ export type AuditPage = {
   nextBefore: string | null;
 };
 
+export type Passkey = {
+  id: string;
+  name: string;
+  createdAt: string;
+  lastUsedAt: string | null;
+};
+
 export type Admin = {
   id: string;
   email: string;
@@ -129,6 +136,9 @@ export type Admin = {
   isActive: boolean;
   lastLoginAt: string | null;
   totpEnabled: boolean;
+  passkeys: Passkey[];
+  /** True when anything protects the account beyond the password. */
+  hasSecondFactor: boolean;
   isSelf?: boolean;
   createdAt?: string;
 };

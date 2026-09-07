@@ -28,6 +28,13 @@ import {
 } from '../services/adminSession.js';
 import { generateSecret, verifyTotp, otpauthUri } from '../services/totp.js';
 import { completeReset } from '../services/adminReset.js';
+import {
+  registrationOptions,
+  verifyRegistration,
+  authenticationOptions,
+  verifyAuthentication,
+  CHALLENGE_MS,
+} from '../services/passkeys.js';
 
 /**
  * The platform's own surface: create a practice, verify it, activate, suspend.
@@ -49,6 +56,16 @@ import { completeReset } from '../services/adminReset.js';
  * diabetic's insulin alarm would punish the person who did nothing wrong.
  */
 const router = Router();
+
+/**
+ * The one thing a refused sign-in ever says.
+ *
+ * Saying "no such account", or "wrong code" rather than "wrong password", tells
+ * whoever is guessing which half of the pair to keep working on. Defined once
+ * so a second way in cannot arrive with a second wording — which is exactly
+ * what happened when the passkey route was added and declared its own copy.
+ */
+const REFUSED = 'Those details do not match an account.';
 
 /** The one unauthenticated route here, and the one worth brute-forcing. */
 const loginLimiter = rateLimit({
@@ -92,11 +109,6 @@ router.post(
       throw unauthorized('Too many attempts. Try again in a few minutes.');
     }
 
-    // One message for every failure. Saying "no such account", or "wrong code"
-    // rather than "wrong password", tells whoever is guessing which half of the
-    // pair to keep working on.
-    const REFUSED = 'Those details do not match an account.';
-
     const passwordOk = admin && (await admin.checkPassword(req.body.password));
     if (!passwordOk) {
       // Counted only when the account exists. Incrementing on a guessed email
@@ -106,6 +118,32 @@ router.post(
         await AdminAuditLog.record({ admin, action: 'admin.login.failed', req });
       }
       throw unauthorized(REFUSED);
+    }
+
+    /**
+     * The second factor, whichever kind this account has.
+     *
+     * A passkey is offered first when one is registered, because it is both
+     * easier and stronger: nothing to install, nothing to type, and the
+     * signature is bound to the origin so a convincing fake login page cannot
+     * obtain one. A code can be forwarded to the real site inside its thirty
+     * seconds, which is the attack every TOTP deployment is exposed to.
+     */
+    if ((admin.passkeys ?? []).length > 0) {
+      const options = await authenticationOptions(req, admin);
+      admin.passkeyChallenge = options.challenge;
+      admin.passkeyChallengeExpiresAt = new Date(Date.now() + CHALLENGE_MS);
+      await admin.save();
+
+      // 401 with a code, like TOTP_REQUIRED: the password was right and the
+      // ceremony is the next step, not a failure to report.
+      return res.status(401).json({
+        error: {
+          code: 'PASSKEY_REQUIRED',
+          message: 'Confirm with your passkey.',
+          options,
+        },
+      });
     }
 
     if (admin.totpEnabled) {
@@ -190,6 +228,79 @@ router.post(
 );
 
 /**
+ * Finish a sign-in that a passkey was asked for.
+ *
+ * Unauthenticated, and safe to be: the only way to reach it usefully is to hold
+ * a challenge that was issued after a correct password, and to produce a
+ * signature over it from a private key that never left the authenticator. Both
+ * factors are proved by the time this returns.
+ *
+ * The challenge is spent whatever happens. A failed attempt that left it usable
+ * would give an attacker unlimited tries against one issued challenge.
+ */
+router.post(
+  '/auth/passkey',
+  loginLimiter,
+  validate({
+    body: z.object({
+      email: z.string().trim().toLowerCase().email(),
+      response: z.object({}).passthrough(),
+    }),
+  }),
+  asyncHandler(async (req, res) => {
+    if (!process.env.ADMIN_JWT_SECRET) {
+      return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Not found' } });
+    }
+
+    const admin = await PlatformAdmin.findOne({
+      email: req.body.email,
+      isActive: true,
+    }).select('+passkeyChallenge +passkeyChallengeExpiresAt');
+
+    if (!admin) throw unauthorized(REFUSED);
+
+    if (admin.isLocked()) {
+      await AdminAuditLog.record({ admin, action: 'admin.login.locked', req });
+      throw unauthorized('Too many attempts. Try again in a few minutes.');
+    }
+
+    let result;
+    try {
+      result = await verifyAuthentication(req, admin, req.body.response);
+    } catch (err) {
+      // Spent on failure too, then the error is re-thrown.
+      admin.passkeyChallenge = null;
+      admin.passkeyChallengeExpiresAt = null;
+      await admin.save();
+      await AdminAuditLog.record({ admin, action: 'admin.login.failed_passkey', req });
+      throw err;
+    }
+
+    const used = admin.passkeys.find((p) => p.credentialId === result.credentialId);
+    if (used) {
+      used.counter = result.counter;
+      used.lastUsedAt = new Date();
+    }
+    admin.passkeyChallenge = null;
+    admin.passkeyChallengeExpiresAt = null;
+    await admin.save();
+
+    await admin.noteSuccess();
+    await AdminAuditLog.record({ admin, action: 'admin.login', req, reason: 'passkey' });
+
+    const csrf = newCsrfToken();
+    setSessionCookies(req, res, { token: signAdminToken(admin, { csrf }), csrf });
+
+    res.json({
+      token: signAdminToken(admin),
+      csrf,
+      admin: admin.toPublic(),
+      totpEnabled: admin.totpEnabled,
+    });
+  }),
+);
+
+/**
  * Sign out.
  *
  * Unauthenticated on purpose. Requiring a valid session to end one means an
@@ -241,6 +352,93 @@ router.get(
   '/me',
   asyncHandler(async (req, res) => {
     res.json({ admin: PlatformAdmin.hydrate(req.admin).toPublic() });
+  }),
+);
+
+/**
+ * Begin registering a passkey.
+ *
+ * The challenge goes on the account rather than in a session store: there is
+ * one ceremony in flight per operator at a time, and a second collection to
+ * expire and clean up would be more moving parts than the problem has.
+ */
+router.post(
+  '/me/passkeys/options',
+  asyncHandler(async (req, res) => {
+    const admin = await PlatformAdmin.findById(req.admin._id);
+    if (!admin) throw notFound('Account not found');
+
+    const options = await registrationOptions(req, admin);
+    admin.passkeyChallenge = options.challenge;
+    admin.passkeyChallengeExpiresAt = new Date(Date.now() + CHALLENGE_MS);
+    await admin.save();
+
+    await AdminAuditLog.record({ admin: req.admin, action: 'admin.passkey.setup_started', req });
+    res.json({ options });
+  }),
+);
+
+/** Verify what the authenticator produced, and keep the public half. */
+router.post(
+  '/me/passkeys',
+  validate({
+    body: z.object({
+      name: z.string().trim().min(1).max(60).optional(),
+      response: z.object({}).passthrough(),
+    }),
+  }),
+  asyncHandler(async (req, res) => {
+    const admin = await PlatformAdmin.findById(req.admin._id).select(
+      '+passkeyChallenge +passkeyChallengeExpiresAt',
+    );
+    if (!admin) throw notFound('Account not found');
+
+    let credential;
+    try {
+      credential = await verifyRegistration(req, admin, req.body.response);
+    } finally {
+      // Spent either way. A challenge left usable after a failure is an
+      // unlimited number of attempts against one issued value.
+      admin.passkeyChallenge = null;
+      admin.passkeyChallengeExpiresAt = null;
+      await admin.save();
+    }
+
+    admin.passkeys.push({ ...credential, name: req.body.name || 'Passkey' });
+    await admin.save();
+
+    await AdminAuditLog.record({
+      admin: req.admin,
+      action: 'admin.passkey.added',
+      after: { name: req.body.name || 'Passkey' },
+      req,
+    });
+
+    res.status(201).json({ admin: admin.toPublic() });
+  }),
+);
+
+/**
+ * Remove one.
+ *
+ * No code and no password, unlike turning TOTP off — removing a passkey needs a
+ * session, and a session was obtained by using one. The account keeps whatever
+ * other factors it has, and the console warns before removing the last.
+ */
+router.delete(
+  '/me/passkeys/:credentialId',
+  asyncHandler(async (req, res) => {
+    const admin = await PlatformAdmin.findById(req.admin._id);
+    if (!admin) throw notFound('Account not found');
+
+    const before = admin.passkeys.length;
+    admin.passkeys = admin.passkeys.filter((p) => p.credentialId !== req.params.credentialId);
+    if (admin.passkeys.length === before) throw notFound('No such passkey');
+
+    await admin.save();
+    await AdminAuditLog.record({ admin: req.admin, action: 'admin.passkey.removed', req });
+
+    res.json({ admin: admin.toPublic() });
   }),
 );
 

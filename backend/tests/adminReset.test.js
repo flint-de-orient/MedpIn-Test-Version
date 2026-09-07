@@ -17,6 +17,19 @@ const svc = readFileSync(new URL('../src/services/adminReset.js', import.meta.ur
 const route = readFileSync(new URL('../src/routes/admin.js', import.meta.url), 'utf8');
 const script = readFileSync(new URL('../scripts/resetAdmin.js', import.meta.url), 'utf8');
 
+/**
+ * One route's body, ending where the next one starts.
+ *
+ * Slicing to a comment further down the file means every route added in between
+ * is read as part of this one — which is how "the reset hands back a session"
+ * came to fail when a passkey sign-in was added below it.
+ */
+function only(src, marker) {
+  const from = src.indexOf(marker);
+  const next = src.indexOf('router.', from + marker.length);
+  return src.slice(from, next === -1 ? undefined : next);
+}
+
 describe('the token is not a second password', () => {
   test('only its hash is stored', () => {
     // A database dump must not hand somebody a working reset, which is the same
@@ -88,13 +101,18 @@ describe('the route', () => {
   test('returns no session', () => {
     // Choosing a new password is not signing in. Handing back a token would
     // let a stolen reset skip the login it just re-enabled.
-    const block = route.slice(route.indexOf("'/auth/reset'"), route.indexOf('// Everything below'));
+    //
+    // Bounded to this route rather than to the next section marker: the passkey
+    // sign-in was added between the two, and it mints a session legitimately —
+    // so the wider slice reported the reset doing something a different route
+    // does.
+    const block = only(route, "'/auth/reset'");
     assert.ok(!/signAdminToken/.test(block), 'the reset hands back a session');
     assert.match(block, /res\.json\(\{ ok: true \}\)/);
   });
 
   test('is 404 when the panel is switched off, like everything else here', () => {
-    const block = route.slice(route.indexOf("'/auth/reset'"), route.indexOf('// Everything below'));
+    const block = only(route, "'/auth/reset'");
     assert.match(block, /ADMIN_JWT_SECRET/);
     assert.match(block, /status\(404\)/);
   });

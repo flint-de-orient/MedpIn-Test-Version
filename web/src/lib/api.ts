@@ -82,12 +82,21 @@ export class ApiError extends Error {
    */
   code: string | null;
   status: number;
+  /**
+   * Whatever the error carried besides a message.
+   *
+   * `PASSKEY_REQUIRED` arrives with the ceremony options attached, because the
+   * challenge has to reach the browser and a second round trip to fetch it
+   * would be a round trip for nothing.
+   */
+  options?: unknown;
 
-  constructor(message: string, status: number, code: string | null) {
+  constructor(message: string, status: number, code: string | null, options?: unknown) {
     super(message);
     this.name = "ApiError";
     this.status = status;
     this.code = code;
+    this.options = options;
   }
 }
 
@@ -151,19 +160,28 @@ export async function api<T>(path: string, opts: Options = {}): Promise<T> {
   }
 
   if (!res.ok) {
-    const err = data as { error?: { message?: string; code?: string } } | null;
+    const err = data as
+      | { error?: { message?: string; code?: string; options?: unknown } }
+      | null;
     const code = err?.error?.code ?? null;
 
-    // An expired session returns to the sign-in screen rather than leaving a
-    // dead page behind an error. Not on TOTP_REQUIRED, which means "carry on"
-    // and arrives before there is a session at all; and not on the boot probe,
-    // whose whole job is to find out whether there is one.
-    if (res.status === 401 && !anonymous && code !== "TOTP_REQUIRED") onExpired?.();
+    /**
+     * An expired session returns to the sign-in screen rather than leaving a
+     * dead page behind an error.
+     *
+     * Both second-factor prompts arrive as 401 and mean "carry on" rather than
+     * "your session is gone" — they happen before there is a session at all.
+     * Listing them by code and not by message is why adding the passkey one did
+     * not silently start bouncing people mid-sign-in.
+     */
+    const CONTINUE = new Set(["TOTP_REQUIRED", "PASSKEY_REQUIRED"]);
+    if (res.status === 401 && !anonymous && !CONTINUE.has(code ?? "")) onExpired?.();
 
     throw new ApiError(
       err?.error?.message ?? `Request failed (${res.status})`,
       res.status,
       code,
+      err?.error?.options,
     );
   }
 

@@ -58,7 +58,7 @@ const ALL = SECTIONS.flatMap((s) => s.items);
  */
 export function Shell({ children }: { children: React.ReactNode }) {
   const path = usePathname();
-  const { totpEnabled } = useSession();
+  const { protected: hasFactor } = useSession();
   const [drawer, setDrawer] = useState(false);
   const [palette, setPalette] = useState(false);
 
@@ -106,7 +106,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
               exactly this, and it went unread for a while. Not on the screen
               that fixes it, where it would be a banner pointing at the button
               underneath it. */}
-          {!totpEnabled && path !== "/account/" ? <TotpNag /> : null}
+          {!hasFactor && path !== "/account/" ? <TotpNag /> : null}
           {children}
         </main>
 

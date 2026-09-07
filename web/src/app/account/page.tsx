@@ -7,6 +7,7 @@ import { useSession } from "@/lib/session";
 import { Field, Panel, Pill, when, fullWhen } from "@/components/primitives";
 import { textInput } from "@/components/form";
 import { cn } from "@/lib/utils";
+import { PasskeyPanel } from "@/components/passkey-panel";
 
 type Stage = "off" | "enrolling" | "on";
 
@@ -100,14 +101,16 @@ export default function Account() {
         </dl>
       </Panel>
 
+      <PasskeyPanel />
+
       <Panel
-        title="Two-factor"
+        title="Code from an app"
         description={
           stage === "on"
             ? "On. A code from your authenticator app is needed at every sign-in."
             : stage === "enrolling"
               ? "Not on yet — finish by entering a code from the app."
-              : "Off. Your password is the only thing protecting this account."
+              : "The other way to protect this account, for a device that cannot do passkeys."
         }
         actions={stage === "on" ? <Pill tone="ok">on</Pill> : <Pill tone="waiting">off</Pill>}
       >

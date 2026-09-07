@@ -135,8 +135,19 @@ describe('the second factor can be turned on and survived', () => {
   });
 
   test('an account without one is told, on every screen', () => {
-    assert.match(app, /!totpEnabled/);
+    // Driven by `hasSecondFactor`, not by TOTP alone — an operator who
+    // registered a passkey and never touched the app is protected, and a banner
+    // telling them otherwise would be nagging about a thing they have done.
+    assert.match(app, /!hasFactor/);
     assert.match(prose, /no second factor/i);
+  });
+
+  test('and a passkey counts as one', () => {
+    const model = readFileSync(
+      new URL('../src/models/PlatformAdmin.js', import.meta.url),
+      'utf8',
+    );
+    assert.match(model, /hasSecondFactor: Boolean\(this\.totpEnabled\) \|\| \(this\.passkeys \?\? \[\]\)\.length > 0/);
   });
 });
 

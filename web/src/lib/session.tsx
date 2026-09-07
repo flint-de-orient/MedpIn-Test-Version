@@ -14,6 +14,8 @@ import type { Admin, LoginResult } from "./types";
 type Session = {
   admin: Admin | null;
   totpEnabled: boolean;
+  /** Any second factor at all — a passkey counts. */
+  protected: boolean;
   /** True until the boot probe has answered. Not the same as signed out. */
   restoring: boolean;
   signIn: (r: LoginResult) => void;
@@ -26,16 +28,19 @@ const Ctx = createContext<Session | null>(null);
 export function SessionProvider({ children }: { children: React.ReactNode }) {
   const [admin, setAdmin] = useState<Admin | null>(null);
   const [totpEnabled, setTotp] = useState(false);
+  const [protectedAcct, setProtected] = useState(false);
   const [restoring, setRestoring] = useState(true);
 
   const signIn = useCallback((r: LoginResult) => {
     setAdmin(r.admin);
     setTotp(Boolean(r.totpEnabled ?? r.admin.totpEnabled));
+    setProtected(Boolean(r.admin.hasSecondFactor));
   }, []);
 
   const signOut = useCallback(() => {
     setAdmin(null);
     setTotp(false);
+    setProtected(false);
     // Ask the server to clear the cookie. Fire-and-forget: the local state is
     // already gone, and a failed request must not leave somebody looking at a
     // console they think they have left.
@@ -46,6 +51,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     const out = await api<{ admin: Admin }>("/admin/me");
     setAdmin(out.admin);
     setTotp(Boolean(out.admin.totpEnabled));
+    setProtected(Boolean(out.admin.hasSecondFactor));
   }, []);
 
   /**
@@ -65,6 +71,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
         if (cancelled) return;
         setAdmin(out.admin);
         setTotp(Boolean(out.admin.totpEnabled));
+        setProtected(Boolean(out.admin.hasSecondFactor));
       })
       .catch(() => {
         /* no session, or the console is switched off; the gate shows sign-in */
@@ -81,12 +88,13 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     setExpiryHandler(() => {
       setAdmin(null);
       setTotp(false);
+      setProtected(false);
     });
   }, []);
 
   const value = useMemo(
-    () => ({ admin, totpEnabled, restoring, signIn, signOut, refresh }),
-    [admin, totpEnabled, restoring, signIn, signOut, refresh],
+    () => ({ admin, totpEnabled, protected: protectedAcct, restoring, signIn, signOut, refresh }),
+    [admin, totpEnabled, protectedAcct, restoring, signIn, signOut, refresh],
   );
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
