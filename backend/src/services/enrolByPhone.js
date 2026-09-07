@@ -4,6 +4,8 @@ import { Enrollment, ENROLLMENT_STATUS } from '../models/Enrollment.js';
 import { requestOtp, verifyOtp } from './otp.js';
 import { toE164 } from '../utils/phone.js';
 import { conflict, badRequest, notFound } from '../middleware/errors.js';
+import { Practice } from '../models/Practice.js';
+import { activePatientCount } from './practiceUsage.js';
 import { ConsentEvent, CONSENT_ACTION, CONSENT_METHOD } from '../models/ConsentEvent.js';
 
 /** The consent text currently shown at the desk. Bump when the wording changes. */
@@ -65,6 +67,8 @@ export async function enrolByPhone({
   gender = 'undisclosed',
 }) {
   if (!practiceId) throw badRequest('A practice is required to enrol a patient');
+
+  await assertRoomForOnePatient(practiceId);
 
   const e164 = toE164(phone);
   let login = await User.findByLoginPhone(e164);
@@ -204,4 +208,40 @@ export async function confirmEnrolment({ enrollmentId, code, confirmedBy = null 
   });
 
   return enrollment;
+}
+
+/**
+ * Refuse a new patient when the practice is at its cap.
+ *
+ * ---- Permissive, like every other guard here -----------------------------
+ *
+ * A practice with no `limits.patients` has no cap, and that is every practice
+ * today including the founding clinic. `overLimit` returns null in that case
+ * and this returns immediately, so a limit nobody typed in cannot refuse
+ * anybody. A missing practice row is the pre-migration state, and unknown never
+ * denies.
+ *
+ * ---- Why here ------------------------------------------------------------
+ *
+ * This is the one place a practice gains a patient. Reading the plan and
+ * deciding what it entitles them to at each call site would be four copies of
+ * one table, drifting.
+ *
+ * A cap is a brake on growth, not a shredder: lowering a limit below the
+ * current count stops the next registration and touches nothing that exists.
+ *
+ * The message names the number, because "upgrade your plan" tells a
+ * receptionist nothing they can act on with the patient in front of them.
+ */
+async function assertRoomForOnePatient(practiceId) {
+  const practice = await Practice.findById(practiceId).select('limits');
+  if (!practice) return;
+
+  const over = practice.overLimit('patients', await activePatientCount(practiceId));
+  if (!over) return;
+
+  throw badRequest(
+    `This practice is at its limit of ${over.cap} patients. ` +
+      'Ask your administrator to raise it before registering anyone else.',
+  );
 }

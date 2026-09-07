@@ -167,9 +167,36 @@ describe('the model', () => {
   test('the first admin is made by a script, not an open route', () => {
     // A "create the first admin" endpoint has to be open until it is used and
     // closed afterwards, and the closing is a thing somebody has to remember.
+    //
+    // The rule is about the *first* one. An existing administrator adding a
+    // colleague is a different act: it is authenticated, attributable and
+    // logged, and refusing it only means the second operator is created by
+    // whoever has a shell — which is worse, not safer.
+    //
+    // So the test is position, not existence. Anything above `requireAdmin` is
+    // reachable by a stranger.
     const routes = readdirSync(new URL('../src/routes/', import.meta.url));
     assert.ok(routes.includes('admin.js'));
-    assert.ok(!/router\.post\(\s*'\/admins?'/.test(route), 'admins can be created over HTTP');
+
+    const guard = route.indexOf('router.use(requireAdmin)');
+    assert.ok(guard > -1, 'the admin guard is no longer applied at the router');
+
+    const open = route.slice(0, guard);
+    assert.ok(
+      !/router\.post\(\s*'\/admins?'/.test(open),
+      'an unauthenticated route creates administrators',
+    );
+    assert.match(
+      route.slice(guard),
+      /router\.post\(\s*\n?\s*'\/admins'/,
+      'adding a colleague should be possible while signed in',
+    );
+  });
+
+  test('and nobody can deactivate themselves', () => {
+    // The last door locked from the inside. The way back would be a shell on
+    // the server, which is the situation the reset flow exists to avoid.
+    assert.match(route, /You cannot deactivate your own account/);
   });
 });
 

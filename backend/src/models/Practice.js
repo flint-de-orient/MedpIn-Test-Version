@@ -49,6 +49,23 @@ export const VERIFICATION = Object.freeze({
   REJECTED: 'rejected',
 });
 
+/**
+ * What the practice is on, commercially.
+ *
+ * Names only. The numbers that actually restrain anything live in `limits`,
+ * per practice — see the note there. A plan whose limits were baked into its
+ * name would need a new plan every time somebody negotiates.
+ *
+ * `TRIAL` is the default because a practice that has just been created has not
+ * agreed to anything yet, and the honest label for that is not "solo".
+ */
+export const PLAN = Object.freeze({
+  TRIAL: 'trial',
+  SOLO: 'solo',
+  CLINIC: 'clinic',
+  HOSPITAL: 'hospital',
+});
+
 const practiceSchema = new mongoose.Schema(
   {
     /// What a patient reads: "Dey Diabetes Clinic".
@@ -99,6 +116,44 @@ const practiceSchema = new mongoose.Schema(
     /// can be re-run without creating a second one and so support can tell at a
     /// glance which row is the original clinic.
     isFounding: { type: Boolean, default: false },
+
+    /**
+     * What this practice is paying for, and what that entitles them to.
+     *
+     * ---- Why the limits are nullable and not "the plan's numbers" --------
+     *
+     * A plan is a label somebody sells; a limit is a number the software
+     * enforces. Deriving one from the other means a practice that negotiated
+     * an extra location needs a new plan invented for it, and the founding
+     * clinic — which is on no plan at all — would inherit whatever the default
+     * happened to be.
+     *
+     * So the plan is a name, and each limit is a number or `null`. Null means
+     * unlimited, which is what every existing row has and what the founding
+     * practice keeps. The limits bite only where somebody has typed one in.
+     */
+    plan: {
+      type: String,
+      enum: Object.values(PLAN),
+      default: PLAN.TRIAL,
+      index: true,
+    },
+
+    limits: {
+      patients: { type: Number, default: null, min: 0 },
+      staff: { type: Number, default: null, min: 0 },
+      locations: { type: Number, default: null, min: 0 },
+    },
+
+    /// When the current arrangement lapses. Null is open-ended, and a date in
+    /// the past does not itself suspend anybody — that stays a decision a human
+    /// makes and the audit log records, because a clinic locked out of its
+    /// records by a billing date is a patient safety problem.
+    planRenewsOn: { type: Date, default: null },
+
+    /// Free text for the operator. "Paying annually, invoice by email" is the
+    /// kind of thing that otherwise lives in somebody's memory.
+    notes: { type: String, trim: true, maxlength: 2000, default: '' },
   },
   { timestamps: true },
 );
@@ -118,8 +173,30 @@ practiceSchema.methods.toPublic = function toPublic() {
     logoNeedsDarkChip: Boolean(this.logoNeedsDarkChip),
     status: this.status,
     verification: this.verification,
+    plan: this.plan ?? PLAN.TRIAL,
+    // Spread rather than passed through: `limits` is a subdocument, and handing
+    // the Mongoose object to res.json ships its internals.
+    limits: {
+      patients: this.limits?.patients ?? null,
+      staff: this.limits?.staff ?? null,
+      locations: this.limits?.locations ?? null,
+    },
+    planRenewsOn: this.planRenewsOn ?? null,
     createdAt: this.createdAt,
   };
+};
+
+/**
+ * Is this practice over the named limit, if it has one?
+ *
+ * Returns null when there is nothing to enforce — no limit set, which is every
+ * practice today. The caller treats null as "carry on", so a limit that was
+ * never typed in cannot refuse anybody.
+ */
+practiceSchema.methods.overLimit = function overLimit(which, current) {
+  const cap = this.limits?.[which];
+  if (cap === null || cap === undefined) return null;
+  return current >= cap ? { which, cap, current } : null;
 };
 
 export const Practice = mongoose.model('Practice', practiceSchema);
