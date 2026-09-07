@@ -5,6 +5,7 @@ import { validate, q } from '../middleware/validate.js';
 import { asyncHandler, notFound, badRequest } from '../middleware/errors.js';
 import { audit } from '../middleware/audit.js';
 import { Clinic } from '../models/Clinic.js';
+import { practiceOf } from '../middleware/practiceScope.js';
 import { User, ROLES } from '../models/User.js';
 import { generateSlots } from '../services/scheduling.js';
 import { forgetClinicIdentity } from '../services/clinicIdentity.js';
@@ -113,7 +114,21 @@ router.post(
     // lookup missed: it went hunting for "the doctor" while one was making the
     // request. Staff adding one falls through to the practice's head doctor.
     const doctor = await resolveDoctor({ actingUser: req.user });
-    const clinic = await Clinic.create({ ...req.body, doctor: doctor?._id });
+    /**
+     * A location belongs to a practice, not to a doctor.
+     *
+     * `doctor` stays because the slot engine and the letterhead still read it,
+     * and a location with two doctors has one building. But without `practice`
+     * a new branch is invisible to every practice-scoped query — it would not
+     * appear in the operator console's count, and the practice that opened it
+     * would not see it in its own list.
+     */
+    const practiceId = await practiceOf(req);
+    const clinic = await Clinic.create({
+      ...req.body,
+      doctor: doctor?._id,
+      ...(practiceId ? { practice: practiceId } : {}),
+    });
     res.status(201).json({ clinic: clinic.toPublic() });
   }),
 );

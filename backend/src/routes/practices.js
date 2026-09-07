@@ -5,12 +5,22 @@ import { requireAuth, requireClinician, requireDoctor } from '../middleware/auth
 import { validate } from '../middleware/validate.js';
 import { asyncHandler, notFound } from '../middleware/errors.js';
 import { audit } from '../middleware/audit.js';
-import { Practice } from '../models/Practice.js';
+import { Practice, PRACTICE_STATUS, VERIFICATION } from '../models/Practice.js';
 import { Clinic } from '../models/Clinic.js';
 import { User, ROLES } from '../models/User.js';
 import { Membership, PERMISSIONS } from '../models/Membership.js';
 import { requirePermission } from '../middleware/authorise.js';
 import { forgetClinicIdentity } from '../services/clinicIdentity.js';
+import {
+  joinByPhone,
+  joinPractice,
+  leavePractice,
+  membersOf,
+  isOwnerOf,
+} from '../services/memberships.js';
+import { phoneFromToken } from '../services/otp.js';
+import { toE164 } from '../utils/phone.js';
+import { badRequest, forbidden } from '../middleware/errors.js';
 
 /**
  * The practice a clinician belongs to, and how complete it is.
@@ -163,6 +173,238 @@ router.get(
       // then, so a practice never reports having nobody in it.
       people: countsFrom(people) ?? (await countsFromRoles()),
     });
+  }),
+);
+
+/* ------------------------------------------------------------------ people */
+
+/**
+ * Who works here.
+ *
+ * ---- Why this is not the same as `/doctor/staff` -----------------------
+ *
+ * That route lists every account on the platform with the staff role, because
+ * it was written when there was one clinic and "every staff account" and "this
+ * clinic's staff" were the same set. They stop being the same the moment a
+ * second practice exists, and this is the one that asks the right question.
+ */
+router.get(
+  '/:id/members',
+  requireClinician,
+  audit('read', 'Membership'),
+  asyncHandler(async (req, res) => {
+    await assertBelongs(req, req.params.id);
+
+    const rows = await membersOf(req.params.id);
+    res.json({
+      items: rows.map((m) => ({
+        id: String(m._id),
+        userId: String(m.user?._id ?? m.user),
+        name: m.user?.name ?? 'Unknown',
+        phone: m.user?.phone ?? null,
+        role: m.role,
+        isOwner: Boolean(m.isOwner),
+        status: m.status,
+        endedOn: m.endedOn ?? null,
+        qualifications: m.user?.qualifications ?? null,
+        registrationNo: m.user?.registrationNo ?? null,
+        permissions: m.permissions?.length ? m.permissions : [],
+        startedOn: m.startedOn,
+      })),
+    });
+  }),
+);
+
+/**
+ * Add a colleague.
+ *
+ * ---- The number must have been answered, not typed ---------------------
+ *
+ * `phoneToken` is proof from the OTP flow that the handset replied. The reason
+ * is the same one `/doctor/staff` gives for its own token and applies harder
+ * here: a doctor added to a practice can open every patient in it, and one
+ * mistyped digit gives that to whoever owns the number that was typed instead.
+ *
+ * ---- An existing account is joined, not duplicated ---------------------
+ *
+ * Dr. Dey working at a second practice is a second membership. Creating a
+ * second Dr. Dey would give him two sets of patients and two logins, and the
+ * two would drift apart from the first day.
+ */
+router.post(
+  '/:id/members',
+  requireDoctor,
+  requirePermission(PERMISSIONS.MANAGE_STAFF),
+  validate({
+    body: z.object({
+      name: z.string().trim().min(2).max(120),
+      phone: z
+        .string()
+        .trim()
+        .transform(toE164)
+        .pipe(z.string().regex(/^\+?[1-9]\d{7,14}$/, 'Enter a valid phone number')),
+      phoneToken: z.string().min(20),
+      role: z.enum([ROLES.DOCTOR, ROLES.STAFF, ROLES.DIETICIAN]),
+      /// Another owner. A practice with two heads survives one of them leaving,
+      /// which the single-owner case deliberately cannot.
+      isOwner: z.boolean().optional(),
+      qualifications: z.string().trim().max(120).optional(),
+      registrationNo: z.string().trim().max(60).optional(),
+    }),
+  }),
+  audit('create', 'Membership'),
+  asyncHandler(async (req, res) => {
+    await assertOwner(req, req.params.id);
+
+    // The token vouches for one number. Taking both as independent fields would
+    // let somebody verify one and add another.
+    if (phoneFromToken(req.body.phoneToken) !== req.body.phone) {
+      throw badRequest('That verification was for a different number. Verify this one again.');
+    }
+
+    // Only an owner makes an owner. Otherwise somebody with MANAGE_STAFF can
+    // promote themselves by adding a second account they control.
+    if (req.body.isOwner && !(await isOwnerOf(req.user._id, req.params.id))) {
+      throw forbidden('Only an owner can make somebody else an owner.');
+    }
+
+    const { user, membership, createdUser } = await joinByPhone({
+      phone: req.body.phone,
+      name: req.body.name,
+      practice: req.params.id,
+      role: req.body.role,
+      isOwner: Boolean(req.body.isOwner),
+      addedBy: req.user._id,
+      qualifications: req.body.qualifications,
+      registrationNo: req.body.registrationNo,
+    });
+
+    res.status(201).json({
+      member: {
+        id: String(membership._id),
+        userId: String(user._id),
+        name: user.name,
+        phone: user.phone,
+        role: membership.role,
+        isOwner: membership.isOwner,
+        status: membership.status,
+      },
+      // Whether they can sign in already, or are hearing about this for the
+      // first time when they next try.
+      accountCreated: createdUser,
+    });
+  }),
+);
+
+/**
+ * End a membership.
+ *
+ * They keep their account and any other practice they work at. This says only
+ * that they no longer work here, which is why it is not a delete.
+ */
+router.delete(
+  '/:id/members/:membershipId',
+  requireDoctor,
+  requirePermission(PERMISSIONS.MANAGE_STAFF),
+  audit('delete', 'Membership'),
+  asyncHandler(async (req, res) => {
+    await assertOwner(req, req.params.id);
+
+    if (String(req.params.membershipId) === String(req.membership?._id)) {
+      throw badRequest('You cannot remove yourself from your own practice.');
+    }
+
+    await leavePractice(req.params.membershipId, { practice: req.params.id });
+    res.json({ ok: true });
+  }),
+);
+
+/**
+ * Is the caller in this practice at all?
+ *
+ * Permissive on unknown, like every other guard here: a clinician with no
+ * membership predates the model rather than being an intruder, and refusing
+ * them would take the screen away from the clinic running today.
+ */
+async function assertBelongs(req, practiceId) {
+  const mine = await Membership.findOne(
+    Membership.currentFilter(req.user._id, practiceId),
+  ).lean();
+  if (mine) {
+    req.membership = mine;
+    return;
+  }
+
+  const any = await Membership.findOne(Membership.currentFilter(req.user._id)).lean();
+  if (!any) return; // no membership anywhere — the pre-migration state
+
+  throw forbidden('That practice is not yours.');
+}
+
+/** And may they manage it? */
+async function assertOwner(req, practiceId) {
+  await assertBelongs(req, practiceId);
+  // `requirePermission(MANAGE_STAFF)` has already run; this is the practice
+  // half of the question, which that cannot answer.
+}
+
+/**
+ * A doctor opening their own practice.
+ *
+ * ---- Why this is the primary way one comes into existence --------------
+ *
+ * The operator can create a practice too, and has to be able to: a doctor who
+ * is not on the platform yet cannot create anything. But a doctor who is
+ * already here needs nobody's permission to open a clinic, and routing that
+ * through a support request is a queue in front of the thing the product is
+ * for.
+ *
+ * ---- No separate head-doctor account ------------------------------------
+ *
+ * The caller becomes the owner of what they just made. Being head of a practice
+ * is a property of a membership, not a kind of account — the same doctor heading
+ * two practices is one person with two memberships, and a second account would
+ * be a second set of patients and a second login to keep in step.
+ *
+ * ---- It arrives unverified ----------------------------------------------
+ *
+ * Anybody with a doctor account can make one, so making one proves nothing. It
+ * is `onboarding` and `unverified` until an operator checks the registration
+ * against the council register, exactly as one created from the console is.
+ */
+router.post(
+  '/',
+  requireDoctor,
+  validate({
+    body: z.object({
+      name: z.string().trim().min(2).max(160),
+      tagline: z.string().trim().max(160).optional(),
+      registrationNo: z.string().trim().max(60).optional(),
+    }),
+  }),
+  audit('create', 'Practice'),
+  asyncHandler(async (req, res) => {
+    const practice = await Practice.create({
+      ...req.body,
+      // The doctor's own name and number are already on their account; the
+      // letterhead takes them rather than asking again, because a solo practice
+      // has one of each and asking twice is how the two drift apart.
+      doctorDisplayName: req.user.name,
+      registrationNo: req.body.registrationNo || req.user.registrationNo || undefined,
+      headDoctor: req.user._id,
+      status: PRACTICE_STATUS.ONBOARDING,
+      verification: VERIFICATION.UNVERIFIED,
+    });
+
+    await joinPractice({
+      user: req.user._id,
+      practice: practice._id,
+      role: ROLES.DOCTOR,
+      isOwner: true,
+      addedBy: req.user._id,
+    });
+
+    res.status(201).json({ practice: practice.toPublic() });
   }),
 );
 

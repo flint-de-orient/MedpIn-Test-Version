@@ -34,6 +34,10 @@ import {
   completeEmailVerification,
 } from '../services/adminReset.js';
 import { mailConfigured } from '../services/mailer.js';
+import { joinByPhone, membersOf } from '../services/memberships.js';
+import { requestOtp, verifyOtp, signPhoneToken, phoneFromToken } from '../services/otp.js';
+import { toE164 } from '../utils/phone.js';
+import { ROLES } from '../models/User.js';
 import {
   registrationOptions,
   verifyRegistration,
@@ -439,6 +443,90 @@ router.get(
 );
 
 /**
+ * Verifying a phone number, from the console.
+ *
+ * ---- Why these live in the admin namespace ------------------------------
+ *
+ * The console can only reach `/api/v1/admin/` — that is what the Apache proxy
+ * forwards, and it is deliberate: the clinic API behind it also serves
+ * patients, prescriptions and chat, and proxying the lot would put a second
+ * door to clinical data on the one host whose whole argument is that it holds
+ * none.
+ *
+ * So rather than widening the proxy for two endpoints, the two endpoints live
+ * here. They call the same OTP service the clinic app does; nothing is
+ * duplicated but the route.
+ *
+ * ---- What they are for --------------------------------------------------
+ *
+ * Making somebody the head of a practice hands them every patient in it. A
+ * regex tests the shape of a phone number and nothing about who holds it, so
+ * the number is texted a code and has to answer. One mistyped digit otherwise
+ * gives a clinic to whoever owns the number that was typed instead.
+ */
+router.post(
+  '/phone/otp',
+  validate({
+    body: z.object({
+      phone: z
+        .string()
+        .trim()
+        .transform(toE164)
+        .pipe(z.string().regex(/^\+?[1-9]\d{7,14}$/, 'Enter a valid phone number')),
+    }),
+  }),
+  asyncHandler(async (req, res) => {
+    const out = await requestOtp({ phone: req.body.phone, purpose: 'register' });
+
+    await AdminAuditLog.record({
+      admin: req.admin,
+      action: 'admin.phone.otp_sent',
+      after: { phone: req.body.phone },
+      req,
+    });
+
+    res.json({
+      expiresInSeconds: out.expiresInSeconds,
+      resendAfterSeconds: out.resendAfterSeconds,
+      // So an operator on a box with no MSG91 configured sees why no text
+      // arrived rather than assuming the network ate it. The code is in the
+      // server log there; in production the sender throws instead.
+      simulated: out.simulated,
+    });
+  }),
+);
+
+/** Answer it, and get the token that proves the number replied. */
+router.post(
+  '/phone/verify',
+  validate({
+    body: z.object({
+      phone: z
+        .string()
+        .trim()
+        .transform(toE164)
+        .pipe(z.string().regex(/^\+?[1-9]\d{7,14}$/, 'Enter a valid phone number')),
+      code: z.string().trim().regex(/^\d{4,8}$/),
+    }),
+  }),
+  asyncHandler(async (req, res) => {
+    await verifyOtp({ phone: req.body.phone, purpose: 'register', code: req.body.code });
+
+    await AdminAuditLog.record({
+      admin: req.admin,
+      action: 'admin.phone.verified',
+      after: { phone: req.body.phone },
+      req,
+    });
+
+    // The token names the number it was issued for, and every consumer checks
+    // the two agree — otherwise somebody verifies one number and registers
+    // another, which is the whole protection undone.
+    res.json({ phoneToken: signPhoneToken(req.body.phone) });
+  }),
+);
+
+/**
  * Send a confirmation to the address on this account.
  *
  * Authenticated, so an operator confirms their own address and nobody else's —
@@ -689,14 +777,104 @@ router.post(
       registrationNo: z.string().trim().max(60).optional(),
       doctorDisplayName: z.string().trim().max(160).optional(),
       tagline: z.string().trim().max(160).optional(),
+
+      /**
+       * The doctor who will run it.
+       *
+       * ---- Why this is not optional -----------------------------------
+       *
+       * A practice with no member is a tenant nobody can sign into. Every
+       * screen in the clinic app is reached through a membership, and nothing
+       * else in the system creates one — so an operator making a practice
+       * without a head made a row and a dead end, and would find out when the
+       * doctor rang to ask why they could not log in.
+       *
+       * ---- The number has to have been answered ------------------------
+       *
+       * `headDoctorPhoneToken` comes from the OTP flow and is proof the handset
+       * replied. A regex tests the shape of a phone number and nothing about
+       * who holds it, and one mistyped digit here hands an entire practice —
+       * its patients, its prescriptions — to whoever owns the number that was
+       * typed instead.
+       */
+      headDoctorName: z.string().trim().min(2).max(120),
+      headDoctorPhone: z
+        .string()
+        .trim()
+        .transform(toE164)
+        .pipe(z.string().regex(/^\+?[1-9]\d{7,14}$/, 'Enter a valid phone number')),
+      headDoctorPhoneToken: z.string().min(20),
+      headDoctorQualifications: z.string().trim().max(120).optional(),
+      headDoctorRegistrationNo: z.string().trim().max(60).optional(),
     }),
   }),
   asyncHandler(async (req, res) => {
+    const {
+      headDoctorName,
+      headDoctorPhone,
+      headDoctorPhoneToken,
+      headDoctorQualifications,
+      headDoctorRegistrationNo,
+      ...brand
+    } = req.body;
+
+    /**
+     * The token and the number must agree.
+     *
+     * Taking both as independent fields would let somebody verify one number
+     * and register another — which is the whole of the protection, undone by
+     * trusting the field beside the proof.
+     */
+    if (phoneFromToken(headDoctorPhoneToken) !== headDoctorPhone) {
+      throw badRequest(
+        'That verification was for a different number. Verify this one again.',
+      );
+    }
+
     const practice = await Practice.create({
-      ...req.body,
+      ...brand,
       status: PRACTICE_STATUS.ONBOARDING,
       verification: VERIFICATION.UNVERIFIED,
     });
+
+    /**
+     * The head, immediately.
+     *
+     * Not a second call the operator might not make. A practice that exists for
+     * even one request with nobody in it is a practice somebody can navigate to
+     * and find empty, and the failure mode of "I will add the doctor next" is
+     * that nobody does.
+     *
+     * If this throws — the number belongs to a patient, say — the practice row
+     * is removed rather than left behind. Mongo has no transaction here without
+     * a replica set, so the compensation is explicit and the audit records
+     * either a practice with a head or nothing at all.
+     */
+    let head;
+    try {
+      head = await joinByPhone({
+        phone: headDoctorPhone,
+        name: headDoctorName,
+        practice: practice._id,
+        role: ROLES.DOCTOR,
+        isOwner: true,
+        qualifications: headDoctorQualifications,
+        registrationNo: headDoctorRegistrationNo,
+      });
+    } catch (err) {
+      await Practice.deleteOne({ _id: practice._id });
+      throw err;
+    }
+
+    // The doctor's own number is the practice's letterhead unless one was
+    // typed. A solo practice has exactly one, and asking twice is how the two
+    // drift apart.
+    if (!practice.registrationNo && headDoctorRegistrationNo) {
+      practice.registrationNo = headDoctorRegistrationNo;
+    }
+    if (!practice.doctorDisplayName) practice.doctorDisplayName = headDoctorName;
+    practice.headDoctor = head.user._id;
+    await practice.save();
 
     await AdminAuditLog.record({
       admin: req.admin,
@@ -711,6 +889,12 @@ router.post(
         name: practice.name,
         status: practice.status,
         verification: practice.verification,
+        headDoctor: headDoctorName,
+        headDoctorPhone,
+        // Whether this created an account or attached one that already existed
+        // is the difference between onboarding a new doctor and adding a
+        // practice to somebody already on the platform.
+        headDoctorAccount: head.createdUser ? 'created' : 'existing',
       },
       req,
     });

@@ -55,6 +55,7 @@ export function Modal({
   destructive = false,
   busy = false,
   error,
+  onCancel,
 }: {
   open: boolean;
   onClose: () => void;
@@ -67,6 +68,14 @@ export function Modal({
   destructive?: boolean;
   busy?: boolean;
   error?: string | null;
+  /**
+   * What the left-hand button does, when it is not "close this".
+   *
+   * A multi-step dialog needs it to mean "back" on every step but the first,
+   * and a second button beside Cancel would be two ways out of a sequence that
+   * has one.
+   */
+  onCancel?: () => void;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
 
@@ -114,7 +123,7 @@ export function Modal({
         <div className="border-border flex justify-end gap-2 border-t px-5 py-3">
           <button
             type="button"
-            onClick={onClose}
+            onClick={onCancel ?? onClose}
             className="border-border hover:bg-secondary rounded-sm border px-3 py-1.5 text-[13px] font-medium transition-colors"
           >
             {cancelLabel}

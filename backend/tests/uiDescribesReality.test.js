@@ -100,9 +100,20 @@ describe('what the console says about the setup key is true', () => {
     // asked by somebody waiting for a text on a screen that had explained why
     // SMS is a bad idea without saying where the code does come from.
     assert.match(prose, /Nothing will be sent to you/);
+
+    // Scoped to the second-factor routes, not the whole file. The console does
+    // text a code elsewhere — verifying a head doctor's phone number — and that
+    // is a different claim about a different thing. An assertion that read the
+    // whole file called the copy stale because an unrelated route gained an
+    // SMS, which is the test being wrong rather than the sentence.
+    const factor = routes.slice(
+      routes.indexOf("'/me/totp/setup'"),
+      routes.indexOf("'/me/totp/disable'"),
+    );
+    assert.ok(factor.length > 200, 'the second-factor routes moved');
     assert.ok(
-      !/sendSms|msg91|twilio/i.test(routes),
-      'the admin routes now send a message; the copy saying none arrives is stale',
+      !/sendSms|requestOtp|msg91|twilio/i.test(factor),
+      'enrolling a second factor now sends a message; the copy saying none arrives is stale',
     );
   });
 

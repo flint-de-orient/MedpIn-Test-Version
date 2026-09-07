@@ -3,7 +3,7 @@ import dayjs from 'dayjs';
 import { z } from 'zod';
 import { requireAuth, requireClinician, requireDoctor } from '../middleware/auth.js';
 import { requirePermission } from '../middleware/authorise.js';
-import { PERMISSIONS } from '../models/Membership.js';
+import { Membership, MEMBERSHIP_STATUS, PERMISSIONS } from '../models/Membership.js';
 import { validate, q } from '../middleware/validate.js';
 import { asyncHandler, notFound, conflict, badRequest } from '../middleware/errors.js';
 import { audit } from '../middleware/audit.js';
@@ -54,6 +54,7 @@ import {
   practicePatientIds,
 } from '../middleware/practiceScope.js';
 import { enrollmentGate } from '../middleware/authorise.js';
+import { joinPractice } from '../services/memberships.js';
 
 const router = Router();
 router.use(requireAuth, requireClinician);
@@ -1251,6 +1252,36 @@ router.get(
   }),
 );
 
+/**
+ * The staff accounts belonging to the caller's practice.
+ *
+ * Permissive on unknown, like everything else: no practice on the caller means
+ * the membership backfill has not reached them, and restricting would empty the
+ * staff list of a clinic running right now.
+ */
+async function practiceStaffFilter(req) {
+  const practiceId = await practiceOf(req);
+  if (!practiceId) return {};
+
+  const rows = await Membership.find({
+    practice: practiceId,
+    role: ROLES.STAFF,
+    status: MEMBERSHIP_STATUS.ACTIVE,
+    endedOn: null,
+  })
+    .select('user')
+    .lean();
+
+  // No memberships at all means the backfill has not run, and an empty `$in`
+  // is indistinguishable from a practice with no desk.
+  if (!rows.length) {
+    const anyAnywhere = await Membership.estimatedDocumentCount();
+    if (!anyAnywhere) return {};
+  }
+
+  return { _id: { $in: rows.map((r) => r.user) } };
+}
+
 // ---------------------------------------------------------------------------
 // Alerts
 // ---------------------------------------------------------------------------
@@ -2000,7 +2031,16 @@ router.get(
   '/staff',
   requireDoctor,
   asyncHandler(async (req, res) => {
-    const items = await User.find({ role: ROLES.STAFF, isActive: true })
+    /**
+     * This practice's desk, not the platform's.
+     *
+     * `{ role: STAFF, isActive: true }` was every staff account anywhere. It
+     * was the same set while there was one clinic and stops being so the moment
+     * there are two — at which point a receptionist at one practice appears in
+     * the staff list of another.
+     */
+    const staffScope = await practiceStaffFilter(req);
+    const items = await User.find({ role: ROLES.STAFF, isActive: true, ...staffScope })
       .select('name phone avatarAssetId altPhones lastLoginAt')
       .sort({ name: 1 })
       .lean();
@@ -2066,6 +2106,25 @@ router.post(
     });
     if (password) await user.setPassword(password);
     await user.save();
+
+    /**
+     * The membership, which is what actually puts them in a practice.
+     *
+     * Without this the account exists and belongs to nobody: it would appear in
+     * every practice's staff list, and every guard would permit it everywhere
+     * because a caller with no practice is the permissive case. That was
+     * survivable with one clinic and is the whole problem with two.
+     */
+    const practiceId = await practiceOf(req);
+    if (practiceId) {
+      await joinPractice({
+        user: user._id,
+        practice: practiceId,
+        role: ROLES.STAFF,
+        addedBy: req.user._id,
+      });
+    }
+
     res.status(201).json({ id: String(user._id), name: user.name, phone: user.phone });
   }),
 );
