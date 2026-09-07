@@ -225,6 +225,18 @@
     font-feature-settings: "tnum";
   }
 
+  /* The spinner, defined here so the reduced-motion rule below can stop it.
+     A control that says "working" by turning has to say it some other way for
+     somebody who asked for no animation, which is why the label changes too. */
+  .spin {
+    animation: spin 0.7s linear infinite;
+  }
+  @keyframes spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+
   /* A focus ring that is visible on both grounds without being a glow. */
   :focus-visible {
     outline: 2px solid var(--ring);

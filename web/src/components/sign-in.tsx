@@ -5,7 +5,7 @@ import { api, ApiError } from "@/lib/api";
 import { useSession } from "@/lib/session";
 import type { LoginResult } from "@/lib/types";
 import { cn } from "@/lib/utils";
-import { Wordmark } from "@/components/icons";
+import { IconEye, IconEyeOff, Spinner, Wordmark } from "@/components/icons";
 import { signInWithPasskey, type PublicKeyCredentialRequestOptionsJSON } from "@/lib/passkey";
 
 /**
@@ -78,7 +78,7 @@ export function SignIn() {
         </div>
       </header>
 
-      <div className="flex flex-1 items-center justify-center px-5 py-10">
+      <div className="flex flex-1 items-start justify-center px-5 pt-10 pb-16 sm:items-center sm:py-10">
         <div className="flex w-full max-w-[23rem] flex-col gap-4">
           {verified ? (
             <p
@@ -125,7 +125,22 @@ function Label({ htmlFor, children }: { htmlFor: string; children: React.ReactNo
 }
 
 const inputCls =
-  "border-input bg-card focus-visible:border-ring w-full rounded-sm border px-3 py-2 text-sm outline-none transition-colors";
+  "border-input bg-card focus-visible:border-ring w-full rounded-md border px-3 py-2 text-sm outline-none transition-colors disabled:opacity-55";
+
+/**
+ * The message slot, whether or not there is a message.
+ *
+ * Rendering nothing until something goes wrong moves every control below it the
+ * moment it appears — so the button somebody is reaching for is not where it
+ * was when they started reaching. The height is reserved and the box fades in.
+ */
+function Slot({ children }: { children?: React.ReactNode }) {
+  return (
+    <div className="min-h-[2.25rem]" aria-live="polite">
+      {children}
+    </div>
+  );
+}
 
 function Problem({ children }: { children: React.ReactNode }) {
   return (
@@ -133,10 +148,92 @@ function Problem({ children }: { children: React.ReactNode }) {
       // Announced, because a message that only appears visually is invisible to
       // whoever is using a screen reader and cannot see the form clear itself.
       role="alert"
-      className="text-stopped border-stopped/25 bg-stopped-tint rounded-sm border px-3 py-2 text-xs leading-relaxed"
+      className="text-stopped border-stopped/25 bg-stopped-tint animate-in fade-in-0 rounded-md border px-3 py-2 text-xs leading-relaxed duration-150"
     >
       {children}
     </p>
+  );
+}
+
+/**
+ * The one button that submits.
+ *
+ * A spinner as well as changed text: the label alone says the click registered
+ * and says nothing about whether anything is still happening, which on a slow
+ * connection is exactly the moment somebody clicks again. `aria-busy` says the
+ * same thing to a screen reader, where a turning ring says nothing at all.
+ */
+function Submit({ busy, children }: { busy: boolean; children: React.ReactNode }) {
+  return (
+    <button
+      type="submit"
+      disabled={busy}
+      aria-busy={busy}
+      className={cn(
+        "bg-primary text-primary-foreground flex h-10 items-center justify-center gap-2 rounded-md px-3 text-sm font-medium transition-all",
+        "hover:brightness-110 active:brightness-95",
+        // Not just dimmed: a dimmed button still looks pressable, and the
+        // cursor is the part that says it is not.
+        "disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:brightness-100",
+      )}
+    >
+      {busy ? <Spinner className="spin size-4" /> : null}
+      {children}
+    </button>
+  );
+}
+
+/**
+ * A password field that can be read back.
+ *
+ * The commonest reason a correct password is refused is that it was mistyped
+ * into a row of dots, and the commonest fix is typing it again more slowly.
+ * Showing it is one click, and the risk it carries — somebody behind you — is
+ * one the person at the keyboard can see and you cannot.
+ */
+function PasswordField({
+  id,
+  label,
+  value,
+  onChange,
+  autoComplete,
+  autoFocus,
+}: {
+  id: string;
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  autoComplete: string;
+  autoFocus?: boolean;
+}) {
+  const [shown, setShown] = useState(false);
+  return (
+    <div>
+      <Label htmlFor={id}>{label}</Label>
+      <div className="relative">
+        <input
+          id={id}
+          type={shown ? "text" : "password"}
+          autoComplete={autoComplete}
+          autoFocus={autoFocus}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          className={cn(inputCls, "pr-10")}
+          required
+        />
+        <button
+          type="button"
+          onClick={() => setShown((v) => !v)}
+          // The state, not the action: a button labelled "Hide" that hides is a
+          // coin toss every time it is read.
+          aria-label={shown ? "Password is visible. Hide it." : "Show password"}
+          aria-pressed={shown}
+          className="text-muted-foreground hover:text-foreground absolute top-1/2 right-1 -translate-y-1/2 rounded-sm p-2 transition-colors"
+        >
+          {shown ? <IconEyeOff className="size-4" /> : <IconEye className="size-4" />}
+        </button>
+      </div>
+    </div>
   );
 }
 
@@ -212,10 +309,12 @@ function LoginForm({ onForgot }: { onForgot: () => void }) {
   return (
     <form onSubmit={submit} noValidate className="flex flex-col gap-4">
       <div>
-        <h1 className="text-lg font-semibold tracking-tight">Sign in</h1>
-        <p className="text-muted-foreground mt-1 text-xs leading-relaxed">
-          This console creates practices and decides whether they may operate. It
-          holds no patient records.
+        <h1 className="text-xl font-semibold tracking-tight">Sign in</h1>
+        {/* Was two clauses of what this console does and does not hold — true,
+            and not what somebody signing in needs. The full sentence still runs
+            along the bottom of every screen inside. */}
+        <p className="text-muted-foreground mt-1 text-[13px]">
+          The MedPin operator console.
         </p>
       </div>
 
@@ -232,18 +331,13 @@ function LoginForm({ onForgot }: { onForgot: () => void }) {
         />
       </div>
 
-      <div>
-        <Label htmlFor="password">Password</Label>
-        <input
-          id="password"
-          type="password"
-          autoComplete="current-password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          className={inputCls}
-          required
-        />
-      </div>
+      <PasswordField
+        id="password"
+        label="Password"
+        value={password}
+        onChange={setPassword}
+        autoComplete="current-password"
+      />
 
       {needsCode ? (
         <div>
@@ -261,22 +355,18 @@ function LoginForm({ onForgot }: { onForgot: () => void }) {
         </div>
       ) : null}
 
-      {error ? <Problem>{error}</Problem> : null}
+      <Slot>{error ? <Problem>{error}</Problem> : null}</Slot>
 
-      <button
-        type="submit"
-        disabled={busy}
-        className="bg-primary text-primary-foreground rounded-sm px-3 py-2 text-sm font-medium transition-opacity disabled:opacity-55"
-      >
+      <Submit busy={busy}>
         {busy ? "Checking…" : needsCode ? "Verify" : "Sign in"}
-      </button>
+      </Submit>
 
       <button
         type="button"
         onClick={onForgot}
         className="text-primary self-start text-xs underline underline-offset-4"
       >
-        Lost the password?
+        Forgot password?
       </button>
     </form>
   );
@@ -375,15 +465,9 @@ function ForgotForm({
         />
       </div>
 
-      {error ? <Problem>{error}</Problem> : null}
+      <Slot>{error ? <Problem>{error}</Problem> : null}</Slot>
 
-      <button
-        type="submit"
-        disabled={busy}
-        className="bg-primary text-primary-foreground rounded-sm px-3 py-2 text-sm font-medium transition-opacity disabled:opacity-55"
-      >
-        {busy ? "Sending..." : "Email me a link"}
-      </button>
+      <Submit busy={busy}>{busy ? "Sending…" : "Email me a link"}</Submit>
 
       <div className="flex flex-wrap gap-x-4 gap-y-1">
         <button
@@ -508,18 +592,13 @@ function ResetForm({
         />
       </div>
 
-      <div>
-        <Label htmlFor="r-password">New password — 12 characters or more</Label>
-        <input
-          id="r-password"
-          type="password"
-          autoComplete="new-password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          className={inputCls}
-          required
-        />
-      </div>
+      <PasswordField
+        id="r-password"
+        label="New password — 12 characters or more"
+        value={password}
+        onChange={setPassword}
+        autoComplete="new-password"
+      />
 
       <div>
         <Label htmlFor="r-totp">Authenticator code — if the account has one</Label>
@@ -534,15 +613,9 @@ function ResetForm({
         />
       </div>
 
-      {error ? <Problem>{error}</Problem> : null}
+      <Slot>{error ? <Problem>{error}</Problem> : null}</Slot>
 
-      <button
-        type="submit"
-        disabled={busy}
-        className="bg-primary text-primary-foreground rounded-sm px-3 py-2 text-sm font-medium transition-opacity disabled:opacity-55"
-      >
-        {busy ? "Setting…" : "Set the password"}
-      </button>
+      <Submit busy={busy}>{busy ? "Setting…" : "Set the password"}</Submit>
 
       <button
         type="button"

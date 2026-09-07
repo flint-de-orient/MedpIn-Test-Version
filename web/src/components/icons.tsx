@@ -134,6 +134,41 @@ export const IconMonitor = ({ className }: Props) => (
   </svg>
 );
 
+export const IconEye = ({ className }: Props) => (
+  <svg {...base} className={className}>
+    <path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12Z" />
+    <circle cx="12" cy="12" r="3" />
+  </svg>
+);
+
+export const IconEyeOff = ({ className }: Props) => (
+  <svg {...base} className={className}>
+    <path d="M9.9 5.7A9.7 9.7 0 0 1 12 5.5c6 0 9.5 6.5 9.5 6.5a17 17 0 0 1-2.8 3.6" />
+    <path d="M6.3 7.3A16.6 16.6 0 0 0 2.5 12S6 18.5 12 18.5a9.5 9.5 0 0 0 4-.85" />
+    <path d="M10 10a2.9 2.9 0 0 0 4 4" />
+    <path d="m3.5 3.5 17 17" />
+  </svg>
+);
+
+/**
+ * A ring that turns, for a button waiting on the network.
+ *
+ * Its own component because a disabled button with changed text says the click
+ * registered and says nothing about whether anything is still happening — which
+ * on a slow connection is the moment somebody clicks again.
+ */
+export const Spinner = ({ className }: Props) => (
+  <svg viewBox="0 0 24 24" fill="none" className={className} aria-hidden>
+    <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="2.5" opacity="0.25" />
+    <path
+      d="M21 12a9 9 0 0 0-9-9"
+      stroke="currentColor"
+      strokeWidth="2.5"
+      strokeLinecap="round"
+    />
+  </svg>
+);
+
 /**
  * The MedPin mark — the real one, not a redraw.
  *
