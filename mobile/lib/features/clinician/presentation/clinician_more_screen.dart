@@ -5,6 +5,7 @@ import 'package:image_picker/image_picker.dart';
 
 import '../../../core/config/app_config.dart';
 import '../../../core/network/api_exception.dart';
+import '../../../core/capabilities/capabilities.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/update/app_update_section.dart';
@@ -341,6 +342,9 @@ class _ClinicianMoreScreenState extends ConsumerState<ClinicianMoreScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // What this practice has, so the tools list is what it can use rather
+    // than a menu with dead entries in it.
+    final caps = ref.watch(capabilitySetProvider);
     final l10n = AppLocalizations.of(context);
     final scheme = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -557,18 +561,22 @@ class _ClinicianMoreScreenState extends ConsumerState<ClinicianMoreScreen> {
                 subtitle: 'Doctors, front desk and dieticians',
                 onTap: () => context.push('/clinician/team'),
               ),
-              ProfileRow(
-                icon: Icons.ios_share_rounded,
-                title: 'Export data',
-                subtitle: 'Patients, alerts and figures as CSV or JSON',
-                onTap: () => context.push('/clinician/export'),
-              ),
-              ProfileRow(
-                icon: Icons.reviews_outlined,
-                title: 'Chat review',
-                subtitle: 'What the assistant has been telling patients',
-                onTap: () => context.push('/clinician/chat-review'),
-              ),
+              if (caps.has(Cap.reportExport))
+                ProfileRow(
+                  icon: Icons.ios_share_rounded,
+                  title: 'Export data',
+                  subtitle: 'Patients, alerts and figures as CSV or JSON',
+                  onTap: () => context.push('/clinician/export'),
+                ),
+              // Reviewing what the assistant said is a screen with nothing on
+              // it where there is no assistant.
+              if (caps.has(Cap.aiAssistant))
+                ProfileRow(
+                  icon: Icons.reviews_outlined,
+                  title: 'Chat review',
+                  subtitle: 'What the assistant has been telling patients',
+                  onTap: () => context.push('/clinician/chat-review'),
+                ),
               ProfileRow(
                 icon: Icons.menu_book_outlined,
                 title: 'Knowledge base',
