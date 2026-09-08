@@ -321,3 +321,28 @@ describe('and none of it can lock out a clinic that is running', () => {
     assert.match(scope, /if \(!practiceId \|\| !\(await clinicsAreLinked\(\)\)\) return \{\};/);
   });
 });
+
+describe('the clinic’s inbox is this clinic’s inbox', () => {
+  test('feedback is scoped to the practice’s own patients', () => {
+    // `Feedback.find()` — no filter at all — returned every patient's words on
+    // the platform with their name, phone and photograph populated onto it.
+    // Feedback is attributable by design, which is what makes an unscoped read
+    // of it worse than an unscoped count.
+    const src = read('routes/feedback.js');
+    assert.match(src, /await practicePatients\(req, 'patient'\)/);
+
+    // Comments stripped first. The note above the fix quotes the query it
+    // replaced, and an assertion that cannot tell code from the explanation of
+    // code forbids explaining anything — which is the fourth time that has
+    // caught me in this suite.
+    const code = src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
+    assert.ok(
+      !/Feedback\.find\(\)/.test(code),
+      'the clinician feedback list is unfiltered again',
+    );
+    assert.ok(
+      !/Feedback\.countDocuments\(\)/.test(code),
+      'the feedback count is unfiltered again',
+    );
+  });
+});

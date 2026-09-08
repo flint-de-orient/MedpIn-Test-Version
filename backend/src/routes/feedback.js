@@ -8,6 +8,7 @@ import { audit } from '../middleware/audit.js';
 import { Feedback } from '../models/Feedback.js';
 import { ROLES } from '../models/User.js';
 import { paged, pageParams } from '../utils/pagination.js';
+import { practicePatients } from '../middleware/practiceScope.js';
 
 const router = Router();
 
@@ -75,14 +76,21 @@ router.get(
   audit('read', 'Feedback'),
   asyncHandler(async (req, res) => {
     const { page, limit, skip } = q(req);
+
+    // The clinic's view is this clinic's view. `Feedback.find()` with no filter
+    // returned every patient's words on the platform, with their name, phone
+    // and photograph attached — feedback is attributable by design, which is
+    // what makes an unscoped read of it worse than an unscoped count.
+    const scope = await practicePatients(req, 'patient');
+
     const [items, total] = await Promise.all([
-      Feedback.find()
+      Feedback.find(scope)
         .sort({ createdAt: -1 })
         .skip(skip)
         .limit(limit)
         .populate('patient', 'name phone avatarAssetId')
         .lean(),
-      Feedback.countDocuments(),
+      Feedback.countDocuments(scope),
     ]);
 
     res.json(
