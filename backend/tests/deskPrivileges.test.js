@@ -47,7 +47,7 @@ function guardsFor(path, verb = 'post') {
 describe('the front desk is not a clinician', () => {
   const doctorOnly = [
     ['/patients/:id/dietician', 'reassigning a patient to a dietician', 'patch'],
-    ['/dieticians', 'creating a dietician account'],
+    ['/dieticians', 'reading the dietician list', 'get'],
     ['/settings', 'changing clinic settings', 'patch'],
     ['/knowledge', 'writing the assistant knowledge base'],
     ['/knowledge/:id', 'editing it', 'patch'],
@@ -57,7 +57,6 @@ describe('the front desk is not a clinician', () => {
     ['/chat-review/:sessionId/message', 'posting as the clinician'],
     ['/alerts/:id/acknowledge', 'acknowledging a clinical alert'],
     ['/alerts/:id/resolve', 'resolving one'],
-    ['/staff', 'creating a front-desk account'],
   ];
 
   for (const [path, what, verb] of doctorOnly) {

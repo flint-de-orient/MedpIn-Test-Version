@@ -73,7 +73,7 @@ describe('creating somebody who works here says where they work', () => {
               'list will leave them out, and every guard will permit them',
               'everywhere, because a caller with no practice is the permissive',
               'case. Call joinPractice({ user, practice, role, addedBy }) in the',
-              'same handler, as POST /doctor/staff does.',
+              'same handler, as POST /team does.',
             ].join('\n'),
           );
         });
@@ -82,53 +82,47 @@ describe('creating somebody who works here says where they work', () => {
   }
 });
 
-describe('the two that were reported', () => {
-  const doctor = readFileSync(path.join(SRC, 'routes', 'doctor.js'), 'utf8');
+describe('the one that was reported, and where the rule lives now', () => {
 
-  function routeBody(marker) {
-    const at = doctor.indexOf(marker);
-    assert.ok(at > 0, `${marker} moved`);
-    const next = doctor.indexOf('\nrouter.', at);
-    return doctor.slice(at, next === -1 ? doctor.length : next);
-  }
+  const team = readFileSync(path.join(SRC, 'routes', 'team.js'), 'utf8');
 
-  test('a new dietician joins the practice', () => {
-    const body = routeBody("router.post(\n  '/dieticians'");
-    assert.match(body, /joinPractice\(\{/);
-    assert.match(body, /role: ROLES\.DIETICIAN/);
+  test('hiring anybody creates the membership', () => {
+    // Three routes became one, which is the structural fix for the bug this
+    // file is named after: the dietician path forgot because nothing held it
+    // to what the staff path did. One path cannot disagree with itself.
+    assert.match(team, /joinPractice\(\{/);
+    assert.match(team, /role: b\.role/);
   });
 
-  test('and a new desk account still does', () => {
-    const body = routeBody("router.post(\n  '/staff'");
-    assert.match(body, /joinPractice\(\{/);
-    assert.match(body, /role: ROLES\.STAFF/);
+  test('and the account is removed if that fails', () => {
+    // The compensating half. An account with no membership belongs to nobody,
+    // appears in no list, and holds a phone number that cannot be reused.
+    assert.match(team, /await User\.deleteOne\(\{ _id: user\._id \}\)/);
   });
 
-  test('both permit when the practice is unknown', () => {
-    // A doctor whose own membership predates the backfill can still hire. The
-    // account is created without one rather than the request being refused —
-    // which is the same rule the read guards follow.
-    for (const marker of ["router.post(\n  '/dieticians'", "router.post(\n  '/staff'"]) {
-      assert.match(routeBody(marker), /if \(practiceId\) \{/);
-    }
+  test('an unknown practice refuses rather than orphaning an account', () => {
+    // A deliberate change from what the old routes did. They created the
+    // account without a membership — which is exactly the state that made a
+    // dietician invisible, so knowingly repeating it would be permissiveness
+    // about the wrong thing. Read guards still permit; this is a write with
+    // nowhere to go.
+    assert.match(team, /if \(!practiceId\) \{[\s\S]{0,140}badRequest\(/);
   });
 });
 
 describe('and nobody has to invent a colleague’s password', () => {
-  const doctor = readFileSync(path.join(SRC, 'routes', 'doctor.js'), 'utf8');
+  const team = readFileSync(path.join(SRC, 'routes', 'team.js'), 'utf8');
   const form = readFileSync(
-    new URL('../../mobile/lib/features/clinician/presentation/dieticians_screen.dart', import.meta.url),
+    new URL('../../mobile/lib/features/clinician/presentation/team_screen.dart', import.meta.url),
     'utf8',
   );
 
-  test('the server takes it as optional, both for staff and for a dietician', () => {
-    // It was required on exactly one of the two, which is the inconsistency
-    // that was reported. A dietician has their own phone and has just answered
-    // a code on it; the number is the credential.
-    const optional = [
-      ...doctor.matchAll(/password: z\.string\(\)\.min\(8[^\n]*\.optional\(\)/g),
-    ];
-    assert.equal(optional.length, 2, 'a password is mandatory on one of the two again');
+  test('the server takes it as optional, for every role', () => {
+    // It was required on the dietician path and optional on the desk one,
+    // which is the inconsistency that was reported. There is one path now, so
+    // the two cannot disagree — a dietician has their own phone and has just
+    // answered a code on it, and the number is the credential.
+    assert.match(team, /password: z\.string\(\)\.min\(8[^\n]*\.optional\(\)/);
   });
 
   test('and the form offers it rather than demanding it', () => {

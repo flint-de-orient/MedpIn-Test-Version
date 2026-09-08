@@ -97,8 +97,11 @@ describe('the guard is wired where it matters', () => {
     assert.match(routeSrc('prescriptions.js'), /requirePermission\(PERMISSIONS\.PRESCRIBE\)/);
   });
 
-  test('creating staff and dieticians requires MANAGE_STAFF', () => {
-    const src = routeSrc('doctor.js');
+  test('hiring requires MANAGE_STAFF', () => {
+    // One route hires and one changes a job, both in team.js. It was two
+    // creation routes in doctor.js — the count is the same and the reason is
+    // different, which is why this names the file it means.
+    const src = routeSrc('team.js');
     assert.equal((src.match(/requirePermission\(PERMISSIONS\.MANAGE_STAFF\)/g) ?? []).length, 2);
   });
 

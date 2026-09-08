@@ -8,6 +8,7 @@ import '../../medications/domain/medication.dart';
 import '../domain/appointment.dart';
 import '../domain/chat_review.dart';
 import '../domain/department.dart';
+import '../domain/team_member.dart';
 import '../domain/clinician_models.dart';
 import '../domain/knowledge_chunk.dart';
 import '../domain/patient_summary.dart';
@@ -17,6 +18,13 @@ import '../domain/prescription_scan.dart';
 
 /// Talks to `/doctor/*` — the clinician (doctor + staff) API: dashboard
 /// overview, the patient directory, and clinical-alert triage.
+/// The difference between "leave it alone" and "clear it".
+///
+/// `null` is a real value on a department — it means "not in one" — so a
+/// nullable parameter cannot also carry "not supplied". This sentinel separates
+/// the two; without it, clearing somebody's department would be inexpressible.
+const Object _unset = Object();
+
 class ClinicianRepository {
   /// Everything waiting: open alerts, unread patient messages across both
   /// threads, conversations flagged for review, and — for the front desk —
@@ -349,6 +357,77 @@ class ClinicianRepository {
         .whereType<Map<String, dynamic>>()
         .map(PrescriptionSummary.fromJson)
         .toList();
+  }
+
+  // ---- the team ---------------------------------------------------------------
+
+  /// Everyone at this practice, with every dimension the screen needs.
+  ///
+  /// One request rather than three: the people, the department and location
+  /// pickers, whether this reader may change anything, and how close the
+  /// practice is to its staff cap.
+  Future<TeamRoster> team() async {
+    return TeamRoster.fromJson(await _client.getJson('/team'));
+  }
+
+  /// Hire somebody — a doctor, a front-desk account or a dietician.
+  ///
+  /// One call for all three. The role is a field, not a URL: three routes is
+  /// how the dietician path came to be the only one that forgot to create a
+  /// membership, because nothing held them together.
+  ///
+  /// [phoneToken] is proof the number was answered. A regex tests the shape of
+  /// a phone number and nothing about who holds it, and for a doctor the
+  /// account it creates can prescribe.
+  Future<void> hire({
+    required String role,
+    required String name,
+    required String phoneToken,
+    String? password,
+    String? departmentId,
+    String? locationId,
+    String? qualifications,
+    String? registrationNo,
+  }) async {
+    await _client.postJson(
+      '/team',
+      body: {
+        'role': role,
+        'name': name,
+        'phoneToken': phoneToken,
+        if (password != null && password.isNotEmpty) 'password': password,
+        if (departmentId != null) 'departmentId': departmentId,
+        if (locationId != null) 'locationId': locationId,
+        if (qualifications != null && qualifications.isNotEmpty)
+          'qualifications': qualifications,
+        if (registrationNo != null && registrationNo.isNotEmpty)
+          'registrationNo': registrationNo,
+      },
+    );
+  }
+
+  /// Change what somebody is here: their role, their department, their
+  /// location, whether they are suspended.
+  ///
+  /// Not their name or number — those belong to the person and are edited from
+  /// their own profile. Pass an explicit null to clear a department or a
+  /// location; omitting it leaves it alone.
+  Future<void> updateMember(
+    String membershipId, {
+    String? role,
+    Object? departmentId = _unset,
+    Object? locationId = _unset,
+    String? status,
+  }) async {
+    await _client.patchJson(
+      '/team/$membershipId',
+      body: {
+        if (role != null) 'role': role,
+        if (!identical(departmentId, _unset)) 'departmentId': departmentId,
+        if (!identical(locationId, _unset)) 'locationId': locationId,
+        if (status != null) 'status': status,
+      },
+    );
   }
 
   // ---- departments ----------------------------------------------------------

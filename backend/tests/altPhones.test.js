@@ -48,10 +48,23 @@ describe('alternate sign-in numbers', () => {
     // A number already serving as one account's alternate is just as taken as
     // one that is another's primary. Two accounts claiming a number means a
     // code sent to it signs somebody into whichever document came back first.
-    for (const f of ['../src/routes/auth.js', '../src/routes/doctor.js']) {
+    // Either spelling counts. `phoneTaken` and `findByLoginPhone` both consult
+    // the alternates; the patient path uses the second because it wants the
+    // account it collided with rather than a boolean. Asserting on one name
+    // made this fail when hiring moved to /team — the test being specific
+    // about a method rather than about the guarantee.
+    for (const f of [
+      '../src/routes/auth.js',
+      '../src/routes/doctor.js',
+      '../src/routes/team.js',
+    ]) {
       const src = read(f);
-      const guards = src.match(/phoneTaken\(/g) ?? [];
-      assert.ok(guards.length > 0, `${f} must guard with phoneTaken`);
+      if (!/new User\(/.test(src)) continue;
+      assert.match(
+        src,
+        /phoneTaken\(|findByLoginPhone\(/,
+        `${f} creates an account without checking the number is free`,
+      );
     }
     const script = read('../scripts/setAccountPhone.js');
     assert.match(script, /byLoginPhone\(/, 'the phone-swap script must check alternates');

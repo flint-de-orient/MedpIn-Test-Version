@@ -22,13 +22,13 @@ import '../../features/clinician/presentation/appointments_admin_screen.dart';
 import '../../features/clinician/presentation/clinic_edit_screen.dart';
 import '../../features/clinician/presentation/clinics_screen.dart';
 import '../../features/clinician/presentation/departments_screen.dart';
+import '../../features/clinician/presentation/team_screen.dart';
 import '../../features/clinician/presentation/chat_review_detail_screen.dart';
 import '../../features/clinician/presentation/chat_review_screen.dart';
 import '../../features/clinician/presentation/clinician_dashboard_screen.dart';
 import '../../features/clinician/presentation/clinician_more_screen.dart';
 import '../../features/clinician/presentation/clinician_shell.dart';
 import '../../features/clinician/presentation/knowledge_edit_screen.dart';
-import '../../features/clinician/presentation/dieticians_screen.dart';
 import '../../features/clinician/presentation/export_screen.dart';
 import '../../features/clinician/presentation/feedback_inbox_screen.dart';
 import '../../features/clinician/presentation/knowledge_screen.dart';
@@ -59,7 +59,6 @@ import '../../shared/providers/locale_provider.dart';
 import '../../features/staff/presentation/staff_profile_screen.dart';
 import '../../features/staff/presentation/staff_today_screen.dart';
 import '../../features/staff/presentation/staff_shell.dart';
-import '../../features/clinician/presentation/staff_accounts_screen.dart';
 import '../../features/appointments/presentation/book_appointment_screen.dart';
 import '../../features/appointments/presentation/my_appointments_screen.dart';
 
@@ -243,17 +242,26 @@ final Provider<GoRouter> appRouterProvider = Provider<GoRouter>((ref) {
             (context, state) =>
                 ChatReviewDetailScreen(sessionId: state.pathParameters['id']!),
       ),
+      // One screen where there were two.
+      //
+      // Front desk and Clinic care each knew about one role, because the role
+      // was in the URL — which is also why a practice could not add a doctor at
+      // all. Role is a column now, so this is one list.
+      //
+      // The old paths redirect rather than 404: they are in the muscle memory
+      // of the one clinic already using this, and a dead link is a worse
+      // welcome than a screen with more on it than expected.
       GoRoute(
-        path: '/clinician/dieticians',
-        builder: (context, state) => const DieticiansScreen(),
+        path: '/clinician/team',
+        builder: (context, state) => const TeamScreen(),
       ),
-      // Adding a receptionist used to mean a shell on the server and a seed
-      // script. In practice that means the clinic waits for whoever knows how,
-      // and shares an existing login until then — which is how an audit trail
-      // stops being able to answer who did something.
       GoRoute(
         path: '/clinician/staff',
-        builder: (context, state) => const StaffAccountsScreen(),
+        redirect: (context, state) => '/clinician/team',
+      ),
+      GoRoute(
+        path: '/clinician/dieticians',
+        redirect: (context, state) => '/clinician/team',
       ),
       GoRoute(
         path: '/clinician/feedback',

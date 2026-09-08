@@ -70,10 +70,16 @@ describe('there is no invite code to steal', () => {
   test('creating a clinical account is still doctor-only', () => {
     // The invite code is gone; the door it bypassed is not. This is the only
     // way in now, so it has to stay shut to everyone but the doctor.
-    for (const route of ["'/dieticians'", "'/staff'"]) {
-      const at = doctor.indexOf(`  ${route},`);
-      assert.notEqual(at, -1, `no route registered at ${route}`);
-      assert.match(doctor.slice(at, at + 200), /requireDoctor/, `${route} is not doctor-only`);
-    }
+    // Hiring is one route now, in team.js — the role is a field rather than
+    // three URLs. The door this checks is the same door; it has one handle.
+    const team = readFileSync(new URL('../src/routes/team.js', import.meta.url), 'utf8');
+    const at = team.indexOf("router.post(\n  '/',");
+    assert.notEqual(at, -1, 'the hiring route moved');
+    assert.match(team.slice(at, at + 220), /requireDoctor/, 'hiring is not doctor-only');
+
+    // And the read that stayed behind.
+    const listed = doctor.indexOf("  '/dieticians',");
+    assert.notEqual(listed, -1, 'the dietician list is gone');
+    assert.match(doctor.slice(listed, listed + 200), /requireDoctor/);
   });
 });

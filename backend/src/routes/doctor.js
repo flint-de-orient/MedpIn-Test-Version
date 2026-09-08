@@ -3,7 +3,7 @@ import dayjs from 'dayjs';
 import { z } from 'zod';
 import { requireAuth, requireClinician, requireDoctor } from '../middleware/auth.js';
 import { requirePermission } from '../middleware/authorise.js';
-import { Membership, MEMBERSHIP_STATUS, PERMISSIONS } from '../models/Membership.js';
+import { PERMISSIONS } from '../models/Membership.js';
 import { validate, q } from '../middleware/validate.js';
 import { asyncHandler, notFound, conflict, badRequest } from '../middleware/errors.js';
 import { audit } from '../middleware/audit.js';
@@ -55,7 +55,6 @@ import {
   practiceMembers,
 } from '../middleware/practiceScope.js';
 import { enrollmentGate } from '../middleware/authorise.js';
-import { joinPractice } from '../services/memberships.js';
 
 const router = Router();
 router.use(requireAuth, requireClinician);
@@ -1260,17 +1259,6 @@ router.get(
   }),
 );
 
-/**
- * The staff accounts belonging to the caller's practice.
- *
- * This used to be the only place in the codebase that scoped people rather than
- * patients, which is why it was the only list of people that did not leak. It
- * now delegates to the shared helper so the dietician list, the clinic list and
- * every push notification get the same answer from the same code.
- */
-async function practiceStaffFilter(req) {
-  return practiceMembers(req, ROLES.STAFF);
-}
 
 // ---------------------------------------------------------------------------
 // Alerts
@@ -2025,215 +2013,9 @@ router.patch(
   }),
 );
 
-/** The clinic's front-desk accounts. */
-router.get(
-  '/staff',
-  requireDoctor,
-  asyncHandler(async (req, res) => {
-    /**
-     * This practice's desk, not the platform's.
-     *
-     * `{ role: STAFF, isActive: true }` was every staff account anywhere. It
-     * was the same set while there was one clinic and stops being so the moment
-     * there are two — at which point a receptionist at one practice appears in
-     * the staff list of another.
-     */
-    const staffScope = await practiceStaffFilter(req);
-    const items = await User.find({ role: ROLES.STAFF, isActive: true, ...staffScope })
-      .select('name phone avatarAssetId altPhones lastLoginAt')
-      .sort({ name: 1 })
-      .lean();
-    res.json({
-      items: items.map((d) => ({
-        id: String(d._id),
-        name: d.name,
-        phone: d.phone,
-        // A desk often has two lines on one account. The doctor should see
-        // both, because "who can sign into this" is the question this list
-        // exists to answer.
-        altPhones: d.altPhones ?? [],
-        avatarUrl: d.avatarAssetId ? `/api/v1/uploads/${d.avatarAssetId}/raw` : null,
-        lastLoginAt: d.lastLoginAt ?? null,
-      })),
-    });
-  }),
-);
 
-/**
- * Create a front-desk account.
- *
- * The doctor's own act: staff can see every patient in the clinic, so who gets
- * an account is not a decision for the desk to make about itself.
- */
-router.post(
-  '/staff',
-  requireDoctor,
-  requirePermission(PERMISSIONS.MANAGE_STAFF),
-  validate({
-    body: z.object({
-      name: z.string().trim().min(2).max(120),
-      // Proof the number was answered, not a number.
-      //
-      // A regex tests the shape of a phone number and nothing about who holds
-      // it, and a desk account is the sharper case of the two: the password
-      // below is optional and off by default, so for most of them the number
-      // IS the whole credential. One mistyped digit and it belongs to whoever
-      // owns the number that was typed instead.
-      phoneToken: z.string().min(20),
-      // Optional. Staff can sign in with a texted code like everyone else; a
-      // password is for the shared handset that stays on the counter, where
-      // waiting for an SMS on somebody's personal phone is not workable.
-      password: z.string().min(8, 'At least 8 characters').max(128).optional(),
-    }),
-  }),
-  audit('create', 'User'),
-  asyncHandler(async (req, res) => {
-    const { name, phoneToken, password } = req.body;
-    const phone = phoneFromToken(phoneToken);
-    if (await User.phoneTaken(phone)) {
-      throw conflict('An account with this phone number already exists');
-    }
-    const user = new User({
-      name,
-      phone,
-      role: ROLES.STAFF,
-      consent: {
-        termsAcceptedAt: new Date(),
-        dataProcessingAcceptedAt: new Date(),
-        aiDisclaimerAcceptedAt: new Date(),
-      },
-    });
-    if (password) await user.setPassword(password);
-    await user.save();
 
-    /**
-     * The membership, which is what actually puts them in a practice.
-     *
-     * Without this the account exists and belongs to nobody: it would appear in
-     * every practice's staff list, and every guard would permit it everywhere
-     * because a caller with no practice is the permissive case. That was
-     * survivable with one clinic and is the whole problem with two.
-     */
-    const practiceId = await practiceOf(req);
-    if (practiceId) {
-      await joinPractice({
-        user: user._id,
-        practice: practiceId,
-        role: ROLES.STAFF,
-        addedBy: req.user._id,
-      });
-    }
 
-    res.status(201).json({ id: String(user._id), name: user.name, phone: user.phone });
-  }),
-);
-
-/** Close a front-desk account. Deactivated, never deleted: their actions stay
- * on the audit trail and a removed user would orphan them. */
-router.delete(
-  '/staff/:id',
-  requireDoctor,
-  audit('update', 'User'),
-  asyncHandler(async (req, res) => {
-    const user = await User.findOne({ _id: req.params.id, role: ROLES.STAFF });
-    if (!user) throw notFound('No such staff account');
-    user.isActive = false;
-    await user.save();
-    res.status(204).end();
-  }),
-);
-
-/**
- * Create a dietician account the doctor can then assign to patients.
- *
- * ---- Why a phoneToken and not a phone ------------------------------------
- *
- * The number used to be a plain string checked against a regex, which tests
- * the shape of a number and not whether anybody answers it. A single mistyped
- * digit produced a working clinical account bound to a stranger's phone —
- * and because login sends a code to whatever number is on the account, that
- * stranger could sign in. A dietician with no explicit assignments reads every
- * patient record in the clinic.
- *
- * That was survivable while the invite code existed alongside it. It is not
- * now: this route and its front-desk twin are the only ways a clinical account
- * comes into being, so the whole question of who gets into this clinic rests on
- * ten digits being typed correctly.
- *
- * So the doctor sends a code to the number first — the colleague is in front of
- * him, or on the phone — and the account is created from the token that proves
- * it was answered. Exactly what a patient's own registration does, with the
- * same machinery. A typo now fails as "no code arrived" instead of succeeding
- * silently against somebody else's handset.
- */
-router.post(
-  '/dieticians',
-  // Missing until now, and not harmlessly: without it the file-level
-  // requireClinician applies, which admits STAFF — so the front desk could
-  // create a dietician account. The test that was supposed to catch this
-  // matched the GET route of the same name and passed.
-  requireDoctor,
-  requirePermission(PERMISSIONS.MANAGE_STAFF),
-  validate({
-    body: z.object({
-      name: z.string().trim().min(2).max(120),
-      // Proof the number was answered, not a number. See above.
-      phoneToken: z.string().min(20),
-      // Optional, and it was required — the one creation path in the app that
-      // made somebody else's password mandatory.
-      //
-      // A dietician has their own phone; the number they just answered a code
-      // on is the credential. Forcing a password here meant the doctor invented
-      // one for a colleague and read it out, which is a credential travelling
-      // by word of mouth and one the doctor then knows. The desk account has
-      // the switch because a handset living on a counter has no personal phone
-      // to receive a code on. That reason does not apply to a clinician.
-      password: z.string().min(8, 'At least 8 characters').max(128).optional(),
-    }),
-  }),
-  audit('create', 'User'),
-  asyncHandler(async (req, res) => {
-    const { name, phoneToken, password } = req.body;
-    const phone = phoneFromToken(phoneToken);
-    if (await User.phoneTaken(phone)) throw conflict('An account with this phone number already exists');
-    const user = new User({
-      name,
-      phone,
-      role: ROLES.DIETICIAN,
-      consent: {
-        termsAcceptedAt: new Date(),
-        dataProcessingAcceptedAt: new Date(),
-        aiDisclaimerAcceptedAt: new Date(),
-      },
-    });
-    if (password) await user.setPassword(password);
-    await user.save();
-
-    /**
-     * The membership, which is what actually puts them in a practice.
-     *
-     * Staff creation has done this since the tenant model landed and this route
-     * never did, which was invisible while the dietician list was unscoped —
-     * an account belonging to nobody showed up in every practice, so it showed
-     * up in the right one too.
-     *
-     * Scoping that list turned the leak into a disappearance: the dietician was
-     * created, the request succeeded, and the screen behind the sheet stayed
-     * empty. Same missing line, opposite symptom.
-     */
-    const practiceId = await practiceOf(req);
-    if (practiceId) {
-      await joinPractice({
-        user: user._id,
-        practice: practiceId,
-        role: ROLES.DIETICIAN,
-        addedBy: req.user._id,
-      });
-    }
-
-    res.status(201).json({ id: String(user._id), name: user.name, phone: user.phone });
-  }),
-);
 
 /**
  * Assign (or clear) a patient's dietician and how often the food log should be

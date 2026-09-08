@@ -551,15 +551,9 @@ class _ClinicianMoreScreenState extends ConsumerState<ClinicianMoreScreen> {
               ),
               ProfileRow(
                 icon: Icons.restaurant_menu_outlined,
-                title: 'Clinic care',
-                subtitle: 'Dieticians and food-log review',
-                onTap: () => context.push('/clinician/dieticians'),
-              ),
-              ProfileRow(
-                icon: Icons.badge_outlined,
-                title: 'Front desk',
-                subtitle: 'Front-desk accounts',
-                onTap: () => context.push('/clinician/staff'),
+                title: 'People',
+                subtitle: 'Doctors, front desk and dieticians',
+                onTap: () => context.push('/clinician/team'),
               ),
               ProfileRow(
                 icon: Icons.ios_share_rounded,

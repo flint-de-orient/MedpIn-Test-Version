@@ -6,10 +6,20 @@ import '../domain/appointment.dart';
 import '../../medications/domain/medication.dart';
 import '../domain/chat_review.dart';
 import '../domain/department.dart';
+import '../domain/team_member.dart';
 import '../domain/clinician_models.dart';
 import '../domain/knowledge_chunk.dart';
 import '../domain/patient_summary.dart';
 import '../../../shared/widgets/notification_list_sheet.dart';
+
+/// Everyone at this practice, with their role, department, location and status.
+///
+/// One request behind the People screen and the Practice screen's headcount.
+/// Not `autoDispose` for the same reason as [departmentsProvider]: two screens
+/// read it and tapping between them should not refetch.
+final teamProvider = FutureProvider<TeamRoster>((ref) {
+  return ref.watch(clinicianRepositoryProvider).team();
+});
 
 /// The specialties this practice can use — its own and the shared ones.
 ///

@@ -8,6 +8,7 @@ import '../../../core/capabilities/capabilities.dart';
 import '../data/practice_repository.dart';
 import '../domain/practice.dart';
 import 'clinician_providers.dart';
+import 'widgets/food_log_review.dart';
 import 'widgets/practice_details_sheet.dart';
 
 /// The practice a head doctor runs: who it says it is, where it sits, who works
@@ -73,6 +74,10 @@ class _Overview extends StatelessWidget {
         // Draws nothing when this practice has no departments, so the gap
         // above it would be a gap to nothing. It carries its own spacing.
         const _Departments(),
+        const SizedBox(height: T.s8),
+        const _Heading(title: 'Food-log review'),
+        const SizedBox(height: T.s2),
+        const FoodLogReviewTile(),
       ],
     );
   }
@@ -436,7 +441,7 @@ class _People extends StatelessWidget {
         _Heading(
           title: 'People',
           actionLabel: 'Manage',
-          onAction: () => context.push('/clinician/dieticians'),
+          onAction: () => context.push('/clinician/team'),
         ),
         const SizedBox(height: T.s2),
         Text(parts.join(' · '), style: T.small.copyWith(color: T.inkMuted)),
@@ -446,19 +451,28 @@ class _People extends StatelessWidget {
 }
 
 class _Heading extends StatelessWidget {
-  const _Heading({required this.title, required this.actionLabel, required this.onAction});
+  const _Heading({required this.title, this.actionLabel, this.onAction});
 
   final String title;
-  final String actionLabel;
-  final VoidCallback onAction;
+
+  /// Both optional and both together. A section can be a heading over content
+  /// that is changed somewhere else — the food-log cadence has its own button
+  /// on the row beneath it, and a second one up here would be two ways to do
+  /// one thing.
+  final String? actionLabel;
+  final VoidCallback? onAction;
 
   @override
   Widget build(BuildContext context) {
+    final action = onAction;
+    final label = actionLabel;
+
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
         Text(title, style: T.bodyStrong.copyWith(color: T.ink)),
-        TextButton(onPressed: onAction, child: Text(actionLabel)),
+        if (action != null && label != null)
+          TextButton(onPressed: action, child: Text(label)),
       ],
     );
   }

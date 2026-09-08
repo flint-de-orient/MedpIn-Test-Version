@@ -101,12 +101,19 @@ describe('the lists mean this practice, not the platform', () => {
     // `{ role: STAFF, isActive: true }` was every staff account anywhere — the
     // same set while there was one clinic, and a receptionist appearing in
     // another practice's list the moment there are two.
-    assert.match(doctor, /const staffScope = await practiceStaffFilter\(req\)/);
-    assert.match(doctor, /role: ROLES\.STAFF, isActive: true, \.\.\.staffScope/);
+    // The staff list moved to /team, which reads `membersOf(practiceId)` —
+    // the practice taken from the membership, never from the request.
+    const team = readFileSync(new URL('../src/routes/team.js', import.meta.url), 'utf8');
+    assert.match(team, /membersOf\(practiceId\)/);
+    assert.match(team, /const practiceId = await practiceOf\(req\)/);
   });
 
   test('and creating one writes the membership that makes the scope work', () => {
-    assert.match(doctor, /joinPractice\(\{[\s\S]{0,200}role: ROLES\.STAFF/);
+    // Hiring is one route for all three roles now, so the role is `b.role`
+    // rather than a constant per path — which is the point: one path cannot
+    // forget what another one remembers.
+    const team = readFileSync(new URL('../src/routes/team.js', import.meta.url), 'utf8');
+    assert.match(team, /joinPractice\(\{[\s\S]{0,200}role: b\.role/);
   });
 
   test('a new location belongs to a practice', () => {
@@ -133,7 +140,9 @@ describe('and every one of those still permits when the practice is unknown', ()
     assert.match(scope, /export async function memberIdsOf/);
     assert.match(scope, /if \(!practiceId\) return null;/);
     assert.match(scope, /if \(!rows\.length && !\(await membershipsExist\(\)\)\) return null;/);
-    assert.match(doctor, /return practiceMembers\(req, ROLES\.STAFF\);/);
+    // practiceStaffFilter went with the routes that used it. The shared
+    // helper it delegated to is still what the dietician list asks.
+    assert.match(doctor, /practiceMembers\(req, ROLES\.DIETICIAN\)/);
   });
 
   test('locations', () => {
