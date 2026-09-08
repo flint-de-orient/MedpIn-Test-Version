@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { api, ApiError } from "@/lib/api";
-import { Modal, Field, textInput } from "@/components/form";
+import { Modal, Field, Select, textInput } from "@/components/form";
 import { Alert, Info } from "@/components/primitives";
+import type { DuplicateCheck, PracticeOptions, PracticeType } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 /**
@@ -20,11 +21,18 @@ import { cn } from "@/lib/utils";
  * typed — so there is a step that waits for a text. That cannot be one form,
  * because the middle of it is somebody reading a code off a phone.
  *
- * ---- Three steps, and the last one is a review --------------------------
+ * ---- What the type decides ----------------------------------------------
  *
- * Making a practice is not reversible from here; there is no delete. So the
- * last screen shows what is about to be created rather than trusting that
- * whoever filled in step one still remembers it.
+ * Everything after step one. A hospital's responsible person is a medical
+ * superintendent and a diagnostic centre's is a pathologist, so step two's
+ * label comes from step one's answer — and the capabilities the practice will
+ * have follow from it too, which is why the review step says what it will and
+ * will not be able to do rather than leaving that to be discovered.
+ *
+ * The list of types and specialties is fetched, not hardcoded. Specialties are
+ * the shared Department rows and an operator can add one; a list baked in here
+ * would be a rebuild every time somebody opens a practice in a specialty
+ * nobody anticipated.
  */
 type Step = 1 | 2 | 3;
 
@@ -38,12 +46,16 @@ export function NewPracticeDialog({
   onCreated: () => void;
 }) {
   const [step, setStep] = useState<Step>(1);
+  const [options, setOptions] = useState<PracticeOptions | null>(null);
 
   // Step 1 — the practice
   const [name, setName] = useState("");
+  const [practiceType, setPracticeType] = useState<PracticeType | "">("");
+  const [specialty, setSpecialty] = useState("");
   const [reg, setReg] = useState("");
+  const [dupes, setDupes] = useState<DuplicateCheck | null>(null);
 
-  // Step 2 — the head doctor
+  // Step 2 — the responsible person
   const [docName, setDocName] = useState("");
   const [phone, setPhone] = useState("");
   const [quals, setQuals] = useState("");
@@ -60,7 +72,10 @@ export function NewPracticeDialog({
     if (!open) return;
     setStep(1);
     setName("");
+    setPracticeType("");
+    setSpecialty("");
     setReg("");
+    setDupes(null);
     setDocName("");
     setPhone("");
     setQuals("");
@@ -69,9 +84,36 @@ export function NewPracticeDialog({
     setSent(null);
     setPhoneToken(null);
     setError(null);
+
+    // Once per opening. The shared departments change about as often as a new
+    // specialty is invented, and re-fetching per keystroke would be a request
+    // per letter of the practice's name.
+    api<PracticeOptions>("/admin/practice-options")
+      .then(setOptions)
+      // A picker that failed to load is not a reason to block the wizard: type
+      // and specialty are both optional, and the practice can be classified
+      // afterwards from its own screen.
+      .catch(() => setOptions({ types: [], specialties: [] }));
   }, [open]);
 
-  /** Text a code to the number on screen. */
+  const chosen = options?.types.find((t) => t.key === practiceType);
+  const responsible = chosen?.responsibleLabel ?? "Head doctor";
+
+  /** Anything already here under this name or this licence. */
+  const check = useCallback(async () => {
+    const q = new URLSearchParams();
+    if (name.trim().length >= 2) q.set("name", name.trim());
+    if (reg.trim()) q.set("registrationNo", reg.trim());
+    if (!q.toString()) return setDupes(null);
+    try {
+      setDupes(await api<DuplicateCheck>(`/admin/practices/check?${q}`));
+    } catch {
+      // A check that could not run must not stop a practice being created. The
+      // registration clash is refused by the server at create time either way.
+      setDupes(null);
+    }
+  }, [name, reg]);
+
   async function sendCode() {
     setBusy(true);
     setError(null);
@@ -115,6 +157,8 @@ export function NewPracticeDialog({
         method: "POST",
         body: {
           name: name.trim(),
+          practiceType: practiceType || undefined,
+          specialty: specialty || undefined,
           registrationNo: reg.trim() || undefined,
           headDoctorName: docName.trim(),
           headDoctorPhone: phone.trim(),
@@ -137,17 +181,21 @@ export function NewPracticeDialog({
 
     if (step === 1) {
       if (name.trim().length < 2) return setError("A practice needs a name.");
+      if (dupes?.registrationClash) {
+        return setError(
+          `That registration number already belongs to ${dupes.registrationClash.name}.`,
+        );
+      }
       setStep(2);
       return;
     }
     if (step === 2) {
-      if (docName.trim().length < 2) return setError("The doctor needs a name.");
-      if (phone.trim().length < 8) return setError("Enter the doctor's phone number.");
+      if (docName.trim().length < 2) return setError(`The ${responsible.toLowerCase()} needs a name.`);
+      if (phone.trim().length < 8) return setError("Enter their phone number.");
 
-      // Already answered. Coming back here from the review step — which the
-      // Back button does, and which "Add one" on the warning now does too —
-      // used to land on the code field holding a code the server had already
-      // consumed, so Verify failed on a number that was verified.
+      // Already answered. Coming back here from the review step used to land on
+      // the code field holding a code the server had consumed, so Verify failed
+      // on a number that was verified.
       if (phoneToken) {
         setStep(3);
         return;
@@ -182,7 +230,7 @@ export function NewPracticeDialog({
       title="Add a practice"
       description={
         step === 1
-          ? "Name the practice. You will add its head doctor next."
+          ? `Name it and say what kind it is. You will add its ${responsible.toLowerCase()} next.`
           : step === 2
             ? "They will own the practice and sign in with this number."
             : "Confirm the details below. Everything except the phone number can be changed later."
@@ -203,10 +251,40 @@ export function NewPracticeDialog({
               className={textInput}
               value={name}
               onChange={(e) => setName(e.target.value)}
+              onBlur={() => void check()}
               maxLength={160}
               autoFocus
             />
           </Field>
+
+          <Field label="Practice type" hint="what kind of organisation">
+            <Select
+              value={practiceType}
+              onChange={(v) => setPracticeType(v as PracticeType | "")}
+              placeholder="Not saying yet"
+            >
+              {options?.types.map((t) => (
+                <option key={t.key} value={t.key}>
+                  {t.label}
+                </option>
+              ))}
+            </Select>
+          </Field>
+
+          <Field label="Primary specialty" hint="what it mainly treats">
+            <Select
+              value={specialty}
+              onChange={setSpecialty}
+              placeholder="Not saying yet"
+            >
+              {options?.specialties.map((sp) => (
+                <option key={sp.key} value={sp.key}>
+                  {sp.label}
+                </option>
+              ))}
+            </Select>
+          </Field>
+
           <Field
             label="Registration number"
             hint="optional — the doctor's own is used if this is blank"
@@ -215,15 +293,33 @@ export function NewPracticeDialog({
               className={`${textInput} font-mono text-[13px]`}
               value={reg}
               onChange={(e) => setReg(e.target.value)}
+              onBlur={() => void check()}
               maxLength={60}
             />
           </Field>
+
+          {/* Two strengths of answer. A licence already in use is refused; a
+              name somebody else also chose is worth a look and nothing more —
+              "City Clinic" is a real name in every city in the country. */}
+          {dupes?.registrationClash ? (
+            <Alert tone="stopped" title="That registration number is already in use">
+              It belongs to {dupes.registrationClash.name}.
+            </Alert>
+          ) : null}
+
+          {dupes?.sameName.length ? (
+            <Alert title={`A practice is already called “${name.trim()}”`}>
+              {dupes.sameName.length === 1
+                ? "Check this is not the same one before continuing."
+                : `${dupes.sameName.length} of them. Check this is not one of them.`}
+            </Alert>
+          ) : null}
         </>
       ) : null}
 
       {step === 2 ? (
         <>
-          <Field label="Head doctor's name">
+          <Field label={`${responsible}'s name`}>
             <input
               className={textInput}
               value={docName}
@@ -244,12 +340,6 @@ export function NewPracticeDialog({
             />
           </Field>
 
-          {/*
-            Three states here, and it had two. A number that has been answered
-            is settled: the code box is gone, the optional fields come back so
-            they can still be filled in, and changing the number is a deliberate
-            act that throws the token away.
-          */}
           {sent && !phoneToken ? (
             <>
               <Field label="Code from the text">
@@ -272,8 +362,8 @@ export function NewPracticeDialog({
                 </Alert>
               ) : (
                 <p className="text-muted-foreground text-xs leading-relaxed">
-                  Sent to <span className="font-mono">{phone.trim()}</span>. Ask the
-                  doctor to read it out.
+                  Sent to <span className="font-mono">{phone.trim()}</span>. Ask them
+                  to read it out.
                 </p>
               )}
               <button
@@ -314,7 +404,10 @@ export function NewPracticeDialog({
                   placeholder="MBBS, MD"
                 />
               </Field>
-              <Field label="Their registration number" hint="optional — what verification checks">
+              <Field
+                label="Their registration number"
+                hint="optional — what verification checks"
+              >
                 <input
                   className={`${textInput} font-mono text-[13px]`}
                   value={docReg}
@@ -335,20 +428,31 @@ export function NewPracticeDialog({
       {step === 3 ? (
         <dl className="border-border divide-border divide-y rounded-md border text-[13px]">
           <Row label="Practice">{name.trim()}</Row>
-          <Row label="Registration">
-            {reg.trim() || docReg.trim() || <span className="text-muted-foreground">none</span>}
+          <Row label="Type">
+            {chosen?.label ?? <span className="text-muted-foreground">not set</span>}
           </Row>
-          <Row label="Head doctor">{docName.trim()}</Row>
+          <Row label="Specialty">
+            {options?.specialties.find((sp) => sp.key === specialty)?.label ?? (
+              <span className="text-muted-foreground">not set</span>
+            )}
+          </Row>
+          <Row label="Registration">
+            {reg.trim() || docReg.trim() || (
+              <span className="text-muted-foreground">none</span>
+            )}
+          </Row>
+          <Row label={responsible}>{docName.trim()}</Row>
           <Row label="Phone" mono>
-            {phone.trim()}{" "}
-            <span className="text-ok text-[11px]">confirmed</span>
+            {phone.trim()} <span className="text-ok text-[11px]">confirmed</span>
           </Row>
           {quals.trim() ? <Row label="Qualifications">{quals.trim()}</Row> : null}
-          {/*
-            Two facts, each with its definition behind it rather than in a
-            paragraph underneath. "Why does it say unverified" was a real
-            question, and the answer belongs on the word that raised it.
-          */}
+          <Row label="Plan">
+            <span className="text-muted-foreground">trial</span>
+          </Row>
+
+          {/* Two facts, each with its definition behind it rather than in a
+              paragraph underneath. "Why does it say unverified" was a real
+              question, and the answer belongs on the word that raised it. */}
           <div className="flex flex-col gap-2 px-3 py-2">
             <div className="flex items-baseline justify-between gap-4">
               <dt className="text-muted-foreground text-[11px] tracking-[0.04em] uppercase">
@@ -388,7 +492,8 @@ export function NewPracticeDialog({
 
       {step === 3 ? (
         <p className="text-muted-foreground text-xs leading-relaxed">
-          The head doctor becomes the owner and adds their own staff and locations.
+          The {responsible.toLowerCase()} becomes the owner and adds their own staff
+          and locations.
         </p>
       ) : null}
     </Modal>
@@ -396,7 +501,7 @@ export function NewPracticeDialog({
 }
 
 function Steps({ current }: { current: Step }) {
-  const labels = ["Practice", "Head doctor", "Review"];
+  const labels = ["Practice", "Responsible", "Review"];
   return (
     <ol className="flex items-center gap-1.5 text-[11px]">
       {labels.map((l, i) => {

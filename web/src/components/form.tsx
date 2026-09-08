@@ -6,6 +6,61 @@ import { cn } from "@/lib/utils";
 export const textInput =
   "border-input bg-card focus-visible:border-ring w-full rounded-sm border px-2.5 py-1.5 text-sm outline-none transition-colors disabled:opacity-55";
 
+/**
+ * A select that matches the text input beside it.
+ *
+ * Native `<select>`, deliberately. A custom listbox is a scroll trap on a phone
+ * and reimplements type-ahead, keyboard wrap and the platform's own picker —
+ * all of which the browser already does better than a div can.
+ *
+ * The one thing it needs is `appearance-none` plus a drawn chevron: the default
+ * arrow is rendered by the OS and does not follow the page's dark theme, so it
+ * turns into a black arrow on a dark field.
+ */
+export function Select({
+  value,
+  onChange,
+  children,
+  placeholder,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  children: React.ReactNode;
+  /** Shown as a disabled first option when nothing is chosen. */
+  placeholder?: string;
+}) {
+  return (
+    <div className="relative">
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className={cn(
+          textInput,
+          "appearance-none pr-8",
+          !value && "text-muted-foreground",
+        )}
+      >
+        {placeholder ? (
+          <option value="">{placeholder}</option>
+        ) : null}
+        {children}
+      </select>
+      <svg
+        aria-hidden
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth={1.5}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        className="text-muted-foreground pointer-events-none absolute top-1/2 right-2.5 size-3.5 -translate-y-1/2"
+      >
+        <path d="m6 9 6 6 6-6" />
+      </svg>
+    </div>
+  );
+}
+
 export function Field({
   label,
   hint,

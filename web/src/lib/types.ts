@@ -11,12 +11,42 @@ export type Limits = {
   locations: number | null;
 };
 
+export type PracticeType =
+  | "clinic"
+  | "specialty_centre"
+  | "diagnostic_centre"
+  | "polyclinic"
+  | "hospital"
+  | "healthcare_group";
+
+/**
+ * What the wizard needs before it can draw itself.
+ *
+ * Fetched rather than hardcoded: the specialties are the shared Department
+ * rows and an operator can add one, so a list baked in here would be a rebuild
+ * every time somebody opens a practice in a specialty nobody anticipated. The
+ * responsible-person label travels with the type because it changes with it.
+ */
+export type PracticeOptions = {
+  types: { key: PracticeType; label: string; responsibleLabel: string }[];
+  specialties: { key: string; label: string }[];
+};
+
+export type DuplicateCheck = {
+  sameName: { id: string; name: string; status: PracticeStatus; createdAt: string }[];
+  registrationClash: { id: string; name: string } | null;
+};
+
 export type Practice = {
   id: string;
   name: string;
   tagline: string | null;
   doctorDisplayName: string | null;
   registrationNo: string | null;
+  /** What kind of organisation. Null for every practice created before types existed. */
+  practiceType: PracticeType | null;
+  /** What it primarily treats. A shared Department key, or free text. */
+  specialty: string | null;
   logoLightUrl: string | null;
   logoDarkUrl: string | null;
   status: PracticeStatus;

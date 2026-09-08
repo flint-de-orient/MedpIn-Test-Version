@@ -7,7 +7,15 @@ import { validate, q } from '../middleware/validate.js';
 import { asyncHandler, unauthorized, notFound, badRequest } from '../middleware/errors.js';
 import { PlatformAdmin } from '../models/PlatformAdmin.js';
 import { AdminAuditLog } from '../models/AdminAuditLog.js';
-import { Practice, PRACTICE_STATUS, VERIFICATION, PLAN } from '../models/Practice.js';
+import {
+  Practice,
+  PRACTICE_STATUS,
+  VERIFICATION,
+  PLAN,
+  PRACTICE_TYPE,
+  PRACTICE_TYPE_ORDER,
+  RESPONSIBLE_LABEL,
+} from '../models/Practice.js';
 import { Clinic } from '../models/Clinic.js';
 import { Membership, MEMBERSHIP_STATUS, PERMISSIONS, presetFor } from '../models/Membership.js';
 import { Department } from '../models/Department.js';
@@ -769,11 +777,130 @@ router.get(
  * number is small. It arrives PENDING and unverified — creating a practice is
  * not vouching for it.
  */
+/**
+ * What the onboarding wizard needs before it can draw its first step.
+ *
+ * ---- Why the server sends the list --------------------------------------
+ *
+ * The types are an enum and could be hardcoded in the console. The specialties
+ * cannot: they are the shared [Department] rows, an operator can add one, and a
+ * list baked into the client would be a rebuild every time somebody opens a
+ * practice in a specialty nobody anticipated. Department.js already makes that
+ * argument for the model; it applies to the picker for the same reason.
+ *
+ * So both come from here, and the wizard renders whatever it is given. The
+ * responsible-person label travels with the type because it changes with it —
+ * a hospital has a medical superintendent, not a head doctor, and the client
+ * should not be holding a second copy of that mapping.
+ */
+router.get(
+  '/practice-options',
+  asyncHandler(async (req, res) => {
+    // The shared rows only. A practice's own departments are its business and
+    // are not a specialty anybody else can be opened in.
+    const shared = await Department.find({ practice: null, isActive: true })
+      .select('key names')
+      .sort({ key: 1 })
+      .lean();
+
+    res.json({
+      types: PRACTICE_TYPE_ORDER.map((key) => ({
+        key,
+        // Title-cased from the key rather than a second table to keep in step.
+        label: key
+          .split('_')
+          .map((w) => w[0].toUpperCase() + w.slice(1))
+          .join(' '),
+        responsibleLabel: RESPONSIBLE_LABEL[key],
+      })),
+      specialties: shared.map((d) => ({
+        key: d.key,
+        label: d.names?.en ?? d.key,
+      })),
+    });
+  }),
+);
+
+/**
+ * A name, safe to put inside a regular expression.
+ *
+ * Without this a practice called "C++ (Salt Lake)" is a pattern rather than a
+ * string: the parentheses become a group, the plus signs become quantifiers
+ * with nothing to repeat, and the query throws instead of returning nothing.
+ */
+function escapeRegex(text) {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/**
+ * Has this practice been created already?
+ *
+ * Called as the wizard's first step is filled in, so the answer arrives before
+ * the operator has verified a phone number and reached a review screen — the
+ * two expensive steps to have to repeat.
+ *
+ * The two answers are different strengths on purpose, and the route reports
+ * both rather than deciding: a registration clash is a refusal at create time,
+ * a name match is something a person should look at.
+ */
+router.get(
+  '/practices/check',
+  validate({
+    query: z.object({
+      name: z.string().trim().max(160).optional(),
+      registrationNo: z.string().trim().max(60).optional(),
+    }),
+  }),
+  asyncHandler(async (req, res) => {
+    const { name, registrationNo } = q(req);
+
+    const [byName, byReg] = await Promise.all([
+      name && name.length >= 2
+        ? Practice.find({
+            // Anchored and escaped. An unescaped name goes into the regex
+            // engine as a pattern, so a practice called "C++ (Salt Lake)"
+            // would throw rather than return nothing.
+            name: new RegExp(`^${escapeRegex(name)}$`, 'i'),
+          })
+            .select('name status createdAt')
+            .limit(5)
+            .lean()
+        : [],
+      registrationNo
+        ? Practice.findOne({ registrationNo }).select('name').lean()
+        : null,
+    ]);
+
+    res.json({
+      sameName: byName.map((p) => ({
+        id: String(p._id),
+        name: p.name,
+        status: p.status,
+        createdAt: p.createdAt,
+      })),
+      registrationClash: byReg ? { id: String(byReg._id), name: byReg.name } : null,
+    });
+  }),
+);
+
 router.post(
   '/practices',
   validate({
     body: z.object({
       name: z.string().trim().min(2).max(160),
+
+      /**
+       * What kind of organisation, and what it treats. Both optional.
+       *
+       * Optional because the model permits null and the resolver reads null as
+       * "unclassified, therefore unrestricted" — see [services/capabilities.js].
+       * Requiring them here would be a stricter rule than the one the rest of
+       * the system enforces, and the operator creating a practice for a clinic
+       * that has not decided yet would have to guess.
+       */
+      practiceType: z.enum(Object.values(PRACTICE_TYPE)).optional(),
+      specialty: z.string().trim().max(80).optional(),
+
       registrationNo: z.string().trim().max(60).optional(),
       doctorDisplayName: z.string().trim().max(160).optional(),
       tagline: z.string().trim().max(160).optional(),
@@ -829,6 +956,34 @@ router.post(
       throw badRequest(
         'That verification was for a different number. Verify this one again.',
       );
+    }
+
+    /**
+     * Is this one already here?
+     *
+     * ---- Two strengths of answer, and only one of them refuses ----------
+     *
+     * A registration number is a claim about a specific licence, and two
+     * practices holding the same one is either a duplicate or a mistake. That
+     * is refused.
+     *
+     * A name is not. "City Clinic" is a real name in every city in the
+     * country, and refusing the second one would be this console deciding that
+     * a customer may not exist because somebody earlier chose the same two
+     * words. There is no delete on this screen, so a false refusal here is
+     * cheap and a false acceptance is a row somebody has to live with — but
+     * the reverse is also true, and it is not the console's place to
+     * adjudicate names. It warns and creates.
+     */
+    if (brand.registrationNo) {
+      const clash = await Practice.findOne({ registrationNo: brand.registrationNo })
+        .select('name')
+        .lean();
+      if (clash) {
+        throw badRequest(
+          `Registration number ${brand.registrationNo} already belongs to ${clash.name}.`,
+        );
+      }
     }
 
     const practice = await Practice.create({

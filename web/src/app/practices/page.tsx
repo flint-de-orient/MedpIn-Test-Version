@@ -119,6 +119,20 @@ function Detail() {
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
               <h1 className="text-xl font-semibold tracking-tight">{p.name}</h1>
+              {/* What kind of thing this is. Absent on every practice created
+                  before types existed, and absent is not "unknown-and-broken" —
+                  it is unclassified, which the capability resolver reads as
+                  unrestricted. So it renders as nothing rather than as a gap. */}
+              {p.practiceType ? (
+                <Pill tone="muted" className="capitalize">
+                  {p.practiceType.replace(/_/g, " ")}
+                </Pill>
+              ) : null}
+              {p.specialty ? (
+                <Pill tone="accent" className="capitalize">
+                  {p.specialty.replace(/_/g, " ")}
+                </Pill>
+              ) : null}
               {d.isFounding ? (
                 <Pill tone="accent" className="uppercase">
                   founding
