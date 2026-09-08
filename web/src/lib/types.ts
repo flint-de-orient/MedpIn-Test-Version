@@ -2,7 +2,7 @@
 
 export type PracticeStatus = "onboarding" | "active" | "suspended";
 export type Verification = "unverified" | "pending" | "verified" | "rejected";
-export type Plan = "trial" | "solo" | "clinic" | "hospital";
+export type Plan = "trial" | "essential" | "professional" | "enterprise";
 export type MembershipStatus = "invited" | "active" | "suspended";
 
 export type Limits = {
@@ -215,9 +215,17 @@ export const PERMISSION_LABELS: Record<string, string> = {
 
 export const PERMISSION_ORDER = Object.keys(PERMISSION_LABELS);
 
+/**
+ * What each tier is called on screen.
+ *
+ * The tiers used to be `solo`, `clinic` and `hospital` — names that described
+ * the customer rather than the product, and two of which collided with a
+ * practice *type*. "A hospital on the hospital plan" and, worse, "a clinic that
+ * is not on the clinic plan" made every sentence about either one ambiguous.
+ */
 export const PLAN_LABELS: Record<Plan, string> = {
   trial: "Trial",
-  solo: "Solo practice",
-  clinic: "Clinic",
-  hospital: "Hospital",
+  essential: "Essential",
+  professional: "Professional",
+  enterprise: "Enterprise",
 };

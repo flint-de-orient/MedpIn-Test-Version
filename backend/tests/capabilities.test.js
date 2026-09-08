@@ -56,15 +56,15 @@ describe('a practice nobody has classified keeps everything', () => {
   });
 
   test('a plan but no type narrows only by plan', () => {
-    const held = capabilitiesOfPractice({ plan: PLAN.SOLO });
+    const held = capabilitiesOfPractice({ plan: PLAN.ESSENTIAL });
     assert.ok(held.has(C.PRESCRIPTION));
-    assert.ok(!held.has(C.ADVANCED_ANALYTICS), 'solo should not get advanced analytics');
+    assert.ok(!held.has(C.ADVANCED_ANALYTICS), 'essential should not get advanced analytics');
   });
 
   test('and a member with no membership row keeps the practice’s set', () => {
     // The pre-backfill caller. Narrowing here would lock somebody out of a
     // practice they demonstrably work at.
-    const practice = { practiceType: PRACTICE_TYPE.HOSPITAL, plan: PLAN.HOSPITAL };
+    const practice = { practiceType: PRACTICE_TYPE.HOSPITAL, plan: PLAN.ENTERPRISE };
     const held = capabilitiesOfPractice(practice);
     const mine = effectiveCapabilities({ practice, membership: null });
     assert.deepEqual([...mine].sort(), [...held].sort());
@@ -73,7 +73,7 @@ describe('a practice nobody has classified keeps everything', () => {
   test('an empty permission grant means the preset, not "nothing"', () => {
     // The model resolves an empty grant to the role preset on read. Reading it
     // here as "may do nothing" is the same bug from the other end.
-    const practice = { practiceType: PRACTICE_TYPE.CLINIC, plan: PLAN.CLINIC };
+    const practice = { practiceType: PRACTICE_TYPE.CLINIC, plan: PLAN.PROFESSIONAL };
     const mine = effectiveCapabilities({
       practice,
       membership: { role: ROLES.DOCTOR, permissions: [] },
@@ -99,7 +99,7 @@ describe('the type decides what the organisation can do at all', () => {
     // catches it rather than the customer discovering it.
     const held = capabilitiesOfPractice({
       practiceType: PRACTICE_TYPE.DIAGNOSTIC_CENTRE,
-      plan: PLAN.HOSPITAL,
+      plan: PLAN.ENTERPRISE,
       capabilities: [C.PRESCRIPTION],
     });
     assert.ok(!held.has(C.PRESCRIPTION));
@@ -108,7 +108,7 @@ describe('the type decides what the organisation can do at all', () => {
   test('a solo clinic has no departments to manage', () => {
     const held = capabilitiesOfPractice({
       practiceType: PRACTICE_TYPE.CLINIC,
-      plan: PLAN.HOSPITAL,
+      plan: PLAN.ENTERPRISE,
     });
     assert.ok(!held.has(C.DEPARTMENT));
     assert.ok(!held.has(C.DEPARTMENT_ANALYTICS));
@@ -117,7 +117,7 @@ describe('the type decides what the organisation can do at all', () => {
   test('a polyclinic does', () => {
     const held = capabilitiesOfPractice({
       practiceType: PRACTICE_TYPE.POLYCLINIC,
-      plan: PLAN.CLINIC,
+      plan: PLAN.PROFESSIONAL,
     });
     assert.ok(held.has(C.DEPARTMENT));
     assert.ok(held.has(C.MULTI_LOCATION));
@@ -141,8 +141,8 @@ describe('the plan decides what has been paid for', () => {
     assert.equal(held.size, ALL_CAPABILITIES.length);
   });
 
-  test('solo gets the clinical loop and not the analytics', () => {
-    const held = capabilitiesOfPractice({ plan: PLAN.SOLO });
+  test('essential gets the clinical loop and not the analytics', () => {
+    const held = capabilitiesOfPractice({ plan: PLAN.ESSENTIAL });
     assert.ok(held.has(C.PRESCRIPTION));
     assert.ok(held.has(C.LAB_RESULT));
     assert.ok(!held.has(C.ADVANCED_ANALYTICS));
@@ -152,7 +152,7 @@ describe('the plan decides what has been paid for', () => {
   test('a grant adds one thing without inventing a plan', () => {
     const held = capabilitiesOfPractice({
       practiceType: PRACTICE_TYPE.CLINIC,
-      plan: PLAN.SOLO,
+      plan: PLAN.ESSENTIAL,
       capabilities: [C.REPORT_EXPORT],
     });
     assert.ok(held.has(C.REPORT_EXPORT));
@@ -161,13 +161,13 @@ describe('the plan decides what has been paid for', () => {
   });
 
   test('a grant of something that does not exist is ignored', () => {
-    const held = capabilitiesOfPractice({ plan: PLAN.SOLO, capabilities: ['WHATEVER'] });
+    const held = capabilitiesOfPractice({ plan: PLAN.ESSENTIAL, capabilities: ['WHATEVER'] });
     assert.ok(!held.has('WHATEVER'));
   });
 });
 
 describe('and the person decides what they may use', () => {
-  const hospital = { practiceType: PRACTICE_TYPE.HOSPITAL, plan: PLAN.HOSPITAL };
+  const hospital = { practiceType: PRACTICE_TYPE.HOSPITAL, plan: PLAN.ENTERPRISE };
 
   test('a receptionist at a hospital cannot prescribe', () => {
     assert.ok(!can(C.PRESCRIPTION, { practice: hospital, membership: desk }));
@@ -201,7 +201,7 @@ describe('and the person decides what they may use', () => {
 
   test('a person can never have more than their practice', () => {
     // The property that makes the two layers safe to reason about separately.
-    const practice = { practiceType: PRACTICE_TYPE.DIAGNOSTIC_CENTRE, plan: PLAN.SOLO };
+    const practice = { practiceType: PRACTICE_TYPE.DIAGNOSTIC_CENTRE, plan: PLAN.ESSENTIAL };
     const held = capabilitiesOfPractice(practice);
     for (const m of [head, doctor, desk, dietician, null]) {
       for (const c of effectiveCapabilities({ practice, membership: m })) {
@@ -214,7 +214,7 @@ describe('and the person decides what they may use', () => {
 describe('the shape the clients are given', () => {
   test('it says both what the practice has and what this person has', () => {
     const out = describeCapabilities({
-      practice: { practiceType: PRACTICE_TYPE.HOSPITAL, plan: PLAN.HOSPITAL },
+      practice: { practiceType: PRACTICE_TYPE.HOSPITAL, plan: PLAN.ENTERPRISE },
       membership: desk,
     });
     assert.ok(out.practice.includes(C.PRESCRIPTION), 'the hospital can prescribe');

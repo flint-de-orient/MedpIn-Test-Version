@@ -154,9 +154,9 @@ const BY_PLAN = Object.freeze({
   [PLAN.TRIAL]: ALL,
 
   // The core clinical loop, and the basic numbers that come with it.
-  [PLAN.SOLO]: [C.PRESCRIPTION, C.LAB_ORDER, C.LAB_RESULT, C.AI_ASSISTANT],
+  [PLAN.ESSENTIAL]: [C.PRESCRIPTION, C.LAB_ORDER, C.LAB_RESULT, C.AI_ASSISTANT],
 
-  [PLAN.CLINIC]: [
+  [PLAN.PROFESSIONAL]: [
     C.PRESCRIPTION,
     C.LAB_ORDER,
     C.LAB_RESULT,
@@ -170,7 +170,7 @@ const BY_PLAN = Object.freeze({
     C.STAFF_ANALYTICS,
   ],
 
-  [PLAN.HOSPITAL]: ALL,
+  [PLAN.ENTERPRISE]: ALL,
 });
 
 /**

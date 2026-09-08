@@ -189,7 +189,7 @@ export default function OverviewPage() {
         <Panel title="By plan" description="What every practice is on.">
           {o ? (
             <ul className="divide-border divide-y">
-              {(["trial", "solo", "clinic", "hospital"] as const).map((k) => {
+              {(["trial", "essential", "professional", "enterprise"] as const).map((k) => {
                 const n = o.plans[k] ?? 0;
 
                 // A row reading nought leads to a list of nothing. It stays a

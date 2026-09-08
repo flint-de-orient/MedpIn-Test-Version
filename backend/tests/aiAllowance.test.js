@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
 import { allowanceFor, currentPeriod, AI_MONTHLY_ALLOWANCE } from '../src/services/ai/allowance.js';
-import { PLAN } from '../src/models/Practice.js';
+import { PLAN, PRACTICE_TYPE, LEGACY_PLANS } from '../src/models/Practice.js';
 
 /**
  * What the assistant is allowed to do, and the record of when it was not.
@@ -71,12 +71,12 @@ describe('the plans that do have one', () => {
     // Somebody deciding whether to buy needs to see it work under a real
     // week's load. A trial that runs out on Wednesday demonstrates the
     // opposite of what it is for.
-    assert.ok(AI_MONTHLY_ALLOWANCE[PLAN.TRIAL] >= AI_MONTHLY_ALLOWANCE[PLAN.SOLO]);
+    assert.ok(AI_MONTHLY_ALLOWANCE[PLAN.TRIAL] >= AI_MONTHLY_ALLOWANCE[PLAN.ESSENTIAL]);
   });
 
   test('and they increase with the plan', () => {
-    assert.ok(AI_MONTHLY_ALLOWANCE[PLAN.CLINIC] > AI_MONTHLY_ALLOWANCE[PLAN.SOLO]);
-    assert.equal(AI_MONTHLY_ALLOWANCE[PLAN.HOSPITAL], null);
+    assert.ok(AI_MONTHLY_ALLOWANCE[PLAN.PROFESSIONAL] > AI_MONTHLY_ALLOWANCE[PLAN.ESSENTIAL]);
+    assert.equal(AI_MONTHLY_ALLOWANCE[PLAN.ENTERPRISE], null);
   });
 });
 
@@ -169,5 +169,55 @@ describe('a refusal leaves a trace', () => {
 
   test('one row per practice per month, enforced', () => {
     assert.match(model, /aiUsageSchema\.index\(\{ practice: 1, period: 1 \}, \{ unique: true \}\)/);
+  });
+});
+
+describe('the plans are named after the product', () => {
+  const practiceModel = readFileSync(new URL('../src/models/Practice.js', import.meta.url), 'utf8');
+
+  test('not after the customer', () => {
+    // `solo`, `clinic` and `hospital` described who was buying rather than what
+    // they got — and two collided with a practice *type*. "A hospital on the
+    // hospital plan" is a tautology; "a clinic not on the clinic plan" reads as
+    // a bug report.
+    assert.deepEqual(Object.values(PLAN), ['trial', 'essential', 'professional', 'enterprise']);
+  });
+
+  test('and no tier shares a name with a practice type', () => {
+    // The collision this rename exists to end. A tier and a kind of
+    // organisation sharing a word makes every sentence about either ambiguous.
+    const types = Object.values(PRACTICE_TYPE);
+    for (const plan of Object.values(PLAN)) {
+      assert.ok(!types.includes(plan), `"${plan}" is both a plan and a practice type`);
+    }
+  });
+
+  test('a stored old name still saves', () => {
+    // Mongoose validates an enum on save and not on read, so a practice left on
+    // `clinic` loads fine and throws the next time anything touches it — days
+    // later, on an unrelated edit, for whoever pressed save.
+    assert.match(practiceModel, /export const LEGACY_PLANS = Object\.freeze\(\{/);
+    assert.match(practiceModel, /practiceSchema\.pre\('validate', function normaliseLegacyPlan/);
+    assert.match(practiceModel, /const mapped = LEGACY_PLANS\[this\.plan\];/);
+  });
+
+  test('every legacy name maps to a real one', () => {
+    for (const [from, to] of Object.entries(LEGACY_PLANS)) {
+      assert.ok(
+        Object.values(PLAN).includes(to),
+        `${from} maps to "${to}", which is not a plan`,
+      );
+      assert.ok(!Object.values(PLAN).includes(from), `"${from}" is still a current plan`);
+    }
+  });
+
+  test('and every current plan has an allowance decision', () => {
+    // The rename must not leave a tier with no entry, which reads as unlimited.
+    for (const plan of Object.values(PLAN)) {
+      assert.ok(
+        plan in AI_MONTHLY_ALLOWANCE,
+        `${plan} has no allowance decision after the rename`,
+      );
+    }
   });
 });

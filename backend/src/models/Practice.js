@@ -61,9 +61,33 @@ export const VERIFICATION = Object.freeze({
  */
 export const PLAN = Object.freeze({
   TRIAL: 'trial',
-  SOLO: 'solo',
-  CLINIC: 'clinic',
-  HOSPITAL: 'hospital',
+  ESSENTIAL: 'essential',
+  PROFESSIONAL: 'professional',
+  ENTERPRISE: 'enterprise',
+});
+
+/**
+ * What the plans used to be called.
+ *
+ * `solo`, `clinic` and `hospital` described the customer rather than the
+ * product, and two of them collided with a practice *type* — a hospital on the
+ * hospital plan, a clinic that was not on the clinic plan. Naming a tier after
+ * a kind of organisation makes every sentence about either one ambiguous.
+ *
+ * Kept because a stored value outlives the constant that named it. Mongoose
+ * validates an enum on save and not on read, so a practice sitting on `clinic`
+ * loads perfectly and then throws the next time anything touches it — a
+ * failure that arrives days later, on an unrelated edit, at whoever happened to
+ * press save.
+ *
+ * The hook below normalises on the way into validation, so a row the migration
+ * has not reached is corrected rather than refused. Delete both once
+ * `backfillPlanNames.js` reports nothing left.
+ */
+export const LEGACY_PLANS = Object.freeze({
+  solo: PLAN.ESSENTIAL,
+  clinic: PLAN.PROFESSIONAL,
+  hospital: PLAN.ENTERPRISE,
 });
 
 /**
@@ -293,5 +317,18 @@ practiceSchema.methods.overLimit = function overLimit(which, current) {
   if (cap === null || cap === undefined) return null;
   return current >= cap ? { which, cap, current } : null;
 };
+
+/**
+ * A plan under its old name is still that plan.
+ *
+ * Runs before enum validation, so a document written when the tiers were called
+ * `solo`, `clinic` and `hospital` saves cleanly instead of failing on a field
+ * nobody in that request was editing.
+ */
+practiceSchema.pre('validate', function normaliseLegacyPlan(next) {
+  const mapped = LEGACY_PLANS[this.plan];
+  if (mapped) this.plan = mapped;
+  next();
+});
 
 export const Practice = mongoose.model('Practice', practiceSchema);

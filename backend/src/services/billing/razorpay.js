@@ -42,9 +42,9 @@ export function isTestMode() {
 export function planIdFor(plan) {
   return (
     {
-      solo: env.RAZORPAY_PLAN_SOLO,
-      clinic: env.RAZORPAY_PLAN_CLINIC,
-      hospital: env.RAZORPAY_PLAN_HOSPITAL,
+      essential: env.RAZORPAY_PLAN_ESSENTIAL,
+      professional: env.RAZORPAY_PLAN_PROFESSIONAL,
+      enterprise: env.RAZORPAY_PLAN_ENTERPRISE,
     }[plan] || null
   );
 }

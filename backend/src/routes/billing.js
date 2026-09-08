@@ -229,7 +229,11 @@ router.post(
   requireDoctor,
   // Committing a practice to a monthly charge is not an ordinary clinical act.
   requirePermission(PERMISSIONS.MANAGE_STAFF),
-  validate({ body: z.object({ plan: z.enum([PLAN.SOLO, PLAN.CLINIC, PLAN.HOSPITAL]) }) }),
+  // Not TRIAL: a trial is granted, not purchased, and offering it here would
+  // be a checkout that takes money for the thing already being given away.
+  validate({
+    body: z.object({ plan: z.enum([PLAN.ESSENTIAL, PLAN.PROFESSIONAL, PLAN.ENTERPRISE]) }),
+  }),
   audit('create', 'Subscription'),
   asyncHandler(async (req, res) => {
     if (!configured()) throw badRequest('Payments are not set up on this server.');

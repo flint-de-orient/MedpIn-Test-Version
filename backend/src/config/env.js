@@ -139,9 +139,9 @@ const schema = z.object({
   // dashboard, so the price lives there and these are the ids pointing at it.
   // Named per plan rather than one map, so a missing one is a startup-time
   // question rather than a runtime undefined at checkout.
-  RAZORPAY_PLAN_SOLO: z.string().default(''),
-  RAZORPAY_PLAN_CLINIC: z.string().default(''),
-  RAZORPAY_PLAN_HOSPITAL: z.string().default(''),
+  RAZORPAY_PLAN_ESSENTIAL: z.string().default(''),
+  RAZORPAY_PLAN_PROFESSIONAL: z.string().default(''),
+  RAZORPAY_PLAN_ENTERPRISE: z.string().default(''),
 
   // Where Razorpay sends the customer back to after checkout. Not derived from
   // the request, for the same reason ADMIN_CONSOLE_URL is not.

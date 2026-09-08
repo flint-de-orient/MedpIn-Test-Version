@@ -44,9 +44,9 @@ import { logger } from '../../config/logger.js';
  */
 const MONTHLY = Object.freeze({
   [PLAN.TRIAL]: 2000,
-  [PLAN.SOLO]: 1000,
-  [PLAN.CLINIC]: 5000,
-  [PLAN.HOSPITAL]: null,
+  [PLAN.ESSENTIAL]: 1000,
+  [PLAN.PROFESSIONAL]: 5000,
+  [PLAN.ENTERPRISE]: null,
 });
 
 /** `2026-09`, in the clinic's timezone — a plan's month is a month where the clinic is. */
