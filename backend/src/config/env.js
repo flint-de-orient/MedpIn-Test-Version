@@ -115,6 +115,38 @@ const schema = z.object({
   /// cannot tell.
   ADMIN_CONSOLE_URL: z.string().default(''),
 
+  // ---- Subscriptions and payment (Razorpay) --------------------------------
+  //
+  // Blank until somebody pastes the keys, and blank is a working state: with no
+  // key id the billing surface is off, exactly as the admin console is off
+  // without ADMIN_JWT_SECRET. A half-configured payment integration is worse
+  // than an absent one — it takes money and cannot confirm it.
+  //
+  // The two secrets are different things and are not interchangeable:
+  //
+  //   RAZORPAY_KEY_SECRET      signs API calls to Razorpay. Server only.
+  //   RAZORPAY_WEBHOOK_SECRET  verifies that a webhook POST came from Razorpay
+  //                            and not from anybody who guessed the URL.
+  //
+  // Using the API secret to check a webhook signature is the commonest way this
+  // integration is got wrong, and it fails open: every forged callback is
+  // accepted, including "payment succeeded".
+  RAZORPAY_KEY_ID: z.string().default(''),
+  RAZORPAY_KEY_SECRET: z.string().default(''),
+  RAZORPAY_WEBHOOK_SECRET: z.string().default(''),
+
+  // A Razorpay subscription is created against a Plan created in their
+  // dashboard, so the price lives there and these are the ids pointing at it.
+  // Named per plan rather than one map, so a missing one is a startup-time
+  // question rather than a runtime undefined at checkout.
+  RAZORPAY_PLAN_SOLO: z.string().default(''),
+  RAZORPAY_PLAN_CLINIC: z.string().default(''),
+  RAZORPAY_PLAN_HOSPITAL: z.string().default(''),
+
+  // Where Razorpay sends the customer back to after checkout. Not derived from
+  // the request, for the same reason ADMIN_CONSOLE_URL is not.
+  RAZORPAY_CALLBACK_URL: z.string().default(''),
+
   // ---- SMS one-time passcodes (MSG91) ------------------------------------
   //
   // Left blank in development on purpose. With no auth key the OTP service
