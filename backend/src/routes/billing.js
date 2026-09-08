@@ -76,7 +76,10 @@ router.post(
   // no account here — and that is the point: an entry with no actor and a
   // subscription id is exactly what somebody reconciling a disputed charge is
   // looking for.
-  audit('update', 'Subscription'),
+  // Only the deliveries that changed something. A dashboard offering ninety
+  // checkboxes gets all ninety ticked, and every refund and settlement would
+  // otherwise leave an audit row for an event this route read and dropped.
+  audit('update', 'Subscription', { when: (req) => req.billingApplied === true }),
   asyncHandler(async (req, res) => {
     // Nothing to verify against means nothing to trust. Answering 200 would
     // tell Razorpay this was handled; 503 says come back once somebody has
@@ -154,6 +157,8 @@ router.post(
      */
     logger.info({ event, subscription: entity.id, status: sub.status }, 'billing event applied');
 
+    // Read by the audit middleware above, on `finish`.
+    req.billingApplied = true;
     res.json({ received: true, handled: true });
   }),
 );
