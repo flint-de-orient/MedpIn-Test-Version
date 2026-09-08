@@ -109,20 +109,38 @@ export async function mayAssistantReply(patientId) {
  */
 export function countReply(practiceId) {
   if (!practiceId) return;
+  /*
+   * `.exec()` on purpose, and it is not decoration.
+   *
+   * A mongoose query is a lazy thenable: `updateOne(...)` builds one and runs
+   * nothing until something awaits it, calls `.then()`, or calls `.exec()`.
+   * Without the trailing `.catch()` this line executed no query at all — the
+   * counter worked only as a side effect of its own error handler, so tidying
+   * that away would have stopped the counting silently rather than loudly.
+   *
+   * Made explicit so the execution does not depend on the handler.
+   */
   AiUsage.updateOne(
     { practice: practiceId, period: currentPeriod() },
     { $inc: { replies: 1 } },
     { upsert: true },
-  ).catch((err) => logger.warn({ err }, 'could not count an assistant reply'));
+  )
+    .exec()
+    .catch((err) => logger.warn({ err }, 'could not count an assistant reply'));
 }
 
 /** Both halves of a refusal: the counter, and the line somebody can read. */
 async function record(practiceId, patientId, reason, period = currentPeriod()) {
+  // Awaited, so this one always ran — but `.exec()` for the same reason as
+  // above: whether a query executes should be visible in the line that writes
+  // it, not inferred from what happens to be chained onto the end.
   await AiUsage.updateOne(
     { practice: practiceId, period },
     { $inc: { refused: 1 } },
     { upsert: true },
-  ).catch((err) => logger.warn({ err }, 'could not count an assistant refusal'));
+  )
+    .exec()
+    .catch((err) => logger.warn({ err }, 'could not count an assistant refusal'));
 
   AuditLog.create({
     actor: null,
