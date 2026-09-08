@@ -31,6 +31,7 @@ class Capabilities {
     required this.role,
     required this.isOwner,
     required this.resolved,
+    this.hasDietician = false,
   });
 
   /// What kind of organisation. Null for a practice nobody has classified,
@@ -48,6 +49,13 @@ class Capabilities {
 
   final String? role;
   final bool isOwner;
+
+  /// Whether anybody at this practice writes diet plans.
+  ///
+  /// Not a capability — a capability is what the product offers, this is who
+  /// the practice employs. It arrives in the same response because the
+  /// navigation needs it and that is the request the navigation already makes.
+  final bool hasDietician;
 
   /// Has an answer actually arrived?
   ///
@@ -101,6 +109,7 @@ class Capabilities {
           .toSet(),
       role: membership?['role'] as String?,
       isOwner: membership?['isOwner'] == true,
+      hasDietician: json['hasDietician'] == true,
     );
   }
 }

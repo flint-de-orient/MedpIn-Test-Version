@@ -18,12 +18,16 @@ import '../../../core/capabilities/capabilities.dart';
 ///
 /// Home, Care and Profile are the app. Nutrition is the doctor's window onto
 /// the dietician↔patient conversations, and those exist when something can
-/// answer in them — the nutrition assistant, which is `AI_ASSISTANT`.
+/// answer in them — which is two things, not one:
 ///
-/// A practice with a dietician employed but no assistant capability would keep
-/// the tab hidden, which is wrong in principle and true of nothing today: the
-/// only type without `AI_ASSISTANT` is a diagnostic centre, and none exists.
-/// When one does, this reads the roster as well and the change is here.
+///   the nutrition assistant, which is `AI_ASSISTANT`
+///   a dietician, which is a fact about the roster
+///
+/// Either is enough. Gating on the capability alone hid the tab from a practice
+/// that had hired somebody to work in it, and `/team` allows hiring a dietician
+/// at any practice type — so a diagnostic centre with one on the payroll had a
+/// nutrition stream it could not see. That is not a future case to handle when
+/// it arises; it is a combination the app already permits anybody to create.
 const _home = 0;
 const _care = 1;
 const _nutrition = 2;
@@ -33,7 +37,7 @@ List<int> visibleBranches(Capabilities caps) {
   return <int>[
     _home,
     _care,
-    if (caps.has(Cap.aiAssistant)) _nutrition,
+    if (caps.has(Cap.aiAssistant) || caps.hasDietician) _nutrition,
     _profile,
   ];
 }

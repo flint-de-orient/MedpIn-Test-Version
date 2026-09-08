@@ -2,6 +2,7 @@ import { Router } from 'express';
 import rateLimit from 'express-rate-limit';
 import { z } from 'zod';
 import { User, ROLES, LANGUAGES } from '../models/User.js';
+import { Membership, MEMBERSHIP_STATUS } from '../models/Membership.js';
 import { PatientProfile } from '../models/PatientProfile.js';
 import { VitalRecord } from '../models/VitalRecord.js';
 import { GlucoseReading } from '../models/GlucoseReading.js';
@@ -455,8 +456,33 @@ router.get(
   requireAuth,
   asyncHandler(async (req, res) => {
     const ctx = await capabilityContext(req);
+
+    /**
+     * Whether anybody here writes diet plans.
+     *
+     * Not a capability — a capability is what the product offers, and this is
+     * who the practice employs. It sits in this response because the navigation
+     * needs it and this is the request the navigation already makes; a second
+     * round trip to decide whether to draw a tab would show the bar rearranging
+     * itself after the first frame.
+     *
+     * The Nutrition tab exists where something can answer in those
+     * conversations: the assistant, or a person. Gating on the assistant alone
+     * hid the tab from a practice that had hired a dietician — which is a
+     * combination `/team` allows for any practice type.
+     */
+    const hasDietician = ctx.practice
+      ? (await Membership.countDocuments({
+          practice: ctx.practice._id,
+          role: ROLES.DIETICIAN,
+          status: MEMBERSHIP_STATUS.ACTIVE,
+          endedOn: null,
+        })) > 0
+      : false;
+
     res.json({
       ...describeCapabilities(ctx),
+      hasDietician,
       // Null for a caller the backfill has not reached, and for every patient.
       // The client should read it as "no practice context", not as "no access".
       membership: ctx.membership

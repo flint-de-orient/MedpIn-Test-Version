@@ -12,8 +12,12 @@ import 'package:akd_care/features/clinician/presentation/clinician_tabs.dart';
 /// suspects arithmetic.
 ///
 /// So the mapping is a pure function, and this is why it is one.
-Capabilities _caps(Set<String> effective) => Capabilities(
-  practiceType: null,
+Capabilities _caps(
+  Set<String> effective, {
+  bool hasDietician = false,
+  String? practiceType,
+}) => Capabilities(
+  practiceType: practiceType,
   specialty: null,
   plan: null,
   practice: effective,
@@ -21,6 +25,7 @@ Capabilities _caps(Set<String> effective) => Capabilities(
   role: 'doctor',
   isOwner: false,
   resolved: true,
+  hasDietician: hasDietician,
 );
 
 void main() {
@@ -30,9 +35,46 @@ void main() {
       expect(visible, [0, 1, 2, 3]);
     });
 
-    test('no Nutrition without an assistant to answer in it', () {
+    test('no Nutrition when nothing can answer in it', () {
       final visible = visibleBranches(_caps({}));
       expect(visible, [0, 1, 3]);
+    });
+
+    // Two things can answer in a nutrition conversation and either is enough.
+    // Gating on the capability alone hid the tab from a practice that had hired
+    // somebody to work in it.
+    test('an assistant and no dietician shows it', () {
+      expect(visibleBranches(_caps({Cap.aiAssistant})), contains(2));
+    });
+
+    test('a dietician and no assistant shows it', () {
+      expect(
+        visibleBranches(_caps({}, hasDietician: true)),
+        contains(2),
+      );
+    });
+
+    test('neither hides it', () {
+      expect(visibleBranches(_caps({}, hasDietician: false)), isNot(contains(2)));
+    });
+
+    test('a diagnostic centre with a dietician shows it', () {
+      // The case that made this wrong. A diagnostic centre has no AI_ASSISTANT
+      // by type, and /team lets it hire a dietician anyway — so it had a
+      // nutrition stream with no way to look at it.
+      expect(
+        visibleBranches(
+          _caps({}, hasDietician: true, practiceType: 'diagnostic_centre'),
+        ),
+        contains(2),
+      );
+    });
+
+    test('and one without keeps it hidden', () {
+      expect(
+        visibleBranches(_caps({}, practiceType: 'diagnostic_centre')),
+        isNot(contains(2)),
+      );
     });
 
     test('Home, Care and Profile are never hidden', () {
@@ -54,7 +96,11 @@ void main() {
 
   group('the two directions agree', () {
     test('every visible branch maps back to its own position', () {
-      for (final caps in [_caps({}), _caps({Cap.aiAssistant})]) {
+      for (final caps in [
+        _caps({}),
+        _caps({Cap.aiAssistant}),
+        _caps({}, hasDietician: true),
+      ]) {
         final visible = visibleBranches(caps);
         for (var i = 0; i < visible.length; i++) {
           // Tapping bar item i goes to visible[i]; that branch must report

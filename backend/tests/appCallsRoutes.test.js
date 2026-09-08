@@ -145,3 +145,33 @@ describe('the app is told what it may do, and does not work it out', () => {
     );
   });
 });
+
+describe('the Nutrition tab has two reasons to exist', () => {
+  const auth = readFileSync(new URL('../src/routes/auth.js', import.meta.url), 'utf8');
+
+  test('the server says whether anybody here writes diet plans', () => {
+    // Not a capability — a capability is what the product offers, this is who
+    // the practice employs. It rides in the capabilities response because the
+    // navigation needs it and that is the request the navigation already makes;
+    // a second round trip would show the bar rearranging after the first frame.
+    const at = auth.indexOf("'/me/capabilities'");
+    assert.ok(at > 0, 'the capabilities endpoint moved');
+    const body = auth.slice(at, at + 1800);
+    assert.match(body, /role: ROLES\.DIETICIAN/);
+    assert.match(body, /hasDietician,/);
+  });
+
+  test('and it counts memberships, not accounts', () => {
+    // A User with role DIETICIAN and no membership belongs to nobody. Counting
+    // those would light the tab for every practice on the platform the moment
+    // one existed anywhere — the same shape as every other leak in this repo.
+    const at = auth.indexOf("'/me/capabilities'");
+    const body = auth.slice(at, at + 1800);
+    assert.match(body, /Membership\.countDocuments\(\{[\s\S]{0,160}practice: ctx\.practice\._id/);
+  });
+
+  test('the app reads it, and either reason is enough', () => {
+    assert.match(app, /hasDietician: json\['hasDietician'\] == true/);
+    assert.match(app, /caps\.has\(Cap\.aiAssistant\) \|\| caps\.hasDietician/);
+  });
+});

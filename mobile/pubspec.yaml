@@ -6,7 +6,7 @@ publish_to: 'none'
 # to install over a higher versionCode, and a split build adds an ABI offset on
 # top of this number (armeabi-v7a +1000, arm64-v8a +2000) — so a plain
 # universal build always ranks below a split one of the same version.
-version: 1.0.10+8123
+version: 1.0.11+8124
 
 environment:
   sdk: ^3.7.2
