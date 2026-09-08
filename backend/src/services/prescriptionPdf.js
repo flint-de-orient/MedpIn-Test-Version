@@ -12,6 +12,7 @@ import { MediaAsset } from '../models/MediaAsset.js';
 import { Prescription } from '../models/Prescription.js';
 import { PatientProfile } from '../models/PatientProfile.js';
 import { User } from '../models/User.js';
+import { clinicEmergencyPhone } from './clinicContact.js';
 
 dayjs.extend(utc);
 dayjs.extend(timezone);
@@ -82,6 +83,7 @@ export function buildPrescriptionPdf({ prescription: p, patient, doctor, profile
     doc.fillColor(SLATE).font('Helvetica').fontSize(10.5).text(`${doctorName}${credentials ? ` — ${credentials}` : ''}`, {
       width: contentW,
     });
+    const clinicPhone = clinicEmergencyPhone();
     const contactBits = [
       // The doctor's own council number first — it is theirs, not the
       // practice's — then the practice's as the fallback for a clinic that
@@ -90,11 +92,11 @@ export function buildPrescriptionPdf({ prescription: p, patient, doctor, profile
         ? `Reg. No: ${doctor?.registrationNo || identity.registrationNo}`
         : null,
       identity?.addressLine || null,
-      identity?.phone
-        ? `Ph: ${identity.phone}`
-        : env.CLINIC_EMERGENCY_PHONE && !env.CLINIC_EMERGENCY_PHONE.includes('0000')
-          ? `Ph: ${env.CLINIC_EMERGENCY_PHONE}`
-          : null,
+      // `clinicEmergencyPhone()` rather than a local placeholder test: this
+      // used to ask `!includes('0000')`, which is the same question with a
+      // weaker answer — it prints +91-1111111111, and it prints a four-digit
+      // number. One rule, in one place, for the one number a patient rings.
+      identity?.phone ? `Ph: ${identity.phone}` : clinicPhone ? `Ph: ${clinicPhone}` : null,
     ].filter(Boolean);
     if (contactBits.length) doc.fontSize(9.5).fillColor(SLATE).text(contactBits.join('   ·   '), { width: contentW });
 
