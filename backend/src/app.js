@@ -40,7 +40,28 @@ export function createApp() {
   );
 
   app.use(compression());
-  app.use(express.json({ limit: '1mb' }));
+  /**
+   * The raw body, kept only where a signature is checked against it.
+   *
+   * A webhook signature is an HMAC over the exact bytes the sender hashed.
+   * `express.json` parses those bytes and throws them away, and re-serialising
+   * the parsed object does not reproduce them — key order, whitespace and
+   * number formatting all differ. Verifying against `JSON.stringify(req.body)`
+   * therefore fails for every genuine callback and, once somebody "fixes" it by
+   * loosening the check, succeeds for forged ones.
+   *
+   * Captured for the billing webhook alone rather than globally: this is a chat
+   * app that polls, and holding a second copy of every request body to serve
+   * one endpoint is a cost paid on the wrong requests.
+   */
+  app.use(
+    express.json({
+      limit: '1mb',
+      verify: (req, _res, buf) => {
+        if (req.originalUrl?.startsWith('/api/v1/billing/webhook')) req.rawBody = buf;
+      },
+    }),
+  );
   app.use(express.urlencoded({ extended: true, limit: '1mb' }));
 
   app.use(

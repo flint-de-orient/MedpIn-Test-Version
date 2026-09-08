@@ -21,6 +21,7 @@ import dashboardRoutes from './dashboard.js';
 import doctorRoutes from './doctor.js';
 import departmentRoutes from './departments.js';
 import teamRoutes from './team.js';
+import billingRoutes from './billing.js';
 import practiceRoutes from './practices.js';
 import adminRoutes from './admin.js';
 import enrolmentRoutes from './enrolments.js';
@@ -85,6 +86,9 @@ router.use('/doctor', doctorRoutes);
 // already two thousand lines, and a subject with its own models earns one.
 router.use('/departments', departmentRoutes);
 router.use('/team', teamRoutes);
+// Outside every auth guard: Razorpay posts with no session, and the signature
+// is the authentication. See routes/billing.js.
+router.use('/billing', billingRoutes);
 // The practice above the clinics. Separate from `clinics.js`, which is about
 // places and their opening hours; this is about who the practice is.
 router.use('/practices', practiceRoutes);
