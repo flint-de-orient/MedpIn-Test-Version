@@ -21,6 +21,7 @@ import '../../features/clinician/presentation/alerts_screen.dart';
 import '../../features/clinician/presentation/appointments_admin_screen.dart';
 import '../../features/clinician/presentation/clinic_edit_screen.dart';
 import '../../features/clinician/presentation/clinics_screen.dart';
+import '../../features/clinician/presentation/departments_screen.dart';
 import '../../features/clinician/presentation/chat_review_detail_screen.dart';
 import '../../features/clinician/presentation/chat_review_screen.dart';
 import '../../features/clinician/presentation/clinician_dashboard_screen.dart';
@@ -212,6 +213,10 @@ final Provider<GoRouter> appRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/clinician/clinics',
         builder: (context, state) => const ClinicsScreen(),
+      ),
+      GoRoute(
+        path: '/clinician/departments',
+        builder: (context, state) => const DepartmentsScreen(),
       ),
       GoRoute(
         path: '/clinician/clinics/new',

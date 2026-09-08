@@ -7,6 +7,7 @@ import '../../chat/domain/chat_message.dart';
 import '../../medications/domain/medication.dart';
 import '../domain/appointment.dart';
 import '../domain/chat_review.dart';
+import '../domain/department.dart';
 import '../domain/clinician_models.dart';
 import '../domain/knowledge_chunk.dart';
 import '../domain/patient_summary.dart';
@@ -348,6 +349,61 @@ class ClinicianRepository {
         .whereType<Map<String, dynamic>>()
         .map(PrescriptionSummary.fromJson)
         .toList();
+  }
+
+  // ---- departments ----------------------------------------------------------
+
+  /// The specialties this practice can use: the shared ones and its own.
+  ///
+  /// The practice is never sent. It comes from the membership server-side —
+  /// this router used to take it from the query string, which let any clinician
+  /// read another practice's list by editing a URL.
+  Future<List<Department>> departments() async {
+    final json = await _client.getJson('/departments');
+    final items = json['items'] as List? ?? const [];
+    return items
+        .whereType<Map<String, dynamic>>()
+        .map(Department.fromJson)
+        .toList();
+  }
+
+  /// Add one this practice runs.
+  ///
+  /// [key] is the stable identifier and cannot be changed afterwards: the
+  /// assistant scope and the seed data key off it, and renaming it would orphan
+  /// both. The display name can be edited freely.
+  Future<Department> createDepartment({
+    required String key,
+    required String name,
+  }) async {
+    final json = await _client.postJson(
+      '/departments',
+      body: {
+        'key': key,
+        'names': {'en': name},
+      },
+    );
+    return Department.fromJson(json['department'] as Map<String, dynamic>);
+  }
+
+  /// Rename one, reorder it, or retire it. Its own rows only — a shared
+  /// specialty is refused by the server, because one practice renaming
+  /// "Cardiologist" would rename it on every other practice's letterhead.
+  Future<Department> updateDepartment(
+    String id, {
+    String? name,
+    bool? isActive,
+    int? sortIndex,
+  }) async {
+    final json = await _client.patchJson(
+      '/departments/$id',
+      body: {
+        if (name != null) 'names': {'en': name},
+        if (isActive != null) 'isActive': isActive,
+        if (sortIndex != null) 'sortIndex': sortIndex,
+      },
+    );
+    return Department.fromJson(json['department'] as Map<String, dynamic>);
   }
 
   /// Dieticians the doctor can assign a patient to.

@@ -4,8 +4,10 @@ import 'package:go_router/go_router.dart';
 
 import '../../../core/theme/tokens.dart';
 import '../../../shared/widgets/surfaces.dart';
+import '../../../core/capabilities/capabilities.dart';
 import '../data/practice_repository.dart';
 import '../domain/practice.dart';
+import 'clinician_providers.dart';
 import 'widgets/practice_details_sheet.dart';
 
 /// The practice a head doctor runs: who it says it is, where it sits, who works
@@ -68,6 +70,9 @@ class _Overview extends StatelessWidget {
         _Locations(locations: practice.locations),
         const SizedBox(height: T.s8),
         _People(practice: practice),
+        // Draws nothing when this practice has no departments, so the gap
+        // above it would be a gap to nothing. It carries its own spacing.
+        const _Departments(),
       ],
     );
   }
@@ -353,6 +358,60 @@ class _LocationRow extends StatelessWidget {
             Text('Closed', style: T.label.copyWith(color: T.inkMuted)),
         ],
       ),
+    );
+  }
+}
+
+/// The practice's own specialties, when it has departments at all.
+///
+/// ---- Why this is a capability and not a plan check ---------------------
+///
+/// A solo clinic has no departments, and that is not a thing to sell it — it
+/// is what a solo clinic is. A polyclinic has them on any plan. So the question
+/// this asks is "does this practice have departments", which the server answers
+/// from the practice type, the plan and this person's permissions together, and
+/// this widget does not re-derive from any of the three.
+///
+/// Hidden rather than shown-and-disabled. A greyed section on a screen a solo
+/// doctor opens every week is a permanent advertisement for something that will
+/// never apply to them.
+class _Departments extends ConsumerWidget {
+  const _Departments();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    if (!ref.watch(capabilitySetProvider).has(Cap.department)) {
+      return const SizedBox.shrink();
+    }
+
+    final async = ref.watch(departmentsProvider);
+    final mine = async.valueOrNull?.where((d) => !d.isShared).toList();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SizedBox(height: T.s8),
+        _Heading(
+          title: 'Departments',
+          actionLabel: 'Manage',
+          onAction: () => context.push('/clinician/departments'),
+        ),
+        const SizedBox(height: T.s2),
+        Text(
+          // Three states, and the empty one is informative rather than noise:
+          // a practice running as a single list is the right shape for a solo
+          // clinic, and saying so beats a blank line that reads as a failed
+          // load.
+          switch (mine) {
+            null => 'Loading…',
+            [] => 'None yet — the practice runs as a single list.',
+            final d =>
+              '${d.length} ${d.length == 1 ? 'department' : 'departments'}'
+                  '${d.any((x) => !x.isActive) ? ', some retired' : ''}',
+          },
+          style: T.small.copyWith(color: T.inkMuted),
+        ),
+      ],
     );
   }
 }

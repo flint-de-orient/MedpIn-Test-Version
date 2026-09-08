@@ -5,10 +5,20 @@ import '../data/clinician_repository.dart';
 import '../domain/appointment.dart';
 import '../../medications/domain/medication.dart';
 import '../domain/chat_review.dart';
+import '../domain/department.dart';
 import '../domain/clinician_models.dart';
 import '../domain/knowledge_chunk.dart';
 import '../domain/patient_summary.dart';
 import '../../../shared/widgets/notification_list_sheet.dart';
+
+/// The specialties this practice can use — its own and the shared ones.
+///
+/// Not `autoDispose`: the practice screen reads it for a count and the
+/// departments screen reads it for the list, and disposing between the two
+/// means a refetch every time somebody taps through.
+final departmentsProvider = FutureProvider<List<Department>>((ref) {
+  return ref.watch(clinicianRepositoryProvider).departments();
+});
 
 /// Dashboard headline numbers.
 final overviewProvider = FutureProvider.autoDispose<ClinicOverview>((ref) {
