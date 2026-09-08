@@ -19,6 +19,8 @@ import { Medication } from '../models/Medication.js';
 import { recomputeSchedule } from '../services/medicationSchedule.js';
 import { toE164 } from '../utils/phone.js';
 import { resolveDoctor } from '../services/doctorContext.js';
+import { capabilityContext } from '../middleware/requireCapability.js';
+import { describeCapabilities } from '../services/capabilities.js';
 
 const router = Router();
 
@@ -418,6 +420,53 @@ router.get(
     const profile =
       req.user.role === ROLES.PATIENT ? await PatientProfile.findOne({ user: req.user._id }).lean() : null;
     res.json({ user: req.user.toPublic(), profile });
+  }),
+);
+
+/**
+ * What this account may see and do, so the client can build itself.
+ *
+ * ---- Why the client is told rather than deciding ------------------------
+ *
+ * The alternative is a switch in the app: `if (plan == 'hospital') showTabs()`.
+ * That puts the product's shape in the client, where it ships on a release
+ * cycle measured in app-store reviews, and where two clients disagree the
+ * moment one of them is a version behind. A doctor upgrading their plan would
+ * see the same six tabs until they updated the app.
+ *
+ * So the server answers "what is available" and the client answers "where to
+ * put it". A capability the server stops sending disappears from the
+ * navigation on the next load, on every client at once.
+ *
+ * ---- And it is not a security boundary ----------------------------------
+ *
+ * Nothing here is trusted. `requireCapability` guards the routes, and this
+ * endpoint exists so the app does not offer a button that would be refused —
+ * which is a courtesy to the person using it, not a control on them. An app
+ * that ignored this response would get 403s, not data.
+ *
+ * `practice` is what the organisation has. `effective` is what this person may
+ * use, which is the smaller of the two and the one to build navigation from.
+ * Both are sent because "your practice has this and your account does not" is
+ * an answer worth being able to give.
+ */
+router.get(
+  '/me/capabilities',
+  requireAuth,
+  asyncHandler(async (req, res) => {
+    const ctx = await capabilityContext(req);
+    res.json({
+      ...describeCapabilities(ctx),
+      // Null for a caller the backfill has not reached, and for every patient.
+      // The client should read it as "no practice context", not as "no access".
+      membership: ctx.membership
+        ? {
+            role: ctx.membership.role,
+            isOwner: Boolean(ctx.membership.isOwner),
+            permissions: ctx.membership.permissions ?? [],
+          }
+        : null,
+    });
   }),
 );
 

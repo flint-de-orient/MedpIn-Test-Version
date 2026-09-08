@@ -23,7 +23,14 @@ import { logger } from '../config/logger.js';
  * unavailable would convert a working guard into an outage, and the caller was
  * being denied either way.
  */
-export function recordDenial(req, { reason, patientId = null, practiceId = null }) {
+export function recordDenial(
+  req,
+  // `detail` is whatever makes the entry readable for this kind of refusal —
+  // the capability that was missing, the department that did not match. It goes
+  // into meta rather than into the action, so the action stays a short set a
+  // query can group by.
+  { reason, patientId = null, practiceId = null, ...detail },
+) {
   AuditLog.create({
     actor: req.user?._id ?? null,
     actorRole: req.user?.role ?? null,
@@ -37,7 +44,7 @@ export function recordDenial(req, { reason, patientId = null, practiceId = null 
     // The practice the *caller* was in. What they were reaching for is the
     // resource; this is where they were reaching from, and the pair is what
     // makes the entry readable six months later.
-    meta: { practice: practiceId ? String(practiceId) : null },
+    meta: { practice: practiceId ? String(practiceId) : null, ...detail },
   }).catch((err) => {
     logger.warn({ err, reason }, 'could not record a denied access');
   });

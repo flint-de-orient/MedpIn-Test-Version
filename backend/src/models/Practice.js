@@ -66,6 +66,66 @@ export const PLAN = Object.freeze({
   HOSPITAL: 'hospital',
 });
 
+/**
+ * What kind of organisation this is. Not what it treats — see `specialty`.
+ *
+ * ---- Why these are two fields and not one -------------------------------
+ *
+ * "Cardiology hospital" is two facts, and they change independently: a clinic
+ * that grows into a polyclinic keeps its specialty, and a diabetes clinic that
+ * adds a cardiologist keeps its type. Collapsing them into one list produces
+ * the cross product — six types times a dozen specialties — and every one of
+ * those needs its own row the day somebody adds a specialty.
+ *
+ * ---- What the type decides ----------------------------------------------
+ *
+ * Which capabilities the practice can have at all: a diagnostic centre orders
+ * and reports labs and does not prescribe; a solo clinic has no departments to
+ * manage. See [services/capabilities.js] — the type is an input there, not a
+ * switch read directly by a screen.
+ *
+ * ---- Null is a real value and stays one ---------------------------------
+ *
+ * Every practice that exists today has none, and the clinic seeing patients
+ * this morning must not lose prescriptions because a field was added. Unknown
+ * type means unrestricted, exactly as unknown practice means unrestricted in
+ * the tenant guards. The resolver is where that rule is written down.
+ */
+export const PRACTICE_TYPE = Object.freeze({
+  CLINIC: 'clinic',
+  POLYCLINIC: 'polyclinic',
+  HOSPITAL: 'hospital',
+  DIAGNOSTIC_CENTRE: 'diagnostic_centre',
+  SPECIALTY_CENTRE: 'specialty_centre',
+  HEALTHCARE_GROUP: 'healthcare_group',
+});
+
+/** Reading order for a picker: smallest organisation first. */
+export const PRACTICE_TYPE_ORDER = Object.freeze([
+  PRACTICE_TYPE.CLINIC,
+  PRACTICE_TYPE.SPECIALTY_CENTRE,
+  PRACTICE_TYPE.DIAGNOSTIC_CENTRE,
+  PRACTICE_TYPE.POLYCLINIC,
+  PRACTICE_TYPE.HOSPITAL,
+  PRACTICE_TYPE.HEALTHCARE_GROUP,
+]);
+
+/**
+ * What the person who signs for the practice is called, by type.
+ *
+ * A hospital does not have a "head doctor" and a diagnostic centre's
+ * responsible person is not a doctor at all in the sense the word implies. The
+ * onboarding wizard asks for one human either way; only the label changes.
+ */
+export const RESPONSIBLE_LABEL = Object.freeze({
+  [PRACTICE_TYPE.CLINIC]: 'Head doctor',
+  [PRACTICE_TYPE.SPECIALTY_CENTRE]: 'Lead consultant',
+  [PRACTICE_TYPE.DIAGNOSTIC_CENTRE]: 'Responsible pathologist',
+  [PRACTICE_TYPE.POLYCLINIC]: 'Medical director',
+  [PRACTICE_TYPE.HOSPITAL]: 'Medical superintendent',
+  [PRACTICE_TYPE.HEALTHCARE_GROUP]: 'Group medical director',
+});
+
 const practiceSchema = new mongoose.Schema(
   {
     /// What a patient reads: "Dey Diabetes Clinic".
@@ -82,6 +142,28 @@ const practiceSchema = new mongoose.Schema(
 
     /// Printed under the signature on a prescription.
     registrationNo: { type: String, trim: true, maxlength: 60 },
+
+    /// What kind of organisation. Null until somebody says — see PRACTICE_TYPE.
+    practiceType: {
+      type: String,
+      enum: [...Object.values(PRACTICE_TYPE), null],
+      default: null,
+      index: true,
+    },
+
+    /**
+     * What it primarily treats: `diabetology`, `cardiology`, `paediatrics`.
+     *
+     * A string, not an enum, and matching a shared [Department] key where one
+     * fits. The argument is already written down in Department.js: a specialty
+     * an admin adds cannot bring a code change with it, so a hard list here
+     * would mean a deploy every time somebody opens a practice in a specialty
+     * nobody anticipated.
+     *
+     * It is a label and a default, not a restriction. A diabetes clinic that
+     * sees a cardiac patient is a diabetes clinic that saw a cardiac patient.
+     */
+    specialty: { type: String, trim: true, maxlength: 80, default: null, index: true },
 
     /// Two logo assets, never an inverted copy of one another — inverting
     /// artwork destroys the brand colour. See the note on the same fields in
@@ -151,6 +233,17 @@ const practiceSchema = new mongoose.Schema(
     /// records by a billing date is a patient safety problem.
     planRenewsOn: { type: Date, default: null },
 
+    /**
+     * Capabilities an operator has turned on for this practice by hand.
+     *
+     * The Enterprise escape hatch, and the way to give one customer something
+     * without inventing a plan for it. Additive only, and still bounded by what
+     * the practice type can have — see [services/capabilities.js]. Empty for
+     * almost every practice, which is the point: the plan should be the answer
+     * and this should be the exception somebody had to type.
+     */
+    capabilities: { type: [String], default: [] },
+
     /// Free text for the operator. "Paying annually, invoice by email" is the
     /// kind of thing that otherwise lives in somebody's memory.
     notes: { type: String, trim: true, maxlength: 2000, default: '' },
@@ -173,6 +266,8 @@ practiceSchema.methods.toPublic = function toPublic() {
     logoNeedsDarkChip: Boolean(this.logoNeedsDarkChip),
     status: this.status,
     verification: this.verification,
+    practiceType: this.practiceType ?? null,
+    specialty: this.specialty ?? null,
     plan: this.plan ?? PLAN.TRIAL,
     // Spread rather than passed through: `limits` is a subdocument, and handing
     // the Mongoose object to res.json ships its internals.
