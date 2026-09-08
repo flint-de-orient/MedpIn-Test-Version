@@ -52,6 +52,7 @@ import {
   assertSamePractice,
   practicePatients,
   practicePatientIds,
+  departmentThreads,
   practiceMembers,
 } from '../middleware/practiceScope.js';
 import { enrollmentGate } from '../middleware/authorise.js';
@@ -132,7 +133,14 @@ router.get(
       ChatSession.find({ isArchived: false, ...scope }).select('_id kind patient').lean(),
       isDesk
         ? []
-        : ChatSession.find({ flaggedForReview: true, isArchived: false, ...scope })
+        : ChatSession.find({
+            flaggedForReview: true,
+            isArchived: false,
+            ...scope,
+            // The same narrowing as the list it counts, or the badge says
+            // eleven and the screen shows four.
+            ...(await departmentThreads(req)),
+          })
             .sort({ lastMessageAt: -1 })
             .limit(20)
             .populate('patient', 'name avatarAssetId')
@@ -550,7 +558,16 @@ router.get(
 
     const [patients, flaggedSessions, prescribedIds, recentMeals] = await Promise.all([
       User.find({ role: ROLES.PATIENT, isActive: true, ...userScope }).select('name createdAt').lean(),
-      ChatSession.find({ flaggedForReview: true, isArchived: false, ...scope })
+      // Narrowed to this clinician's department where they have one, keeping
+      // the threads that name none — a patient writes to a department and
+      // anybody in it may answer, but most threads carry null and belong to
+      // everybody.
+      ChatSession.find({
+        flaggedForReview: true,
+        isArchived: false,
+        ...scope,
+        ...(await departmentThreads(req)),
+      })
         .sort({ lastMessageAt: -1 })
         .limit(20)
         .populate('patient', 'name')

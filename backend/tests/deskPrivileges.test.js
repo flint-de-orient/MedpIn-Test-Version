@@ -99,7 +99,11 @@ describe('the desk bell shows the desk work', () => {
     // not exist under /staff, and every row was a tap onto a blank page plus a
     // number on a badge the desk could never clear.
     assert.match(route, /const isDesk = req\.user\.role === ROLES\.STAFF/);
-    assert.match(route, /isDesk[\s\S]{0,12}\?[\s\S]{0,12}\[\][\s\S]{0,12}: ChatSession\.find\(\{ flaggedForReview/);
+    // Matched against a whitespace-collapsed copy. The expression grew a
+    // department filter and the formatter wrapped it across five lines, which
+    // broke a pattern that was really about the ternary rather than its layout.
+    const flat = route.replace(/\s+/g, ' ');
+    assert.match(flat, /isDesk \? \[\] : ChatSession\.find\(\{ flaggedForReview/);
   });
 
   test('but emergencies are not', () => {

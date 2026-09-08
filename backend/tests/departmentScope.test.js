@@ -183,3 +183,30 @@ describe('the model points at the right collection', () => {
     );
   });
 });
+
+describe('a clinician answers their own department’s threads', () => {
+  const scope = readFileSync(new URL('../src/middleware/practiceScope.js', import.meta.url), 'utf8');
+  const doctor = readFileSync(new URL('../src/routes/doctor.js', import.meta.url), 'utf8');
+
+  test('the unassigned ones stay everybody’s', () => {
+    // A thread names a department and anybody in it may answer — that is why
+    // the schema names a department rather than a doctor. But most threads
+    // carry null: a solo practice has none to choose from, and every message
+    // sent before departments existed has none. Narrowing to `department: mine`
+    // alone would empty the inbox of the clinic running today.
+    assert.match(scope, /export async function departmentThreads\(req, field = 'department'\)/);
+    assert.match(scope, /\{ \$or: \[\{ \[field\]: mine \}, \{ \[field\]: null \}\] \}/);
+  });
+
+  test('and no department on the caller narrows nothing', () => {
+    // Every membership the backfill created.
+    assert.match(scope, /if \(!mine\) return \{\};/);
+  });
+
+  test('the badge counts what the list shows', () => {
+    // Two reads of the same threads with different filters is a dashboard
+    // saying eleven over a screen showing four.
+    const uses = [...doctor.matchAll(/\.\.\.\(await departmentThreads\(req\)\)/g)];
+    assert.ok(uses.length >= 2, 'the flagged count and the flagged list disagree');
+  });
+});

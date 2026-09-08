@@ -139,3 +139,36 @@ describe('the queue number belongs to one queue', () => {
     assert.match(body, /: await practiceMembers\(req, ROLES\.DOCTOR, 'doctor'\)/);
   });
 });
+
+describe('a branch opens on its own day', () => {
+  const list = route("router.get(\n  '/',");
+  const queue = route("router.get(\n  '/queue/today',");
+
+  test('the diary defaults to the location on your membership', () => {
+    assert.match(list, /const mine = await memberLocation\(req\)/);
+    assert.match(list, /mine && !clinicId \? \{ clinic: mine \} : \{\}/);
+  });
+
+  test('and an explicit clinic still overrides it', () => {
+    // A default, not a wall. A doctor covering a colleague's afternoon at the
+    // other branch has to be able to look at it, and the doctor filter still
+    // bounds that to this practice — an id from elsewhere returns nothing.
+    assert.ok(
+      list.indexOf('clinic: mine') < list.indexOf('clinic: clinicId'),
+      'the membership location is applied after the explicit one and wins',
+    );
+  });
+
+  test('the waiting room shows the room you are standing in', () => {
+    assert.match(queue, /const here = await memberLocation\(req\)/);
+    assert.match(queue, /here \? \{ clinic: here \} : \{\}/);
+  });
+
+  test('and null means the whole practice, which is every membership today', () => {
+    // The backfill sets no location, and a solo practice has one building
+    // nobody needs telling about. Narrowing on null would empty both screens
+    // for the clinic that is running.
+    const scope = readFileSync(new URL('../src/middleware/practiceScope.js', import.meta.url), 'utf8');
+    assert.match(scope, /req\._memberLocation = row\?\.location \? String\(row\.location\) : null;/);
+  });
+});

@@ -24,7 +24,7 @@ import { ACTIVE_STATUSES, isSlotBookable } from '../services/scheduling.js';
 import { paged, pageParams, dateRange } from '../utils/pagination.js';
 import { postCareThreadNote } from '../services/careThreadNote.js';
 import { resolveDoctor } from '../services/doctorContext.js';
-import { practiceMembers } from '../middleware/practiceScope.js';
+import { practiceMembers, memberLocation } from '../middleware/practiceScope.js';
 
 const router = Router();
 router.use(requireAuth);
@@ -87,10 +87,26 @@ router.get(
   asyncHandler(async (req, res) => {
     const { page, limit, skip, from, to, status, patientId, clinicId } = q(req);
 
+    /**
+     * Which branch's diary this is.
+     *
+     * A doctor whose membership names a location opens on that location's day.
+     * Null — every membership the backfill created, and every solo practice —
+     * means the whole practice, unchanged.
+     *
+     * A default, not a wall: `?clinicId=` still overrides it, because a doctor
+     * covering a colleague's afternoon at the other branch has to be able to
+     * look at it. The doctor filter above still bounds that to this practice,
+     * so an id from somewhere else returns nothing rather than somebody's
+     * afternoon.
+     */
+    const mine = await memberLocation(req);
+
     const filter = {
       ...(await scopeFilter(req)),
       ...dateRange('scheduledFor', { from, to }),
       ...(status ? { status } : {}),
+      ...(!isPatient(req) && mine && !clinicId ? { clinic: mine } : {}),
       ...(clinicId ? { clinic: clinicId } : {}),
       ...(!isPatient(req) && patientId ? { patient: patientId } : {}),
     };
@@ -750,10 +766,18 @@ router.get(
 
     // The names on a waiting-room display. Unscoped, this listed every
     // patient checked in anywhere on the platform, by name.
+    //
+    // And a waiting room is a room. Two branches of one practice have two of
+    // them, so a screen in Behala showing Salt Lake's queue is not a leak but
+    // is certainly wrong — the person watching it is looking for who to call
+    // next through the door in front of them.
+    const here = await memberLocation(req);
+
     const entries = await Appointment.find({
       queueDate: today,
       status: { $in: ['checked_in', 'in_consultation'] },
       ...(await practiceMembers(req, ROLES.DOCTOR, 'doctor')),
+      ...(here ? { clinic: here } : {}),
     })
       .sort({ isPriority: -1, queueNumber: 1 })
       .populate('patient', 'name')

@@ -233,6 +233,83 @@ export async function practiceMembers(req, roles = null, field = '_id') {
 /* ---------------------------------------------------------- the buildings */
 
 /**
+ * The location this caller works at, or null for "wherever the practice is".
+ *
+ * ---- Why null is the common answer and stays fine ----------------------
+ *
+ * A solo practice has one building and nobody needs telling which. A doctor who
+ * runs two clinics himself belongs to both. So the field is set only where
+ * somebody deliberately said "this person sits at that branch", and null means
+ * the whole practice — which is every membership the backfill created.
+ *
+ * ---- And what it is used for ------------------------------------------
+ *
+ * A default, not a wall. It decides which diary a doctor opens on, and it does
+ * not decide which appointment they may touch: a doctor covering a colleague's
+ * afternoon at the other branch needs to confirm and reschedule there, and a
+ * system that refuses is one they will work around by ringing the desk.
+ */
+
+/** Which part of the practice this caller works in, or null for all of it. */
+export async function memberDepartment(req) {
+  if (req._memberDepartment !== undefined) return req._memberDepartment;
+
+  const practiceId = await practiceOf(req);
+  if (!practiceId || !req.user?._id) {
+    req._memberDepartment = null;
+    return null;
+  }
+
+  const row = await Membership.findOne(Membership.currentFilter(req.user._id, practiceId))
+    .select('department')
+    .lean();
+
+  req._memberDepartment = row?.department ? String(row.department) : null;
+  return req._memberDepartment;
+}
+
+/**
+ * A filter narrowing threads to the ones this clinician is meant to answer.
+ *
+ * ---- Why it keeps the unassigned ones ----------------------------------
+ *
+ * A thread carries the department a patient wrote to, and anybody in that
+ * department may answer — that is what the schema says and why the thread names
+ * a department rather than a doctor.
+ *
+ * But most threads have no department at all: a solo practice has none to
+ * choose from, and every message sent before departments existed carries null.
+ * Narrowing to `department: mine` alone would empty the inbox of the clinic
+ * running today, so an unassigned thread belongs to everybody and stays.
+ *
+ * `{}` when the caller has no department, which is every membership the
+ * backfill created.
+ */
+export async function departmentThreads(req, field = 'department') {
+  const mine = await memberDepartment(req);
+  if (!mine) return {};
+  return { $or: [{ [field]: mine }, { [field]: null }] };
+}
+
+export async function memberLocation(req) {
+  if (req._memberLocation !== undefined) return req._memberLocation;
+
+  const practiceId = await practiceOf(req);
+  if (!practiceId || !req.user?._id) {
+    req._memberLocation = null;
+    return null;
+  }
+
+  const row = await Membership.findOne(Membership.currentFilter(req.user._id, practiceId))
+    .select('location')
+    .lean();
+
+  req._memberLocation = row?.location ? String(row.location) : null;
+  return req._memberLocation;
+}
+
+
+/**
  * A filter fragment restricting a query to the caller's own locations.
  *
  * Strict once the backfill has linked anything, and that is deliberate. A
