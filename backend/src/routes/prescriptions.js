@@ -22,6 +22,8 @@ import { paged, pageParams } from '../utils/pagination.js';
 import { resolveDoctor } from '../services/doctorContext.js';
 import { PERMISSIONS } from '../models/Membership.js';
 import { requirePermission, recordWindow } from '../middleware/authorise.js';
+import { requireCapability } from '../middleware/requireCapability.js';
+import { CAPABILITIES } from '../services/capabilities.js';
 
 const router = Router({ mergeParams: true });
 router.use(requireAuth, resolvePatientScope);
@@ -86,6 +88,11 @@ router.post(
   // not theirs, and the record names whoever posted it as the prescriber.
   requireDoctor,
   requirePermission(PERMISSIONS.PRESCRIBE),
+  // The permission says this person prescribes; the capability says this
+  // practice does at all. A diagnostic centre's pathologist holds PRESCRIBE
+  // from the clinician preset and must still not issue one — that is about
+  // what the organisation is licensed to do, not who it employs.
+  requireCapability(CAPABILITIES.PRESCRIPTION),
   validate({
     body: z.object({
       appointmentId: z.string().optional(),

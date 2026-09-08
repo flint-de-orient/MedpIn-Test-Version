@@ -19,6 +19,8 @@ import { raiseAlert } from '../services/alerts.js';
 import { recomputePatientRisk } from '../services/analytics.js';
 import { paged, pageParams } from '../utils/pagination.js';
 import { recordWindow } from '../middleware/authorise.js';
+import { requireCapability } from '../middleware/requireCapability.js';
+import { CAPABILITIES } from '../services/capabilities.js';
 
 const router = Router({ mergeParams: true });
 router.use(requireAuth, resolvePatientScope);
@@ -333,6 +335,9 @@ router.get(
 
 router.post(
   '/labs',
+  // Filing a result is the other half of ordering the investigation. A practice
+  // whose type or plan does not include labs has no business holding them.
+  requireCapability(CAPABILITIES.LAB_ORDER),
   validate({
     body: z.object({
       title: z.string().min(1).max(200),

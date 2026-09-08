@@ -2,10 +2,13 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { requireAuth, requireClinician } from '../middleware/auth.js';
 import { validate, q } from '../middleware/validate.js';
-import { asyncHandler, notFound, badRequest } from '../middleware/errors.js';
+import { asyncHandler, notFound, badRequest, conflict } from '../middleware/errors.js';
 import { audit } from '../middleware/audit.js';
 import { Clinic } from '../models/Clinic.js';
 import { practiceOf, practiceClinics } from '../middleware/practiceScope.js';
+import { requestCan } from '../middleware/requireCapability.js';
+import { CAPABILITIES } from '../services/capabilities.js';
+import { Practice } from '../models/Practice.js';
 import { User, ROLES } from '../models/User.js';
 import { generateSlots } from '../services/scheduling.js';
 import { forgetClinicIdentity } from '../services/clinicIdentity.js';
@@ -143,6 +146,44 @@ router.post(
      * would not see it in its own list.
      */
     const practiceId = await practiceOf(req);
+
+    /**
+     * The second location is the one that costs something.
+     *
+     * Two separate limits, checked in this order because they fail for
+     * different reasons and want different answers:
+     *
+     *   MULTI_LOCATION  this practice runs from one building. A solo clinic
+     *                   has no second site by definition; a hospital always
+     *                   does. That is a fact about what it is, and the answer
+     *                   is not "buy more".
+     *   limits.locations  a number somebody agreed. The answer *is* a larger
+     *                   plan, and the message says so.
+     *
+     * The first location is always allowed. A practice with none cannot take a
+     * booking at all — Patients cannot book until there is one — so refusing
+     * the first would be selling a plan that cannot be used.
+     */
+    if (practiceId) {
+      const existing = await Clinic.countDocuments({ practice: practiceId });
+
+      if (existing >= 1 && !(await requestCan(req, CAPABILITIES.MULTI_LOCATION))) {
+        throw conflict(
+          'This practice is set up for a single location. Adding another needs a practice type that has them.',
+        );
+      }
+
+      // The cap has existed since plans did and was never called — the same
+      // way the staff one was decoration until /team started asking.
+      const practice = await Practice.findById(practiceId);
+      const over = practice?.overLimit('locations', existing);
+      if (over) {
+        throw conflict(
+          `This practice is at its limit of ${over.cap} location${over.cap === 1 ? '' : 's'}. Ask about a larger plan.`,
+        );
+      }
+    }
+
     const clinic = await Clinic.create({
       ...req.body,
       doctor: doctor?._id,

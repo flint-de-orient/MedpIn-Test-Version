@@ -1,6 +1,7 @@
 import { Practice } from '../models/Practice.js';
 import { Membership } from '../models/Membership.js';
-import { practiceOf } from './practiceScope.js';
+import { practiceOf, practiceOfPatient } from './practiceScope.js';
+import { ROLES } from '../models/User.js';
 import { effectiveCapabilities, describeCapabilities } from '../services/capabilities.js';
 import { forbidden } from './errors.js';
 import { recordDenial } from './recordDenial.js';
@@ -32,9 +33,30 @@ import { recordDenial } from './recordDenial.js';
 export async function capabilityContext(req) {
   if (req._capabilityContext) return req._capabilityContext;
 
-  const practiceId = await practiceOf(req);
+  /**
+   * Which practice's capabilities apply, and there are two ways to be in one.
+   *
+   * `practiceOf` reads the caller's *membership*, which a patient does not
+   * have — they are enrolled, not employed. So every patient-facing route was
+   * getting a null practice, which the guard reads as "unknown, permit", and
+   * the whole layer was inert for exactly the half of the app that has the most
+   * users.
+   *
+   * That is a quiet failure of the kind this codebase keeps finding: the guard
+   * was mounted, correct, and answering a question about somebody who could
+   * never be the subject of it.
+   */
+  const practiceId =
+    req.user?.role === ROLES.PATIENT
+      ? await practiceOfPatient(req.user._id)
+      : await practiceOf(req);
+
   const [practice, membership] = await Promise.all([
     practiceId ? Practice.findById(practiceId).lean() : null,
+    // Still the membership, and still null for a patient — which is the right
+    // answer. `effectiveCapabilities` reads a null membership as "do not
+    // narrow", so a patient gets what their practice has rather than what a
+    // role preset would allow.
     practiceId && req.user?._id
       ? Membership.findOne(Membership.currentFilter(req.user._id, practiceId)).lean()
       : null,
