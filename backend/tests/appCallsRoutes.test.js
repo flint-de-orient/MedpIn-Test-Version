@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 
 import { CAPABILITIES } from '../src/services/capabilities.js';
+import { PERMISSIONS } from '../src/models/Membership.js';
 
 /**
  * The gap that let six finished routes sit unreachable for weeks.
@@ -173,5 +174,56 @@ describe('the Nutrition tab has two reasons to exist', () => {
   test('the app reads it, and either reason is enough', () => {
     assert.match(app, /hasDietician: json\['hasDietician'\] == true/);
     assert.match(app, /caps\.has\(Cap\.aiAssistant\) \|\| caps\.hasDietician/);
+  });
+});
+
+describe('the app can tell what this person may do', () => {
+  const auth = readFileSync(new URL('../src/routes/auth.js', import.meta.url), 'utf8');
+
+  test('the grant it is sent is resolved, not stored', () => {
+    // An empty array on the row means "the role's preset applies". The model
+    // resolves that on read and requirePermission asks the document, so the
+    // server has always behaved correctly — this field did not. It sent the
+    // raw `[]`, and a client checking a permission against it would find that
+    // nobody holds any, because almost nobody has a customised grant.
+    const at = auth.indexOf("'/me/capabilities'");
+    const body = auth.slice(at, at + 2600);
+    assert.match(body, /ctx\.membership\.permissions\?\.length[\s\S]{0,200}presetFor\(/);
+    assert.match(body, /usingPreset: !ctx\.membership\.permissions\?\.length/);
+  });
+
+  test('the app reads it and the names match the server', () => {
+    assert.match(app, /permissions: \(\(membership\?\['permissions'\] as List\?\)/);
+
+    const at = app.indexOf('abstract final class Perm {');
+    assert.ok(at > 0, 'the Perm class is gone or renamed');
+    const block = app.slice(at, app.indexOf('}', at));
+    const inDart = [...block.matchAll(/static const \w+ = '([A-Z_]+)';/g)].map((m) => m[1]);
+
+    const server = Object.values(PERMISSIONS);
+    assert.deepEqual(
+      inDart.filter((p) => !server.includes(p)),
+      [],
+      'the app checks a permission the server has never heard of',
+    );
+    assert.deepEqual(
+      server.filter((p) => !inDart.includes(p)),
+      [],
+      'the app has no constant for a permission the server defines',
+    );
+  });
+
+  test('and can() permits before the answer arrives', () => {
+    // The same rule as has(), for the same reason: a button appearing a moment
+    // late beats one vanishing under somebody's thumb, and the server refuses
+    // what it should either way.
+    assert.match(app, /bool can\(String permission\) => !resolved \|\| permissions\.contains\(permission\);/);
+  });
+
+  test('managing departments is gated on the permission, not the role', () => {
+    // A practice manager who is not a doctor may hold MANAGE_DEPARTMENT, and a
+    // doctor normally does not. The routes have required it since they were
+    // scoped, so the screen was offering a button it knew would be refused.
+    assert.match(app, /can\(Perm\.manageDepartment\)/);
   });
 });

@@ -2,7 +2,7 @@ import { Router } from 'express';
 import rateLimit from 'express-rate-limit';
 import { z } from 'zod';
 import { User, ROLES, LANGUAGES } from '../models/User.js';
-import { Membership, MEMBERSHIP_STATUS } from '../models/Membership.js';
+import { Membership, MEMBERSHIP_STATUS, presetFor } from '../models/Membership.js';
 import { PatientProfile } from '../models/PatientProfile.js';
 import { VitalRecord } from '../models/VitalRecord.js';
 import { GlucoseReading } from '../models/GlucoseReading.js';
@@ -489,7 +489,27 @@ router.get(
         ? {
             role: ctx.membership.role,
             isOwner: Boolean(ctx.membership.isOwner),
-            permissions: ctx.membership.permissions ?? [],
+            /**
+             * The resolved grant, not the stored one.
+             *
+             * An empty array on the row means "the role's preset applies" —
+             * the model resolves that on read and `requirePermission` asks the
+             * document, so the server has always behaved correctly. This field
+             * did not: it sent the raw `[]`, and a client checking a permission
+             * against it would find that nobody has any, because almost nobody
+             * has a customised grant.
+             *
+             * The same distinction /team already draws, and for the same
+             * reason: two readings of "empty" is how a screen comes to hide
+             * every button from the person who owns the practice.
+             */
+            permissions: ctx.membership.permissions?.length
+              ? ctx.membership.permissions
+              : presetFor({
+                  role: ctx.membership.role,
+                  isOwner: Boolean(ctx.membership.isOwner),
+                }),
+            usingPreset: !ctx.membership.permissions?.length,
           }
         : null,
     });

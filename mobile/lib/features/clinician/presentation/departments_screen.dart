@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/capabilities/capabilities.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/tokens.dart';
@@ -33,14 +34,28 @@ class DepartmentsScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final async = ref.watch(departmentsProvider);
 
+    /*
+     * Whether this person administers departments.
+     *
+     * The routes have required MANAGE_DEPARTMENT since they were scoped, so an
+     * ordinary doctor pressing Add got a 403 — the guard was right and the
+     * screen was offering something it knew would be refused.
+     *
+     * Reading a permission rather than a role: a practice manager who is not a
+     * doctor may hold it, and a doctor normally does not.
+     */
+    final mayManage = ref.watch(capabilitySetProvider).can(Perm.manageDepartment);
+
     return Scaffold(
       backgroundColor: T.surface,
       appBar: AppBar(title: const Text('Departments')),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => _edit(context, ref, null),
-        icon: const Icon(Icons.add_rounded),
-        label: const Text('Add department'),
-      ),
+      floatingActionButton: mayManage
+          ? FloatingActionButton.extended(
+              onPressed: () => _edit(context, ref, null),
+              icon: const Icon(Icons.add_rounded),
+              label: const Text('Add department'),
+            )
+          : null,
       body: RefreshIndicator(
         onRefresh: () async => ref.refresh(departmentsProvider.future),
         child: async.when(
@@ -48,7 +63,7 @@ class DepartmentsScreen extends ConsumerWidget {
           error: (err, _) => _Failed(
             onRetry: () => ref.invalidate(departmentsProvider),
           ),
-          data: (items) => _List(items: items, ref: ref),
+          data: (items) => _List(items: items, ref: ref, mayManage: mayManage),
         ),
       ),
     );
@@ -67,10 +82,11 @@ Future<void> _edit(BuildContext context, WidgetRef ref, Department? existing) {
 }
 
 class _List extends StatelessWidget {
-  const _List({required this.items, required this.ref});
+  const _List({required this.items, required this.ref, required this.mayManage});
 
   final List<Department> items;
   final WidgetRef ref;
+  final bool mayManage;
 
   @override
   Widget build(BuildContext context) {
@@ -105,8 +121,11 @@ class _List extends StatelessWidget {
           const SizedBox(height: AppSpacing.sm),
           _Row(
             department: d,
-            onRename: () => _edit(context, ref, d),
-            onToggle: () => _toggle(context, ref, d),
+            // Null hides the two icon buttons rather than greying them. A
+            // permanently disabled control on a screen somebody opens weekly
+            // is a standing reminder of something they cannot do.
+            onRename: mayManage ? () => _edit(context, ref, d) : null,
+            onToggle: mayManage ? () => _toggle(context, ref, d) : null,
           ),
         ],
 
@@ -118,6 +137,16 @@ class _List extends StatelessWidget {
         for (final d in shared) ...[
           const SizedBox(height: AppSpacing.sm),
           _Row(department: d),
+        ],
+
+        if (!mayManage) ...[
+          const SizedBox(height: AppSpacing.xl),
+          Text(
+            // Said once, at the bottom, the same way the People screen says it.
+            // The alternative is an absence somebody has to work out.
+            'Only somebody who manages departments can add or change them here.',
+            style: T.small.copyWith(color: T.inkMuted),
+          ),
         ],
       ],
     );

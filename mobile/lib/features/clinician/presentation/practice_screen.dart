@@ -398,6 +398,10 @@ class _Departments extends ConsumerWidget {
         const SizedBox(height: T.s8),
         _Heading(
           title: 'Departments',
+          // The list is worth seeing either way — a doctor should know which
+          // specialties their practice runs. Managing them is the part that
+          // needs the permission, and the screen behind this link now says so
+          // itself, so this stays a way in rather than a promise.
           actionLabel: 'Manage',
           onAction: () => context.push('/clinician/departments'),
         ),

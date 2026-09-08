@@ -32,6 +32,7 @@ class Capabilities {
     required this.isOwner,
     required this.resolved,
     this.hasDietician = false,
+    this.permissions = const <String>{},
   });
 
   /// What kind of organisation. Null for a practice nobody has classified,
@@ -49,6 +50,13 @@ class Capabilities {
 
   final String? role;
   final bool isOwner;
+
+  /// What this person may do, resolved.
+  ///
+  /// The server sends the role's preset where nobody has customised the grant,
+  /// rather than the empty array it stores — two readings of "empty" is how a
+  /// screen comes to hide every button from the person who owns the practice.
+  final Set<String> permissions;
 
   /// Whether anybody at this practice writes diet plans.
   ///
@@ -88,6 +96,18 @@ class Capabilities {
 
   bool has(String capability) => !resolved || effective.contains(capability);
 
+  /// Whether this person holds a permission.
+  ///
+  /// Permissive before the answer arrives, exactly as [has] is and for the same
+  /// reason: a button that appears a moment late is better than one that
+  /// vanishes under somebody's thumb, and the server refuses what it should
+  /// either way.
+  ///
+  /// A caller with no membership — a patient, or an account the backfill has
+  /// not reached — holds nothing here, and every screen using it is a
+  /// clinician's screen.
+  bool can(String permission) => !resolved || permissions.contains(permission);
+
   /// True when the practice has it and this person does not — the case worth
   /// saying something different about, because one is a sale and the other is
   /// a conversation with whoever runs the practice.
@@ -110,6 +130,9 @@ class Capabilities {
       role: membership?['role'] as String?,
       isOwner: membership?['isOwner'] == true,
       hasDietician: json['hasDietician'] == true,
+      permissions: ((membership?['permissions'] as List?) ?? const [])
+          .map((e) => e.toString())
+          .toSet(),
     );
   }
 }
@@ -119,6 +142,21 @@ class Capabilities {
 /// Written out rather than used as bare strings so a typo is a compile error
 /// instead of a feature that is quietly always off — which is the failure mode
 /// that is hardest to notice, because a hidden button looks like a decision.
+/// What a person may do, as opposed to what the product offers.
+///
+/// Mirrors `PERMISSIONS` in models/Membership.js. Written out for the same
+/// reason [Cap] is: a drifted name resolves to a string the server never sends,
+/// `can()` returns false, and the button is quietly gone for everybody.
+abstract final class Perm {
+  static const viewPatient = 'VIEW_PATIENT';
+  static const editRecord = 'EDIT_RECORD';
+  static const prescribe = 'PRESCRIBE';
+  static const manageStaff = 'MANAGE_STAFF';
+  static const manageDepartment = 'MANAGE_DEPARTMENT';
+  static const viewAudit = 'VIEW_AUDIT';
+  static const shareRecords = 'SHARE_RECORDS';
+}
+
 abstract final class Cap {
   static const prescription = 'PRESCRIPTION';
   static const labOrder = 'LAB_ORDER';
