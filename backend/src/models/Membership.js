@@ -140,6 +140,42 @@ const membershipSchema = new mongoose.Schema(
       index: true,
     },
 
+    /**
+     * Which part of the practice, and which building.
+     *
+     * ---- Why both live here and not on the User ------------------------
+     *
+     * Because one person can be two things. A cardiologist consulting at a
+     * polyclinic on Tuesdays and running their own evening clinic has two
+     * memberships, and the department they belong to is a fact about one of
+     * them. Putting either on the account would make changing a job at one
+     * practice change it at the other.
+     *
+     * ---- Both nullable, and both stay nullable -------------------------
+     *
+     * A solo clinic has no departments and one location; requiring either
+     * would make the commonest customer fill in a field whose only value is
+     * "the only one there is". Null means "not narrowed", which is what the
+     * scoping reads it as — the same rule as everywhere else here.
+     *
+     * `DoctorDepartment` still exists and still holds a doctor's *several*
+     * specialties with their history. This is the one they belong to for the
+     * purposes of a staff list — the primary, denormalised so that showing
+     * forty people does not mean forty joins.
+     */
+    department: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Department',
+      default: null,
+      index: true,
+    },
+    location: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Clinic',
+      default: null,
+      index: true,
+    },
+
     startedOn: { type: Date, default: Date.now },
 
     /// Null while current. See the note above on why this is not a delete.
@@ -230,6 +266,8 @@ membershipSchema.methods.toPublic = function toPublic() {
     practice: String(this.practice),
     role: this.role,
     isOwner: Boolean(this.isOwner),
+    department: this.department ? String(this.department) : null,
+    location: this.location ? String(this.location) : null,
     status: this.status,
     startedOn: this.startedOn,
     endedOn: this.endedOn,

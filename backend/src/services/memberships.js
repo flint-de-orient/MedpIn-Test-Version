@@ -48,6 +48,10 @@ export async function joinPractice({
   isOwner = false,
   permissions = null,
   addedBy = null,
+  // Which part of the practice and which building. Both optional and both
+  // stay optional — a solo clinic has neither to choose from.
+  department = null,
+  location = null,
 }) {
   if (!user || !practice) throw badRequest('A membership needs a person and a practice');
 
@@ -63,6 +67,10 @@ export async function joinPractice({
     existing.permissions = grant;
     existing.status = MEMBERSHIP_STATUS.ACTIVE;
     existing.endedOn = null;
+    // Only when supplied. Rejoining without naming a department should not
+    // silently clear the one they had.
+    if (department !== null) existing.department = department;
+    if (location !== null) existing.location = location;
     await existing.save();
     return existing;
   }
@@ -73,6 +81,8 @@ export async function joinPractice({
     role,
     isOwner,
     permissions: grant,
+    department,
+    location,
     status: MEMBERSHIP_STATUS.ACTIVE,
     startedOn: new Date(),
     endedOn: null,
