@@ -3,13 +3,16 @@ import { z } from 'zod';
 
 import { requireAuth, requireClinician, requireDoctor } from '../middleware/auth.js';
 import { validate } from '../middleware/validate.js';
-import { asyncHandler, badRequest, notFound, conflict } from '../middleware/errors.js';
+import { asyncHandler, badRequest, notFound, conflict, forbidden } from '../middleware/errors.js';
 import { audit } from '../middleware/audit.js';
 import { Department } from '../models/Department.js';
 import { DoctorDepartment } from '../models/DoctorDepartment.js';
 import { User, ROLES } from '../models/User.js';
 import { PERMISSIONS } from '../models/Membership.js';
-import { requirePermission } from '../middleware/authorise.js';
+import { requirePermission, membershipOf } from '../middleware/authorise.js';
+import { practiceOf, practiceMembers } from '../middleware/practiceScope.js';
+import { requireCapability } from '../middleware/requireCapability.js';
+import { CAPABILITIES } from '../services/capabilities.js';
 
 /**
  * Specialties, and which doctors practise in them.
@@ -18,15 +21,72 @@ import { requirePermission } from '../middleware/authorise.js';
  * already two thousand long. A modular monolith stays modular by the boring
  * method: when a subject gets its own models, it gets its own router.
  *
- * ---- Nothing here changes an existing screen ----------------------------
+ * ---- Every route here took its tenant from the caller -------------------
  *
- * Every route is new. No prescription grows a department line, no header
- * changes, no list is filtered differently. The clinic that is running today
- * carries on exactly as it is, and this sits beside it until there is a second
- * practice to need it.
+ * This router shipped before anything called it, so nothing exercised it and
+ * nothing reviewed it. All six routes decided which practice they were
+ * operating on by reading the request:
+ *
+ *   GET   /                  `req.query.practice`  — any practice's list
+ *   POST  /                  `req.body.practice`   — into any practice
+ *   PATCH /:id               nothing at all        — edit anybody's row
+ *   POST  /doctors/:id       `req.body.practice`   — assign into any practice
+ *   DELETE /doctors/:id/...  nothing at all        — unassign anybody's doctor
+ *
+ * The worst was the fallback on POST. It read
+ * `req.body.practice ?? req.user.practice ?? null`, and `User` has no
+ * `practice` field — it lives on the membership. So a department created
+ * without one in the body got `null`, and `null` here does not mean unknown.
+ * It means *shared with every practice on the platform*. One clinic adding
+ * "Diabetic Foot Clinic" would have put it on everybody's list, and no screen
+ * anywhere would have shown who did it.
+ *
+ * The practice now comes from the membership on every route and is never read
+ * from the request. A cross-practice id is refused rather than quietly scoped
+ * away: it is a bug or an attempt, and doing nothing silently tells the caller
+ * neither.
  */
 const router = Router();
 router.use(requireAuth, requireClinician);
+
+/**
+ * Refuse when the named person is demonstrably not one of yours.
+ *
+ * Permissive on unknown, like the read guards: a caller with no practice, or a
+ * subject with no membership, is somebody the backfill has not reached rather
+ * than an intruder. It narrows the moment both sides are known.
+ */
+/**
+ * Your own record, or you administer departments.
+ *
+ * Both of these routes had `requireDoctor` and nothing else, so any doctor
+ * could move any colleague into or out of a department — including out of one
+ * they run. A blanket MANAGE_DEPARTMENT would be the obvious fix and the wrong
+ * one: a doctor setting their own primary specialty is not an administrative
+ * act, and needing the head for it is how a letterhead stays wrong for a month.
+ *
+ * So: your own is yours. Somebody else's needs the permission.
+ */
+async function mayChangeDepartmentsOf(req, userId) {
+  if (String(req.user._id) === String(userId)) return true;
+
+  const membership = await membershipOf(req);
+  // No membership is no evidence, the same as everywhere else. It narrows the
+  // moment there is a row to read.
+  if (!membership) return true;
+  return membership.can(PERMISSIONS.MANAGE_DEPARTMENT);
+}
+
+async function assertColleague(req, userId) {
+  const scope = await practiceMembers(req, null, '_id');
+  // `{}` is the permissive answer — no practice, or no memberships anywhere.
+  if (!scope._id) return;
+
+  const ids = scope._id.$in.map(String);
+  if (!ids.includes(String(userId))) {
+    throw notFound('Doctor not found');
+  }
+}
 
 /** Shared specialties plus this practice's own, in display order. */
 const visibleTo = (practice) => ({
@@ -44,7 +104,9 @@ router.get(
   '/',
   asyncHandler(async (req, res) => {
     const language = req.query.language ?? req.user.language ?? 'en';
-    const items = await Department.find(visibleTo(req.query.practice))
+    // From the membership, not the query string. `?practice=` was an invitation
+    // to read somebody else's list by editing a URL.
+    const items = await Department.find(visibleTo(await practiceOf(req)))
       .sort({ sortIndex: 1, 'names.en': 1 })
       .lean();
 
@@ -70,6 +132,11 @@ router.post(
   '/',
   requireDoctor,
   requirePermission(PERMISSIONS.MANAGE_DEPARTMENT),
+  // Both layers, because they answer different questions. The permission says
+  // this person administers departments; the capability says this practice has
+  // them at all. A solo clinic's owner holds MANAGE_DEPARTMENT and still has
+  // nothing to manage — see [services/capabilities.js].
+  requireCapability(CAPABILITIES.DEPARTMENT),
   validate({
     body: z.object({
       key: z
@@ -82,14 +149,35 @@ router.post(
         bn: z.string().trim().max(80).optional(),
         hi: z.string().trim().max(80).optional(),
       }),
-      practice: z.string().optional(),
+      // No `practice`. A schema that accepts a field the handler ignores is a
+      // field somebody will send and expect to have mattered.
       homeCards: z.array(z.string().max(40)).max(12).optional(),
       sortIndex: z.number().int().min(0).max(9999).optional(),
     }),
   }),
   audit('create', 'Department'),
   asyncHandler(async (req, res) => {
-    const { key, names, practice, homeCards, sortIndex } = req.body;
+    const { key, names, homeCards, sortIndex } = req.body;
+
+    /**
+     * Which practice this belongs to, and why a missing one is refused.
+     *
+     * Everywhere else here an unknown practice permits, because the question is
+     * "may this person see that" and absence is not evidence of a mismatch.
+     * This is a different question. A department has to belong to something,
+     * and the only value available when the practice is unknown is `null` —
+     * which in this collection does not mean unknown. It means shared with
+     * every practice there is.
+     *
+     * Permissive-on-unknown is about not locking people out of their own data.
+     * It is not a licence to write into everybody else's.
+     */
+    const practice = await practiceOf(req);
+    if (!practice) {
+      throw badRequest(
+        'This account is not linked to a practice yet, so there is nothing to add the department to.',
+      );
+    }
 
     // Checked against the shared rows too, not just this practice's. A practice
     // defining `cardiology` alongside the platform's would leave its doctors
@@ -103,7 +191,7 @@ router.post(
       names,
       // Never null from this route: null means shared, and shared rows are the
       // platform's. A practice creating one would be editing every clinic's list.
-      practice: practice ?? req.user.practice ?? null,
+      practice,
       homeCards: homeCards ?? [],
       // Empty, and not settable here. Red flags are written by a clinician in
       // that specialty, reviewed, and seeded — not typed into a create form.
@@ -126,6 +214,11 @@ router.patch(
   '/:id',
   requireDoctor,
   requirePermission(PERMISSIONS.MANAGE_DEPARTMENT),
+  // Both layers, because they answer different questions. The permission says
+  // this person administers departments; the capability says this practice has
+  // them at all. A solo clinic's owner holds MANAGE_DEPARTMENT and still has
+  // nothing to manage — see [services/capabilities.js].
+  requireCapability(CAPABILITIES.DEPARTMENT),
   validate({
     body: z.object({
       names: z
@@ -148,6 +241,15 @@ router.patch(
       throw badRequest('This is a shared specialty and cannot be edited here.');
     }
 
+    // And it has to be yours. The shared check above stopped one practice
+    // renaming a specialty for everybody; it did nothing about one practice
+    // renaming another practice's own. `notFound` rather than `forbidden`,
+    // because confirming the id exists is itself an answer.
+    const mine = await practiceOf(req);
+    if (mine && String(dept.practice) !== String(mine)) {
+      throw notFound('Department not found');
+    }
+
     const { names, homeCards, sortIndex, isActive } = req.body;
     if (names) dept.names = { ...dept.names.toObject?.() ?? dept.names, ...names };
     if (homeCards) dept.homeCards = homeCards;
@@ -163,6 +265,11 @@ router.patch(
 router.get(
   '/doctors/:id',
   asyncHandler(async (req, res) => {
+    // Your own colleagues only. This answered for any doctor id on the
+    // platform, which is a small leak beside the writes below and still tells
+    // one practice what another one's specialties are.
+    await assertColleague(req, req.params.id);
+
     const rows = await DoctorDepartment.find({ doctor: req.params.id, endedOn: null })
       .populate('department')
       .lean();
@@ -193,20 +300,32 @@ router.post(
     body: z.object({
       departmentId: z.string(),
       isPrimary: z.boolean().optional(),
-      practice: z.string().optional(),
+      // No `practice`. See the note at the top of the file.
     }),
   }),
   audit('update', 'User'),
   asyncHandler(async (req, res) => {
+    const practice = await practiceOf(req);
+    await assertColleague(req, req.params.id);
+    if (!(await mayChangeDepartmentsOf(req, req.params.id))) {
+      throw forbidden('Only somebody who manages departments can change another doctor’s.');
+    }
+
     const doctor = await User.findOne({ _id: req.params.id, role: ROLES.DOCTOR })
       .select('_id')
       .lean();
     if (!doctor) throw notFound('Doctor not found');
 
-    const dept = await Department.findById(req.body.departmentId).select('_id').lean();
+    // Shared specialties, or this practice's own. A department belonging to
+    // somebody else is not a department this doctor can practise in, and the
+    // assignment row would have carried the other practice's id.
+    const dept = await Department.findOne({
+      _id: req.body.departmentId,
+      $or: [{ practice: null }, ...(practice ? [{ practice }] : [])],
+    })
+      .select('_id')
+      .lean();
     if (!dept) throw notFound('Department not found');
-
-    const practice = req.body.practice ?? null;
 
     if (req.body.isPrimary) {
       // Exactly one primary per doctor per practice. Cleared before the write
@@ -235,6 +354,11 @@ router.delete(
   requireDoctor,
   audit('update', 'User'),
   asyncHandler(async (req, res) => {
+    await assertColleague(req, req.params.id);
+    if (!(await mayChangeDepartmentsOf(req, req.params.id))) {
+      throw forbidden('Only somebody who manages departments can change another doctor’s.');
+    }
+
     const updated = await DoctorDepartment.findOneAndUpdate(
       { doctor: req.params.id, department: req.params.departmentId, endedOn: null },
       { $set: { endedOn: new Date(), isPrimary: false } },

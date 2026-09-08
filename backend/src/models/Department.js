@@ -54,7 +54,16 @@ const departmentSchema = new mongoose.Schema(
     },
 
     /// Null for the specialties every practice shares. See the note above.
-    practice: { type: mongoose.Schema.Types.ObjectId, ref: 'Clinic', default: null, index: true },
+    /**
+     * The practice, and it said `ref: 'Clinic'`.
+     *
+     * Inert, because a ref only matters to `populate()` and nothing populated
+     * this one — but admin.js queries it with a Practice id, so the declaration
+     * and every caller already disagreed. The day somebody adds a populate it
+     * would look in the wrong collection and return null for every row, which
+     * reads as "this practice has no departments" rather than as a wrong ref.
+     */
+    practice: { type: mongoose.Schema.Types.ObjectId, ref: 'Practice', default: null, index: true },
 
     /// Which Home cards this department's patients see — `['glucose', 'hba1c']`.
     ///
