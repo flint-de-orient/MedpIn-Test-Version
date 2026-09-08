@@ -138,9 +138,23 @@ describe('the practice screen survives a missing backfill', () => {
     assert.match(route, /if \(!practice\) \{[\s\S]{0,200}Clinic\.findOne/);
   });
 
-  test('a practice never reports having nobody in it', () => {
-    // Counting only memberships would show "0 doctors" on a working clinic
-    // for as long as the migration had not been run.
-    assert.match(route, /countsFrom\(people\) \?\? \(await countsFromRoles\(\)\)/);
+  test('a working clinic never reports having nobody in it', () => {
+    // Counting only memberships would show "0 doctors" on a working clinic for
+    // as long as the migration had not been run, so the platform-wide count is
+    // still the answer in that window.
+    assert.match(route, /countsFromRoles\(\)/);
+    assert.match(route, /async function membershipsExist\(\)/);
+  });
+
+  test('but a practice that genuinely has nobody says zero', () => {
+    // The fallback used to fire whenever *this* practice had no membership
+    // rows, which was right for exactly as long as no practice had any. After
+    // the backfill it meant a newly created practice reported the founding
+    // clinic's headcount as its own, on the first screen its owner opens.
+    //
+    // The collection being empty is what tells "not migrated" from "genuinely
+    // nobody" — the same distinction practiceScope.js draws, for the same
+    // reason.
+    assert.match(route, /membershipsExist\(\)\) \? EMPTY_COUNTS : await countsFromRoles\(\)/);
   });
 });

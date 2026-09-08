@@ -71,6 +71,8 @@ const READINESS = [
   { key: 'tagline', blocking: false, label: 'Tagline', prints: 'the line under the name' },
 ];
 
+const EMPTY_COUNTS = Object.freeze({ doctors: 0, staff: 0, dieticians: 0 });
+
 /** Role counts from a membership aggregate, or null when there are none yet. */
 function countsFrom(rows) {
   if (!rows?.length) return null;
@@ -79,6 +81,21 @@ function countsFrom(rows) {
     staff: rows.find((r) => r._id === ROLES.STAFF)?.count ?? 0,
     dieticians: rows.find((r) => r._id === ROLES.DIETICIAN)?.count ?? 0,
   };
+}
+
+/**
+ * Has the membership backfill run at all?
+ *
+ * Cached once true, because a collection that has rows does not go back to
+ * having none. The same helper shape as [middleware/practiceScope.js], and for
+ * the same reason: it is the only honest way to tell "not migrated yet" from
+ * "this practice genuinely has nobody".
+ */
+let _membershipsExist = false;
+async function membershipsExist() {
+  if (_membershipsExist) return true;
+  _membershipsExist = (await Membership.estimatedDocumentCount()) > 0;
+  return _membershipsExist;
 }
 
 /** The pre-membership answer: every active clinician on the deployment. */
@@ -169,9 +186,21 @@ router.get(
         overridesBrand: Boolean(c.tagline || c.registrationNo || c.logoLightAssetId),
         weeklyHourCount: (c.weeklyHours ?? []).length,
       })),
-      // Memberships when the backfill has run; the global role count until
-      // then, so a practice never reports having nobody in it.
-      people: countsFrom(people) ?? (await countsFromRoles()),
+      /*
+       * Memberships when the backfill has run; the platform-wide role count
+       * only until then.
+       *
+       * The fallback used to fire whenever *this* practice had no membership
+       * rows, which was right for exactly as long as no practice had any. Once
+       * the backfill ran it meant something else: a practice with nobody in it
+       * reported every clinician on the deployment, so a newly created one
+       * would show the founding clinic's headcount as its own.
+       *
+       * Zero is a true answer, and the collection being empty is what
+       * distinguishes it from an unmigrated database.
+       */
+      people:
+        countsFrom(people) ?? ((await membershipsExist()) ? EMPTY_COUNTS : await countsFromRoles()),
     });
   }),
 );

@@ -200,13 +200,19 @@ class _Row extends StatelessWidget {
                       _Tag(label: 'Retired', tone: T.inkMuted),
                     if (!d.hasAssistant)
                       _Tag(label: 'No assistant', tone: T.inkMuted),
-                    Text(
-                      d.key,
-                      style: T.small.copyWith(
-                        color: T.inkFaint,
-                        fontFeatures: const [],
+                    // Only on rows this practice owns.
+                    //
+                    // The key is what the assistant scope and the seed data
+                    // point at, and it is fixed at creation — so it is worth
+                    // seeing on a department somebody here made and might
+                    // rename. On a shared specialty it is an identifier for
+                    // something they cannot edit, printed nine times under
+                    // names that already say the same thing.
+                    if (!d.isShared)
+                      Text(
+                        d.key,
+                        style: T.small.copyWith(color: T.inkFaint),
                       ),
-                    ),
                   ],
                 ),
               ],

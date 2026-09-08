@@ -28,6 +28,29 @@ class AppTheme {
       error: AppColors.danger,
     );
 
+    // ---- The seed is not the colour ----------------------------------------
+    //
+    // `fromSeed` builds a tonal palette from #003399 and then picks a *tone*
+    // from it, which in light mode is a desaturated slate — not the brand blue
+    // it was seeded with. Everything reading `colorScheme.primary` came out
+    // muted, and the way that showed up was a bottom sheet whose "Add to the
+    // practice" button was visibly weaker than the "Send code" step above it.
+    //
+    // Both are FilledButtons. Send code sets `backgroundColor:
+    // AppColors.primary` by hand and 76 other places do the same, which is how
+    // this survived: the override is so common that the 41 bare buttons look
+    // like the exception rather than the bug.
+    //
+    // The dark branch below already pins its own primary. This does the same
+    // for light, so a bare FilledButton is the brand colour and the overrides
+    // become redundant rather than load-bearing.
+    if (brightness == Brightness.light) {
+      colorScheme = colorScheme.copyWith(
+        primary: AppColors.primary,
+        onPrimary: Colors.white,
+      );
+    }
+
     // Material 3 derives every surface from the seed, so a saturated blue
     // primary washes the whole light theme faintly blue. Fine for a brand app,
     // wrong for a clinical one — the surfaces are pulled back to near-neutral

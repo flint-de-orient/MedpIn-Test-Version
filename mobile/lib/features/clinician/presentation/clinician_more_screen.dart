@@ -550,7 +550,9 @@ class _ClinicianMoreScreenState extends ConsumerState<ClinicianMoreScreen> {
                 onTap: () => context.push('/clinician/alerts'),
               ),
               ProfileRow(
-                icon: Icons.restaurant_menu_outlined,
+                // Was Clinic care's fork-and-spoon, which survived the rename
+                // and put the Nutrition tab's glyph on a list of colleagues.
+                icon: Icons.groups_outlined,
                 title: 'People',
                 subtitle: 'Doctors, front desk and dieticians',
                 onTap: () => context.push('/clinician/team'),

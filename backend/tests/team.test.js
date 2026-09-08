@@ -203,3 +203,22 @@ describe('the payload says what the screen needs', () => {
     assert.match(body, /if \(!practiceId\) \{[\s\S]{0,140}canManage: false/);
   });
 });
+
+describe('a practice with nobody in it says so', () => {
+  const src = readFileSync(new URL('../src/routes/practices.js', import.meta.url), 'utf8');
+
+  test('the headcount does not fall back to the whole platform', () => {
+    // It did, whenever *this* practice had no membership rows — which was
+    // right for exactly as long as no practice had any. After the backfill it
+    // meant a newly created practice reported the founding clinic's headcount
+    // as its own, on the first screen its owner opens.
+    assert.match(src, /membershipsExist\(\)\) \? EMPTY_COUNTS : await countsFromRoles\(\)/);
+  });
+
+  test('and the platform-wide count is reachable only before the backfill', () => {
+    // The collection being empty is what tells "not migrated" from "genuinely
+    // nobody". Same helper shape as practiceScope.js, same argument.
+    assert.match(src, /async function membershipsExist\(\)/);
+    assert.match(src, /Membership\.estimatedDocumentCount\(\)/);
+  });
+});
