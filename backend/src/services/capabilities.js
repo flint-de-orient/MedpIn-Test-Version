@@ -139,11 +139,11 @@ const BY_TYPE = Object.freeze({
 /**
  * What each plan pays for.
  *
- * The plan names here are the ones the model has today — trial, solo, clinic,
- * hospital. The commercial names in the roadmap (Essential, Professional,
- * Enterprise) are a rename that belongs with the subscription work, not with
- * this file: renaming the enum now would touch the console, the analytics
- * aggregation and the backfill for no capability that is not already expressed.
+ * A plan is a name and a set of capabilities, and nothing else. It carries no
+ * price — that lives in the Razorpay dashboard, which is where somebody can
+ * change it without a deploy — and no numeric limit, which is per practice in
+ * `Practice.limits` so that a customer who negotiates an extra location does
+ * not need a plan invented for them.
  *
  * TRIAL is deliberately the widest. Somebody deciding whether to buy should be
  * looking at the product, not at a version of it with the interesting parts
