@@ -11,6 +11,8 @@ import { buildSystemPrompt, fallbackReply, languagePrimer, forceLanguageInstruct
 import { clinicIdentity } from '../clinicIdentity.js';
 import { assistantContextFor } from './departmentAssistant.js';
 import { threadHasAssistant } from '../threads.js';
+import { mayAssistantReply, countReply } from './allowance.js';
+import { practiceOfPatient } from '../../middleware/practiceScope.js';
 import { raiseAlert } from '../alerts.js';
 import { detectAppointmentIntent } from '../triage/appointmentIntent.js';
 import { notifyClinicOfPatientMessage } from '../notifications.js';
@@ -106,6 +108,21 @@ function categoriesFor(triage) {
  */
 async function assistantShouldReply(session) {
   if (!session) return true;
+
+  /*
+   * What the practice has, and what it has left.
+   *
+   * Checked here rather than at the route because this is where the assistant
+   * already knows how to be silent: a department with no scope written for it
+   * gets no reply and the thread says so. A practice without the capability,
+   * or one that has spent the month's allowance, lands in exactly the same
+   * place — which is the right place, because a patient does not need telling
+   * which of their clinic's commercial arrangements applies to their question.
+   *
+   * The clinic is told, in the audit trail. See [ai/allowance.js].
+   */
+  const may = await mayAssistantReply(session.patient);
+  if (!may.allowed) return false;
   // A department nobody has written a scope for has no assistant. Not a
   // general one, not a fallback to the diabetes prompt — silence, and the
   // thread says so. Checked here rather than by returning an empty prompt,
@@ -370,6 +387,11 @@ ${forceLanguageInstruction(language)}`,
   // No disclaimer is appended to the content: the app already renders one
   // footer line under every assistant reply, and appending here produced a
   // duplicate (sometimes triple, when the model added its own too).
+  // Counted against the month's allowance now the model has actually answered.
+  // Before this point a failed request has cost the practice nothing, and
+  // charging them for it would spend a limit on an outage.
+  countReply(await practiceOfPatient(patientId));
+
   const assistantMessage = await ChatMessage.create({
     session: session._id,
     patient: patientId,
@@ -649,6 +671,11 @@ ${forceLanguageInstruction(language)}`,
     // Tell the client to discard the partial and show the scripted text.
     yield { type: 'replace', data: replyText };
   }
+
+  // Counted against the month's allowance now the model has actually answered.
+  // Before this point a failed request has cost the practice nothing, and
+  // charging them for it would spend a limit on an outage.
+  countReply(await practiceOfPatient(patientId));
 
   const assistantMessage = await ChatMessage.create({
     session: session._id,
