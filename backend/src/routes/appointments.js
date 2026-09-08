@@ -24,6 +24,7 @@ import { ACTIVE_STATUSES, isSlotBookable } from '../services/scheduling.js';
 import { paged, pageParams, dateRange } from '../utils/pagination.js';
 import { postCareThreadNote } from '../services/careThreadNote.js';
 import { resolveDoctor } from '../services/doctorContext.js';
+import { practiceMembers } from '../middleware/practiceScope.js';
 
 const router = Router();
 router.use(requireAuth);
@@ -33,9 +34,30 @@ const DEFAULT_SLOT_MINUTES = 15;
 
 const isPatient = (req) => req.user.role === ROLES.PATIENT;
 
-/** Patients see only their own appointments; clinicians see the whole diary. */
-function scopeFilter(req) {
-  return isPatient(req) ? { patient: req.user._id } : {};
+/**
+ * Whose appointments this caller may see, and it returned `{}` for a clinician.
+ *
+ * ---- Every appointment on the platform ---------------------------------
+ *
+ * A patient was correctly limited to their own. Anybody else got an empty
+ * filter, which with one clinic was the right answer and with two is every
+ * booking anywhere: the diary, the waiting-room queue with patients' names on
+ * it, and — through `findOne({ _id, ...scopeFilter })` — the ability to
+ * reschedule, cancel or check in another practice's appointment by id.
+ *
+ * ---- Scoped by the doctor, not the location ----------------------------
+ *
+ * `clinic` is optional: a teleconsult has none, and an appointment scoped by
+ * clinic alone would leave every remote consultation unfiltered. `doctor` is
+ * required on every appointment, so the practice's doctors are the reliable
+ * boundary.
+ *
+ * Permissive on unknown, like every other guard here — `practiceMembers`
+ * returns `{}` when the caller has no practice or the backfill has not run.
+ */
+async function scopeFilter(req) {
+  if (isPatient(req)) return { patient: req.user._id };
+  return practiceMembers(req, ROLES.DOCTOR, 'doctor');
 }
 
 const POPULATE = [
@@ -66,7 +88,7 @@ router.get(
     const { page, limit, skip, from, to, status, patientId, clinicId } = q(req);
 
     const filter = {
-      ...scopeFilter(req),
+      ...(await scopeFilter(req)),
       ...dateRange('scheduledFor', { from, to }),
       ...(status ? { status } : {}),
       ...(clinicId ? { clinic: clinicId } : {}),
@@ -370,7 +392,13 @@ router.patch(
   asyncHandler(async (req, res) => {
     const { clinicId, scheduledFor } = req.body;
 
-    const appointment = await Appointment.findById(req.params.id);
+    // Scoped like every other id-based fetch here. `findById` on a route that
+    // only checks the caller is a clinician lets one practice confirm
+    // another's booking by knowing the id.
+    const appointment = await Appointment.findOne({
+      _id: req.params.id,
+      ...(await scopeFilter(req)),
+    });
     if (!appointment) throw notFound('Appointment not found');
     if (appointment.status !== 'requested') {
       throw badRequest('Only a request can be confirmed. Use reschedule to move a booking.');
@@ -482,7 +510,7 @@ router.patch(
   validate({ body: z.object({ scheduledFor: z.coerce.date() }) }),
   audit('update', 'Appointment'),
   asyncHandler(async (req, res) => {
-    const existing = await Appointment.findOne({ _id: req.params.id, ...scopeFilter(req) });
+    const existing = await Appointment.findOne({ _id: req.params.id, ...(await scopeFilter(req)) });
     if (!existing) throw notFound('Appointment not found');
     if (['completed', 'cancelled'].includes(existing.status)) {
       throw badRequest('This appointment can no longer be changed');
@@ -528,7 +556,7 @@ router.patch(
   validate({ body: z.object({ reason: z.string().max(500).optional() }) }),
   audit('update', 'Appointment'),
   asyncHandler(async (req, res) => {
-    const appt = await Appointment.findOne({ _id: req.params.id, ...scopeFilter(req) });
+    const appt = await Appointment.findOne({ _id: req.params.id, ...(await scopeFilter(req)) });
     if (!appt) throw notFound('Appointment not found');
     if (appt.status === 'completed') throw badRequest('Completed appointments cannot be cancelled');
 
@@ -682,6 +710,17 @@ router.patch(
   }),
   audit('update', 'Appointment'),
   asyncHandler(async (req, res) => {
+    // The scoped equivalent. findByIdAndUpdate takes no filter beyond the id,
+    // so this route could move another practice's appointment into
+    // "in_consultation" — and the queue screen would show it.
+    const scoped = await Appointment.findOne({
+      _id: req.params.id,
+      ...(await scopeFilter(req)),
+    })
+      .select('_id')
+      .lean();
+    if (!scoped) throw notFound('Appointment not found');
+
     const appt = await Appointment.findByIdAndUpdate(
       req.params.id,
       { $set: req.body, ...(req.body.status === 'in_consultation' ? { calledAt: new Date() } : {}) },
@@ -709,9 +748,12 @@ router.get(
   asyncHandler(async (req, res) => {
     const today = dayjs().format('YYYY-MM-DD');
 
+    // The names on a waiting-room display. Unscoped, this listed every
+    // patient checked in anywhere on the platform, by name.
     const entries = await Appointment.find({
       queueDate: today,
       status: { $in: ['checked_in', 'in_consultation'] },
+      ...(await practiceMembers(req, ROLES.DOCTOR, 'doctor')),
     })
       .sort({ isPriority: -1, queueNumber: 1 })
       .populate('patient', 'name')
@@ -741,7 +783,7 @@ router.post(
   '/:id/check-in',
   audit('update', 'Appointment'),
   asyncHandler(async (req, res) => {
-    const appt = await Appointment.findOne({ _id: req.params.id, ...scopeFilter(req) });
+    const appt = await Appointment.findOne({ _id: req.params.id, ...(await scopeFilter(req)) });
     if (!appt) throw notFound('Appointment not found');
     if (appt.status === 'checked_in') {
       return res.json({ queueNumber: appt.queueNumber, position: null, estimatedWaitMinutes: null });
@@ -751,17 +793,40 @@ router.post(
     }
 
     const today = dayjs().format('YYYY-MM-DD');
-    const last = await Appointment.findOne({ queueDate: today }).sort({ queueNumber: -1 }).select('queueNumber').lean();
+
+    /**
+     * The next number in *this* queue.
+     *
+     * It was the highest number anywhere today, so two practices checking
+     * patients in shared one sequence: the second clinic's first patient of the
+     * morning was told they were number nine. Not a leak so much as the queue
+     * being wrong, and wrong in a way the person holding the token can see.
+     *
+     * Per clinic where there is one, because two branches of one practice run
+     * two waiting rooms and two numbering sequences. A teleconsult has no
+     * clinic and queues with the practice.
+     */
+    const queueScope = appt.clinic
+      ? { clinic: appt.clinic }
+      : await practiceMembers(req, ROLES.DOCTOR, 'doctor');
+
+    const last = await Appointment.findOne({ queueDate: today, ...queueScope })
+      .sort({ queueNumber: -1 })
+      .select('queueNumber')
+      .lean();
 
     appt.queueDate = today;
     appt.queueNumber = (last?.queueNumber ?? 0) + 1;
     appt.status = 'checked_in';
     await appt.save();
 
+    // The same queue the number came from, or "seven ahead of you" counts
+    // people in another building.
     const ahead = await Appointment.countDocuments({
       queueDate: today,
       status: { $in: ['checked_in', 'in_consultation'] },
       queueNumber: { $lt: appt.queueNumber },
+      ...queueScope,
     });
 
     res.json({
