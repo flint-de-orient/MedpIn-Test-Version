@@ -27,3 +27,25 @@
 -keep,allowobfuscation,allowshrinking class com.google.gson.reflect.TypeToken
 -keep,allowobfuscation,allowshrinking class * extends com.google.gson.reflect.TypeToken
 -dontwarn sun.misc.**
+
+# ---- Razorpay checkout ----------------------------------------------------
+#
+# Same failure mode as the notifications plugin above, and the same reason it
+# would go unnoticed: the SDK resolves payment callbacks and its response models
+# by reflection, R8 renames them, and checkout either fails to open or returns a
+# result nothing can read. Debug builds are not minified, so it works perfectly
+# right up until the release APK.
+#
+# The callback rule is the one that is easy to miss. The SDK finds the success
+# and error handlers by method name on the calling Activity, so obfuscating them
+# breaks the path that reports a *successful* payment — money taken, app none
+# the wiser.
+-keep class com.razorpay.** { *; }
+-keepclassnames class com.razorpay.**
+-dontwarn com.razorpay.**
+-keepclasseswithmembers class * {
+  public void onPayment*(...);
+}
+# Razorpay bundles ProGuard annotations it does not ship the classes for.
+-dontwarn proguard.annotation.**
+-keep class proguard.annotation.** { *; }

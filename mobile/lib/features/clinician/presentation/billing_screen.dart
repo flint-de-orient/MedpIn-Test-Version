@@ -6,6 +6,7 @@ import '../../../core/capabilities/capabilities.dart';
 import '../../../core/theme/tokens.dart';
 import '../../../shared/widgets/surfaces.dart';
 import '../data/billing_repository.dart';
+import '../data/checkout.dart';
 import '../domain/billing.dart';
 
 /// What this practice is on, what it is using, and what else there is.
@@ -561,37 +562,85 @@ class _PlansState extends ConsumerState<_Plans> {
     );
   }
 
+  final _checkout = RazorpayCheckout();
+
+  @override
+  void dispose() {
+    // The plugin holds a platform-channel listener. Leaving it attached across
+    // screens is how a later payment's callback arrives at a disposed widget.
+    _checkout.dispose();
+    super.dispose();
+  }
+
   Future<void> _start(PlanOption plan) async {
     setState(() => _busy = plan.id);
     final messenger = ScaffoldMessenger.of(context);
+    final repo = ref.read(billingRepositoryProvider);
+
     try {
-      final handle = await ref.read(billingRepositoryProvider).subscribe(plan.id);
-      final url = handle.url;
+      // The server creates the subscription. A client that could name its own
+      // could name a cheaper one.
+      final handle = await repo.subscribe(plan.id);
 
-      if (url == null) {
-        messenger.showSnackBar(
-          const SnackBar(
-            content: Text('Razorpay did not return a checkout page.'),
-          ),
-        );
+      if (!handle.canUseSdk) {
+        await _fallbackToBrowser(handle, messenger);
         return;
       }
 
-      final opened = await launchUrl(
-        Uri.parse(url),
-        mode: LaunchMode.externalApplication,
+      final result = await _checkout.open(
+        keyId: handle.keyId,
+        subscriptionId: handle.subscriptionId,
+        planName: '${plan.name} plan',
       );
-      if (!opened) {
-        messenger.showSnackBar(
-          const SnackBar(content: Text('Could not open the checkout page.')),
-        );
-        return;
+
+      switch (result.outcome) {
+        case CheckoutOutcome.couldNotOpen:
+          // The device could not run the sheet — no Play Services, a failed
+          // install. A checkout in a browser is better than none.
+          await _fallbackToBrowser(handle, messenger);
+
+        case CheckoutOutcome.cancelled:
+          if (result.message != null) {
+            messenger.showSnackBar(SnackBar(content: Text(result.message!)));
+          }
+
+        case CheckoutOutcome.failed:
+          messenger.showSnackBar(
+            SnackBar(content: Text(result.message ?? 'The payment did not go through.')),
+          );
+
+        case CheckoutOutcome.paid:
+          /*
+           * The SDK says it worked. That is not payment.
+           *
+           * The three fields go to the server, which checks a signature only
+           * Razorpay could have produced. If that call fails the customer has
+           * been charged and we do not know it, so the failure is said out loud
+           * rather than swallowed — it is the one error here worth interrupting
+           * somebody for.
+           */
+          try {
+            await repo.verify(
+              subscriptionId: handle.subscriptionId,
+              paymentId: result.paymentId ?? '',
+              signature: result.signature ?? '',
+            );
+          } catch (_) {
+            messenger.showSnackBar(
+              const SnackBar(
+                duration: Duration(seconds: 8),
+                content: Text(
+                  'Your payment went through but we could not confirm it here. '
+                  'Pull to refresh in a moment, or use "Check with Razorpay".',
+                ),
+              ),
+            );
+          }
       }
 
-      // Deliberately no success message. Whether the card went through is
-      // Razorpay's answer and it arrives by webhook — so this re-reads and
-      // shows whatever is true, which on the way back from an abandoned
-      // checkout is "Not started".
+      // No success message on any path. Whether money moved is Razorpay's
+      // answer and it arrives by webhook, so this re-reads and shows whatever
+      // is true — which straight after a checkout is usually "Not started".
       ref.invalidate(billingStatusProvider);
     } catch (_) {
       messenger.showSnackBar(
@@ -599,6 +648,30 @@ class _PlansState extends ConsumerState<_Plans> {
       );
     } finally {
       if (mounted) setState(() => _busy = null);
+    }
+  }
+
+  /// Razorpay's hosted page, for a device the SDK cannot run on.
+  Future<void> _fallbackToBrowser(
+    CheckoutHandle handle,
+    ScaffoldMessengerState messenger,
+  ) async {
+    final url = handle.url;
+    if (url == null) {
+      messenger.showSnackBar(
+        const SnackBar(content: Text('Razorpay did not return a checkout page.')),
+      );
+      return;
+    }
+
+    final opened = await launchUrl(
+      Uri.parse(url),
+      mode: LaunchMode.externalApplication,
+    );
+    if (!opened) {
+      messenger.showSnackBar(
+        const SnackBar(content: Text('Could not open the checkout page.')),
+      );
     }
   }
 }

@@ -28,6 +28,30 @@ class BillingRepository {
     await _client.postJson('/billing/subscribe', body: {'plan': plan}),
   );
 
+  /// Hand the checkout result to the server and let it decide.
+  ///
+  /// The SDK's success callback is not payment. It arrives on a device the
+  /// customer controls, and a patched build could call it with anything. The
+  /// server checks a signature only Razorpay could have produced, and even then
+  /// records the checkout rather than granting the plan — the plan moves when
+  /// the webhook says money arrived.
+  ///
+  /// So this must be called, and its failure must be visible: a payment that
+  /// succeeded on the phone and never reached here is a customer who has been
+  /// charged and is still on their old plan.
+  Future<void> verify({
+    required String subscriptionId,
+    required String paymentId,
+    required String signature,
+  }) => _client.postJson(
+    '/billing/verify',
+    body: {
+      'subscriptionId': subscriptionId,
+      'paymentId': paymentId,
+      'signature': signature,
+    },
+  );
+
   /// Ask the provider what it thinks, rather than trusting the row.
   ///
   /// For the case a webhook never arrived — a misconfigured secret, a deploy

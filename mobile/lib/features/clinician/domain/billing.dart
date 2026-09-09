@@ -213,17 +213,30 @@ class PlanOption {
 /// What the server hands back when a checkout is started.
 @immutable
 class CheckoutHandle {
-  const CheckoutHandle({required this.subscriptionId, required this.url});
+  const CheckoutHandle({
+    required this.subscriptionId,
+    required this.keyId,
+    required this.url,
+  });
 
+  /// Created by the server, never by the app. A client that could name its own
+  /// subscription could name a cheaper one.
   final String subscriptionId;
 
-  /// Razorpay's hosted page for this subscription. Null would mean the
-  /// provider did not give us one, which is a state to say out loud rather
-  /// than open an empty browser for.
+  /// The publishable half of the key pair, which the SDK needs to open.
+  final String keyId;
+
+  /// Razorpay's hosted page, kept as the fallback for a device the SDK cannot
+  /// run on. Null means the provider gave us none, which is a state to say out
+  /// loud rather than open an empty browser for.
   final String? url;
+
+  /// Whether the native sheet can be opened at all.
+  bool get canUseSdk => keyId.isNotEmpty && subscriptionId.isNotEmpty;
 
   factory CheckoutHandle.fromJson(Map<String, dynamic> json) => CheckoutHandle(
     subscriptionId: json['subscriptionId'] as String? ?? '',
+    keyId: json['keyId'] as String? ?? '',
     url: json['shortUrl'] as String?,
   );
 }
