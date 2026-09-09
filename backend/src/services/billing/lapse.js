@@ -45,16 +45,33 @@ import { Subscription, SUBSCRIPTION_STATUS } from '../../models/Subscription.js'
  * "absence permits" this codebase runs on, applied to money.
  */
 
-/** What a restricted practice may no longer do. Everything else is untouched. */
+/**
+ * What a restricted practice may no longer do. Everything else is untouched.
+ *
+ * ---- Getting your own data out is not a premium feature -----------------
+ *
+ * `REPORT_EXPORT` was on this list and has been taken off. The export is not a
+ * report — it is named patients, their phone numbers and their readings: a copy
+ * of the clinic's own record. Withholding it over an unpaid invoice holds
+ * medical records hostage, and it does so to precisely the practice that needs
+ * them most, because a customer who has stopped paying is usually one who is
+ * leaving.
+ *
+ * `ADVANCED_ANALYTICS` and `ADVANCED_REPORTS` stay, and the line between them
+ * and export is the one worth holding: those withhold *insight* into data the
+ * practice can still take with it in full. Withholding *access* to the data
+ * itself is a different act with a different name.
+ */
 export const RESTRICTED = Object.freeze([
   'ENROL_PATIENT',
   'ADD_MEMBER',
   'ADD_LOCATION',
   'ADVANCED_ANALYTICS',
   'ADVANCED_REPORTS',
-  'REPORT_EXPORT',
   'DEPARTMENT_ANALYTICS',
   'STAFF_ANALYTICS',
+  // Automated delivery, not access. A lapsed practice stops getting a report
+  // emailed to it and can still produce every one of them by hand.
   'SCHEDULED_REPORTS',
 ]);
 

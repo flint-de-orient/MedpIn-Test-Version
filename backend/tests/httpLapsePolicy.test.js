@@ -179,6 +179,35 @@ describe('and a lapse never reaches the clinical work', () => {
     assert.equal(res.status, 200, 'a lapsed practice could not read its own team');
   });
 
+  test('a practice can always take its own records out', async () => {
+    /*
+     * The export is not a report. It is named patients, their phone numbers and
+     * their readings — a copy of the clinic's own record — and withholding it
+     * over an unpaid invoice holds medical records hostage. It does so to
+     * exactly the practice that needs them most, because a customer who has
+     * stopped paying is usually one who is leaving.
+     *
+     * This was on the restricted list until an operator caught it.
+     */
+    assert.ok(
+      !RESTRICTED.includes('REPORT_EXPORT'),
+      'a lapsed practice cannot get its own patient records out',
+    );
+
+    const practice = await makePractice('Sunrise Diabetes Care');
+    await lapse(practice);
+    const state = await billingStateOf(practice._id);
+    assert.equal(state.state, BILLING_STATE.RESTRICTED, 'the fixture stopped being a lapse');
+    assert.ok(!state.blocks.includes('REPORT_EXPORT'));
+  });
+
+  test('withholding insight is allowed; withholding access is not', async () => {
+    // The line this policy holds. Analytics interpret data the practice can
+    // still take with it in full; export IS the data.
+    assert.ok(RESTRICTED.includes('ADVANCED_ANALYTICS'));
+    assert.ok(!RESTRICTED.includes('REPORT_EXPORT'));
+  });
+
   test('and the assistant is not silenced', async () => {
     // The one real marginal cost, and deliberately not withheld: a patient
     // asking whether a symptom matters is not party to their clinic's billing,
