@@ -14,6 +14,8 @@ import { activePatientCount } from '../services/practiceUsage.js';
 import { practiceOf } from '../middleware/practiceScope.js';
 import {
   verifyWebhook,
+  verifyCheckoutSignature,
+  fetchPayment,
   webhooksConfigured,
   configured,
   isTestMode,
@@ -320,20 +322,134 @@ router.post(
     res.status(201).json({
       subscriptionId: created.id,
       /*
-       * Razorpay's own hosted page for this subscription.
+       * The hosted page, kept as the fallback.
        *
-       * Sent because it is the whole checkout: the client opens it and the
-       * card, the mandate and the bank's own screens all happen there. The
-       * alternative is the native SDK, which for a *subscription* buys almost
-       * nothing — the hosted page is what it opens anyway — in exchange for a
-       * platform dependency, ProGuard rules and a second thing to keep current
-       * in an app that is built split-per-ABI and obfuscated.
+       * The native SDK is the primary path now: it renders inside the app and
+       * takes `name` and `image`, which is what puts MedPin on the screen the
+       * customer is typing a card into. The hosted page shows the Razorpay
+       * account holder's name and offers no way to change it.
+       *
+       * Still sent, because the SDK cannot run everywhere — no Play Services,
+       * an install that failed, a platform the plugin does not cover — and a
+       * checkout that opens in a browser is better than one that does not open.
        */
       shortUrl: created.short_url ?? null,
-      // Still sent: the key id is the public half of the pair, and a client
-      // that would rather drive checkout itself needs it.
+      // The public half of the pair. The SDK needs it to open checkout.
       keyId: env.RAZORPAY_KEY_ID,
       callbackUrl: env.RAZORPAY_CALLBACK_URL || null,
+    });
+  }),
+);
+
+/**
+ * The app says checkout succeeded. Decide whether it did.
+ *
+ * ---- The rule this route exists to enforce -------------------------------
+ *
+ * A success callback arrives over a channel the app controls, on a device
+ * somebody else owns. A patched build can call it with any three strings it
+ * likes. So nothing here trusts the fields — it trusts the signature over them,
+ * which only Razorpay and this server can produce.
+ *
+ * ---- Why this does not grant the plan ------------------------------------
+ *
+ * A verified signature proves a human completed a real checkout and authorised
+ * a mandate. It does not prove money moved: on a subscription the first charge
+ * can still fail, and on some methods the debit lands a day later. So this
+ * moves the row to `authenticated` and the webhook moves it to `active`.
+ *
+ * The gap between the two is where a failed mandate lives, and collapsing it —
+ * activating here because the customer clearly meant to pay — is the same
+ * mistake as trusting the callback, one step further in.
+ */
+router.post(
+  '/verify',
+  requireDoctor,
+  requirePermission(PERMISSIONS.MANAGE_STAFF),
+  validate({
+    body: z.object({
+      paymentId: z.string().min(4).max(80),
+      subscriptionId: z.string().min(4).max(80),
+      signature: z.string().min(16).max(256),
+    }),
+  }),
+  audit('update', 'Subscription'),
+  asyncHandler(async (req, res) => {
+    if (!configured()) throw badRequest('Payments are not set up on this server.');
+
+    const practiceId = await practiceOf(req);
+    if (!practiceId) throw badRequest('This account is not linked to a practice yet.');
+
+    const { paymentId, subscriptionId, signature } = req.body;
+
+    /*
+     * Scoped to the caller's own practice, and looked up before the signature
+     * is checked so a valid signature for somebody else's subscription is still
+     * a 404. Without the practice in this filter, any doctor holding a genuine
+     * receipt could mark another clinic's subscription authenticated.
+     */
+    const sub = await Subscription.findOne({
+      practice: practiceId,
+      providerSubscriptionId: subscriptionId,
+    });
+    if (!sub) throw notFound('No such subscription for this practice.');
+
+    if (!verifyCheckoutSignature({ paymentId, subscriptionId, signature })) {
+      logger.warn(
+        { practice: String(practiceId), subscriptionId },
+        'rejected a checkout callback with a bad signature',
+      );
+      throw badRequest('That payment could not be verified.');
+    }
+
+    /*
+     * Idempotent, because the app will retry.
+     *
+     * A phone that loses its connection between checkout and this call retries
+     * on the next launch, and the webhook may well have arrived in between. A
+     * second verification must not walk an active subscription backwards to
+     * `authenticated`, so the status only moves while it is still ahead of it.
+     */
+    const early = [SUBSCRIPTION_STATUS.CREATED, SUBSCRIPTION_STATUS.AUTHENTICATED];
+    if (early.includes(sub.status)) sub.status = SUBSCRIPTION_STATUS.AUTHENTICATED;
+
+    sub.providerPaymentId = paymentId;
+    sub.checkoutVerifiedAt = sub.checkoutVerifiedAt ?? new Date();
+
+    /*
+     * The ids checkout does not hand back.
+     *
+     * The callback carries a payment id and nothing else, so the payer and the
+     * invoice — the two references somebody reconciling a disputed charge
+     * actually asks for — have to be fetched.
+     *
+     * Best-effort on purpose. The signature has already been verified and the
+     * subscription is authenticated whether or not this call succeeds; failing
+     * the request over a missing convenience id would turn a completed payment
+     * into an error on the customer's screen. Their outage must not become our
+     * refusal.
+     */
+    try {
+      const payment = await fetchPayment(paymentId);
+      sub.providerCustomerId = payment?.customer_id ?? sub.providerCustomerId;
+      sub.providerInvoiceId = payment?.invoice_id ?? sub.providerInvoiceId;
+    } catch (err) {
+      logger.warn({ err, paymentId }, 'could not fetch a payment to record its references');
+    }
+
+    await sub.save();
+
+    logger.info(
+      { practice: String(practiceId), subscriptionId, paymentId },
+      'checkout signature verified',
+    );
+
+    res.json({
+      verified: true,
+      status: sub.status,
+      // Said plainly, so a client cannot read this as "they are on the plan".
+      // The screen shows what is true and the webhook is what makes it true.
+      activated: sub.status === SUBSCRIPTION_STATUS.ACTIVE,
     });
   }),
 );

@@ -66,6 +66,39 @@ const subscriptionSchema = new mongoose.Schema(
     /// practice gets is still `Practice.plan`; this is what was bought.
     plan: { type: String, required: true },
 
+    /**
+     * The provider's references, kept so a dispute can be traced without a
+     * shell.
+     *
+     * ---- What is deliberately NOT here -------------------------------------
+     *
+     * A card number, an expiry, a CVV, a name on the card, a bank account. None
+     * of it is ever sent to this server: the card is typed into Razorpay's own
+     * checkout and this system only ever sees ids that point at their record.
+     * That is what keeps a clinic's server out of PCI scope, and it is a
+     * property to preserve rather than a gap to fill in.
+     *
+     * `cus_` is the payer, `pay_` the last successful charge, `inv_` the last
+     * invoice raised. Latest-wins rather than a list: the history that matters
+     * is in `events`, and a subscription with a year of charges should not grow
+     * a field per month.
+     */
+    providerCustomerId: { type: String, default: null },
+    providerPaymentId: { type: String, default: null },
+    providerInvoiceId: { type: String, default: null },
+
+    /**
+     * When the app's checkout callback was verified against Razorpay's
+     * signature — not when the app said it had succeeded.
+     *
+     * Separate from `confirmedAt`, which is the webhook's word. Both exist
+     * because they answer different questions: this one says a human completed
+     * a checkout on a device, the other says the provider has since confirmed
+     * money moved. A subscription can have the first and not the second, and
+     * that gap is where a failed mandate lives.
+     */
+    checkoutVerifiedAt: { type: Date, default: null },
+
     status: {
       type: String,
       enum: Object.values(SUBSCRIPTION_STATUS),

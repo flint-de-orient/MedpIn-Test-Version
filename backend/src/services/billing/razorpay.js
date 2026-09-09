@@ -112,6 +112,64 @@ export function cancelSubscription(id, { atCycleEnd = true } = {}) {
 }
 
 /**
+ * Did this checkout really succeed?
+ *
+ * ---- Why the app's word is not enough -----------------------------------
+ *
+ * Razorpay's SDK hands the app a success callback with three fields. Those
+ * fields arrive over a channel the app controls, on a device somebody else
+ * owns, and a rooted phone or a patched build can call the success handler with
+ * anything it likes. Treating that callback as payment is how a subscription is
+ * activated for free.
+ *
+ * So the app forwards the three fields and this decides. The signature is an
+ * HMAC only Razorpay and this server can produce, so a forged trio fails here
+ * even though it looked identical on the phone.
+ *
+ * ---- The ordering trap --------------------------------------------------
+ *
+ * For a one-off order the payload is `order_id|payment_id`.
+ * For a subscription it is `payment_id|subscription_id` — the id being paid for
+ * comes SECOND, not first. The two are easy to transpose and a transposed
+ * signature never matches, so the usual "fix" is to stop checking, which is
+ * exactly the hole this closes.
+ *
+ * ---- And a different secret from the webhook ---------------------------
+ *
+ * This one is signed with the API key secret. `verifyWebhook` below uses
+ * `RAZORPAY_WEBHOOK_SECRET`, which is a separate value typed into a separate
+ * form. Using either in place of the other fails every genuine request.
+ *
+ * Returns a boolean and never throws.
+ */
+export function verifyCheckoutSignature({ paymentId, subscriptionId, signature }) {
+  if (!configured()) return false;
+  if (!paymentId || !subscriptionId || !signature) return false;
+
+  try {
+    const expected = crypto
+      .createHmac('sha256', env.RAZORPAY_KEY_SECRET)
+      .update(`${paymentId}|${subscriptionId}`)
+      .digest('hex');
+
+    const a = Buffer.from(expected, 'utf8');
+    const b = Buffer.from(String(signature), 'utf8');
+    // timingSafeEqual throws on a length mismatch, so the lengths go first.
+    if (a.length !== b.length) return false;
+
+    return crypto.timingSafeEqual(a, b);
+  } catch (err) {
+    logger.warn({ err }, 'could not verify a razorpay checkout signature');
+    return false;
+  }
+}
+
+/** One payment, as the provider records it. Used to fill in what checkout omits. */
+export function fetchPayment(id) {
+  return call('GET', `/payments/${encodeURIComponent(id)}`);
+}
+
+/**
  * Is this callback really from Razorpay?
  *
  * ---- The three ways this is got wrong -----------------------------------
