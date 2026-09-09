@@ -16,6 +16,7 @@ import appointmentRoutes from './appointments.js';
 import clinicRoutes from './clinics.js';
 import messageRoutes from './messages.js';
 import prescriptionRoutes from './prescriptions.js';
+import brandRoutes from './brand.js';
 import appVersionRoutes from './appVersion.js';
 import dashboardRoutes from './dashboard.js';
 import doctorRoutes from './doctor.js';
@@ -75,6 +76,9 @@ router.get('/health', async (req, res) => {
 
 // Before the authenticated routes and outside them: a client too old to sign
 // in is exactly the client this has to be able to answer.
+// Public: Razorpay's checkout fetches the logo from the customer's phone with
+// no session, and there is nothing here that is not already on every app icon.
+router.use('/brand', brandRoutes);
 router.use('/app', appVersionRoutes);
 router.use('/auth', authRoutes);
 router.use('/chat', chatRoutes);

@@ -591,6 +591,8 @@ class _PlansState extends ConsumerState<_Plans> {
         keyId: handle.keyId,
         subscriptionId: handle.subscriptionId,
         planName: '${plan.name} plan',
+        brandName: handle.brandName,
+        brandImageUrl: handle.brandLogoUrl,
       );
 
       switch (result.outcome) {

@@ -28,6 +28,7 @@ import { env } from '../config/env.js';
 import { logger } from '../config/logger.js';
 import { graceEndsFrom } from '../services/billing/lapse.js';
 import { catalogue } from '../services/billing/catalogue.js';
+import { brandForCheckout } from './brand.js';
 
 /**
  * What Razorpay tells us, and what we do about it.
@@ -370,6 +371,16 @@ router.post(
       // The public half of the pair. The SDK needs it to open checkout.
       keyId: env.RAZORPAY_KEY_ID,
       callbackUrl: env.RAZORPAY_CALLBACK_URL || null,
+      /*
+       * Who the customer is paying, in their words and their picture.
+       *
+       * Sent from here rather than compiled into the app: a wrong or missing
+       * logo on a payment sheet is fixed by a deploy, not by an app release, an
+       * install and a version gate on every phone. Razorpay's hosted page could
+       * not be told any of this at all, which is why checkout was showing
+       * customers the account holder's personal name.
+       */
+      brand: brandForCheckout(),
     });
   }),
 );

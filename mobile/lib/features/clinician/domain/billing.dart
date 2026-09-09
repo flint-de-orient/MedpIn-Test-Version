@@ -217,6 +217,8 @@ class CheckoutHandle {
     required this.subscriptionId,
     required this.keyId,
     required this.url,
+    this.brandName = 'MedPin',
+    this.brandLogoUrl,
   });
 
   /// Created by the server, never by the app. A client that could name its own
@@ -231,12 +233,40 @@ class CheckoutHandle {
   /// loud rather than open an empty browser for.
   final String? url;
 
+  /// Who the customer is paying, as the server describes them.
+  ///
+  /// Read from the response rather than compiled in, so a wrong logo on a
+  /// payment sheet is fixed by a deploy and not by an app release, an install
+  /// and a version gate on every phone.
+  final String brandName;
+
+  /// Absolute and public, because Razorpay fetches it from the handset while
+  /// somebody is typing a card number. Null means the server has no public
+  /// origin configured, and the client then sends no image at all — Razorpay
+  /// falls back to the first letter of the name, which is far better than a
+  /// broken image on a checkout sheet.
+  final String? brandLogoUrl;
+
   /// Whether the native sheet can be opened at all.
   bool get canUseSdk => keyId.isNotEmpty && subscriptionId.isNotEmpty;
 
-  factory CheckoutHandle.fromJson(Map<String, dynamic> json) => CheckoutHandle(
-    subscriptionId: json['subscriptionId'] as String? ?? '',
-    keyId: json['keyId'] as String? ?? '',
-    url: json['shortUrl'] as String?,
-  );
+  factory CheckoutHandle.fromJson(Map<String, dynamic> json) {
+    final brand = json['brand'] as Map<String, dynamic>? ?? const {};
+    final logo = (brand['logoUrl'] as String?)?.trim();
+    return CheckoutHandle(
+      subscriptionId: json['subscriptionId'] as String? ?? '',
+      keyId: json['keyId'] as String? ?? '',
+      url: json['shortUrl'] as String?,
+      brandName: (brand['name'] as String?)?.trim().isNotEmpty == true
+          ? (brand['name'] as String).trim()
+          // Only if the server said nothing at all. An empty merchant name on a
+          // payment sheet is worse than a slightly stale one.
+          : 'MedPin',
+      // An https URL or nothing. Razorpay will not load http from a modern
+      // handset, and passing one produces a silently missing logo rather than
+      // an error anybody sees.
+      brandLogoUrl:
+          logo != null && logo.startsWith('https://') ? logo : null,
+    );
+  }
 }

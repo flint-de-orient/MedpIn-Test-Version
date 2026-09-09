@@ -115,6 +115,22 @@ const schema = z.object({
   /// cannot tell.
   ADMIN_CONSOLE_URL: z.string().default(''),
 
+  /*
+   * This server's own public origin, e.g. https://clinq.example.in
+   *
+   * Needed because Razorpay's checkout fetches our logo over the network from
+   * their SDK, so a relative path is useless — the URL has to be absolute and
+   * reachable from a customer's phone.
+   *
+   * Not derived from the request. A `Host` header is attacker-controlled, and a
+   * brand URL built from one is a logo somebody else chooses.
+   */
+  PUBLIC_API_ORIGIN: z.string().default(''),
+
+  /// What the customer sees they are paying. Configurable so a rebrand does not
+  /// need an app release.
+  BRAND_NAME: z.string().default('MedPin'),
+
   // ---- Subscriptions and payment (Razorpay) --------------------------------
   //
   // Blank until somebody pastes the keys, and blank is a working state: with no
