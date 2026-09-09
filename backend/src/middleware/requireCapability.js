@@ -5,6 +5,7 @@ import { ROLES } from '../models/User.js';
 import { effectiveCapabilities, describeCapabilities } from '../services/capabilities.js';
 import { forbidden } from './errors.js';
 import { recordDenial } from './recordDenial.js';
+import { billingBlocks } from '../services/billing/lapse.js';
 
 /**
  * The server half of a capability check.
@@ -88,7 +89,31 @@ export function requireCapability(capability) {
       const ctx = await capabilityContext(req);
       if (!ctx.practice) return next();
 
-      if (effectiveCapabilities(ctx).has(capability)) return next();
+      if (effectiveCapabilities(ctx).has(capability)) {
+        /*
+         * Held, but possibly withheld.
+         *
+         * A lapsed practice keeps every clinical capability and loses the paid
+         * extras — analytics, reports, exports, scheduled reports. Checked
+         * after the capability rather than before it so the refusal names the
+         * real reason: "your plan does not include this" and "your payment
+         * failed" send somebody to two different places.
+         */
+        const blocked = await billingBlocks(ctx.practice._id, capability);
+        if (!blocked) return next();
+
+        recordDenial(req, {
+          reason: 'billing',
+          capability,
+          practiceId: String(ctx.practice._id),
+        });
+        return next(
+          forbidden(
+            'This is paused while the subscription payment is outstanding. ' +
+              'Patient records, prescribing and messaging are unaffected.',
+          ),
+        );
+      }
 
       const detail = describeCapabilities(ctx);
       const practiceHasIt = detail.practice.includes(capability);

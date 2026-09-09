@@ -8,6 +8,7 @@ import { asyncHandler, badRequest, conflict, notFound } from '../middleware/erro
 import { audit } from '../middleware/audit.js';
 import { Membership, MEMBERSHIP_STATUS, PERMISSIONS, presetFor } from '../models/Membership.js';
 import { Practice } from '../models/Practice.js';
+import { billingBlocks } from '../services/billing/lapse.js';
 import { Department } from '../models/Department.js';
 import { Clinic } from '../models/Clinic.js';
 import { User, ROLES } from '../models/User.js';
@@ -207,6 +208,14 @@ router.post(
       status: MEMBERSHIP_STATUS.ACTIVE,
       endedOn: null,
     });
+    const lapsed = await billingBlocks(practiceId, 'ADD_MEMBER');
+    if (lapsed) {
+      throw conflict(
+        'Adding people is paused while the subscription payment is outstanding. ' +
+          'Everyone already here keeps working as normal.',
+      );
+    }
+
     const over = practice?.overLimit('staff', current);
     if (over) {
       throw conflict(

@@ -115,6 +115,18 @@ const subscriptionSchema = new mongoose.Schema(
     currentPeriodEnd: { type: Date, default: null },
 
     /**
+     * When a halted subscription stops being merely late.
+     *
+     * Written once, when the retries are exhausted, rather than computed on
+     * read — so changing `BILLING_GRACE_DAYS` cannot retroactively restrict a
+     * practice that was already inside its window. Somebody who was told they
+     * had until Friday has until Friday.
+     *
+     * Null where the deployment restricts nobody, which is the default.
+     */
+    graceEndsAt: { type: Date, default: null },
+
+    /**
      * Every event the provider sent, in order.
      *
      * Kept rather than collapsed into the status, because "the card failed

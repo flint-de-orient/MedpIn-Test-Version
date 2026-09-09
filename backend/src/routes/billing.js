@@ -26,6 +26,7 @@ import {
 } from '../services/billing/razorpay.js';
 import { env } from '../config/env.js';
 import { logger } from '../config/logger.js';
+import { graceEndsFrom } from '../services/billing/lapse.js';
 
 /**
  * What Razorpay tells us, and what we do about it.
@@ -133,6 +134,19 @@ router.post(
 
     const status = STATUS_FOR[event];
     if (status) sub.status = status;
+
+    /*
+     * The grace window opens the moment the retries are exhausted, and is
+     * stamped rather than recomputed later — see the note on the field.
+     *
+     * Only on the transition into `halted`, so a redelivery of the same halt
+     * does not push the deadline out. And cleared on the way back to active:
+     * a practice that fixed its card is not on a countdown.
+     */
+    if (status === SUBSCRIPTION_STATUS.HALTED && !sub.graceEndsAt) {
+      sub.graceEndsAt = graceEndsFrom();
+    }
+    if (status === SUBSCRIPTION_STATUS.ACTIVE) sub.graceEndsAt = null;
     sub.confirmedAt = new Date();
     if (entity.current_end) sub.currentPeriodEnd = new Date(entity.current_end * 1000);
 

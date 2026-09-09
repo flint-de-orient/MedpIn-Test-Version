@@ -147,6 +147,18 @@ const schema = z.object({
   // the request, for the same reason ADMIN_CONSOLE_URL is not.
   RAZORPAY_CALLBACK_URL: z.string().default(''),
 
+  /*
+   * Days between a subscription's retries being exhausted and anything being
+   * withheld from the practice.
+   *
+   * Seven, chosen deliberately: long enough to reach a practice manager who is
+   * on leave, short enough that a lapse is not free service.
+   *
+   * Zero switches the whole thing off — nothing is ever withheld — which is the
+   * setting for a deployment that would rather chase a lapse as a conversation.
+   */
+  BILLING_GRACE_DAYS: z.coerce.number().int().min(0).max(365).default(7),
+
   // ---- SMS one-time passcodes (MSG91) ------------------------------------
   //
   // Left blank in development on purpose. With no auth key the OTP service

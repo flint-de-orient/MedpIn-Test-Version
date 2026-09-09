@@ -9,6 +9,7 @@ import { practiceOf, practiceClinics } from '../middleware/practiceScope.js';
 import { requestCan } from '../middleware/requireCapability.js';
 import { CAPABILITIES } from '../services/capabilities.js';
 import { Practice } from '../models/Practice.js';
+import { billingBlocks } from '../services/billing/lapse.js';
 import { User, ROLES } from '../models/User.js';
 import { generateSlots } from '../services/scheduling.js';
 import { forgetClinicIdentity } from '../services/clinicIdentity.js';
@@ -175,6 +176,14 @@ router.post(
 
       // The cap has existed since plans did and was never called — the same
       // way the staff one was decoration until /team started asking.
+      const lapsed = await billingBlocks(practiceId, 'ADD_LOCATION');
+      if (lapsed) {
+        throw conflict(
+          'Adding a location is paused while the subscription payment is outstanding. ' +
+            'Your existing locations are unaffected.',
+        );
+      }
+
       const practice = await Practice.findById(practiceId);
       const over = practice?.overLimit('locations', existing);
       if (over) {

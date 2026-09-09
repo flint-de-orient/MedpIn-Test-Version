@@ -5,6 +5,7 @@ import { requestOtp, verifyOtp } from './otp.js';
 import { toE164 } from '../utils/phone.js';
 import { conflict, badRequest, notFound } from '../middleware/errors.js';
 import { Practice } from '../models/Practice.js';
+import { billingBlocks } from './billing/lapse.js';
 import { activePatientCount } from './practiceUsage.js';
 import { ConsentEvent, CONSENT_ACTION, CONSENT_METHOD } from '../models/ConsentEvent.js';
 
@@ -236,6 +237,17 @@ export async function confirmEnrolment({ enrollmentId, code, confirmedBy = null 
 async function assertRoomForOnePatient(practiceId) {
   const practice = await Practice.findById(practiceId).select('limits');
   if (!practice) return;
+
+  // Growth is what a lapse withholds. Clinical work is not, so this sits beside
+  // the cap rather than anywhere a record is read or written — a receptionist
+  // registering somebody new is stopped; nobody already enrolled notices.
+  const lapsed = await billingBlocks(practiceId, 'ENROL_PATIENT');
+  if (lapsed) {
+    throw badRequest(
+      'New registrations are paused while the subscription payment is outstanding. ' +
+        'Everyone already registered is unaffected.',
+    );
+  }
 
   const over = practice.overLimit('patients', await activePatientCount(practiceId));
   if (!over) return;
