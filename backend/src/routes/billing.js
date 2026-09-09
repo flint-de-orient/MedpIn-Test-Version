@@ -8,7 +8,9 @@ import { asyncHandler, badRequest, conflict, notFound } from '../middleware/erro
 import { audit } from '../middleware/audit.js';
 import { Subscription, SUBSCRIPTION_STATUS } from '../models/Subscription.js';
 import { Practice, PLAN, defaultLimitsFor } from '../models/Practice.js';
-import { PERMISSIONS } from '../models/Membership.js';
+import { Membership, MEMBERSHIP_STATUS, PERMISSIONS } from '../models/Membership.js';
+import { Clinic } from '../models/Clinic.js';
+import { activePatientCount } from '../services/practiceUsage.js';
 import { practiceOf } from '../middleware/practiceScope.js';
 import {
   verifyWebhook,
@@ -215,7 +217,7 @@ router.get(
     const practiceId = await practiceOf(req);
     if (!practiceId) return res.json({ plan: null, subscription: null, canPay: false });
 
-    const [practice, sub] = await Promise.all([
+    const [practice, sub, patients, staff, locations] = await Promise.all([
       Practice.findById(practiceId).select('plan limits planRenewsOn').lean(),
       Subscription.findOne({
         practice: practiceId,
@@ -223,11 +225,24 @@ router.get(
       })
         .sort({ createdAt: -1 })
         .lean(),
+      // A limit means nothing on screen without the number beside it. "10
+      // people" is a fact about the plan; "7 of 10" is the one that tells a
+      // practice manager whether to act.
+      activePatientCount(practiceId),
+      Membership.countDocuments({
+        practice: practiceId,
+        status: MEMBERSHIP_STATUS.ACTIVE,
+        endedOn: null,
+      }),
+      Clinic.countDocuments({ practice: practiceId }),
     ]);
 
     res.json({
       plan: practice?.plan ?? null,
       limits: practice?.limits ?? null,
+      // Counted the same way the guards count. A screen that measured
+      // differently would show room where a hire is about to be refused.
+      usage: { patients, staff, locations },
       renewsOn: practice?.planRenewsOn ?? null,
       subscription: sub
         ? {
@@ -304,8 +319,19 @@ router.post(
 
     res.status(201).json({
       subscriptionId: created.id,
-      // The client needs the key id to open checkout. It is the public half of
-      // the pair and is meant to be in the page.
+      /*
+       * Razorpay's own hosted page for this subscription.
+       *
+       * Sent because it is the whole checkout: the client opens it and the
+       * card, the mandate and the bank's own screens all happen there. The
+       * alternative is the native SDK, which for a *subscription* buys almost
+       * nothing — the hosted page is what it opens anyway — in exchange for a
+       * platform dependency, ProGuard rules and a second thing to keep current
+       * in an app that is built split-per-ABI and obfuscated.
+       */
+      shortUrl: created.short_url ?? null,
+      // Still sent: the key id is the public half of the pair, and a client
+      // that would rather drive checkout itself needs it.
       keyId: env.RAZORPAY_KEY_ID,
       callbackUrl: env.RAZORPAY_CALLBACK_URL || null,
     });
