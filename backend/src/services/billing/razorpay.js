@@ -169,6 +169,11 @@ export function fetchPayment(id) {
   return call('GET', `/payments/${encodeURIComponent(id)}`);
 }
 
+/** One plan, for its price. Immutable once created — see [catalogue.js]. */
+export function fetchPlan(id) {
+  return call('GET', `/plans/${encodeURIComponent(id)}`);
+}
+
 /**
  * Is this callback really from Razorpay?
  *

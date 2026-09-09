@@ -27,6 +27,7 @@ import {
 import { env } from '../config/env.js';
 import { logger } from '../config/logger.js';
 import { graceEndsFrom } from '../services/billing/lapse.js';
+import { catalogue } from '../services/billing/catalogue.js';
 
 /**
  * What Razorpay tells us, and what we do about it.
@@ -276,6 +277,24 @@ router.get(
       canPay: configured(),
       testMode: configured() ? isTestMode() : null,
     });
+  }),
+);
+
+/**
+ * What is for sale, and what it costs.
+ *
+ * Readable by any doctor, like the plan itself: a price is not privileged, and
+ * a practice that has to open a checkout to discover what it would be charged
+ * has been told nothing before it commits.
+ *
+ * A plan whose price could not be fetched comes back with a null amount, and
+ * the screen says "shown at checkout" rather than inventing a figure.
+ */
+router.get(
+  '/plans',
+  requireDoctor,
+  asyncHandler(async (req, res) => {
+    res.json({ plans: await catalogue(), canPay: configured() });
   }),
 );
 

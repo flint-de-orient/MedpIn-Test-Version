@@ -40,8 +40,10 @@
 # and error handlers by method name on the calling Activity, so obfuscating them
 # breaks the path that reports a *successful* payment — money taken, app none
 # the wiser.
+# `-keep ... { *; }` already preserves the names. Razorpay's published snippet
+# adds `-keepclassnames`, which R8 rejects outright as an unknown option — the
+# build fails rather than silently under-keeping, which is the good direction.
 -keep class com.razorpay.** { *; }
--keepclassnames class com.razorpay.**
 -dontwarn com.razorpay.**
 -keepclasseswithmembers class * {
   public void onPayment*(...);
