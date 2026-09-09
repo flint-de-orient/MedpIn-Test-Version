@@ -91,6 +91,59 @@ export const LEGACY_PLANS = Object.freeze({
 });
 
 /**
+ * The limits a plan starts a practice on.
+ *
+ * ---- This does not replace the per-practice numbers ---------------------
+ *
+ * `limits` stays a number-or-null on the practice, for the reason written at
+ * that field: a customer who negotiates an extra location must not need a plan
+ * invented for them. These are the values written in when a plan is *assigned*,
+ * and an operator overwrites any of them afterwards.
+ *
+ * The alternative was resolving at read time — `practice.limits.x ?? PLAN[..]`.
+ * That reads well and quietly costs the ability to say "unlimited, as agreed",
+ * because null would then mean "use the plan's number" instead. Writing the
+ * value down keeps the console honest: what an operator sees is what is
+ * enforced.
+ *
+ * ---- These numbers are a starting position, not a law -------------------
+ *
+ * They are the one thing in this file nobody can derive from the code — a
+ * commercial choice. Changing them changes what new assignments get and touches
+ * nothing already sold.
+ *
+ * `null` is unlimited. Enterprise is negotiated per customer, so it has no
+ * numbers of its own.
+ */
+export const PLAN_LIMITS = Object.freeze({
+  // Enough to run a real week without becoming the deployment.
+  [PLAN.TRIAL]: { patients: 50, staff: 3, locations: 2 },
+
+  // One doctor and a front desk, at one address.
+  [PLAN.ESSENTIAL]: { patients: 500, staff: 5, locations: 1 },
+
+  [PLAN.PROFESSIONAL]: { patients: 5000, staff: 25, locations: 5 },
+
+  [PLAN.ENTERPRISE]: { patients: null, staff: null, locations: null },
+});
+
+/**
+ * What a plan starts you on, or all-null for a plan nobody has written down.
+ *
+ * Unknown gives unlimited rather than zero, the same rule as everywhere else
+ * here: a tier added to the enum and forgotten in this table must not silently
+ * refuse a practice its second member.
+ */
+export function defaultLimitsFor(plan) {
+  const row = PLAN_LIMITS[plan];
+  return {
+    patients: row?.patients ?? null,
+    staff: row?.staff ?? null,
+    locations: row?.locations ?? null,
+  };
+}
+
+/**
  * What kind of organisation this is. Not what it treats — see `specialty`.
  *
  * ---- Why these are two fields and not one -------------------------------

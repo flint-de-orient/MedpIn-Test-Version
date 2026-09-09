@@ -7,7 +7,7 @@ import { validate } from '../middleware/validate.js';
 import { asyncHandler, badRequest, conflict, notFound } from '../middleware/errors.js';
 import { audit } from '../middleware/audit.js';
 import { Subscription, SUBSCRIPTION_STATUS } from '../models/Subscription.js';
-import { Practice, PLAN } from '../models/Practice.js';
+import { Practice, PLAN, defaultLimitsFor } from '../models/Practice.js';
 import { PERMISSIONS } from '../models/Membership.js';
 import { practiceOf } from '../middleware/practiceScope.js';
 import {
@@ -139,6 +139,37 @@ router.post(
     if (sub.events.length > 50) sub.events = sub.events.slice(-50);
 
     await sub.save();
+
+    /*
+     * Paid means they have it.
+     *
+     * The subscription row was being kept faithfully and the practice was never
+     * told, so a doctor could complete checkout, be charged, see `active` in
+     * their billing screen, and still be on `trial` with a trial's capabilities.
+     * The money moved and the product did not.
+     *
+     * Only upwards, and only on an active status. The other direction — what a
+     * halt or a cancellation does — is the open policy question below, and
+     * writing "whatever the subscription says" here would answer it by
+     * accident, in the direction that cuts a clinic off mid-week.
+     */
+    if (sub.status === SUBSCRIPTION_STATUS.ACTIVE) {
+      const practice = await Practice.findById(sub.practice);
+      if (practice && practice.plan !== sub.plan) {
+        const was = practice.plan;
+        practice.plan = sub.plan;
+        // The tier's numbers come with the tier. An operator who negotiated
+        // different ones re-enters them, which is the same rule the console
+        // follows.
+        const limits = defaultLimitsFor(sub.plan);
+        for (const k of ['patients', 'staff', 'locations']) practice.limits[k] = limits[k];
+        await practice.save();
+        logger.info(
+          { practice: String(practice._id), from: was, to: sub.plan },
+          'practice plan upgraded by a billing event',
+        );
+      }
+    }
 
     /*
      * ---- What a lapse does to the practice is not decided here ----------

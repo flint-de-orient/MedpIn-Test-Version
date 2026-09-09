@@ -15,6 +15,7 @@ import {
   PRACTICE_TYPE,
   PRACTICE_TYPE_ORDER,
   RESPONSIBLE_LABEL,
+  defaultLimitsFor,
 } from '../models/Practice.js';
 import { Clinic } from '../models/Clinic.js';
 import { Membership, MEMBERSHIP_STATUS, PERMISSIONS, presetFor } from '../models/Membership.js';
@@ -1450,7 +1451,25 @@ router.patch(
       planRenewsOn: practice.planRenewsOn ?? null,
     };
 
+    /*
+     * A plan change resets the limits to that plan's.
+     *
+     * Without this the tiers enforced nothing: every practice starts on all
+     * nulls, so "Essential" and "Enterprise" were the same product plus a
+     * capability list until somebody typed three numbers in by hand, per
+     * customer, and remembered to.
+     *
+     * Explicit limits in the same request still win, and are applied after —
+     * that is the operator saying "this plan, but these numbers", which is the
+     * negotiated case the per-practice field exists for.
+     */
+    const planChanged = Boolean(req.body.plan) && req.body.plan !== practice.plan;
     if (req.body.plan) practice.plan = req.body.plan;
+    if (planChanged) {
+      const defaults = defaultLimitsFor(practice.plan);
+      for (const k of ['patients', 'staff', 'locations']) practice.limits[k] = defaults[k];
+    }
+
     if (req.body.planRenewsOn !== undefined) practice.planRenewsOn = req.body.planRenewsOn;
     for (const k of ['patients', 'staff', 'locations']) {
       if (req.body.limits?.[k] !== undefined) practice.limits[k] = req.body.limits[k];
