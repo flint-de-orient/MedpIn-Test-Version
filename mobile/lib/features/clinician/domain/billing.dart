@@ -210,6 +210,112 @@ class PlanOption {
   };
 }
 
+/// What one plan costs, as Razorpay records it.
+///
+/// The price is not in this app and not in our database. It is in Razorpay,
+/// because that is what the customer is actually charged, and a copy anywhere
+/// else is a second source of truth for money — whose failure mode is showing
+/// somebody one number and taking another.
+@immutable
+class PlanPrice {
+  const PlanPrice({
+    required this.plan,
+    required this.amountPaise,
+    required this.currency,
+    required this.period,
+    required this.interval,
+  });
+
+  final String plan;
+
+  /// Paise. Null when the price could not be fetched, and then the screen says
+  /// "shown at checkout" rather than inventing a figure.
+  final int? amountPaise;
+
+  final String? currency;
+
+  /// `monthly`, `yearly`, `weekly`, `daily` — Razorpay's word, not ours.
+  final String? period;
+
+  /// How many periods between charges. 1 for an ordinary monthly plan.
+  final int? interval;
+
+  bool get known => amountPaise != null;
+
+  /// `₹3,999` — whole rupees, because every plan here is priced in them and a
+  /// trailing `.00` on a payment confirmation reads as machine output.
+  String get formatted {
+    final paise = amountPaise;
+    if (paise == null) return '';
+    final symbol = currency == 'INR' || currency == null ? '₹' : '$currency ';
+    final rupees = paise / 100;
+    // Grouped either way. The decimal branch used to skip it and produce
+    // ₹3999.50, which is the same number and the wrong shape on a screen
+    // where somebody is checking a figure they are about to authorise.
+    final fixed = rupees.toStringAsFixed(2);
+    final dot = fixed.indexOf('.');
+    final body = rupees.truncateToDouble() == rupees
+        ? _grouped(fixed.substring(0, dot))
+        : '${_grouped(fixed.substring(0, dot))}${fixed.substring(dot)}';
+    return '$symbol$body';
+  }
+
+  /// How often, in words somebody reads rather than a field name.
+  ///
+  /// "every month" and not "monthly": the sentence around it is "then ₹3,999
+  /// every month", and "then ₹3,999 monthly" is not English.
+  String get everyPhrase {
+    final n = interval ?? 1;
+    final unit = switch (period) {
+      'daily' => 'day',
+      'weekly' => 'week',
+      'yearly' => 'year',
+      'monthly' => 'month',
+      _ => null,
+    };
+    if (unit == null) return '';
+    return n == 1 ? 'every $unit' : 'every $n ${unit}s';
+  }
+
+  /// The first date a renewal would fall on, from a first payment today.
+  ///
+  /// Approximate by construction and labelled that way on screen. Razorpay
+  /// decides the real schedule from when the mandate is authorised, which has
+  /// not happened yet at the moment this is shown.
+  DateTime? renewalAfter(DateTime first) {
+    final n = interval ?? 1;
+    return switch (period) {
+      'daily' => first.add(Duration(days: n)),
+      'weekly' => first.add(Duration(days: 7 * n)),
+      'monthly' => DateTime(first.year, first.month + n, first.day),
+      'yearly' => DateTime(first.year + n, first.month, first.day),
+      _ => null,
+    };
+  }
+
+  static String _grouped(String digits) {
+    // Indian grouping: the last three, then twos. 1234567 -> 12,34,567.
+    if (digits.length <= 3) return digits;
+    final last3 = digits.substring(digits.length - 3);
+    var rest = digits.substring(0, digits.length - 3);
+    final parts = <String>[];
+    while (rest.length > 2) {
+      parts.insert(0, rest.substring(rest.length - 2));
+      rest = rest.substring(0, rest.length - 2);
+    }
+    if (rest.isNotEmpty) parts.insert(0, rest);
+    return '${parts.join(',')},$last3';
+  }
+
+  factory PlanPrice.fromJson(Map<String, dynamic> json) => PlanPrice(
+    plan: json['plan'] as String? ?? '',
+    amountPaise: (json['amount'] as num?)?.toInt(),
+    currency: json['currency'] as String?,
+    period: json['period'] as String?,
+    interval: (json['interval'] as num?)?.toInt(),
+  );
+}
+
 /// What the server hands back when a checkout is started.
 @immutable
 class CheckoutHandle {

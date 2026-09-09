@@ -7,6 +7,7 @@ import '../../../core/theme/tokens.dart';
 import '../../../shared/widgets/surfaces.dart';
 import '../data/billing_repository.dart';
 import '../data/checkout.dart';
+import 'widgets/subscribe_confirm_sheet.dart';
 import '../domain/billing.dart';
 
 /// What this practice is on, what it is using, and what else there is.
@@ -529,6 +530,10 @@ class _PlansState extends ConsumerState<_Plans> {
 
   @override
   Widget build(BuildContext context) {
+    // Warmed here rather than on tap: fetching after the tap would put a
+    // spinner between the decision and the facts it needs.
+    ref.watch(planPricesProvider);
+
     final current = widget.status.plan;
 
     return SectionCard(
@@ -573,6 +578,28 @@ class _PlansState extends ConsumerState<_Plans> {
   }
 
   Future<void> _start(PlanOption plan) async {
+    /*
+     * What they are agreeing to, before Razorpay opens.
+     *
+     * A subscription is a standing instruction to a bank, and until this sheet
+     * existed the first number a doctor saw was inside the payment screen —
+     * one tap from authorising a recurring debit, with the facts arriving after
+     * the commitment.
+     */
+    final prices = ref.read(planPricesProvider).valueOrNull;
+    final price = prices?.where((p) => p.plan == plan.id).firstOrNull;
+
+    final go = await SubscribeConfirmSheet.show(
+      context,
+      plan: plan,
+      // Null is a state the sheet renders rather than a reason to skip it.
+      // Sending somebody into checkout with *less* information is the problem
+      // this exists to fix.
+      price: price,
+      testMode: widget.status.testMode,
+    );
+    if (!go || !mounted) return;
+
     setState(() => _busy = plan.id);
     final messenger = ScaffoldMessenger.of(context);
     final repo = ref.read(billingRepositoryProvider);

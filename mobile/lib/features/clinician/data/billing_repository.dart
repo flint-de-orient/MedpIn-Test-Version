@@ -28,6 +28,17 @@ class BillingRepository {
     await _client.postJson('/billing/subscribe', body: {'plan': plan}),
   );
 
+  /// What each tier costs, from Razorpay via our server.
+  ///
+  /// A practice that has to open a checkout to find out what it would be
+  /// charged has been told nothing before it commits.
+  Future<List<PlanPrice>> plans() async {
+    final json = await _client.getJson('/billing/plans');
+    return ((json['plans'] as List?) ?? const [])
+        .map((e) => PlanPrice.fromJson(e as Map<String, dynamic>))
+        .toList();
+  }
+
   /// Hand the checkout result to the server and let it decide.
   ///
   /// The SDK's success callback is not payment. It arrives on a device the
@@ -68,4 +79,10 @@ final billingRepositoryProvider = Provider<BillingRepository>(
 
 final billingStatusProvider = FutureProvider.autoDispose<BillingStatus>(
   (ref) => ref.watch(billingRepositoryProvider).status(),
+);
+
+/// Prices, kept separate from the status so a Razorpay outage costs the price
+/// line and not the whole screen.
+final planPricesProvider = FutureProvider.autoDispose<List<PlanPrice>>(
+  (ref) => ref.watch(billingRepositoryProvider).plans(),
 );
