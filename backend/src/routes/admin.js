@@ -18,6 +18,7 @@ import {
   defaultLimitsFor,
 } from '../models/Practice.js';
 import { Clinic } from '../models/Clinic.js';
+import { Subscription, SUBSCRIPTION_STATUS } from '../models/Subscription.js';
 import { Membership, MEMBERSHIP_STATUS, PERMISSIONS, presetFor } from '../models/Membership.js';
 import { Department } from '../models/Department.js';
 import {
@@ -1301,7 +1302,8 @@ router.get(
     const practice = await Practice.findById(req.params.id);
     if (!practice) throw notFound('Practice not found');
 
-    const [locations, departments, memberships, patients, activePatients] = await Promise.all([
+    const [locations, departments, memberships, patients, activePatients, subscription] =
+      await Promise.all([
       Clinic.find({ practice: practice._id }).select('name city addressLine phone').lean(),
       Department.find({ practice: practice._id }).select('key names isActive assistantScope').lean(),
       Membership.find({ practice: practice._id })
@@ -1312,6 +1314,10 @@ router.get(
       // hold a model that names a patient — see practiceUsage.js.
       everPatientCount(practice._id),
       activePatientCount(practice._id),
+      // Not clinical: a subscription names a practice and a provider id and no
+      // patient. The newest, whatever its state — a cancelled one is the answer
+      // to "why did they stop paying", which is a question support gets.
+      Subscription.findOne({ practice: practice._id }).sort({ createdAt: -1 }).lean(),
     ]);
 
     // Asked, not re-derived. The header used to print "no registration number"
@@ -1334,6 +1340,37 @@ router.get(
       // null when there is nothing to check against a register, which is what
       // makes "Mark verified" unavailable rather than merely unwise.
       registration,
+
+      /*
+       * What the provider thinks, and whether it agrees with us.
+       *
+       * Two things now write `practice.plan`: an operator in this console, and
+       * the billing webhook. So "this practice is on Professional" stopped
+       * being a whole answer — bought and granted look identical, and support
+       * cannot tell a webhook that never arrived from a deliberate comp.
+       *
+       * `disagrees` is the one worth surfacing: an active subscription for a
+       * plan the practice is not on means either a delivery was missed or
+       * somebody edited over it. Computed here rather than in the console so
+       * every surface answers it the same way.
+       */
+      subscription: subscription
+        ? {
+            id: String(subscription._id),
+            plan: subscription.plan,
+            status: subscription.status,
+            providerSubscriptionId: subscription.providerSubscriptionId,
+            currentPeriodEnd: subscription.currentPeriodEnd ?? null,
+            // How old the provider's last word is. A row nothing has confirmed
+            // looks healthy for ever otherwise.
+            confirmedAt: subscription.confirmedAt ?? null,
+            createdAt: subscription.createdAt,
+            disagrees:
+              subscription.status === SUBSCRIPTION_STATUS.ACTIVE &&
+              subscription.plan !== practice.plan,
+          }
+        : null,
+
       usage: {
         patients: activePatients,
         patientsEver: patients,

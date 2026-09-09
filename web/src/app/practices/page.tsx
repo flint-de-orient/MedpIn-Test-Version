@@ -460,8 +460,30 @@ function Detail() {
               </button>
             }
           >
+            {d.subscription?.disagrees && (
+              <div className="px-4 pt-4">
+                <Alert tone="stopped" title="Paying for a different plan">
+                  Razorpay is billing {PLAN_LABELS[d.subscription.plan] ??
+                    d.subscription.plan}{" "}
+                  and this practice is on {PLAN_LABELS[p.plan]} — either a delivery
+                  was missed or somebody changed it here.
+                </Alert>
+              </div>
+            )}
+
             <dl className="grid grid-cols-2 gap-x-4 gap-y-4 px-4 py-4">
               <Field label="Plan">{PLAN_LABELS[p.plan]}</Field>
+              {/*
+                Where the plan came from, which the plan name no longer says on
+                its own: an operator can set it here and the webhook can set it
+                too. "Granted" is the honest word for a practice nobody is
+                billing — it is not a failure, it is most of them.
+              */}
+              <Field label="Billing">
+                {d.subscription
+                  ? `${d.subscription.status} · ${PLAN_LABELS[d.subscription.plan] ?? d.subscription.plan}`
+                  : "granted, not billed"}
+              </Field>
               <Field label="Renews" mono>
                 {p.planRenewsOn ? when(p.planRenewsOn) : "open-ended"}
               </Field>
@@ -474,6 +496,23 @@ function Detail() {
               <Field label="Location cap" mono>
                 {p.limits.locations ?? "none"}
               </Field>
+              {d.subscription && (
+                <>
+                  {/* What an operator pastes into Razorpay when a customer
+                      asks about a charge. Without it the two systems share no
+                      visible key. */}
+                  <Field label="Razorpay id" mono>
+                    {d.subscription.providerSubscriptionId}
+                  </Field>
+                  {/* How old the provider's last word is. A row nothing has
+                      confirmed looks healthy for ever otherwise. */}
+                  <Field label="Confirmed" mono>
+                    {d.subscription.confirmedAt
+                      ? when(d.subscription.confirmedAt)
+                      : "never"}
+                  </Field>
+                </>
+              )}
             </dl>
             <p className="text-muted-foreground border-border border-t px-4 py-3 text-xs leading-relaxed">
               A cap is a brake on growth, not a shredder. Lowering one below the
@@ -535,6 +574,7 @@ function Detail() {
         open={planning}
         practice={p}
         usage={d.usage}
+        subscription={d.subscription}
         onClose={() => setPlanning(false)}
         onSaved={() => {
           setPlanning(false);

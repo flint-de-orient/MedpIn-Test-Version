@@ -97,10 +97,30 @@ export type PracticeDetail = {
   usage: {
     patients: number;
     patientsEver: number;
+    /** Every active membership, doctors and the owner included. */
     staff: number;
     locations: number;
     departments: number;
   };
+  /**
+   * What Razorpay thinks, or null where nobody has paid.
+   *
+   * Two things write `practice.plan` now — an operator here and the billing
+   * webhook — so the plan alone no longer says whether it was bought or
+   * granted. `disagrees` is the case support needs: an active subscription for
+   * a plan the practice is not on, which is either a missed delivery or an edit
+   * made over the top of one.
+   */
+  subscription: {
+    id: string;
+    plan: Plan;
+    status: string;
+    providerSubscriptionId: string;
+    currentPeriodEnd: string | null;
+    confirmedAt: string | null;
+    createdAt: string;
+    disagrees: boolean;
+  } | null;
   locations: {
     id: string;
     name: string;

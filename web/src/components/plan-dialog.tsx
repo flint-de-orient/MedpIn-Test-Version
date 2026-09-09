@@ -3,7 +3,13 @@
 import { useEffect, useState } from "react";
 import { api, ApiError } from "@/lib/api";
 import { Modal, Field, textInput } from "@/components/form";
-import { PLAN_LABELS, type Plan, type Practice } from "@/lib/types";
+import { Alert } from "@/components/primitives";
+import {
+  PLAN_LABELS,
+  type Plan,
+  type Practice,
+  type PracticeDetail,
+} from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 /**
@@ -23,15 +29,19 @@ export function PlanDialog({
   open,
   practice,
   usage,
+  subscription,
   onClose,
   onSaved,
 }: {
   open: boolean;
   practice: Practice;
   usage: { patients: number; staff: number; locations: number };
+  /** What the provider thinks, so this dialog can say when it is about to disagree. */
+  subscription?: PracticeDetail["subscription"];
   onClose: () => void;
   onSaved: () => void;
 }) {
+  const paying = subscription?.status === "active";
   const [plan, setPlan] = useState<Plan>(practice.plan);
   const [patients, setPatients] = useState("");
   const [staff, setStaff] = useState("");
@@ -99,6 +109,14 @@ export function PlanDialog({
       busy={busy}
       error={error}
     >
+      {paying && (
+        <Alert tone="waiting" title="Razorpay is billing this practice">
+          They pay for {PLAN_LABELS[subscription!.plan] ?? subscription!.plan}, and the
+          next delivery will set the plan back to it. Cancel in Razorpay to end the
+          arrangement itself.
+        </Alert>
+      )}
+
       <Field label="Plan">
         <div className="flex flex-wrap gap-1.5">
           {(Object.keys(PLAN_LABELS) as Plan[]).map((k) => (
@@ -126,7 +144,7 @@ export function PlanDialog({
           onChange={setPatients}
           current={usage.patients}
         />
-        <Cap label="Staff" value={staff} onChange={setStaff} current={usage.staff} />
+        <Cap label="People" value={staff} onChange={setStaff} current={usage.staff} />
         <Cap
           label="Locations"
           value={locations}
@@ -145,10 +163,18 @@ export function PlanDialog({
       </Field>
 
       <p className="text-muted-foreground text-xs leading-relaxed">
-        Only the patient cap is enforced today, at the one place a practice gains
-        a patient. A lapsed date suspends nobody — a clinic locked out of its
-        records by a billing date is a patient safety problem, so that stays a
-        decision a person makes.
+        All three caps are enforced, each at the point somebody would exceed it:
+        enrolling a patient, adding a person, adding a location. &ldquo;People&rdquo;
+        counts every active membership including the doctors and the owner, so a
+        solo practice with a receptionist and a dietician is already at three. A
+        cap below what a practice already has is allowed and removes nobody — it
+        is a brake on growth, not a shredder.
+      </p>
+      <p className="text-muted-foreground text-xs leading-relaxed">
+        Changing the plan resets the caps to that plan&rsquo;s defaults; numbers
+        typed here are kept. A lapsed renewal date suspends nobody — a clinic
+        locked out of its records by a billing date is a patient safety problem,
+        so that stays a decision a person makes.
       </p>
     </Modal>
   );
