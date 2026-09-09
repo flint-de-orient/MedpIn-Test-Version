@@ -37,6 +37,7 @@ import '../../features/clinician/presentation/nutrition_inbox_screen.dart';
 import '../../features/clinician/presentation/add_patient_screen.dart';
 import '../../features/clinician/presentation/consult_screen.dart';
 import '../../features/clinician/presentation/patients_screen.dart';
+import '../../features/clinician/presentation/billing_screen.dart';
 import '../../features/clinician/presentation/practice_screen.dart';
 import '../../features/clinician/presentation/patient_profile_screen.dart';
 import '../../features/clinician/presentation/prescription_list_screen.dart';
@@ -208,6 +209,10 @@ final Provider<GoRouter> appRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/clinician/practice',
         builder: (context, state) => const PracticeScreen(),
+      ),
+      GoRoute(
+        path: '/clinician/billing',
+        builder: (context, state) => const BillingScreen(),
       ),
       GoRoute(
         path: '/clinician/clinics',

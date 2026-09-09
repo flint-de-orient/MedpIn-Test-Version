@@ -547,6 +547,18 @@ class _ClinicianMoreScreenState extends ConsumerState<ClinicianMoreScreen> {
                 subtitle: 'Letterhead, locations and who works here',
                 onTap: () => context.push('/clinician/practice'),
               ),
+              // Readable by any doctor, not gated on MANAGE_STAFF. Knowing the
+              // clinic is on a trial that ends on the 14th is not privileged,
+              // and hiding it until somebody holds a billing permission is how
+              // a practice discovers its plan by being cut off. The buttons
+              // inside are gated; the screen is not.
+              if (user?.role == 'doctor')
+                ProfileRow(
+                  icon: Icons.receipt_long_outlined,
+                  title: 'Plan and billing',
+                  subtitle: 'What you are on, and what you are using',
+                  onTap: () => context.push('/clinician/billing'),
+                ),
               ProfileRow(
                 icon: Icons.notification_important_outlined,
                 title: 'Clinical alerts',
