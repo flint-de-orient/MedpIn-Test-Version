@@ -117,10 +117,17 @@ export const LEGACY_PLANS = Object.freeze({
  */
 export const PLAN_LIMITS = Object.freeze({
   // Enough to run a real week without becoming the deployment.
-  [PLAN.TRIAL]: { patients: 50, staff: 3, locations: 2 },
+  [PLAN.TRIAL]: { patients: 50, staff: 5, locations: 2 },
 
-  // One doctor and a front desk, at one address.
-  [PLAN.ESSENTIAL]: { patients: 500, staff: 5, locations: 1 },
+  /*
+   * One practice, one address, and a team around one doctor.
+   *
+   * Ten because `staff` counts *people*, the doctor included — see the note on
+   * the field below. A solo practice with a receptionist, a dietician and a
+   * nurse is four of them before anybody has been hired, so a cap of five would
+   * have been reached during setup rather than during growth.
+   */
+  [PLAN.ESSENTIAL]: { patients: 1000, staff: 10, locations: 1 },
 
   [PLAN.PROFESSIONAL]: { patients: 5000, staff: 25, locations: 5 },
 
@@ -300,7 +307,19 @@ const practiceSchema = new mongoose.Schema(
 
     limits: {
       patients: { type: Number, default: null, min: 0 },
+
+      /*
+       * Every active membership, the owner and the doctors included — not
+       * "staff" in the sense of non-clinical people.
+       *
+       * Named `staff` before there were memberships to count, and the counter
+       * in [routes/team.js] has always counted everybody. The refusal message
+       * says "people" for that reason, and a pricing page must say the same:
+       * offering "5 staff" and enforcing five *people* is a promise broken at
+       * the fourth hire.
+       */
       staff: { type: Number, default: null, min: 0 },
+
       locations: { type: Number, default: null, min: 0 },
     },
 

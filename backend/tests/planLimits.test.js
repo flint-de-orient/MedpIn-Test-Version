@@ -5,6 +5,9 @@ import { readFileSync } from 'node:fs';
 
 import { boot, shutdown, wipe } from './helpers/httpHarness.js';
 import { makePractice, makeMember } from './helpers/factories.js';
+import { as } from './helpers/httpHarness.js';
+import { signPhoneToken } from '../src/services/otp.js';
+import { ROLES } from '../src/models/User.js';
 import { Practice, PLAN, PLAN_LIMITS, defaultLimitsFor } from '../src/models/Practice.js';
 import { Subscription, SUBSCRIPTION_STATUS } from '../src/models/Subscription.js';
 import { CAPABILITIES as C, capabilitiesOfPractice } from '../src/services/capabilities.js';
@@ -225,5 +228,59 @@ describe('and the console applies them the same way', () => {
     const explicit = body.indexOf('req.body.limits?.[k] !== undefined');
     assert.ok(defaults > -1 && explicit > -1, 'the plan block moved');
     assert.ok(defaults < explicit, 'plan defaults are applied after the operator’s own numbers');
+  });
+});
+
+describe('the staff cap counts people, not non-clinicians', () => {
+  // The field is called `staff` and the counter has never had a role filter,
+  // so the owner and every doctor count towards it. That is the honest reading
+  // of "how many people is this practice" and it is what the refusal message
+  // says — but the name invites somebody to "fix" the query to exclude
+  // clinicians, which would silently widen every cap by however many doctors a
+  // practice has. This is a behavioural test so that change fails here.
+  before(boot);
+  after(shutdown);
+  beforeEach(wipe);
+
+  test('the owner occupies one of the places', async () => {
+    // Cap of two, and the owner is already one of them: exactly one hire fits.
+    const practice = await makePractice('Sunrise Diabetes Care', {
+      plan: PLAN.ESSENTIAL,
+      limits: { patients: null, staff: 2, locations: null },
+    });
+    const owner = await makeMember(practice, { name: 'Dr Bose', isOwner: true });
+
+    const hire = (name) =>
+      as(owner.token).post('/team', {
+        role: ROLES.STAFF,
+        name,
+        phoneToken: signPhoneToken(`+9198${String(Date.now()).slice(-6)}${name.length}`),
+      });
+
+    const first = await hire('Sunita Desk');
+    assert.ok(first.status < 400, `the one available place was refused: ${JSON.stringify(first.body)}`);
+
+    const second = await hire('Ravi Desk');
+    assert.equal(second.status, 409, 'the cap did not bite once the practice was full');
+    assert.match(
+      JSON.stringify(second.body),
+      /limit of 2 people/,
+      'the refusal does not say how many people are allowed',
+    );
+  });
+
+  test('and a practice with no cap is not capped', async () => {
+    // Every practice today, the founding clinic included.
+    const practice = await makePractice('Meridian Family Clinic');
+    const owner = await makeMember(practice, { name: 'Dr Iyer', isOwner: true });
+
+    for (const name of ['One Desk', 'Two Desk', 'Three Desk']) {
+      const res = await as(owner.token).post('/team', {
+        role: ROLES.STAFF,
+        name,
+        phoneToken: signPhoneToken(`+9197${String(Date.now()).slice(-6)}${name.length}`),
+      });
+      assert.ok(res.status < 400, `an uncapped practice was refused a hire: ${JSON.stringify(res.body)}`);
+    }
   });
 });
