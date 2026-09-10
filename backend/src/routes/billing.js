@@ -10,6 +10,9 @@ import { Subscription, SUBSCRIPTION_STATUS } from '../models/Subscription.js';
 import { Practice, PLAN, defaultLimitsFor } from '../models/Practice.js';
 import { Membership, MEMBERSHIP_STATUS, PERMISSIONS } from '../models/Membership.js';
 import { Clinic } from '../models/Clinic.js';
+import { Payment } from '../models/Payment.js';
+import { Invoice } from '../models/Invoice.js';
+import { recordPayment, recordInvoice } from '../services/billing/ledger.js';
 import { activePatientCount } from '../services/practiceUsage.js';
 import { practiceOf } from '../middleware/practiceScope.js';
 import {
@@ -202,6 +205,27 @@ router.post(
     await sub.save();
 
     /*
+     * The receipt, filed alongside the status.
+     *
+     * `subscription.charged` carries the payment that settled it and, on most
+     * deliveries, the invoice it settled. Filed here rather than fetched later
+     * because the payload already holds every field, and a second network call
+     * inside a webhook is a second thing that can make it time out.
+     *
+     * Neither call throws — see [ledger.js]. Losing a history row is
+     * recoverable from Razorpay's dashboard; a 500 here is retried, and the
+     * retry would re-apply everything above it.
+     */
+    const payment = req.body?.payload?.payment?.entity;
+    const invoice = req.body?.payload?.invoice?.entity;
+    if (payment) {
+      await recordPayment({ entity: payment, practiceId: sub.practice, subscriptionId: sub._id });
+    }
+    if (invoice) {
+      await recordInvoice({ entity: invoice, practiceId: sub.practice, subscriptionId: sub._id });
+    }
+
+    /*
      * Paid means they have it.
      *
      * The subscription row was being kept faithfully and the practice was never
@@ -337,6 +361,40 @@ router.get(
   requireDoctor,
   asyncHandler(async (req, res) => {
     res.json({ plans: await catalogue(), canPay: configured() });
+  }),
+);
+
+/**
+ * What this practice has been charged.
+ *
+ * Readable by any doctor. "Why was I charged this" is a question a practice
+ * asks us rather than Razorpay — they hold no account there — and a support
+ * conversation that begins with "log in to our payment provider" is one nobody
+ * can have.
+ *
+ * Payments and invoices side by side rather than merged: a failed payment has
+ * no invoice, and an unpaid invoice has no payment, so a single list would have
+ * to invent a row for half of each.
+ */
+router.get(
+  '/history',
+  requireDoctor,
+  validate({ query: z.object({ limit: z.coerce.number().int().min(1).max(100).default(24) }) }),
+  asyncHandler(async (req, res) => {
+    const practiceId = await practiceOf(req);
+    // Not an error. An account with no practice has no billing history, and
+    // the screen renders that rather than failing.
+    if (!practiceId) return res.json({ payments: [], invoices: [] });
+
+    const [payments, invoices] = await Promise.all([
+      Payment.find({ practice: practiceId }).sort({ at: -1 }).limit(req.query.limit),
+      Invoice.find({ practice: practiceId }).sort({ issuedAt: -1 }).limit(req.query.limit),
+    ]);
+
+    res.json({
+      payments: payments.map((p) => p.toPublic()),
+      invoices: invoices.map((i) => i.toPublic()),
+    });
   }),
 );
 
