@@ -105,6 +105,55 @@ export function fetchSubscription(id) {
   return call('GET', `/subscriptions/${encodeURIComponent(id)}`);
 }
 
+/**
+ * Move a subscription to a different plan.
+ *
+ * `schedule_change_at` is the whole of the policy, and Razorpay happens to
+ * offer exactly the two modes it needs:
+ *
+ *   'now'        the plan changes immediately and the next invoice is the new
+ *                amount. Used for an upgrade — somebody who has asked to pay
+ *                more should not wait for it.
+ *   'cycle_end'  the plan changes when the paid period runs out. Used for a
+ *                downgrade — they have already paid for the larger plan and
+ *                keep it until it expires.
+ *
+ * Neither direction moves money backwards, which is why there is no proration
+ * anywhere in this file: an upgrade gives away the remainder of a cheaper
+ * period, a downgrade gives away nothing, and no refund is ever owed. The
+ * alternative — crediting part of a month — needs a refund path, a reconciler
+ * and a conversation with anybody who reads their statement.
+ */
+export function updateSubscriptionPlan(id, { planId, at = 'cycle_end' }) {
+  return call('PATCH', `/subscriptions/${encodeURIComponent(id)}`, {
+    plan_id: planId,
+    schedule_change_at: at,
+    // Their default is to keep charging the old amount until the change lands.
+    // Stated rather than assumed, because the default is the thing that changes.
+    customer_notify: 1,
+  });
+}
+
+/**
+ * Stop charging without ending the arrangement.
+ *
+ * `pause_at: 'now'` because a pause somebody asked for today and that begins
+ * next month is not a pause. The mandate stays authorised, so resuming needs no
+ * second trip through checkout — which is the entire reason to pause rather
+ * than cancel and re-subscribe.
+ */
+export function pauseSubscription(id) {
+  return call('POST', `/subscriptions/${encodeURIComponent(id)}/pause`, {
+    pause_at: 'now',
+  });
+}
+
+export function resumeSubscription(id) {
+  return call('POST', `/subscriptions/${encodeURIComponent(id)}/resume`, {
+    resume_at: 'now',
+  });
+}
+
 export function cancelSubscription(id, { atCycleEnd = true } = {}) {
   return call('POST', `/subscriptions/${encodeURIComponent(id)}/cancel`, {
     cancel_at_cycle_end: atCycleEnd ? 1 : 0,

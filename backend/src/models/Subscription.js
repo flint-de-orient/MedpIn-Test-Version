@@ -32,6 +32,10 @@ export const SUBSCRIPTION_STATUS = Object.freeze({
   /// A charge failed and the provider is retrying. The clinic keeps working —
   /// see the note above.
   PENDING: 'pending',
+  /// Charging stopped at the customer's request, mandate still authorised.
+  /// Distinct from `cancelled`: resuming needs no second trip through checkout,
+  /// which is the entire reason to offer it rather than cancel-and-resubscribe.
+  PAUSED: 'paused',
   /// Retries exhausted. The decision point, and deliberately a separate state
   /// from `cancelled`: nobody chose this.
   HALTED: 'halted',
@@ -113,6 +117,20 @@ const subscriptionSchema = new mongoose.Schema(
 
     /// Paid up to. Null until the first successful charge.
     currentPeriodEnd: { type: Date, default: null },
+
+    /**
+     * A downgrade that has been asked for and has not landed.
+     *
+     * Kept apart from `plan` on purpose. A downgrade takes effect at the end of
+     * the period the practice has already paid for, so writing it into `plan`
+     * would tell them they had lost the larger tier weeks before they do — and
+     * every capability check reads `Practice.plan`, so it would take it away
+     * too.
+     *
+     * This is what the console and the app read to say "changing to Essential
+     * on 9 October". Cleared when the change lands, or when it is superseded.
+     */
+    pendingPlan: { type: String, default: null },
 
     /**
      * When a halted subscription stops being merely late.

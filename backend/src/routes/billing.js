@@ -16,6 +16,9 @@ import {
   verifyWebhook,
   verifyCheckoutSignature,
   fetchPayment,
+  updateSubscriptionPlan,
+  pauseSubscription,
+  resumeSubscription,
   webhooksConfigured,
   configured,
   isTestMode,
@@ -29,6 +32,13 @@ import { logger } from '../config/logger.js';
 import { graceEndsFrom } from '../services/billing/lapse.js';
 import { catalogue } from '../services/billing/catalogue.js';
 import { brandForCheckout } from './brand.js';
+import {
+  CHANGE,
+  describeChange,
+  mayChangePlan,
+  mayPause,
+  mayResume,
+} from '../services/billing/lifecycle.js';
 
 /**
  * What Razorpay tells us, and what we do about it.
@@ -65,6 +75,8 @@ const HANDLED = new Set([
   'subscription.cancelled',
   'subscription.completed',
   'subscription.updated',
+  'subscription.paused',
+  'subscription.resumed',
 ]);
 
 /** Razorpay's event name to our status. */
@@ -75,6 +87,10 @@ const STATUS_FOR = {
   'subscription.halted': SUBSCRIPTION_STATUS.HALTED,
   'subscription.cancelled': SUBSCRIPTION_STATUS.CANCELLED,
   'subscription.completed': SUBSCRIPTION_STATUS.COMPLETED,
+  'subscription.paused': SUBSCRIPTION_STATUS.PAUSED,
+  // Back to active rather than to whatever it was before. A paused
+  // subscription that resumes is running again by definition.
+  'subscription.resumed': SUBSCRIPTION_STATUS.ACTIVE,
 };
 
 router.post(
@@ -149,6 +165,31 @@ router.post(
       sub.graceEndsAt = graceEndsFrom();
     }
     if (status === SUBSCRIPTION_STATUS.ACTIVE) sub.graceEndsAt = null;
+
+    /*
+     * A scheduled downgrade landing.
+     *
+     * Razorpay applies a `cycle_end` plan change when the period runs out and
+     * tells us in the entity's `plan_id`. Comparing that against the provider
+     * id of what was asked for is how we know it has happened — no extra
+     * network call, and no clock of our own to drift.
+     *
+     * Only on the way in to the new plan. A delivery that still names the old
+     * plan id means the change has not landed yet, which is the ordinary state
+     * for every charge between the request and the period end.
+     */
+    if (sub.pendingPlan && entity.plan_id) {
+      const wanted = planIdFor(sub.pendingPlan);
+      if (wanted && entity.plan_id === wanted) {
+        logger.info(
+          { subscription: entity.id, from: sub.plan, to: sub.pendingPlan },
+          'scheduled plan change landed',
+        );
+        sub.plan = sub.pendingPlan;
+        sub.providerPlanId = wanted;
+        sub.pendingPlan = null;
+      }
+    }
     sub.confirmedAt = new Date();
     if (entity.current_end) sub.currentPeriodEnd = new Date(entity.current_end * 1000);
 
@@ -495,6 +536,154 @@ router.post(
       // The screen shows what is true and the webhook is what makes it true.
       activated: sub.status === SUBSCRIPTION_STATUS.ACTIVE,
     });
+  }),
+);
+
+/**
+ * Move to a different plan.
+ *
+ * Direction decides the timing, and the policy is that money never moves
+ * backwards: an upgrade lands now and gives away the rest of a cheaper period,
+ * a downgrade lands at the end of one they have already paid for. Neither owes
+ * a refund, which is why there is no proration anywhere in this file.
+ *
+ * As everywhere else here, this asks the provider and does not touch
+ * `practice.plan`. An upgrade Razorpay accepts is still not an upgrade until
+ * their webhook says the new amount was charged — the same rule that keeps a
+ * checkout callback from granting a plan.
+ */
+router.post(
+  '/change-plan',
+  requireDoctor,
+  requirePermission(PERMISSIONS.MANAGE_STAFF),
+  validate({
+    body: z.object({
+      plan: z.enum([PLAN.ESSENTIAL, PLAN.PROFESSIONAL, PLAN.ENTERPRISE]),
+    }),
+  }),
+  audit('update', 'Subscription'),
+  asyncHandler(async (req, res) => {
+    if (!configured()) throw badRequest('Payments are not set up on this server.');
+
+    const practiceId = await practiceOf(req);
+    if (!practiceId) throw badRequest('This account is not linked to a practice yet.');
+
+    const sub = await Subscription.findOne({
+      practice: practiceId,
+      status: { $nin: [SUBSCRIPTION_STATUS.CANCELLED, SUBSCRIPTION_STATUS.EXPIRED] },
+    }).sort({ createdAt: -1 });
+    if (!sub) throw notFound('This practice has no subscription to change.');
+
+    if (!mayChangePlan(sub.status)) {
+      // Named states rather than a generic refusal. "Your payment is
+      // outstanding" and "this subscription has ended" need different actions.
+      throw conflict(
+        sub.status === SUBSCRIPTION_STATUS.HALTED
+          ? 'There is a payment outstanding on this subscription. Settle it before changing plan.'
+          : `A subscription that is ${sub.status} cannot change plan.`,
+      );
+    }
+
+    const change = describeChange(sub.plan, req.body.plan);
+    // Null means a plan nobody has ranked. Guessing upgrade bills somebody
+    // immediately for a tier we do not understand; guessing downgrade gives it
+    // away for a month.
+    if (!change) throw badRequest('That plan cannot be compared with the current one.');
+    if (change.direction === CHANGE.SAME) {
+      return res.json({ changed: false, ...change, plan: sub.plan });
+    }
+
+    const planId = planIdFor(req.body.plan);
+    if (!planId) throw badRequest(`No Razorpay plan is configured for "${req.body.plan}".`);
+
+    await updateSubscriptionPlan(sub.providerSubscriptionId, {
+      planId,
+      at: change.at,
+    });
+
+    /*
+     * What was asked for, recorded separately from what is in force.
+     *
+     * A downgrade scheduled for cycle end is a fact about the future, and
+     * writing it into `plan` would tell the practice it had already lost the
+     * larger tier. `pendingPlan` is what the console and the app read to say
+     * "changing to Essential on 9 October".
+     */
+    if (change.direction === CHANGE.UPGRADE) {
+      sub.plan = req.body.plan;
+      sub.providerPlanId = planId;
+      sub.pendingPlan = null;
+    } else {
+      sub.pendingPlan = req.body.plan;
+    }
+    await sub.save();
+
+    logger.info(
+      { practice: String(practiceId), from: sub.plan, to: req.body.plan, at: change.at },
+      'subscription plan change requested',
+    );
+
+    res.json({ changed: true, plan: req.body.plan, ...change });
+  }),
+);
+
+/**
+ * Stop charging without ending the arrangement.
+ *
+ * Distinct from cancelling because the mandate stays authorised: resuming needs
+ * no second trip through checkout, and a clinic closing for a month should not
+ * have to re-authorise a bank debit to come back.
+ *
+ * Nothing is withheld while paused. A practice that has told us it is pausing
+ * is not a practice that has stopped paying, and treating the two the same
+ * would make the honest thing to do the expensive one.
+ */
+router.post(
+  '/pause',
+  requireDoctor,
+  requirePermission(PERMISSIONS.MANAGE_STAFF),
+  audit('update', 'Subscription'),
+  asyncHandler(async (req, res) => {
+    if (!configured()) throw badRequest('Payments are not set up on this server.');
+
+    const practiceId = await practiceOf(req);
+    if (!practiceId) throw badRequest('This account is not linked to a practice yet.');
+
+    const sub = await Subscription.findOne({ practice: practiceId }).sort({ createdAt: -1 });
+    if (!sub) throw notFound('This practice has no subscription.');
+    if (!mayPause(sub.status)) {
+      throw conflict(`A subscription that is ${sub.status} cannot be paused.`);
+    }
+
+    await pauseSubscription(sub.providerSubscriptionId);
+    // Asked for, not confirmed. The webhook moves it, like everything else.
+    logger.info({ practice: String(practiceId) }, 'subscription pause requested');
+
+    res.json({ requested: true, status: sub.status });
+  }),
+);
+
+router.post(
+  '/resume',
+  requireDoctor,
+  requirePermission(PERMISSIONS.MANAGE_STAFF),
+  audit('update', 'Subscription'),
+  asyncHandler(async (req, res) => {
+    if (!configured()) throw badRequest('Payments are not set up on this server.');
+
+    const practiceId = await practiceOf(req);
+    if (!practiceId) throw badRequest('This account is not linked to a practice yet.');
+
+    const sub = await Subscription.findOne({ practice: practiceId }).sort({ createdAt: -1 });
+    if (!sub) throw notFound('This practice has no subscription.');
+    if (!mayResume(sub.status)) {
+      throw conflict(`A subscription that is ${sub.status} cannot be resumed.`);
+    }
+
+    await resumeSubscription(sub.providerSubscriptionId);
+    logger.info({ practice: String(practiceId) }, 'subscription resume requested');
+
+    res.json({ requested: true, status: sub.status });
   }),
 );
 
