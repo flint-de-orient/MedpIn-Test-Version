@@ -36,9 +36,24 @@ const LANGUAGE_NAME = { en: 'English', bn: 'Bengali (বাংলা)', hi: 'Hin
  * nested inside the prompt: nesting reads as code to the reachability lint,
  * and this prose is full of parenthesised terms that look like calls.
  */
-function defaultScopeFor(doctorName) {
+/**
+ * Practices whose remit the block below actually describes.
+ *
+ * The scope after this is a careful, specific piece of clinical safety writing
+ * for a diabetes and endocrine practice, and it is right for the one it was
+ * written for. It was also the scope every practice got, so a cardiologist's
+ * patients met an assistant that introduced their doctor as a diabetologist and
+ * declined to discuss cardiology as belonging to another specialty.
+ */
+const ENDOCRINE = /diabet|endocrin|metabol/i;
+
+function defaultScopeFor(doctorName, specialty) {
+  // Nothing known about what this practice treats. The assistant claims no
+  // remit rather than borrowing one — see [generalScopeFor].
+  if (specialty && !ENDOCRINE.test(specialty)) return generalScopeFor(doctorName, specialty);
+
   return `## What you help with — and what you do NOT
-${doctorName} is a diabetologist and endocrinologist. You ONLY help with his areas of practice:
+${doctorName} is a diabetologist and endocrinologist. You ONLY help with their areas of practice:
 - Diabetes (type 1, type 2, gestational, prediabetes) — sugars, insulin, tablets, CGM, hypos and highs, sick-day rules.
 - Thyroid — hypo/hyperthyroidism, Hashimoto's, Graves', nodules, goitre, post-surgery, levothyroxine.
 - Blood pressure, cholesterol, weight and metabolic health, GLP-1 medicines.
@@ -47,6 +62,22 @@ ${doctorName} is a diabetologist and endocrinologist. You ONLY help with his are
 - The everyday support around these: understanding labs and medicines, nutrition, exercise, devices (glucometer, CGM, BP machine, insulin pen), screening intervals, and Indian-context questions (diet, brand names, fasting).
 
 If the question is clearly OUTSIDE these areas — for example a skin rash, a cough or cold, a broken bone, an eye infection, mental-health matters unrelated to diabetes, a child's illness, or anything belonging to another specialty — do NOT answer it from general knowledge. Say warmly that you only cover ${doctorName}'s areas (diabetes and hormone and metabolic health), and suggest they see their family doctor or the right specialist, or raise it with ${doctorName} at their next visit if it is connected to their condition. This topic limit does NOT apply to anything the triage verdict has marked urgent or emergency — a dangerous symptom is always escalated, whatever its topic.`;
+}
+
+/**
+ * A practice whose specialty is known and is not the one above.
+ *
+ * Deliberately thin. The endocrine block lists its topics because a clinician
+ * reviewed that list; writing the equivalent for cardiology from here would be
+ * inventing a clinical scope nobody has approved, which is the same mistake as
+ * borrowing the diabetes one. So this names the specialty, keeps every refusal,
+ * and says the rest is for a department scope to fill in.
+ */
+function generalScopeFor(doctorName, specialty) {
+  return `## What you help with — and what you do NOT
+${doctorName} practises ${specialty}. You ONLY help with their area of practice and the everyday support around it: understanding labs and medicines they have prescribed, appointments, and general lifestyle guidance connected to that care.
+
+If the question is clearly OUTSIDE that area — an unrelated illness, a child's illness, another specialty's problem — do NOT answer it from general knowledge. Say warmly that you only cover ${doctorName}'s area (${specialty}), and suggest they see their family doctor or the right specialist, or raise it with ${doctorName} at their next visit if it is connected to their care. This topic limit does NOT apply to anything the triage verdict has marked urgent or emergency — a dangerous symptom is always escalated, whatever its topic.`;
 }
 
 export function buildSystemPrompt({
@@ -72,9 +103,23 @@ export function buildSystemPrompt({
   // A department that has written its own scope replaces this entirely. One
   // that has not keeps the remit the assistant has always had, so Dr. Dey's
   // clinic reads identically until a scope is seeded for his department.
-  const defaultScope = defaultScopeFor(doctorName);
+  /*
+   * What this practice treats, if it has said.
+   *
+   * The opening line used to read "Consultant Physician and Diabetologist"
+   * for every practice on the platform — a credential nobody claimed, told to
+   * patients as fact. Omitted entirely when unknown: "the AI Health Assistant
+   * for Dr Sen at Meridian Clinic" is true, and adding a specialty to it is
+   * not something an absent field entitles anybody to do.
+   */
+  const specialty = identity?.specialty || null;
+  const defaultScope = defaultScopeFor(doctorName, specialty);
 
-  return `You are the AI Health Assistant for ${doctorName}, Consultant Physician and Diabetologist at ${clinicName}. You support his patients between visits.
+  // "their", not "his". The line was written for one doctor and then shown to
+  // every practice on the platform.
+  const named = specialty ? `${doctorName}, ${specialty},` : doctorName;
+
+  return `You are the AI Health Assistant for ${named} at ${clinicName}. You support their patients between visits.
 
 ## Who you are
 - You are not a doctor and you never claim to be. You are an assistant that shares guidance ${doctorName} has approved.

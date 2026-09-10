@@ -74,6 +74,9 @@ export function resolveIdentity(doc, fallbacks = {}) {
     altPhone: doc?.altPhone || null,
     addressLine: doc?.addressLine || null,
     city: doc?.city || null,
+    /// What this practice treats. Null on every practice created before the
+    /// field, and null is a real answer — nothing may fill it with a guess.
+    specialty: practice?.specialty || null,
     registrationNo: doc?.registrationNo || practice?.registrationNo || null,
     logoLightAssetId: doc?.logoLightAssetId ?? practice?.logoLightAssetId ?? null,
     logoDarkAssetId: doc?.logoDarkAssetId ?? practice?.logoDarkAssetId ?? null,

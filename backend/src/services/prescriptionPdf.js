@@ -77,9 +77,20 @@ export function buildPrescriptionPdf({ prescription: p, patient, doctor, profile
       doc.fillColor(SLATE).font('Helvetica').fontSize(9.5).text(identity.tagline, { width: contentW });
     }
     const doctorName = doctor?.name ?? identity?.doctorName ?? env.DOCTOR_DISPLAY_NAME;
-    const credentials = [doctor?.qualifications, doctor?.specialty ?? 'Consultant Physician & Diabetologist']
-      .filter(Boolean)
-      .join(', ');
+    /*
+     * The doctor's own credentials, or none.
+     *
+     * This used to fall back to the literal string 'Consultant Physician &
+     * Diabetologist' for any doctor with no specialty on file — correct while
+     * this was one diabetologist's clinic, and a false credential on a legal
+     * document the moment it was not. A cardiologist with an empty specialty
+     * field was printed as a diabetologist on every prescription they signed.
+     *
+     * Nothing replaces it. A line that reads "Dr Sen" is accurate and a line
+     * that reads "Dr Sen — Consultant Physician & Diabetologist" is a claim
+     * about somebody's qualifications that nobody made.
+     */
+    const credentials = [doctor?.qualifications, doctor?.specialty].filter(Boolean).join(', ');
     doc.fillColor(SLATE).font('Helvetica').fontSize(10.5).text(`${doctorName}${credentials ? ` — ${credentials}` : ''}`, {
       width: contentW,
     });

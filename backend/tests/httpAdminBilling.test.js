@@ -389,3 +389,85 @@ describe('the subscriptions list', () => {
     }
   });
 });
+
+/**
+ * Type and specialty were settable at creation and never again.
+ *
+ * Both were on the create form and on neither edit path. A practice created
+ * before either field existed — the founding one — had no way to acquire them,
+ * and one created with the wrong answer had no way to lose it. The register
+ * drew both as pills that nothing on the platform could change.
+ *
+ * `practiceType` is an input to the capability resolver, so the ceiling on what
+ * a practice may do was fixed by whoever first filled in a form; `specialty`
+ * now decides what the AI assistant tells patients their doctor practises.
+ */
+describe('what kind of practice this is can be corrected', () => {
+  before(async () => {
+    origin = await boot();
+    realAdminSecret = env.ADMIN_JWT_SECRET;
+    env.ADMIN_JWT_SECRET = ADMIN_SECRET;
+  });
+
+  after(async () => {
+    env.ADMIN_JWT_SECRET = realAdminSecret;
+    await shutdown();
+  });
+
+  beforeEach(async () => {
+    await wipe();
+    const admin = await PlatformAdmin.create({
+      email: 'ops@example.com',
+      name: 'Ops',
+      passwordHash: 'x',
+      isActive: true,
+    });
+    const { signAdminToken } = await import('../src/services/adminTokens.js');
+    token = signAdminToken(admin);
+  });
+
+  test('a practice that has neither can be given both', async () => {
+    const practice = await makePractice('Dr Dey Diabetes Care');
+    const res = await call('PATCH', `/admin/practices/${practice._id}`, {
+      practiceType: 'clinic',
+      specialty: 'diabetology',
+    });
+    assert.equal(res.status, 200);
+
+    const after = await Practice.findById(practice._id).lean();
+    assert.equal(after.practiceType, 'clinic');
+    assert.equal(after.specialty, 'diabetology');
+  });
+
+  test('and one set by mistake can be cleared back to nothing', async () => {
+    // `null` is a real value the resolver reads as unclassified. Without a way
+    // back, a wrong answer is permanent.
+    const practice = await makePractice('Test Practice', {
+      practiceType: 'clinic',
+      specialty: 'diabetology',
+    });
+    await call('PATCH', `/admin/practices/${practice._id}`, { specialty: '' });
+
+    const after = await Practice.findById(practice._id).lean();
+    assert.equal(after.specialty ?? null, null, 'an emptied box stored a blank string');
+  });
+
+  test('the change is recorded with what it used to be', async () => {
+    const practice = await makePractice('Test Practice', { specialty: 'diabetology' });
+    await call('PATCH', `/admin/practices/${practice._id}`, { specialty: 'cardiology' });
+
+    const entry = await AdminAuditLog.findOne({ action: 'admin.practice.edit' }).lean();
+    assert.equal(entry.before.specialty, 'diabetology');
+    assert.equal(entry.after.specialty, 'cardiology');
+  });
+
+  test('and a type outside the vocabulary is refused', async () => {
+    // The type is an input to the capability resolver, and a value it has never
+    // heard of resolves as unclassified — which permits everything.
+    const practice = await makePractice('Test Practice');
+    const res = await call('PATCH', `/admin/practices/${practice._id}`, {
+      practiceType: 'wellness_centre',
+    });
+    assert.equal(res.status, 400);
+  });
+});

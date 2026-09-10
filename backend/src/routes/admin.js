@@ -1553,7 +1553,24 @@ router.get(
   }),
 );
 
-/** Correct the details on the letterhead. */
+/**
+ * Correct the details on the letterhead, and what kind of practice this is.
+ *
+ * ---- Type and specialty were settable once and never again --------------
+ *
+ * Both were on the create form and on neither edit path, so a practice created
+ * before either field existed had no way to acquire them and a practice
+ * created with the wrong one had no way to lose it. The register drew both as
+ * pills and there was no screen anywhere that could change what they said.
+ *
+ * That is not cosmetic. `practiceType` is an input to the capability resolver,
+ * so the ceiling on what a practice may do was fixed at the moment somebody
+ * filled in a form; and `specialty` now decides what the AI assistant tells
+ * patients their doctor practises.
+ *
+ * Nullable, both. `null` is a real value the resolver reads as unclassified,
+ * and an operator who set one by mistake needs the way back.
+ */
 router.patch(
   '/practices/:id',
   validate({
@@ -1563,20 +1580,35 @@ router.patch(
       doctorDisplayName: z.string().trim().max(160).optional(),
       registrationNo: z.string().trim().max(60).optional(),
       notes: z.string().trim().max(2000).optional(),
+      practiceType: z.enum(Object.values(PRACTICE_TYPE)).nullable().optional(),
+      specialty: z.string().trim().max(80).nullable().optional(),
     }),
   }),
   asyncHandler(async (req, res) => {
     const practice = await Practice.findById(req.params.id);
     if (!practice) throw notFound('Practice not found');
 
-    const fields = ['name', 'tagline', 'doctorDisplayName', 'registrationNo', 'notes'];
+    const fields = [
+      'name',
+      'tagline',
+      'doctorDisplayName',
+      'registrationNo',
+      'notes',
+      'practiceType',
+      'specialty',
+    ];
     const before = {};
     const after = {};
     for (const f of fields) {
       if (req.body[f] === undefined || req.body[f] === practice[f]) continue;
+      // An emptied box means "this practice has no answer", which the model
+      // and the resolver both spell `null`. Storing '' would be a third state
+      // that reads as set and behaves as unset.
+      const value = req.body[f] === '' ? null : req.body[f];
+      if (value === (practice[f] ?? null)) continue;
       before[f] = practice[f] ?? null;
-      after[f] = req.body[f];
-      practice[f] = req.body[f];
+      after[f] = value;
+      practice[f] = value;
     }
     if (!Object.keys(after).length) return res.json({ practice: practice.toPublic() });
 
