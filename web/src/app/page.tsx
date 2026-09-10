@@ -53,14 +53,14 @@ export default function OverviewPage() {
     try {
       const [over, list] = await Promise.all([
         api<Overview>("/admin/overview"),
-        api<{ items: PracticeRow[] }>("/admin/practices"),
+        // Five, newest, from the server. This used to fetch the whole register
+        // and sort it here — harmless while the endpoint was unbounded, and
+        // twenty-five rows across the wire to render five once it started
+        // paging.
+        api<{ items: PracticeRow[] }>("/admin/practices?sort=newest&limit=5"),
       ]);
       setO(over);
-      setRecent(
-        [...list.items]
-          .sort((a, b) => +new Date(b.createdAt) - +new Date(a.createdAt))
-          .slice(0, 5),
-      );
+      setRecent(list.items);
     } catch (ex) {
       setError((ex as ApiError).message);
     }

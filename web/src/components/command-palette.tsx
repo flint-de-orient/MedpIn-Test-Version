@@ -64,15 +64,40 @@ export function CommandPalette({
     }
   }, [open]);
 
-  // Loaded once per opening rather than once per keystroke.
+  /*
+   * Asked of the server, as you type.
+   *
+   * This used to load every practice once per opening and filter them here,
+   * which was right while the register was unbounded. The moment that endpoint
+   * started paging, this became a search that silently covered only the first
+   * twenty-five — finding nothing for the twenty-sixth practice and saying so
+   * exactly as if it did not exist.
+   *
+   * So it queries instead, debounced by the same 250ms as the register. Eight
+   * results, because this is a jump-to rather than a browser: somebody who
+   * needs to see a list is one keystroke from the register itself.
+   */
   useEffect(() => {
     if (!open) return;
-    api<{ items: PracticeRow[] }>("/admin/practices")
-      .then((out) => setPractices(out.items))
-      .catch(() => {
-        /* navigation still works without them */
-      });
-  }, [open]);
+
+    const q = query.trim();
+    if (!q) {
+      setPractices([]);
+      return;
+    }
+
+    const timer = setTimeout(() => {
+      api<{ items: PracticeRow[] }>(
+        `/admin/practices?q=${encodeURIComponent(q)}&limit=8&sort=name`,
+      )
+        .then((out) => setPractices(out.items))
+        .catch(() => {
+          /* navigation still works without them */
+        });
+    }, 250);
+
+    return () => clearTimeout(timer);
+  }, [open, query]);
 
   const results = useMemo<Result[]>(() => {
     const q = query.trim().toLowerCase();
