@@ -23,6 +23,7 @@ import {
   IconSearch,
   IconSun,
   Logo,
+  IconBilling,
 } from "@/components/icons";
 
 type Item = { href: string; label: string; Icon: (p: { className?: string }) => React.ReactElement };
@@ -33,6 +34,7 @@ const SECTIONS: { heading: string | null; items: Item[] }[] = [
     items: [
       { href: "/", label: "Overview", Icon: IconOverview },
       { href: "/practices/", label: "Practices", Icon: IconPractice },
+      { href: "/billing/", label: "Billing", Icon: IconBilling },
       { href: "/analytics/", label: "Analytics", Icon: IconAnalytics },
       { href: "/audit/", label: "Audit", Icon: IconAudit },
     ],

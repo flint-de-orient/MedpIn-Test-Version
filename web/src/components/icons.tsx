@@ -46,6 +46,15 @@ export const IconAnalytics = ({ className }: Props) => (
   </svg>
 );
 
+/** A receipt with a torn edge: a bill, rather than a card or a currency sign. */
+export const IconBilling = ({ className }: Props) => (
+  <svg {...base} className={className}>
+    <path d="M5 3v18l2.5-1.5L10 21l2.5-1.5L15 21l2.5-1.5L20 21V3l-2.5 1.5L15 3l-2.5 1.5L10 3 7.5 4.5Z" />
+    <path d="M9 8.5h7" />
+    <path d="M9 13h5" />
+  </svg>
+);
+
 /** A shield with a clock hand: what happened, and that it is kept. */
 export const IconAudit = ({ className }: Props) => (
   <svg {...base} className={className}>

@@ -249,3 +249,56 @@ export const PLAN_LABELS: Record<Plan, string> = {
   professional: "Professional",
   enterprise: "Enterprise",
 };
+
+/**
+ * One tier, as the server composes it.
+ *
+ * Capabilities come from the resolver the guards use and limits from the map
+ * assignment writes, so this page cannot disagree with what a practice
+ * actually experiences. The price comes from Razorpay, and is null where it
+ * could not be fetched — never a figure this console invented.
+ */
+export type PlanRow = {
+  plan: Plan;
+  /** A trial is granted, not purchased. It belongs on the page, not in checkout. */
+  sellable: boolean;
+  capabilities: string[];
+  limits: { patients: number | null; staff: number | null; locations: number | null };
+  amount: number | null;
+  currency: string | null;
+  period: string | null;
+  interval: number | null;
+  providerPlanId: string | null;
+};
+
+export type SubscriptionRow = {
+  id: string;
+  practice: { id: string; name: string; plan: Plan } | null;
+  plan: Plan;
+  /** A downgrade asked for and not yet landed. */
+  pendingPlan: Plan | null;
+  status: string;
+  providerSubscriptionId: string;
+  currentPeriodEnd: string | null;
+  confirmedAt: string | null;
+  graceEndsAt: string | null;
+  createdAt: string;
+  /**
+   * Paying for one plan while sitting on another — a missed delivery, or an
+   * edit made over the top of one. The row worth interrupting for.
+   */
+  disagrees: boolean;
+};
+
+/** How a status reads, and how alarming it is. */
+export const SUBSCRIPTION_LABELS: Record<string, string> = {
+  created: "Not started",
+  authenticated: "Authorised",
+  active: "Active",
+  pending: "Payment retrying",
+  halted: "Payment failed",
+  paused: "Paused",
+  cancelled: "Cancelled",
+  completed: "Completed",
+  expired: "Expired",
+};
