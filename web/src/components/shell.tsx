@@ -29,9 +29,18 @@ import {
 
 type Item = { href: string; label: string; Icon: (p: { className?: string }) => React.ReactElement };
 
-const SECTIONS: { heading: string | null; items: Item[] }[] = [
+/*
+ * The nav, and the only description of where each page sits.
+ *
+ * Two of these groups existed with no name, which was fine while the sidebar
+ * was the only thing reading them. The breadcrumb reads them too now, so an
+ * unnamed group would have been a page with no parent — and naming one in the
+ * breadcrumb instead would be two descriptions of one hierarchy, disagreeing
+ * the first time either moved.
+ */
+const SECTIONS: { heading: string; items: Item[] }[] = [
   {
-    heading: null,
+    heading: "Platform",
     items: [
       { href: "/", label: "Overview", Icon: IconOverview },
       { href: "/practices/", label: "Practices", Icon: IconPractice },
@@ -45,10 +54,19 @@ const SECTIONS: { heading: string | null; items: Item[] }[] = [
     items: [{ href: "/admins/", label: "Administrators", Icon: IconAdmins }],
   },
   {
-    heading: null,
+    heading: "Personal",
     items: [{ href: "/account/", label: "Account", Icon: IconAccount }],
   },
 ];
+
+/** Where a path sits, for the line above every page title. */
+function trailFor(path: string) {
+  for (const section of SECTIONS) {
+    const item = section.items.find((i) => i.href === path);
+    if (item) return { section: section.heading, page: item.label };
+  }
+  return null;
+}
 
 const ALL = SECTIONS.flatMap((s) => s.items);
 
@@ -151,6 +169,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
               operators they were unprotected. Not on the screen that fixes it,
               where it would be a banner pointing at the button underneath it. */}
           {!hasFactor && path !== "/account/" ? <TotpNag /> : null}
+          <Trail path={path} />
           {children}
         </main>
 
@@ -379,5 +398,37 @@ function ThemeToggle() {
     >
       <Icon className="size-[17px]" />
     </button>
+  );
+}
+
+/**
+ * Where this page sits, above its title.
+ *
+ * Read from SECTIONS, which is what draws the sidebar — so the line above the
+ * title and the group the nav highlights cannot disagree.
+ *
+ * Not a navigation control. Every page here is one level down, so the parent
+ * would be a link to nothing new; this says where you are, and the sidebar is
+ * how you leave. A page with no entry — a detail behind a query parameter —
+ * renders nothing rather than guessing, and carries its own back link.
+ */
+function Trail({ path }: { path: string }) {
+  const trail = trailFor(path);
+  if (!trail) return null;
+
+  return (
+    <p className="text-muted-foreground mb-2 text-micro tracking-[0.06em] uppercase">
+      {/*
+        The hierarchy is carried by colour and weight, not by dimming. The
+        contrast ratchet refused the first version of this line — an
+        `opacity-70` separator and a `text-foreground/70` page name, both
+        below the palette's floor.
+      */}
+      {trail.section}
+      <span aria-hidden className="px-1.5">
+        /
+      </span>
+      <span className="text-foreground font-medium">{trail.page}</span>
+    </p>
   );
 }

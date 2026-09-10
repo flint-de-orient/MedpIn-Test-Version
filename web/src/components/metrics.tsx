@@ -89,40 +89,54 @@ export function MetricCard({
         ) : null}
       </div>
 
-      <span className="tnum truncate text-metric font-semibold tracking-tight">
-        {typeof value === "number" ? value.toLocaleString() : value}
-      </span>
+      {/*
+        The figure and what it did, on one baseline.
+        
+        The movement used to sit on its own line under the number, which read
+        as a second fact rather than as a property of the first — and left the
+        card with three stacked lines of roughly equal weight. Beside it, the
+        number is unambiguously the thing and the delta qualifies it.
+      */}
+      <div className="flex flex-wrap items-baseline gap-x-2">
+        <span className="tnum truncate text-metric font-semibold tracking-tight">
+          {typeof value === "number" ? value.toLocaleString() : value}
+        </span>
+        {t ? (
+          <span
+            className={cn(
+              "text-caption font-medium whitespace-nowrap tabular-nums",
+              t.direction === "up"
+                ? "text-ok"
+                : t.direction === "down"
+                  ? "text-stopped"
+                  : "text-muted-foreground",
+            )}
+          >
+            {t.arrow} {t.text}
+          </span>
+        ) : null}
+      </div>
 
+      {/*
+        A rule under the figure, on every card.
+        
+        It separates the number from the sentence explaining it, which is what
+        makes four cards in a row read as four answers rather than as twelve
+        lines of text. `mt-auto` so the rule and description sit at the bottom
+        of whichever card is tallest instead of floating mid-air.
+      */}
       <p
         className={cn(
-          "text-muted-foreground min-h-[1rem] text-micro leading-snug text-pretty",
+          "text-muted-foreground border-border/70 mt-auto min-h-[1rem] border-t pt-2.5 text-micro leading-snug text-pretty",
           // The chevron lands in this line's bottom-right corner.
           href && "pr-5",
         )}
       >
-        {t ? (
-          <>
-            <span
-              className={cn(
-                "font-medium whitespace-nowrap tabular-nums",
-                t.direction === "up"
-                  ? "text-ok"
-                  : t.direction === "down"
-                    ? "text-stopped"
-                    : "text-muted-foreground",
-              )}
-            >
-              {t.arrow} {t.text}
-            </span>{" "}
-            vs 30 days ago
-          </>
-        ) : (
-          hint
-        )}
+        {t ? (hint ?? "vs 30 days ago") : hint}
       </p>
 
       {breakdown?.length ? (
-        <dl className="border-border/70 mt-0.5 flex flex-col gap-1 border-t pt-2.5">
+        <dl className="border-border/70 -mt-0.5 flex flex-col gap-1 border-t pt-2.5">
           {breakdown.map((b) => (
             <div key={b.label} className="flex items-baseline justify-between gap-2">
               <dt className="text-muted-foreground truncate text-micro">{b.label}</dt>
@@ -136,11 +150,18 @@ export function MetricCard({
     </>
   );
 
-  // `self-start` so one card carrying a breakdown does not stretch the other
-  // three into three-quarters of whitespace. Uneven heights are the point:
-  // they are what makes the row read as a hierarchy rather than a template.
+  /*
+   * Full height, not `self-start`.
+   *
+   * These were left to shrink to their own content so a card carrying a
+   * breakdown did not stretch the others into whitespace. Now that every card
+   * ends with a rule and a description, ragged bottoms put four rules at four
+   * different heights across one row, which reads as a mistake rather than as
+   * a hierarchy. The cards match; `mt-auto` on the description keeps the rules
+   * aligned and lets the breakdown take the slack.
+   */
   const shell =
-    "border-border bg-card flex min-w-0 flex-col gap-3 self-start rounded-lg border p-4";
+    "border-border bg-card flex h-full min-w-0 flex-col gap-3 rounded-lg border p-4";
 
   if (!href) return <div className={shell}>{body}</div>;
 

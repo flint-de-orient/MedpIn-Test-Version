@@ -12,20 +12,18 @@ import {
   Failed,
   Loading,
   Panel,
-  Pill,
-  statusTone,
   when,
+  fullWhen,
 } from "@/components/primitives";
 import {
   IconAdmins,
   IconAlert,
-  IconCheck,
   IconChevron,
   IconPatients,
   IconPin,
   IconPractice,
 } from "@/components/icons";
-import type { Overview, PracticeRow } from "@/lib/types";
+import type { AuditPage, AuditRow, Overview } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 /**
@@ -45,7 +43,7 @@ export default function OverviewPage() {
   const { admin } = useSession();
   const { items: attention } = useAttention();
   const [o, setO] = useState<Overview | null>(null);
-  const [recent, setRecent] = useState<PracticeRow[] | null>(null);
+  const [recent, setRecent] = useState<AuditRow[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -53,11 +51,19 @@ export default function OverviewPage() {
     try {
       const [over, list] = await Promise.all([
         api<Overview>("/admin/overview"),
-        // Five, newest, from the server. This used to fetch the whole register
-        // and sort it here — harmless while the endpoint was unbounded, and
-        // twenty-five rows across the wire to render five once it started
-        // paging.
-        api<{ items: PracticeRow[] }>("/admin/practices?sort=newest&limit=5"),
+        /*
+         * What has been done here lately.
+         *
+         * This used to be the five newest practices, which on a platform that
+         * gains one a month is a panel that never changes. The trail already
+         * records a practice being created, so this is the same information
+         * plus everything else somebody did — who suspended a practice an hour
+         * ago being the question an operator actually arrives with.
+         *
+         * `kind=changes`, because reads outnumber the rest several to one and
+         * a feed of "Ops opened the register" is a feed nobody reads twice.
+         */
+        api<AuditPage>("/admin/audit?kind=changes&limit=6"),
       ]);
       setO(over);
       setRecent(list.items);
@@ -155,14 +161,14 @@ export default function OverviewPage() {
 
       <div className="grid min-w-0 gap-5 lg:grid-cols-[1.4fr_1fr]">
         <Panel
-          title="Recently added"
-          description="The five newest practices."
+          title="Recent activity"
+          description="What has been done here, newest first."
           actions={
             <Link
-              href="/practices/"
+              href="/audit/?kind=changes"
               className="text-primary text-caption underline underline-offset-4"
             >
-              All practices
+              Full audit trail
             </Link>
           }
         >
@@ -170,43 +176,40 @@ export default function OverviewPage() {
             <div className="divide-border divide-y">
               {[0, 1, 2].map((i) => (
                 <div key={i} className="flex items-center gap-3 px-4 py-3">
-                  <div className="bg-muted h-3 w-40 animate-pulse rounded-sm" />
-                  <div className="bg-muted ml-auto h-3 w-16 animate-pulse rounded-sm" />
+                  <div className="bg-muted h-3 w-48 animate-pulse rounded-sm" />
+                  <div className="bg-muted ml-auto h-3 w-14 animate-pulse rounded-sm" />
                 </div>
               ))}
             </div>
           ) : recent.length === 0 ? (
             <Empty
-              title="No practices yet"
-              hint="They will appear here once created."
+              title="Nothing has been done yet"
+              hint="Creating a practice is the first thing that will appear here."
               action={
                 <Link
                   href="/practices/"
                   className="bg-primary text-primary-foreground rounded-sm px-3 py-1.5 text-caption font-medium"
                 >
-                  Add the first one
+                  Add the first practice
                 </Link>
               }
             />
           ) : (
             <ul className="divide-border divide-y">
-              {recent.map((p) => (
-                <li key={p.id}>
-                  <Link
-                    href={`/practices/?id=${p.id}`}
-                    className="hover:bg-secondary/50 flex items-center gap-3 px-4 py-3 transition-colors"
+              {recent.map((r) => (
+                <li
+                  key={r.id}
+                  className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 px-4 py-2.5"
+                >
+                  <span className="min-w-0 flex-1 text-body">
+                    <Did row={r} />
+                  </span>
+                  <span
+                    className="text-muted-foreground tnum shrink-0 text-caption"
+                    title={fullWhen(r.at)}
                   >
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate text-body font-medium">
-                        {p.name}
-                      </span>
-                      <span className="text-muted-foreground text-caption">
-                        added {when(p.createdAt)}
-                      </span>
-                    </span>
-                    <Pill tone={statusTone(p.status)}>{p.status}</Pill>
-                    <IconChevron className="text-muted-foreground size-3.5 shrink-0" />
-                  </Link>
+                    {when(r.at)}
+                  </span>
                 </li>
               ))}
             </ul>
@@ -324,4 +327,65 @@ function greeting() {
   if (h < 12) return "Good morning";
   if (h < 17) return "Good afternoon";
   return "Good evening";
+}
+
+/**
+ * One entry, as a sentence.
+ *
+ * `admin.practice.plan` is the log's own vocabulary and belongs on the trail,
+ * where a column of it is scannable and exact. Six of them stacked in a narrow
+ * panel is not a summary of anything.
+ *
+ * Every verb is mapped by hand and anything unmapped falls through to the raw
+ * action, so a route added next week reads awkwardly rather than silently
+ * describing itself as something it is not.
+ */
+const DID: Record<string, string> = {
+  "admin.practice.create": "created",
+  "admin.practice.edit": "edited",
+  "admin.practice.plan": "changed the plan for",
+  "admin.practice.trial.extend": "extended the trial for",
+  "admin.practice.verified": "verified",
+  "admin.member.update": "changed a membership at",
+  "admin.subscription.pause": "paused the subscription for",
+  "admin.subscription.resume": "resumed the subscription for",
+  "admin.subscription.grace": "granted grace to",
+  "admin.admin.create": "added an administrator",
+  "admin.admin.update": "changed an administrator",
+  "admin.totp.enabled": "turned on their authenticator",
+  "admin.totp.disabled": "turned off their authenticator",
+  "admin.passkey.added": "added a passkey",
+  "admin.passkey.removed": "removed a passkey",
+  "admin.login": "signed in",
+  "admin.logout": "signed out",
+};
+
+function Did({ row }: { row: AuditRow }) {
+  const verb = DID[row.action];
+  // The account, not the person: the log records an email and inventing a
+  // display name from it would be a name nobody chose.
+  const who = row.admin.split("@")[0];
+
+  return (
+    <>
+      <span className="font-medium">{who}</span>{" "}
+      {verb ? (
+        <span className="text-muted-foreground">{verb}</span>
+      ) : (
+        <span className="text-muted-foreground font-mono text-caption">{row.action}</span>
+      )}{" "}
+      {row.practice ? (
+        row.practice.name ? (
+          <Link
+            href={`/practices/?id=${row.practice.id}`}
+            className="hover:text-primary underline decoration-transparent underline-offset-4 transition-colors hover:decoration-current"
+          >
+            {row.practice.name}
+          </Link>
+        ) : (
+          <span className="text-muted-foreground">a practice since deleted</span>
+        )
+      ) : null}
+    </>
+  );
 }

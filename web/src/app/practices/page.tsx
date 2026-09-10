@@ -194,6 +194,41 @@ function Detail() {
         whoever does not know them and invisible to whoever does. The warning
         is one line. What is left above the buttons is the state, in a row.
       */}
+      {/*
+        What this practice has, before scrolling to find out.
+
+        The reference for this screen used tabs carrying counts —
+        "Locations (3) · Departments (6) · People (42)" — and the count is the
+        useful half: it answers "does this practice even have departments"
+        without opening anything.
+        
+        Tabs are not, because the panel directly below is the one this screen
+        exists for. Its own note says so: decisions first, and everything
+        beneath is context for them. Putting Decisions behind a tab would hide
+        the four buttons an operator came to press. So the counts sit in a jump
+        bar and the sections stay on one page, which also keeps them printable
+        and searchable with the browser's own find.
+      */}
+      <nav
+        aria-label="Sections of this practice"
+        className="border-border bg-card flex flex-wrap items-center gap-x-1 gap-y-1 rounded-md border px-2 py-1.5"
+      >
+        {[
+          { id: "staff", label: "Staff", n: d.members.length },
+          { id: "locations", label: "Locations", n: d.locations.length },
+          { id: "departments", label: "Departments", n: d.departments.length },
+        ].map((sec) => (
+          <a
+            key={sec.id}
+            href={`#${sec.id}`}
+            className="hover:bg-secondary rounded-sm px-2.5 py-1 text-caption font-medium transition-colors"
+          >
+            {sec.label}
+            <span className="text-muted-foreground tnum ml-1.5 font-normal">{sec.n}</span>
+          </a>
+        ))}
+      </nav>
+
       <Panel title="Decisions">
         <div className="border-border flex flex-wrap items-center gap-x-5 gap-y-2 border-b px-4 py-2.5 text-caption">
           <Info
@@ -313,6 +348,7 @@ function Detail() {
           <Panel
             id="staff"
             title="Staff"
+            count={d.members.length}
             description="Who works here, and what each of them may do."
           >
             {d.members.length === 0 ? (
@@ -370,6 +406,7 @@ function Detail() {
           <Panel
             id="locations"
             title="Locations"
+            count={d.locations.length}
             description="Where this practice sees patients."
           >
             {d.locations.length === 0 ? (
@@ -401,6 +438,7 @@ function Detail() {
           <Panel
             id="departments"
             title="Departments"
+            count={d.departments.length}
             description="Each one can carry its own AI assistant. A department with no scope has no assistant — never a general one."
           >
             {d.departments.length === 0 ? (

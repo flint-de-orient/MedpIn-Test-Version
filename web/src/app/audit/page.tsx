@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { Suspense, useCallback, useEffect, useState } from "react";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { api, ApiError } from "@/lib/api";
 import type { AuditPage, AuditRow } from "@/lib/types";
 import { Empty, Failed, Loading, Panel, when, fullWhen } from "@/components/primitives";
@@ -38,7 +38,34 @@ function Audit() {
    * In the URL rather than in state, so it is a link the practice view can
    * hold and a page an operator can send to somebody.
    */
-  const practice = useSearchParams().get("practice");
+  const params = useSearchParams();
+  const router = useRouter();
+  const practice = params.get("practice");
+
+  /*
+   * In the URL, so the overview can link straight to it.
+   *
+   * It began as component state, and the overview's "Full audit trail" link
+   * then carried `?kind=changes` to a page that read nothing — a link that
+   * silently opens the unfiltered log looks exactly like one that worked.
+   * linksLand caught it, which is what that contract is for.
+   *
+   * Read through a whitelist: a hand-edited `?kind=nonsense` becomes "all"
+   * rather than reaching the server as a value the validator will refuse.
+   */
+  const kind: "all" | "changes" = params.get("kind") === "changes" ? "changes" : "all";
+
+  const setKind = useCallback(
+    (next: "all" | "changes") => {
+      const q = new URLSearchParams(params.toString());
+      if (next === "all") q.delete("kind");
+      else q.set("kind", next);
+      // `replace`, not `push`: flicking between two chips should not fill the
+      // history with entries somebody has to press Back through.
+      router.replace(`/audit/${q.size ? `?${q}` : ""}`, { scroll: false });
+    },
+    [params, router],
+  );
 
   const [rows, setRows] = useState<AuditRow[] | null>(null);
   const [cursors, setCursors] = useState<(string | null)[]>([null]);
@@ -47,6 +74,25 @@ function Audit() {
 
   const [action, setAction] = useState("");
   const [admin, setAdmin] = useState("");
+  const [total, setTotal] = useState(0);
+
+  /*
+   * Typed, and what was typed 250ms ago.
+   *
+   * The reason is the only free prose in the log, so this is the only filter
+   * that can find "the suspension explained by a ticket number" — and a
+   * request per keystroke against a growing collection is how a search box
+   * becomes the slowest thing on the page.
+   */
+  const [query, setQuery] = useState("");
+  const [debounced, setDebounced] = useState("");
+  useEffect(() => {
+    const t = setTimeout(() => setDebounced(query.trim()), 250);
+    return () => clearTimeout(t);
+  }, [query]);
+
+  const [since, setSince] = useState("");
+  const [until, setUntil] = useState("");
   const [facets, setFacets] = useState<{ actions: string[]; admins: string[] }>({
     actions: [],
     admins: [],
@@ -63,16 +109,24 @@ function Audit() {
       if (practice) params.set("practice", practice);
       if (action) params.set("action", action);
       if (admin) params.set("admin", admin);
+      if (kind !== "all") params.set("kind", kind);
+      if (debounced) params.set("q", debounced);
+      if (since) params.set("since", new Date(since).toISOString());
+      // The whole of the closing day, not midnight at the start of it. A range
+      // ending "today" that excludes today is the commonest way a date filter
+      // hides the row somebody is looking for.
+      if (until) params.set("until", new Date(until + "T23:59:59.999").toISOString());
       if (before) params.set("before", before);
 
       const out = await api<AuditPage>(`/admin/audit?${params}`);
       setRows(out.items);
       setHasMore(out.hasMore);
+      setTotal(out.total ?? out.items.length);
     } catch (ex) {
       setError((ex as ApiError).message);
       setRows([]);
     }
-  }, [practice, action, admin, before]);
+  }, [practice, action, admin, kind, debounced, since, until, before]);
 
   useEffect(() => {
     void load();
@@ -132,6 +186,64 @@ function Audit() {
         </div>
       ) : null}
 
+      {/*
+        The filters, above the table rather than tucked into its header.
+
+        Five controls no longer fit on one line beside a title, and a filter an
+        operator cannot see is a filter they do not use. Free text first: it is
+        the one that reaches the reason, which is the only prose in the log.
+      */}
+      <div className="border-border bg-card flex flex-wrap items-center gap-2 rounded-md border px-4 py-3">
+        <input
+          value={query}
+          onChange={(e) => resetTo(() => setQuery(e.target.value))}
+          placeholder="Search a reason or an operator…"
+          aria-label="Search the reason and the operator"
+          className="border-input bg-card focus-visible:border-ring min-w-[14rem] flex-1 rounded-sm border px-2.5 py-1.5 text-body outline-none transition-colors"
+        />
+
+        {/*
+          Reads are recorded on purpose and outnumber everything else several
+          to one, so the whole log answers "what has been done here" badly.
+        */}
+        <div className="border-border flex shrink-0 overflow-hidden rounded-sm border">
+          {(["all", "changes"] as const).map((k) => (
+            <button
+              key={k}
+              type="button"
+              onClick={() => resetTo(() => setKind(k))}
+              className={cn(
+                "px-2.5 py-1.5 text-caption font-medium whitespace-nowrap transition-colors",
+                kind === k
+                  ? "bg-accent text-accent-foreground"
+                  : "text-muted-foreground hover:bg-secondary",
+              )}
+            >
+              {k === "all" ? "Everything" : "Changes only"}
+            </button>
+          ))}
+        </div>
+
+        <label className="text-muted-foreground flex shrink-0 items-center gap-1.5 text-caption">
+          From
+          <input
+            type="date"
+            value={since}
+            onChange={(e) => resetTo(() => setSince(e.target.value))}
+            className="border-input bg-card focus-visible:border-ring rounded-sm border px-2 py-1 text-caption outline-none"
+          />
+        </label>
+        <label className="text-muted-foreground flex shrink-0 items-center gap-1.5 text-caption">
+          to
+          <input
+            type="date"
+            value={until}
+            onChange={(e) => resetTo(() => setUntil(e.target.value))}
+            className="border-input bg-card focus-visible:border-ring rounded-sm border px-2 py-1 text-caption outline-none"
+          />
+        </label>
+      </div>
+
       <Panel
         title="Actions"
         actions={
@@ -160,12 +272,16 @@ function Audit() {
                 </option>
               ))}
             </select>
-            {action || admin ? (
+            {action || admin || query || since || until || kind !== "all" ? (
               <button
                 onClick={() =>
                   resetTo(() => {
                     setAction("");
                     setAdmin("");
+                    setQuery("");
+                    setSince("");
+                    setUntil("");
+                    setKind("all");
                   })
                 }
                 className="text-primary text-micro underline underline-offset-4"
@@ -185,14 +301,14 @@ function Audit() {
             title={
               practice
                 ? "Nothing has been done to this practice yet"
-                : action || admin
+                : action || admin || query || since || until || kind !== "all"
                   ? "Nothing matches those filters"
                   : "Nothing recorded yet"
             }
             hint={
               practice
                 ? "Every action taken on it will appear here."
-                : action || admin
+                : action || admin || query || since || until || kind !== "all"
                   ? "Clear them to see the whole log."
                   : "Actions appear here as soon as somebody takes one."
             }
@@ -297,8 +413,17 @@ function Audit() {
 
         {rows && rows.length > 0 ? (
           <div className="border-border flex items-center justify-between border-t px-4 py-2.5">
+            {/*
+              What matched, not which page. "Page 3" cannot say whether a
+              filter caught almost everything or almost nothing, which is the
+              only thing worth knowing after typing one.
+            */}
             <span className="text-muted-foreground text-caption">
-              Page <span className="tnum">{page + 1}</span>
+              <span className="tnum">{(page * 50 + 1).toLocaleString()}</span>–
+              <span className="tnum">{(page * 50 + rows.length).toLocaleString()}</span> of{" "}
+              <span className="tnum text-foreground font-medium">
+                {total.toLocaleString()}
+              </span>
             </span>
             <div className="flex gap-2">
               <button

@@ -290,6 +290,7 @@ export function Info({
 export function Panel({
   id,
   title,
+  count,
   description,
   actions,
   children,
@@ -298,6 +299,15 @@ export function Panel({
   /** Anchor, so a count elsewhere on the page can point at the list. */
   id?: string;
   title?: string;
+  /**
+   * How many things are in it, beside the title.
+   *
+   * "Departments" is a heading; "Departments 6" is one an operator can act on
+   * without opening it, and "Departments 0" is the answer to the question they
+   * came with. Rendered even at zero — a section that is empty is a fact, and
+   * the panel is showing its empty state directly underneath either way.
+   */
+  count?: number;
   description?: string;
   actions?: React.ReactNode;
   children: React.ReactNode;
@@ -322,7 +332,12 @@ export function Panel({
       {title ? (
         <header className="border-border flex flex-wrap items-start justify-between gap-x-4 gap-y-2 border-b px-4 py-3">
           <div className="min-w-0">
-            <h2 className="text-body font-semibold tracking-tight">{title}</h2>
+            <h2 className="text-body font-semibold tracking-tight">
+              {title}
+              {count === undefined ? null : (
+                <span className="text-muted-foreground tnum ml-1.5 font-normal">{count}</span>
+              )}
+            </h2>
             {description ? (
               <p className="text-muted-foreground mt-0.5 text-caption leading-relaxed">
                 {description}

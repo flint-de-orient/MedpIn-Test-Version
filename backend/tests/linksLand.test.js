@@ -75,7 +75,7 @@ const ACCEPTS = {
   /// An id, so it cannot be checked here beyond its name. The trail scopes to
   /// one practice, which is how the practice view answers "what have we done
   /// to them" without keeping a second copy of the log.
-  '/audit/': { practice: null },
+  '/audit/': { practice: null, kind: ['all', 'changes'] },
   '/account/': {},
   '/': {},
 };

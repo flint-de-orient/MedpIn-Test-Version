@@ -189,6 +189,13 @@ export type AuditRow = {
 export type AuditPage = {
   items: AuditRow[];
   hasMore: boolean;
+  /**
+   * How many match the filters, not how many are on the page.
+   *
+   * "Page 3" cannot say whether a filter matched almost everything or almost
+   * nothing, which is the only thing worth knowing after typing one.
+   */
+  total: number;
   nextBefore: string | null;
 };
 

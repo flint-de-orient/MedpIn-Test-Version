@@ -130,6 +130,136 @@ describe('the audit trail names its target', () => {
     assert.equal(row.userAgent, 'a-browser/1.0');
   });
 
+  test('the changes filter drops the reads and keeps the rest', async () => {
+    // Reads are recorded on purpose and outnumber the rest several to one, so
+    // "what has been done to this platform" is a question the whole log
+    // answers badly.
+    const practice = await makePractice('Sunrise Diabetes Care');
+    for (const action of [
+      'admin.practice.read',
+      'admin.practices.list',
+      'admin.practice.billing.read',
+      'admin.practice.plan',
+      'admin.practice.edit',
+    ]) {
+      await AdminAuditLog.record({ admin, action, practice: practice._id });
+    }
+
+    const all = await call('/admin/audit');
+    assert.equal(all.body.items.length, 5);
+
+    const changes = await call('/admin/audit?kind=changes');
+    assert.deepEqual(
+      changes.body.items.map((r) => r.action).sort(),
+      ['admin.practice.edit', 'admin.practice.plan'],
+    );
+  });
+
+  test('and a prefix filter still narrows within it', async () => {
+    // Two rules on one field. Written as separate keys they would discard one
+    // another, and the survivor would look like the filter working.
+    const practice = await makePractice('Sunrise Diabetes Care');
+    for (const action of ['admin.practice.read', 'admin.practice.edit', 'admin.admin.create']) {
+      await AdminAuditLog.record({ admin, action, practice: practice._id });
+    }
+
+    const res = await call('/admin/audit?kind=changes&action=admin.practice');
+    assert.deepEqual(res.body.items.map((r) => r.action), ['admin.practice.edit']);
+  });
+
+  test('free text finds the reason somebody wrote', async () => {
+    // The only free prose in the log, and the only column nothing could search.
+    const practice = await makePractice('Sunrise Diabetes Care');
+    await AdminAuditLog.record({
+      admin,
+      action: 'admin.practice.plan',
+      practice: practice._id,
+      reason: 'Approved against ticket CC-2026-88.',
+    });
+    await AdminAuditLog.record({
+      admin,
+      action: 'admin.practice.edit',
+      practice: practice._id,
+      reason: 'Corrected a typo.',
+    });
+
+    const res = await call('/admin/audit?q=CC-2026');
+    assert.equal(res.body.items.length, 1);
+    assert.match(res.body.items[0].reason, /CC-2026-88/);
+  });
+
+  test('and a regular expression typed into it is text, not a pattern', async () => {
+    const practice = await makePractice('Sunrise Diabetes Care');
+    await AdminAuditLog.record({
+      admin,
+      action: 'admin.practice.edit',
+      practice: practice._id,
+      reason: 'Corrected a typo.',
+    });
+    const res = await call('/admin/audit?q=' + encodeURIComponent('.*'));
+    assert.equal(res.body.items.length, 0, 'the search box is a regular expression');
+  });
+
+  test('a date window narrows without breaking the pager', async () => {
+    /*
+     * `since`/`until` and `before` all narrow `at`. As separate keys in one
+     * object literal the last would win silently, and paging inside a date
+     * window would stop working in a way that looks like the log running out.
+     */
+    const practice = await makePractice('Sunrise Diabetes Care');
+    const day = (n) => new Date(Date.UTC(2026, 0, n));
+    for (const n of [1, 2, 3, 4, 5]) {
+      await AdminAuditLog.create({
+        admin: admin._id,
+        adminEmail: admin.email,
+        action: 'admin.practice.edit',
+        practice: practice._id,
+        at: day(n),
+      });
+    }
+
+    const window = await call(
+      '/admin/audit?since=' + day(2).toISOString() + '&until=' + day(4).toISOString(),
+    );
+    assert.equal(window.body.items.length, 3);
+    assert.equal(window.body.total, 3);
+
+    // And the cursor still moves inside it.
+    const paged = await call(
+      '/admin/audit?since=' + day(2).toISOString() + '&until=' + day(4).toISOString() +
+        '&before=' + day(4).toISOString(),
+    );
+    assert.equal(paged.body.items.length, 2, 'the window swallowed the cursor');
+  });
+
+  test('the total counts what matches, not what is on the page', async () => {
+    // "Page 3" cannot say whether a filter matched almost everything or almost
+    // nothing, which is the only thing worth knowing after typing one.
+    const practice = await makePractice('Sunrise Diabetes Care');
+    for (let i = 0; i < 7; i += 1) {
+      await AdminAuditLog.record({ admin, action: 'admin.practice.edit', practice: practice._id });
+    }
+
+    const res = await call('/admin/audit?limit=3');
+    assert.equal(res.body.items.length, 3);
+    assert.equal(res.body.total, 7);
+    assert.equal(res.body.hasMore, true);
+  });
+
+  test('and the total does not shrink as the pager moves', async () => {
+    // Counted against the filter minus the cursor. Including `before` would
+    // make the number fall with every page, which reads as the log deleting
+    // itself while somebody is auditing it.
+    const practice = await makePractice('Sunrise Diabetes Care');
+    for (let i = 0; i < 7; i += 1) {
+      await AdminAuditLog.record({ admin, action: 'admin.practice.edit', practice: practice._id });
+    }
+
+    const first = await call('/admin/audit?limit=3');
+    const next = await call('/admin/audit?limit=3&before=' + first.body.nextBefore);
+    assert.equal(next.body.total, 7, 'the total followed the cursor');
+  });
+
   test('naming the targets costs one query however long the page is', async () => {
     /*
      * Ten entries against two practices. A per-row lookup would be ten reads

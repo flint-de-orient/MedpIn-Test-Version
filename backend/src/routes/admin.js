@@ -1318,6 +1318,37 @@ router.get(
       practice: z.string().optional(),
       action: z.string().trim().max(80).optional(),
       admin: z.string().trim().max(160).optional(),
+
+      /**
+       * Free text, over the reason and the actor.
+       *
+       * The two dropdowns answer "which action" and "which operator", and
+       * neither answers "the suspension somebody explained by quoting a ticket
+       * number". The reason is the only free prose in the log and it was the
+       * only column nothing could search.
+       */
+      q: z.string().trim().max(120).optional(),
+
+      /**
+       * A window, rather than only a cursor.
+       *
+       * `before` pages backwards from now and cannot express "the week of the
+       * outage". Somebody auditing an incident knows the dates, not how many
+       * pages back they are.
+       */
+      since: z.coerce.date().optional(),
+      until: z.coerce.date().optional(),
+
+      /**
+       * Everything, or only what changed something.
+       *
+       * Reads are recorded on purpose and outnumber the rest several to one,
+       * so "what has been done to this platform" is a question the whole log
+       * answers badly. Derived from the action name rather than stored, so a
+       * route added tomorrow is classified without a migration.
+       */
+      kind: z.enum(['all', 'changes']).default('all'),
+
       /// An ISO timestamp from the previous page's last row. A cursor rather
       /// than an offset because the log grows while it is being read, and
       /// `skip` would show the same row twice or miss one entirely.
@@ -1326,15 +1357,57 @@ router.get(
     }),
   }),
   asyncHandler(async (req, res) => {
-    const { practice, action, admin, before, limit } = q(req);
+    const { practice, action, admin, q: text, since, until, kind, before, limit } = q(req);
+
+    const escape = (v) => v.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+    /*
+     * The operator's window and the pager's cursor, on one field.
+     *
+     * `before` pages backwards and `since`/`until` are the dates somebody
+     * typed, and all three narrow `at`. Built as one object because two `at`
+     * keys in an object literal silently discard the first — paging would stop
+     * working the moment anybody picked a date, and it would look like the log
+     * had run out.
+     */
+    const at = {
+      ...(since ? { $gte: since } : {}),
+      ...(until ? { $lte: until } : {}),
+      ...(before ? { $lt: before } : {}),
+    };
+
+    /*
+     * Reads out, when asked.
+     *
+     * `.read` and `.list` are the suffixes every read route in this namespace
+     * uses, so the rule is one expression rather than a list of every action
+     * that is not one — which would go stale the first Friday somebody adds a
+     * route. `$and` because `action` may already carry the prefix filter, and
+     * two `action` keys would discard one of them the same way.
+     */
+    const actionClauses = [
+      // A prefix, so "admin.practice" finds every practice action without the
+      // operator having to know the full name of each one.
+      ...(action ? [{ action: new RegExp('^' + escape(action)) }] : []),
+      ...(kind === 'changes' ? [{ action: { $not: /\.(read|list)$/ } }] : []),
+    ];
 
     const filter = {
       ...(practice ? { practice } : {}),
-      // A prefix, so "admin.practice" finds every practice action without the
-      // operator having to know the full name of each one.
-      ...(action ? { action: new RegExp('^' + action.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')) } : {}),
       ...(admin ? { adminEmail: admin } : {}),
-      ...(before ? { at: { $lt: before } } : {}),
+      ...(Object.keys(at).length ? { at } : {}),
+      ...(actionClauses.length ? { $and: actionClauses } : {}),
+      // The reason is the only free prose in the log and was the only column
+      // nothing could search. The actor comes along because "who was Sarah"
+      // and "what did Sarah say" are the same question asked twice.
+      ...(text
+        ? {
+            $or: [
+              { reason: new RegExp(escape(text), 'i') },
+              { adminEmail: new RegExp(escape(text), 'i') },
+            ],
+          }
+        : {}),
     };
 
     // One more than asked for: whether a next page exists is a fact about the
@@ -1347,6 +1420,26 @@ router.get(
 
     const hasMore = rows.length > limit;
     const page = hasMore ? rows.slice(0, limit) : rows;
+
+    /*
+     * How many match, not how many are on screen.
+     *
+     * "Page 3" tells an operator nothing: it cannot say whether a filter
+     * matched almost everything or almost nothing, which is the only thing
+     * worth knowing after typing one. The register already answers this and
+     * the trail did not.
+     *
+     * Counted against the filter minus the cursor — `before` is where the
+     * pager has got to, and including it would make the total shrink as
+     * somebody paged, which reads as the log deleting itself.
+     */
+    const { at: _cursorWindow, ...withoutCursor } = filter;
+    const total = await AdminAuditLog.countDocuments({
+      ...withoutCursor,
+      ...(since || until
+        ? { at: { ...(since ? { $gte: since } : {}), ...(until ? { $lte: until } : {}) } }
+        : {}),
+    });
 
     /*
      * Who it was done to.
@@ -1377,6 +1470,7 @@ router.get(
 
     res.json({
       hasMore,
+      total,
       nextBefore: hasMore ? page[page.length - 1].at : null,
       items: page.map((r) => ({
         id: String(r._id),
