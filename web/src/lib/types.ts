@@ -338,3 +338,12 @@ export type Revenue = {
   }[];
   conversion: { practices: number; converted: number; rate: number | null };
 };
+
+/**
+ * How many subscriptions are in each state, regardless of the current
+ * filter. Keyed by status, plus `all`.
+ *
+ * They go on the filter buttons and are the reason to press one: "Payment
+ * failed (8)" is a decision, "Payment failed" is a guess.
+ */
+export type SubscriptionCounts = Record<string, number>;

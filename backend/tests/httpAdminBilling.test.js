@@ -293,6 +293,54 @@ describe('the subscriptions list', () => {
     assert.equal(res.body.subscriptions[0].disagrees, false);
   });
 
+  test('the counts are of everything, not of the current filter', async () => {
+    /*
+     * The counts go on the filter buttons and are the reason to press one:
+     * "Payment failed (8)" is a decision, "Payment failed" is a guess.
+     *
+     * Counting within the filter would show the selected chip's own total
+     * beside every other chip reading zero — worse than no counts at all,
+     * because it looks like an answer.
+     */
+    const a = await makePractice('Sunrise Diabetes Care');
+    const b = await makePractice('Meridian Family Clinic');
+    const c = await makePractice('Riverside Polyclinic');
+    await Subscription.create([
+      {
+        practice: a._id,
+        providerSubscriptionId: 'sub_a',
+        plan: PLAN.PROFESSIONAL,
+        status: SUBSCRIPTION_STATUS.ACTIVE,
+      },
+      {
+        practice: b._id,
+        providerSubscriptionId: 'sub_b',
+        plan: PLAN.ESSENTIAL,
+        status: SUBSCRIPTION_STATUS.HALTED,
+      },
+      {
+        practice: c._id,
+        providerSubscriptionId: 'sub_c',
+        plan: PLAN.ESSENTIAL,
+        status: SUBSCRIPTION_STATUS.ACTIVE,
+      },
+    ]);
+
+    // Filtered to one row, and the counts still describe the platform.
+    const res = await call('GET', '/admin/billing/subscriptions?status=halted');
+    assert.equal(res.body.subscriptions.length, 1);
+    assert.equal(res.body.counts.active, 2, 'the counts followed the filter');
+    assert.equal(res.body.counts.halted, 1);
+    assert.equal(res.body.counts.all, 3);
+  });
+
+  test('an empty platform counts nothing rather than omitting the key', async () => {
+    // The console reads `counts.all` to decide whether to draw the chips at
+    // all. An absent key would render "All undefined".
+    const res = await call('GET', '/admin/billing/subscriptions');
+    assert.equal(res.body.counts.all, 0);
+  });
+
   test('filters to the support queue', async () => {
     const a = await makePractice('Sunrise Diabetes Care');
     const b = await makePractice('Meridian Family Clinic');

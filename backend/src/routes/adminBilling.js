@@ -112,15 +112,35 @@ router.get(
   asyncHandler(async (req, res) => {
     const filter = req.query.status ? { status: req.query.status } : {};
 
-    const rows = await Subscription.find(filter)
-      .sort({ createdAt: -1 })
-      .limit(req.query.limit)
-      // The practice's name, because a list of provider ids is a list nobody
-      // can act on. Not a clinical model — see the note in admin.js.
-      .populate('practice', 'name plan status')
-      .lean();
+    const [rows, byStatus] = await Promise.all([
+      Subscription.find(filter)
+        .sort({ createdAt: -1 })
+        .limit(req.query.limit)
+        // The practice's name, because a list of provider ids is a list nobody
+        // can act on. Not a clinical model — see the note in admin.js.
+        .populate('practice', 'name plan status')
+        .lean(),
+
+      /*
+       * How many are in each state, regardless of the filter.
+       *
+       * The counts go on the filter buttons, and they are the reason to press
+       * one: "Payment failed (8)" is a decision, "Payment failed" is a guess.
+       * An operator who has to click every filter to find out which are empty
+       * has been given a menu rather than a queue.
+       *
+       * Deliberately unfiltered. Counting within the current filter would show
+       * the selected chip's own total beside every other chip reading zero,
+       * which is worse than no counts at all.
+       */
+      Subscription.aggregate([{ $group: { _id: '$status', n: { $sum: 1 } } }]),
+    ]);
+
+    const counts = Object.fromEntries(byStatus.map((r) => [r._id, r.n]));
+    counts.all = byStatus.reduce((sum, r) => sum + r.n, 0);
 
     res.json({
+      counts,
       subscriptions: rows.map((s) => ({
         id: String(s._id),
         practice: s.practice

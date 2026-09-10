@@ -9,6 +9,7 @@ import {
   type PlanRow,
   type SubscriptionRow,
   type Revenue,
+  type SubscriptionCounts,
 } from "@/lib/types";
 import {
   Alert,
@@ -55,6 +56,7 @@ const STATUSES = [
 export default function Billing() {
   const [status, setStatus] = useState("");
   const [rows, setRows] = useState<SubscriptionRow[] | null>(null);
+  const [counts, setCounts] = useState<SubscriptionCounts>({});
   const [plans, setPlans] = useState<PlanRow[] | null>(null);
   const [canPrice, setCanPrice] = useState(true);
   const [rev, setRev] = useState<Revenue | null>(null);
@@ -63,10 +65,12 @@ export default function Billing() {
   const load = useCallback(async () => {
     setError(null);
     try {
-      const out = await api<{ subscriptions: SubscriptionRow[] }>(
-        `/admin/billing/subscriptions${status ? `?status=${status}` : ""}`,
-      );
+      const out = await api<{
+        subscriptions: SubscriptionRow[];
+        counts: SubscriptionCounts;
+      }>(`/admin/billing/subscriptions${status ? `?status=${status}` : ""}`);
       setRows(out.subscriptions);
+      setCounts(out.counts ?? {});
     } catch (ex) {
       setError((ex as ApiError).message);
       setRows([]);
@@ -129,21 +133,34 @@ export default function Billing() {
         title="Subscriptions"
         actions={
           <div className="flex flex-wrap gap-1.5">
-            {STATUSES.map((s) => (
-              <button
-                key={s.key || "all"}
-                type="button"
-                onClick={() => setStatus(s.key)}
-                className={cn(
-                  "rounded-sm border px-2.5 py-1 text-caption font-medium transition-colors",
-                  status === s.key
-                    ? "border-primary bg-accent text-accent-foreground"
-                    : "border-border text-muted-foreground hover:bg-secondary",
-                )}
-              >
-                {s.label}
-              </button>
-            ))}
+            {STATUSES.map((s) => {
+              const n = counts[s.key || "all"];
+              // A chip for a state nothing is in is a button that can only
+              // produce an empty table. "All" always shows, so a platform with
+              // no subscriptions still has something to look at.
+              if (s.key && !n) return null;
+
+              return (
+                <button
+                  key={s.key || "all"}
+                  type="button"
+                  onClick={() => setStatus(s.key)}
+                  className={cn(
+                    "rounded-sm border px-2.5 py-1 text-caption font-medium transition-colors",
+                    status === s.key
+                      ? "border-primary bg-accent text-accent-foreground"
+                      : "border-border text-muted-foreground hover:bg-secondary",
+                  )}
+                >
+                  {s.label}
+                  {n === undefined ? null : (
+                    // Quieter than the label, because the count is the second
+                    // thing read and the state is the first.
+                    <span className="tnum ml-1.5 opacity-60">{n}</span>
+                  )}
+                </button>
+              );
+            })}
           </div>
         }
       >
@@ -423,6 +440,15 @@ function PlanItem({ row }: { row: PlanRow }) {
         {/* "People", because the cap counts doctors and the owner too. */}
         <Fact label="People" value={cap(row.limits.staff)} />
         <Fact label="Locations" value={cap(row.limits.locations)} />
+        {/*
+          What support pastes into Razorpay when a customer asks about a charge.
+          The server has sent it since this panel existed and nothing showed it,
+          so the one identifier the two systems share was the one an operator
+          had to go and look up.
+        */}
+        {row.providerPlanId ? (
+          <Fact label="Razorpay plan" value={row.providerPlanId} mono />
+        ) : null}
       </dl>
 
       <p className="text-muted-foreground mt-2 text-caption leading-relaxed">
@@ -433,11 +459,20 @@ function PlanItem({ row }: { row: PlanRow }) {
   );
 }
 
-function Fact({ label, value }: { label: string; value: string }) {
+function Fact({
+  label,
+  value,
+  mono,
+}: {
+  label: string;
+  value: string;
+  /** For an identifier, where a character being wrong matters. */
+  mono?: boolean;
+}) {
   return (
     <span>
       <span className="text-muted-foreground/70">{label}: </span>
-      <span className="text-foreground">{value}</span>
+      <span className={cn("text-foreground", mono && "font-mono")}>{value}</span>
     </span>
   );
 }
