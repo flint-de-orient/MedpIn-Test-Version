@@ -1,0 +1,451 @@
+<!DOCTYPE html>
+
+<html lang="en"><head><meta charset="utf-8"/><meta content="width=device-width, initial-scale=1.0" name="viewport"/><style>@layer base{html,body{margin:0;padding:0;}body{overscroll-behavior:none;}main>:first-child{margin-top:0!important;}main>:last-child{margin-bottom:0!important;}}::-webkit-scrollbar{display:none;}</style><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap" rel="stylesheet"/><link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/><script src="https://cdn.tailwindcss.com"></script><script id="tailwind-config">
+  tailwind.config = {
+    darkMode: "class",
+    theme: {
+      extend: {
+        "colors": {
+          "on-tertiary-fixed": "#3a0a00",
+          "text-primary": "#0f172a",
+          "on-secondary": "#ffffff",
+          "background": "#f8f9fa",
+          "on-error": "#ffffff",
+          "surface-variant": "#e1e3e4",
+          "tertiary": "#4f1100",
+          "primary-fixed-dim": "#b5c4ff",
+          "inverse-primary": "#b5c4ff",
+          "surface-container": "#edeeef",
+          "error": "#ba1a1a",
+          "on-secondary-fixed-variant": "#2a4386",
+          "border-hairline": "#e2e8f0",
+          "secondary-fixed-dim": "#b4c5ff",
+          "inverse-on-surface": "#f0f1f2",
+          "inverse-surface": "#2e3132",
+          "on-primary-fixed": "#00164e",
+          "on-tertiary-container": "#ff8561",
+          "primary-fixed": "#dce1ff",
+          "on-tertiary-fixed-variant": "#832707",
+          "surface-bright": "#f8f9fa",
+          "surface-white": "#ffffff",
+          "secondary-container": "#9cb3ff",
+          "secondary-fixed": "#dbe1ff",
+          "text-secondary": "#475569",
+          "outline-variant": "#c4c5d5",
+          "surface-container-high": "#e7e8e9",
+          "surface-dim": "#d9dadb",
+          "secondary": "#445ba0",
+          "on-tertiary": "#ffffff",
+          "surface": "#f8f9fa",
+          "on-surface": "#191c1d",
+          "outline": "#747684",
+          "error-container": "#ffdad6",
+          "surface-container-low": "#f3f4f5",
+          "on-secondary-fixed": "#00174b",
+          "tertiary-fixed-dim": "#ffb59f",
+          "on-surface-variant": "#444653",
+          "surface-tint": "#3557bc",
+          "on-error-container": "#93000a",
+          "on-background": "#191c1d",
+          "on-primary-container": "#8aa4ff",
+          "on-secondary-container": "#2b4387"
+        },
+        "borderRadius": {
+          "DEFAULT": "0.125rem",
+          "lg": "0.25rem",
+          "xl": "0.5rem",
+          "full": "0.75rem"
+        },
+        "spacing": {
+          "space-sm": "8px",
+          "space-md": "16px",
+          "space-xl": "32px",
+          "grid-margin": "24px",
+          "space-xs": "4px",
+          "grid-gutter": "16px",
+          "space-lg": "24px"
+        },
+        "fontFamily": {
+          "headline-sm": [
+            "Inter"
+          ],
+          "body-lg": [
+            "Inter"
+          ],
+          "body-sm": [
+            "Inter"
+          ],
+          "label-sm": [
+            "Inter"
+          ],
+          "label-md": [
+            "Inter"
+          ],
+          "body-md": [
+            "Inter"
+          ],
+          "headline-lg": [
+            "Inter"
+          ],
+          "headline-md": [
+            "Inter"
+          ]
+        },
+        "fontSize": {
+          "headline-sm": [
+            "16px",
+            {
+              "lineHeight": "24px",
+              "fontWeight": "600"
+            }
+          ],
+          "body-lg": [
+            "15px",
+            {
+              "lineHeight": "22px",
+              "fontWeight": "400"
+            }
+          ],
+          "body-sm": [
+            "13px",
+            {
+              "lineHeight": "18px",
+              "fontWeight": "400"
+            }
+          ],
+          "label-sm": [
+            "11px",
+            {
+              "lineHeight": "14px",
+              "fontWeight": "500"
+            }
+          ],
+          "label-md": [
+            "12px",
+            {
+              "lineHeight": "16px",
+              "fontWeight": "500"
+            }
+          ],
+          "body-md": [
+            "14px",
+            {
+              "lineHeight": "20px",
+              "fontWeight": "400"
+            }
+          ],
+          "headline-lg": [
+            "24px",
+            {
+              "lineHeight": "32px",
+              "fontWeight": "600"
+            }
+          ],
+          "headline-md": [
+            "20px",
+            {
+              "lineHeight": "28px",
+              "fontWeight": "600"
+            }
+          ]
+        }
+      },
+    },
+  }
+</script></head><body class="bg-surface font-body-md text-on-surface"><aside class="fixed left-0 top-0 h-full w-60 bg-surface-container-lowest z-50 flex flex-col py-space-xl border-r border-border-hairline"><div class="px-space-xl mb-space-lg flex items-center justify-between"><span class="text-headline-sm font-headline-sm text-primary tracking-tight">MedPin Console</span><span class="material-symbols-outlined text-outline cursor-pointer hover:text-on-surface">chevron_left</span></div><nav class="flex-1 px-space-md space-y-space-xs" data-active-classes="bg-primary-container text-on-primary-container font-semibold rounded-lg"><a aria-current="page" class="flex items-center px-space-md py-space-sm transition-all bg-primary-container text-on-primary-container font-semibold rounded-lg" data-path="overview" href="#"><span class="material-symbols-outlined mr-space-md text-xl">dashboard</span><span class="text-body-md">Overview</span></a><a class="flex items-center px-space-md py-space-sm rounded-lg text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-all" data-path="practices" href="#"><span class="material-symbols-outlined mr-space-md text-xl">local_hospital</span><span class="text-body-md">Register</span></a><a class="flex items-center px-space-md py-space-sm rounded-lg text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-all" data-path="billing" href="#"><span class="material-symbols-outlined mr-space-md text-xl">payments</span><span class="text-body-md">Revenue &amp; Subscriptions</span></a><a class="flex items-center px-space-md py-space-sm rounded-lg text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-all" data-path="analytics" href="#"><span class="material-symbols-outlined mr-space-md text-xl">analytics</span><span class="text-body-md">Platform Figures</span></a><a class="flex items-center px-space-md py-space-sm rounded-lg text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-all" data-path="audit" href="#"><span class="material-symbols-outlined mr-space-md text-xl">security</span><span class="text-body-md">Audit Trail</span></a><a class="flex items-center px-space-md py-space-sm rounded-lg text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-all" data-path="admins" href="#"><span class="material-symbols-outlined mr-space-md text-xl">group</span><span class="text-body-md">Administrators</span></a><a class="flex items-center px-space-md py-space-sm rounded-lg text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-all" data-path="account" href="#"><span class="material-symbols-outlined mr-space-md text-xl">manage_accounts</span><span class="text-body-md">Sign-in &amp; 2FA</span></a></nav></aside><div class="pl-60"><header class="fixed top-0 left-60 right-0 h-16 bg-surface-container-lowest/80 backdrop-blur-xl border-b border-border-hairline z-40 flex items-center justify-between px-space-xl"><div class="flex items-center bg-surface-container-low px-space-md py-space-xs rounded-lg w-96 border border-border-hairline"><span class="material-symbols-outlined text-outline text-lg mr-space-sm">search</span><input class="bg-transparent border-none outline-none text-body-md text-on-surface w-full placeholder:text-outline" placeholder="Search practices, logs, admins..." type="text"/></div><div class="flex items-center gap-space-md"><button class="relative p-space-xs rounded-full hover:bg-surface-container-high text-on-surface-variant"><span class="material-symbols-outlined text-xl">notifications</span><span class="absolute top-1 right-1 w-2 h-2 bg-error rounded-full"></span></button><div class="flex items-center gap-space-sm pl-space-sm border-l border-border-hairline"><img alt="Profile" class="w-8 h-8 rounded-full object-cover" src="https://lh3.googleusercontent.com/aida/AEtjO1Vywaal_Lget5eB5q2-D2XbnrdSJb6d3uufCd8ISfG444RpdFiDcvk_tOfl--GV8V487KaD1-qrZdtnhCUYcdrV7nJpM19fMIZYpat3RJFXjBk9vgWpa0pYLfQXBY973A7L-S9WmmLjlEm33xI21XLtrtc3WXWVTAt134oG0GiikBrKFpC9gR3GYfQB7Ha3thp-5l97Ay3H5ZRWr45BkfhGZC_mfSghZRUxWFSDiVZ-aMR7Pid1PMzMSfRtjkyJyBkRcgP5QxIwuNI"/><div class="flex flex-col"><span class="text-label-md font-label-md text-on-surface">Lead Operator</span><span class="text-label-sm text-text-secondary">SecOps Tier 3</span></div></div></div></header><main class="relative pt-16 min-h-screen bg-surface flex flex-col justify-between"><div><div class="flex flex-col w-full">
+<!-- Top Bar / Header section -->
+<div class="px-space-xl pt-space-xl pb-space-lg flex flex-col md:flex-row md:items-center md:justify-between border-b border-border-hairline bg-surface-container-lowest">
+<div class="flex flex-col">
+<div class="flex items-center gap-space-sm mb-space-xs">
+<span class="text-label-sm font-label-sm px-space-sm py-0.5 rounded bg-surface-container-high text-on-surface-variant uppercase tracking-wider">SecOps // Immutable Store</span>
+<span class="text-label-sm font-label-sm text-outline font-mono">SHA-256 Verified</span>
+</div>
+<h1 class="text-headline-lg font-headline-lg text-on-surface tracking-tight">Platform Audit Trail</h1>
+<p class="text-body-md text-text-secondary mt-1">Immutable append-only log of all operator actions, reads, administrative grants, and system events.</p>
+</div>
+<div class="mt-space-md md:mt-0 flex items-center gap-space-md">
+<button class="flex items-center gap-space-sm px-space-md py-space-sm bg-surface-container-lowest hover:bg-surface-container-low border border-border-hairline rounded text-on-surface font-label-md text-label-md transition-all" onclick="alert('Exporting verified cryptographic audit logs (CSV/JSON)...')">
+<span class="material-symbols-outlined text-lg">download</span>
+        Export Audit Trail
+      </button>
+<button class="flex items-center gap-space-sm px-space-md py-space-sm bg-primary-container text-on-primary-container hover:opacity-90 rounded font-label-md text-label-md transition-all" onclick="alert('Generating compliance attestation report...')">
+<span class="material-symbols-outlined text-lg">verified_user</span>
+        Compliance Report
+      </button>
+</div>
+</div>
+<!-- Filter Bar -->
+<div class="px-space-xl py-space-md bg-surface border-b border-border-hairline flex flex-wrap items-center gap-space-md">
+<div class="flex items-center bg-surface-container-lowest px-space-md py-space-xs rounded border border-border-hairline w-64">
+<span class="material-symbols-outlined text-outline text-lg mr-space-sm">filter_list</span>
+<input class="bg-transparent border-none outline-none text-body-md text-on-surface w-full placeholder:text-outline" id="auditSearch" oninput="filterLogs()" placeholder="Filter by actor, IP, reason..." type="text"/>
+</div>
+<select class="bg-surface-container-lowest text-on-surface px-space-md py-space-xs rounded border border-border-hairline text-body-md outline-none" id="actionTypeFilter" onchange="filterLogs()">
+<option value="">All Actions (Reads &amp; Writes)</option>
+<option value="READ">READ (PHI/Metadata Access)</option>
+<option value="WRITE">WRITE (Configuration Update)</option>
+<option value="GRANT">GRANT (Role Escalation)</option>
+<option value="REVOKE">REVOKE (Access Termination)</option>
+</select>
+<select class="bg-surface-container-lowest text-on-surface px-space-md py-space-xs rounded border border-border-hairline text-body-md outline-none" id="operatorFilter" onchange="filterLogs()">
+<option value="">All Operators</option>
+<option value="Sarah Jenkins (SecOps Tier 3)">Sarah Jenkins</option>
+<option value="Marcus Vance (Platform Lead)">Marcus Vance</option>
+<option value="System Cron (Automated)">System Cron</option>
+<option value="Elena Rostova (Compliance)">Elena Rostova</option>
+</select>
+<div class="flex items-center gap-space-xs bg-surface-container-lowest px-space-md py-space-xs rounded border border-border-hairline text-body-md text-text-secondary">
+<span class="material-symbols-outlined text-lg text-outline">calendar_today</span>
+<span>Last 24 Hours (UTC)</span>
+</div>
+<div class="ml-auto text-body-sm text-text-secondary">
+      Showing <span class="font-semibold text-on-surface" id="visibleCount">5</span> of 1,420 entries
+    </div>
+</div>
+<!-- Audit Table Section -->
+<div class="p-space-xl">
+<div class="bg-surface-container-lowest rounded border border-border-hairline overflow-hidden">
+<table class="w-full text-left border-collapse" id="auditTable">
+<thead>
+<tr class="bg-surface-container-low border-b border-border-hairline text-label-md font-label-md text-text-secondary">
+<th class="py-space-md px-space-lg font-medium">Timestamp (UTC)</th>
+<th class="py-space-md px-space-lg font-medium">Operator / Actor</th>
+<th class="py-space-md px-space-lg font-medium">Action Type</th>
+<th class="py-space-md px-space-lg font-medium">Target Entity</th>
+<th class="py-space-md px-space-lg font-medium">Before / After Diff</th>
+<th class="py-space-md px-space-lg font-medium">Justification / Reason</th>
+<th class="py-space-md px-space-lg font-medium text-right">Details</th>
+</tr>
+</thead>
+<tbody class="divide-y divide-border-hairline text-body-sm text-on-surface">
+<!-- Row 1 -->
+<tr class="hover:bg-surface-container-low transition-colors" data-action="READ" data-operator="Sarah Jenkins (SecOps Tier 3)">
+<td class="py-space-md px-space-lg font-mono text-text-secondary whitespace-nowrap">2023-10-27 14:22:01</td>
+<td class="py-space-md px-space-lg">
+<div class="flex items-center gap-space-sm">
+<div class="w-6 h-6 rounded-full bg-primary-container text-on-primary-container flex items-center justify-center text-label-sm">SJ</div>
+<div>
+<div class="font-medium">Sarah Jenkins</div>
+<div class="text-label-sm text-outline">192.168.4.12 • SecOps T3</div>
+</div>
+</div>
+</td>
+<td class="py-space-md px-space-lg">
+<span class="inline-flex items-center px-2 py-0.5 rounded text-label-sm bg-surface-container-high text-on-surface-variant font-medium">READ</span>
+</td>
+<td class="py-space-md px-space-lg font-mono text-body-sm">practice_id: 8841-Apex</td>
+<td class="py-space-md px-space-lg font-mono text-text-secondary text-xs">
+<span class="text-outline">None (Read-only access)</span>
+</td>
+<td class="py-space-md px-space-lg text-text-secondary italic">"Investigating billing anomaly ticket #9921"</td>
+<td class="py-space-md px-space-lg text-right">
+<button class="text-primary hover:underline font-label-md text-label-md" onclick="toggleDetail('detail-1')">Inspect</button>
+</td>
+</tr>
+<!-- Expandable Detail Row 1 -->
+<tr class="hidden bg-surface-container-low/50" id="detail-1">
+<td class="p-space-lg font-mono text-xs text-text-secondary" colspan="7">
+<div class="bg-surface-container-lowest p-space-md rounded border border-border-hairline space-y-space-xs">
+<div class="font-semibold text-on-surface mb-2">Cryptographic Verification &amp; Request Context:</div>
+<div>Request ID: <span class="text-on-surface">req_99a8b1c762</span></div>
+<div>User Agent: <span class="text-on-surface">Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)</span></div>
+<div>Signature: <span class="text-on-surface">e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855</span></div>
+</div>
+</td>
+</tr>
+<!-- Row 2 -->
+<tr class="hover:bg-surface-container-low transition-colors" data-action="WRITE" data-operator="Marcus Vance (Platform Lead)">
+<td class="py-space-md px-space-lg font-mono text-text-secondary whitespace-nowrap">2023-10-27 13:58:44</td>
+<td class="py-space-md px-space-lg">
+<div class="flex items-center gap-space-sm">
+<div class="w-6 h-6 rounded-full bg-secondary-container text-on-secondary-container flex items-center justify-center text-label-sm">MV</div>
+<div>
+<div class="font-medium">Marcus Vance</div>
+<div class="text-label-sm text-outline">10.0.12.4 • Platform Lead</div>
+</div>
+</div>
+</td>
+<td class="py-space-md px-space-lg">
+<span class="inline-flex items-center px-2 py-0.5 rounded text-label-sm bg-primary-container text-on-primary-container font-medium">WRITE</span>
+</td>
+<td class="py-space-md px-space-lg font-mono text-body-sm">config: rate_limit_tier</td>
+<td class="py-space-md px-space-lg font-mono text-xs">
+<span class="text-error line-through">tier: standard</span> → <span class="text-on-surface font-semibold">tier: enterprise</span>
+</td>
+<td class="py-space-md px-space-lg text-text-secondary italic">"Approved quota expansion contract #CC-2023-88"</td>
+<td class="py-space-md px-space-lg text-right">
+<button class="text-primary hover:underline font-label-md text-label-md" onclick="toggleDetail('detail-2')">Inspect</button>
+</td>
+</tr>
+<tr class="hidden bg-surface-container-low/50" id="detail-2">
+<td class="p-space-lg font-mono text-xs text-text-secondary" colspan="7">
+<div class="bg-surface-container-lowest p-space-md rounded border border-border-hairline space-y-space-xs">
+<div class="font-semibold text-on-surface mb-2">Cryptographic Verification &amp; Request Context:</div>
+<div>Request ID: <span class="text-on-surface">req_bb7721cc09</span></div>
+<div>Dual-Authorization Signer: <span class="text-on-surface">Elena Rostova (Verified via FIDO2 Hardware Key)</span></div>
+<div>Signature: <span class="text-on-surface">8f921a4bbc771029c44188fbaee0231c99b821a7114b09</span></div>
+</div>
+</td>
+</tr>
+<!-- Row 3 -->
+<tr class="hover:bg-surface-container-low transition-colors" data-action="GRANT" data-operator="System Cron (Automated)">
+<td class="py-space-md px-space-lg font-mono text-text-secondary whitespace-nowrap">2023-10-27 12:00:00</td>
+<td class="py-space-md px-space-lg">
+<div class="flex items-center gap-space-sm">
+<div class="w-6 h-6 rounded-full bg-surface-container-high text-on-surface flex items-center justify-center text-label-sm">SY</div>
+<div>
+<div class="font-medium">System Cron</div>
+<div class="text-label-sm text-outline">localhost • Daemon</div>
+</div>
+</div>
+</td>
+<td class="py-space-md px-space-lg">
+<span class="inline-flex items-center px-2 py-0.5 rounded text-label-sm bg-tertiary-container text-on-tertiary-container font-medium">GRANT</span>
+</td>
+<td class="py-space-md px-space-lg font-mono text-body-sm">role: temp_support_token</td>
+<td class="py-space-md px-space-lg font-mono text-xs">
+<span class="text-outline">null</span> → <span class="text-on-surface">expires_in: 4h</span>
+</td>
+<td class="py-space-md px-space-lg text-text-secondary italic">"Scheduled maintenance token generation for support queue"</td>
+<td class="py-space-md px-space-lg text-right">
+<button class="text-primary hover:underline font-label-md text-label-md" onclick="toggleDetail('detail-3')">Inspect</button>
+</td>
+</tr>
+<tr class="hidden bg-surface-container-low/50" id="detail-3">
+<td class="p-space-lg font-mono text-xs text-text-secondary" colspan="7">
+<div class="bg-surface-container-lowest p-space-md rounded border border-border-hairline space-y-space-xs">
+<div class="font-semibold text-on-surface mb-2">Cryptographic Verification &amp; Request Context:</div>
+<div>Request ID: <span class="text-on-surface">req_sys_cron_0091</span></div>
+<div>Daemon Auth: <span class="text-on-surface">Root Certificate Authority #4</span></div>
+<div>Signature: <span class="text-on-surface">11a2938b817c9921004ab1c82837bba0018f9211c</span></div>
+</div>
+</td>
+</tr>
+<!-- Row 4 -->
+<tr class="hover:bg-surface-container-low transition-colors" data-action="READ" data-operator="Elena Rostova (Compliance)">
+<td class="py-space-md px-space-lg font-mono text-text-secondary whitespace-nowrap">2023-10-27 11:15:30</td>
+<td class="py-space-md px-space-lg">
+<div class="flex items-center gap-space-sm">
+<div class="w-6 h-6 rounded-full bg-surface-container-high text-on-surface flex items-center justify-center text-label-sm">ER</div>
+<div>
+<div class="font-medium">Elena Rostova</div>
+<div class="text-label-sm text-outline">192.168.10.8 • Compliance</div>
+</div>
+</div>
+</td>
+<td class="py-space-md px-space-lg">
+<span class="inline-flex items-center px-2 py-0.5 rounded text-label-sm bg-surface-container-high text-on-surface-variant font-medium">READ</span>
+</td>
+<td class="py-space-md px-space-lg font-mono text-body-sm">audit: export_access_log</td>
+<td class="py-space-md px-space-lg font-mono text-text-secondary text-xs">
+<span class="text-outline">None (Batch Read)</span>
+</td>
+<td class="py-space-md px-space-lg text-text-secondary italic">"Quarterly HIPAA compliance audit inspection"</td>
+<td class="py-space-md px-space-lg text-right">
+<button class="text-primary hover:underline font-label-md text-label-md" onclick="toggleDetail('detail-4')">Inspect</button>
+</td>
+</tr>
+<tr class="hidden bg-surface-container-low/50" id="detail-4">
+<td class="p-space-lg font-mono text-xs text-text-secondary" colspan="7">
+<div class="bg-surface-container-lowest p-space-md rounded border border-border-hairline space-y-space-xs">
+<div class="font-semibold text-on-surface mb-2">Cryptographic Verification &amp; Request Context:</div>
+<div>Request ID: <span class="text-on-surface">req_hipaa_9921</span></div>
+<div>Compliance Officer ID: <span class="text-on-surface">USR-992-ER</span></div>
+<div>Signature: <span class="text-on-surface">712a88bc110948271bb8991a0293847712c99a</span></div>
+</div>
+</td>
+</tr>
+<!-- Row 5 -->
+<tr class="hover:bg-surface-container-low transition-colors" data-action="REVOKE" data-operator="Sarah Jenkins (SecOps Tier 3)">
+<td class="py-space-md px-space-lg font-mono text-text-secondary whitespace-nowrap">2023-10-27 09:40:12</td>
+<td class="py-space-md px-space-lg">
+<div class="flex items-center gap-space-sm">
+<div class="w-6 h-6 rounded-full bg-primary-container text-on-primary-container flex items-center justify-center text-label-sm">SJ</div>
+<div>
+<div class="font-medium">Sarah Jenkins</div>
+<div class="text-label-sm text-outline">192.168.4.12 • SecOps T3</div>
+</div>
+</div>
+</td>
+<td class="py-space-md px-space-lg">
+<span class="inline-flex items-center px-2 py-0.5 rounded text-label-sm bg-error-container text-on-error-container font-medium">REVOKE</span>
+</td>
+<td class="py-space-md px-space-lg font-mono text-body-sm">admin_key: dr_smith_token</td>
+<td class="py-space-md px-space-lg font-mono text-xs">
+<span class="text-on-surface">active: true</span> → <span class="text-error font-semibold">active: false (revoked)</span>
+</td>
+<td class="py-space-md px-space-lg text-text-secondary italic">"Compromised session key reported by clinic admin"</td>
+<td class="py-space-md px-space-lg text-right">
+<button class="text-primary hover:underline font-label-md text-label-md" onclick="toggleDetail('detail-5')">Inspect</button>
+</td>
+</tr>
+<tr class="hidden bg-surface-container-low/50" id="detail-5">
+<td class="p-space-lg font-mono text-xs text-text-secondary" colspan="7">
+<div class="bg-surface-container-lowest p-space-md rounded border border-border-hairline space-y-space-xs">
+<div class="font-semibold text-on-surface mb-2">Cryptographic Verification &amp; Request Context:</div>
+<div>Request ID: <span class="text-on-surface">req_rev_8812a</span></div>
+<div>Incident Ticket: <span class="text-on-surface">INC-8831 (High Priority)</span></div>
+<div>Signature: <span class="text-on-surface">99a182746bc00192837471829910aacc8812</span></div>
+</div>
+</td>
+</tr>
+</tbody>
+</table>
+<!-- Pagination Footer -->
+<div class="px-space-xl py-space-md bg-surface-container-low border-t border-border-hairline flex items-center justify-between">
+<div class="text-body-sm text-text-secondary">
+          Appending to append-only Merkle tree <span class="font-mono text-on-surface">root: 0x9f8c...1a2b</span>
+</div>
+<div class="flex items-center gap-space-sm">
+<button class="px-space-md py-space-xs bg-surface-container-lowest border border-border-hairline rounded text-body-sm text-text-secondary cursor-not-allowed">Previous</button>
+<span class="px-space-md py-space-xs bg-primary-container text-on-primary-container rounded font-semibold text-body-sm">1</span>
+<button class="px-space-md py-space-xs bg-surface-container-lowest border border-border-hairline rounded text-body-sm text-on-surface hover:bg-surface-container-high transition-colors">2</button>
+<button class="px-space-md py-space-xs bg-surface-container-lowest border border-border-hairline rounded text-body-sm text-on-surface hover:bg-surface-container-high transition-colors">3</button>
+<button class="px-space-md py-space-xs bg-surface-container-lowest border border-border-hairline rounded text-body-sm text-on-surface hover:bg-surface-container-high transition-colors">Next</button>
+</div>
+</div>
+</div>
+</div>
+<script>
+    function toggleDetail(id) {
+      const el = document.getElementById(id);
+      if (el.classList.contains('hidden')) {
+        el.classList.remove('hidden');
+      } else {
+        el.classList.add('hidden');
+      }
+    }
+
+    function filterLogs() {
+      const search = document.getElementById('auditSearch').value.toLowerCase();
+      const actionFilter = document.getElementById('actionTypeFilter').value;
+      const operatorFilter = document.getElementById('operatorFilter').value;
+      
+      const rows = document.querySelectorAll('#auditTable tbody tr[data-operator]');
+      let visible = 0;
+
+      rows.forEach(row => {
+        const text = row.innerText.toLowerCase();
+        const op = row.getAttribute('data-operator');
+        const act = row.getAttribute('data-action');
+        
+        const matchesSearch = text.includes(search);
+        const matchesAction = !actionFilter || act === actionFilter;
+        const matchesOp = !operatorFilter || op.includes(operatorFilter);
+
+        const detailRowId = row.nextElementSibling && row.nextElementSibling.id && row.nextElementSibling.id.startsWith('detail-') ? row.nextElementSibling : null;
+
+        if (matchesSearch && matchesAction && matchesOp) {
+          row.style.display = '';
+          visible++;
+        } else {
+          row.style.display = 'none';
+          if (detailRowId) detailRowId.style.display = 'none';
+        }
+      });
+
+      document.getElementById('visibleCount').innerText = visible;
+    }
+  </script>
+</div></div><footer class="w-full bg-surface-container-lowest border-t border-border-hairline py-space-md px-space-xl mt-space-xl flex flex-col md:flex-row items-center justify-between text-body-sm text-text-secondary"><p>MedPin Operator Console • Internal System Administration &amp; Billing Management.</p><p class="text-outline">Note: This console contains platform telemetry and metadata only. It does not hold, process, or display patient health records (PHI).</p></footer></main></div></body></html>

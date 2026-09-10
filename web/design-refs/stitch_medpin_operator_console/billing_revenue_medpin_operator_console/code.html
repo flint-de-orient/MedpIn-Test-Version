@@ -1,0 +1,571 @@
+<!DOCTYPE html>
+
+<html lang="en"><head><meta charset="utf-8"/><meta content="width=device-width, initial-scale=1.0" name="viewport"/><style>@layer base{html,body{margin:0;padding:0;}body{overscroll-behavior:none;}main>:first-child{margin-top:0!important;}main>:last-child{margin-bottom:0!important;}}::-webkit-scrollbar{display:none;}</style><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap" rel="stylesheet"/><link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/><script src="https://cdn.tailwindcss.com"></script><script id="tailwind-config">
+  tailwind.config = {
+    darkMode: "class",
+    theme: {
+      extend: {
+        "colors": {
+          "on-tertiary-fixed": "#3a0a00",
+          "text-primary": "#0f172a",
+          "on-secondary": "#ffffff",
+          "background": "#f8f9fa",
+          "on-error": "#ffffff",
+          "surface-variant": "#e1e3e4",
+          "tertiary": "#4f1100",
+          "primary-fixed-dim": "#b5c4ff",
+          "inverse-primary": "#b5c4ff",
+          "surface-container": "#edeeef",
+          "error": "#ba1a1a",
+          "on-secondary-fixed-variant": "#2a4386",
+          "border-hairline": "#e2e8f0",
+          "secondary-fixed-dim": "#b4c5ff",
+          "inverse-on-surface": "#f0f1f2",
+          "inverse-surface": "#2e3132",
+          "on-primary-fixed": "#00164e",
+          "on-tertiary-container": "#ff8561",
+          "primary-fixed": "#dce1ff",
+          "on-tertiary-fixed-variant": "#832707",
+          "surface-bright": "#f8f9fa",
+          "surface-white": "#ffffff",
+          "secondary-container": "#9cb3ff",
+          "secondary-fixed": "#dbe1ff",
+          "text-secondary": "#475569",
+          "outline-variant": "#c4c5d5",
+          "surface-container-high": "#e7e8e9",
+          "surface-dim": "#d9dadb",
+          "secondary": "#445ba0",
+          "on-tertiary": "#ffffff",
+          "surface": "#f8f9fa",
+          "on-surface": "#191c1d",
+          "outline": "#747684",
+          "error-container": "#ffdad6",
+          "surface-container-low": "#f3f4f5",
+          "on-secondary-fixed": "#00174b",
+          "tertiary-fixed-dim": "#ffb59f",
+          "on-surface-variant": "#444653",
+          "surface-tint": "#3557bc",
+          "on-error-container": "#93000a",
+          "on-background": "#191c1d",
+          "on-primary-container": "#8aa4ff",
+          "on-secondary-container": "#2b4387"
+        },
+        "borderRadius": {
+          "DEFAULT": "0.125rem",
+          "lg": "0.25rem",
+          "xl": "0.5rem",
+          "full": "0.75rem"
+        },
+        "spacing": {
+          "space-sm": "8px",
+          "space-md": "16px",
+          "space-xl": "32px",
+          "grid-margin": "24px",
+          "space-xs": "4px",
+          "grid-gutter": "16px",
+          "space-lg": "24px"
+        },
+        "fontFamily": {
+          "headline-sm": [
+            "Inter"
+          ],
+          "body-lg": [
+            "Inter"
+          ],
+          "body-sm": [
+            "Inter"
+          ],
+          "label-sm": [
+            "Inter"
+          ],
+          "label-md": [
+            "Inter"
+          ],
+          "body-md": [
+            "Inter"
+          ],
+          "headline-lg": [
+            "Inter"
+          ],
+          "headline-md": [
+            "Inter"
+          ]
+        },
+        "fontSize": {
+          "headline-sm": [
+            "16px",
+            {
+              "lineHeight": "24px",
+              "fontWeight": "600"
+            }
+          ],
+          "body-lg": [
+            "15px",
+            {
+              "lineHeight": "22px",
+              "fontWeight": "400"
+            }
+          ],
+          "body-sm": [
+            "13px",
+            {
+              "lineHeight": "18px",
+              "fontWeight": "400"
+            }
+          ],
+          "label-sm": [
+            "11px",
+            {
+              "lineHeight": "14px",
+              "fontWeight": "500"
+            }
+          ],
+          "label-md": [
+            "12px",
+            {
+              "lineHeight": "16px",
+              "fontWeight": "500"
+            }
+          ],
+          "body-md": [
+            "14px",
+            {
+              "lineHeight": "20px",
+              "fontWeight": "400"
+            }
+          ],
+          "headline-lg": [
+            "24px",
+            {
+              "lineHeight": "32px",
+              "fontWeight": "600"
+            }
+          ],
+          "headline-md": [
+            "20px",
+            {
+              "lineHeight": "28px",
+              "fontWeight": "600"
+            }
+          ]
+        }
+      },
+    },
+  }
+</script></head><body class="bg-surface font-body-md text-on-surface"><aside class="fixed left-0 top-0 h-full w-60 bg-surface-container-lowest z-50 flex flex-col py-space-xl border-r border-border-hairline"><div class="px-space-xl mb-space-lg flex items-center justify-between"><span class="text-headline-sm font-headline-sm text-primary tracking-tight">MedPin Console</span><span class="material-symbols-outlined text-outline cursor-pointer hover:text-on-surface">chevron_left</span></div><nav class="flex-1 px-space-md space-y-space-xs" data-active-classes="bg-primary-container text-on-primary-container font-semibold rounded-lg"><a aria-current="page" class="flex items-center px-space-md py-space-sm transition-all bg-primary-container text-on-primary-container font-semibold rounded-lg" data-path="overview" href="#"><span class="material-symbols-outlined mr-space-md text-xl">dashboard</span><span class="text-body-md">Overview</span></a><a class="flex items-center px-space-md py-space-sm rounded-lg text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-all" data-path="practices" href="#"><span class="material-symbols-outlined mr-space-md text-xl">local_hospital</span><span class="text-body-md">Register</span></a><a class="flex items-center px-space-md py-space-sm rounded-lg text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-all" data-path="billing" href="#"><span class="material-symbols-outlined mr-space-md text-xl">payments</span><span class="text-body-md">Revenue &amp; Subscriptions</span></a><a class="flex items-center px-space-md py-space-sm rounded-lg text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-all" data-path="analytics" href="#"><span class="material-symbols-outlined mr-space-md text-xl">analytics</span><span class="text-body-md">Platform Figures</span></a><a class="flex items-center px-space-md py-space-sm rounded-lg text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-all" data-path="audit" href="#"><span class="material-symbols-outlined mr-space-md text-xl">security</span><span class="text-body-md">Audit Trail</span></a><a class="flex items-center px-space-md py-space-sm rounded-lg text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-all" data-path="admins" href="#"><span class="material-symbols-outlined mr-space-md text-xl">group</span><span class="text-body-md">Administrators</span></a><a class="flex items-center px-space-md py-space-sm rounded-lg text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-all" data-path="account" href="#"><span class="material-symbols-outlined mr-space-md text-xl">manage_accounts</span><span class="text-body-md">Sign-in &amp; 2FA</span></a></nav></aside><div class="pl-60"><header class="fixed top-0 left-60 right-0 h-16 bg-surface-container-lowest/80 backdrop-blur-xl border-b border-border-hairline z-40 flex items-center justify-between px-space-xl"><div class="flex items-center bg-surface-container-low px-space-md py-space-xs rounded-lg w-96 border border-border-hairline"><span class="material-symbols-outlined text-outline text-lg mr-space-sm">search</span><input class="bg-transparent border-none outline-none text-body-md text-on-surface w-full placeholder:text-outline" placeholder="Search practices, logs, admins..." type="text"/></div><div class="flex items-center gap-space-md"><button class="relative p-space-xs rounded-full hover:bg-surface-container-high text-on-surface-variant"><span class="material-symbols-outlined text-xl">notifications</span><span class="absolute top-1 right-1 w-2 h-2 bg-error rounded-full"></span></button><div class="flex items-center gap-space-sm pl-space-sm border-l border-border-hairline"><img alt="Profile" class="w-8 h-8 rounded-full object-cover" src="https://lh3.googleusercontent.com/aida/AEtjO1Vywaal_Lget5eB5q2-D2XbnrdSJb6d3uufCd8ISfG444RpdFiDcvk_tOfl--GV8V487KaD1-qrZdtnhCUYcdrV7nJpM19fMIZYpat3RJFXjBk9vgWpa0pYLfQXBY973A7L-S9WmmLjlEm33xI21XLtrtc3WXWVTAt134oG0GiikBrKFpC9gR3GYfQB7Ha3thp-5l97Ay3H5ZRWr45BkfhGZC_mfSghZRUxWFSDiVZ-aMR7Pid1PMzMSfRtjkyJyBkRcgP5QxIwuNI"/><div class="flex flex-col"><span class="text-label-md font-label-md text-on-surface">Lead Operator</span><span class="text-label-sm text-text-secondary">SecOps Tier 3</span></div></div></div></header><main class="relative pt-16 min-h-screen bg-surface flex flex-col justify-between"><div><div class="flex flex-col w-full">
+<!-- Top Section / Header -->
+<div class="px-grid-margin pt-space-xl pb-space-lg flex flex-col md:flex-row md:items-center md:justify-between gap-space-md">
+<div>
+<div class="flex items-center gap-space-sm mb-space-xs">
+<span class="text-label-sm font-label-sm text-primary uppercase tracking-wider">Financial Operations</span>
+<span class="text-outline">•</span>
+<span class="text-label-sm font-label-sm text-text-secondary">Razorpay Billing Gateway v4.2</span>
+</div>
+<h1 class="text-headline-lg font-headline-lg text-on-surface">Revenue &amp; Subscriptions</h1>
+<p class="text-body-md text-text-secondary mt-space-xs">Platform financial telemetry, recurring revenue, collection ledgers, and plan tiers.</p>
+</div>
+<div class="flex items-center gap-space-md">
+<button class="bg-surface-container-high hover:bg-surface-variant text-on-surface px-space-md py-space-sm rounded-lg text-body-md font-medium transition-all flex items-center gap-space-sm shadow-sm">
+<span class="material-symbols-outlined text-lg">filter_list</span>
+        Filter Ledger
+      </button>
+<button class="bg-primary hover:bg-primary-container text-on-primary px-space-lg py-space-sm rounded-lg text-body-md font-medium transition-all flex items-center gap-space-sm shadow-sm">
+<span class="material-symbols-outlined text-lg">download</span>
+        Export ledger
+      </button>
+</div>
+</div>
+<!-- Summary KPI Cards -->
+<div class="px-grid-margin mb-space-xl grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-grid-gutter">
+<!-- Card 1: MRR -->
+<div class="bg-surface-container-lowest p-space-lg rounded-xl shadow-sm flex flex-col justify-between border-hairline relative">
+<div class="flex items-center justify-between mb-space-md">
+<span class="text-label-md font-label-md text-text-secondary uppercase tracking-wider">Monthly Recurring (MRR)</span>
+<span class="p-space-xs bg-primary-container/10 text-primary rounded-lg flex items-center justify-center">
+<span class="material-symbols-outlined text-xl">trending_up</span>
+</span>
+</div>
+<div>
+<div class="text-headline-lg font-headline-lg text-on-surface tracking-tight">₹14,80,000</div>
+<div class="flex items-center gap-space-xs mt-space-xs">
+<span class="text-label-sm font-label-sm text-emerald-600 font-semibold bg-emerald-50 px-1.5 py-0.5 rounded">+8.4%</span>
+<span class="text-body-sm text-text-secondary">vs previous month</span>
+</div>
+</div>
+</div>
+<!-- Card 2: Collected Ledger -->
+<div class="bg-surface-container-lowest p-space-lg rounded-xl shadow-sm flex flex-col justify-between border-hairline">
+<div class="flex items-center justify-between mb-space-md">
+<span class="text-label-md font-label-md text-text-secondary uppercase tracking-wider">Collected Ledger</span>
+<span class="p-space-xs bg-surface-container-high text-on-surface-variant rounded-lg flex items-center justify-center">
+<span class="material-symbols-outlined text-xl">account_balance_wallet</span>
+</span>
+</div>
+<div>
+<div class="text-headline-lg font-headline-lg text-on-surface tracking-tight">₹14,25,000</div>
+<div class="flex items-center gap-space-xs mt-space-xs">
+<span class="text-label-sm font-label-sm text-text-secondary">Realized settlement — 96.2% success</span>
+</div>
+</div>
+</div>
+<!-- Card 3: Active Subscriptions -->
+<div class="bg-surface-container-lowest p-space-lg rounded-xl shadow-sm flex flex-col justify-between border-hairline">
+<div class="flex items-center justify-between mb-space-md">
+<span class="text-label-md font-label-md text-text-secondary uppercase tracking-wider">Active Subscriptions</span>
+<span class="p-space-xs bg-secondary-container/20 text-secondary rounded-lg flex items-center justify-center">
+<span class="material-symbols-outlined text-xl">verified</span>
+</span>
+</div>
+<div>
+<div class="text-headline-lg font-headline-lg text-on-surface tracking-tight">312</div>
+<div class="flex items-center gap-space-xs mt-space-xs">
+<span class="text-label-sm font-label-sm text-emerald-600 font-semibold bg-emerald-50 px-1.5 py-0.5 rounded">+12</span>
+<span class="text-body-sm text-text-secondary">net new tenants this cycle</span>
+</div>
+</div>
+</div>
+<!-- Card 4: ARPU -->
+<div class="bg-surface-container-lowest p-space-lg rounded-xl shadow-sm flex flex-col justify-between border-hairline">
+<div class="flex items-center justify-between mb-space-md">
+<span class="text-label-md font-label-md text-text-secondary uppercase tracking-wider">Avg Revenue / User (ARPU)</span>
+<span class="p-space-xs bg-amber-500/10 text-amber-600 rounded-lg flex items-center justify-center" title="Waiting tone indicator: Tier upgrades pending">
+<span class="material-symbols-outlined text-xl animate-pulse">hourglass_top</span>
+</span>
+</div>
+<div>
+<div class="text-headline-lg font-headline-lg text-on-surface tracking-tight">₹4,743</div>
+<div class="flex items-center gap-space-xs mt-space-xs">
+<span class="text-label-sm font-label-sm text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded">Queue syncing</span>
+<span class="text-body-sm text-text-secondary">— stable</span>
+</div>
+</div>
+</div>
+</div>
+<!-- Revenue & Collection Line Chart section with supporting data table -->
+<div class="px-grid-margin mb-space-xl">
+<div class="bg-surface-container-lowest p-space-xl rounded-xl shadow-sm">
+<div class="flex flex-col md:flex-row md:items-center justify-between mb-space-lg gap-space-md">
+<div>
+<h2 class="text-headline-md font-headline-md text-on-surface">Revenue Traversal &amp; Collection Metrics</h2>
+<p class="text-body-sm text-text-secondary">Comparing MRR growth vs realized collections over the trailing 6 months.</p>
+</div>
+<div class="flex items-center gap-space-md text-body-sm">
+<div class="flex items-center gap-space-xs">
+<span class="w-3 h-3 rounded-full bg-primary inline-block"></span>
+<span class="text-on-surface font-medium">MRR (₹)</span>
+</div>
+<div class="flex items-center gap-space-xs">
+<span class="w-3 h-3 rounded-full bg-secondary-container inline-block"></span>
+<span class="text-on-surface font-medium">Collected (₹)</span>
+</div>
+</div>
+</div>
+<!-- Inline SVG Line Chart Visualization -->
+<div class="w-full h-64 mb-space-xl relative flex items-end">
+<svg class="w-full h-full overflow-visible" preserveaspectratio="none" viewbox="0 0 1000 250">
+<!-- Grid lines -->
+<line stroke="#e2e8f0" stroke-dasharray="4" stroke-width="1" x1="0" x2="1000" y1="0" y2="0"></line>
+<line stroke="#e2e8f0" stroke-dasharray="4" stroke-width="1" x1="0" x2="1000" y1="62.5" y2="62.5"></line>
+<line stroke="#e2e8f0" stroke-dasharray="4" stroke-width="1" x1="0" x2="1000" y1="125" y2="125"></line>
+<line stroke="#e2e8f0" stroke-dasharray="4" stroke-width="1" x1="0" x2="1000" y1="187.5" y2="187.5"></line>
+<line stroke="#e2e8f0" stroke-width="1" x1="0" x2="1000" y1="250" y2="250"></line>
+<!-- Collected Line (Secondary) -->
+<path d="M 0,90 Q 200,70 400,55 T 800,30 L 1000,20" fill="none" stroke="#9cb3ff" stroke-linecap="round" stroke-width="3"></path>
+<!-- MRR Line (Primary) -->
+<path d="M 0,110 Q 200,90 400,75 T 800,45 L 1000,35" fill="none" stroke="#003399" stroke-linecap="round" stroke-width="3"></path>
+<!-- Data Points for MRR -->
+<circle cx="0" cy="110" fill="#003399" r="5"></circle>
+<circle cx="200" cy="90" fill="#003399" r="5"></circle>
+<circle cx="400" cy="75" fill="#003399" r="5"></circle>
+<circle cx="600" cy="60" fill="#003399" r="5"></circle>
+<circle cx="800" cy="45" fill="#003399" r="5"></circle>
+<circle cx="1000" cy="35" fill="#003399" r="5"></circle>
+</svg>
+<div class="absolute bottom-[-24px] left-0 right-0 flex justify-between text-label-sm text-text-secondary px-space-xs">
+<span>Nov 2024</span>
+<span>Dec 2024</span>
+<span>Jan 2025</span>
+<span>Feb 2025</span>
+<span>Mar 2025</span>
+<span>Apr 2025</span>
+</div>
+</div>
+<!-- Supporting Data Table -->
+<div class="mt-space-xl overflow-x-auto">
+<table class="w-full text-left border-collapse">
+<thead>
+<tr class="border-b border-border-hairline text-label-md font-label-md text-text-secondary">
+<th class="py-space-sm px-space-md">Month</th>
+<th class="py-space-sm px-space-md">MRR</th>
+<th class="py-space-sm px-space-md">Collected</th>
+<th class="py-space-sm px-space-md">Started</th>
+<th class="py-space-sm px-space-md">Cancelled</th>
+<th class="py-space-sm px-space-md text-right">Net Growth</th>
+</tr>
+</thead>
+<tbody class="text-body-md text-on-surface divide-y divide-border-hairline">
+<tr class="hover:bg-surface-container-low transition-colors">
+<td class="py-space-md px-space-md font-medium">April 2025</td>
+<td class="py-space-md px-space-md">₹14,80,000</td>
+<td class="py-space-md px-space-md">₹14,25,000</td>
+<td class="py-space-md px-space-md text-emerald-600">+18</td>
+<td class="py-space-md px-space-md text-error">-2</td>
+<td class="py-space-md px-space-md text-right font-semibold text-emerald-600">+₹1,15,000</td>
+</tr>
+<tr class="hover:bg-surface-container-low transition-colors">
+<td class="py-space-md px-space-md font-medium">March 2025</td>
+<td class="py-space-md px-space-md">₹13,65,000</td>
+<td class="py-space-md px-space-md">₹13,10,000</td>
+<td class="py-space-md px-space-md text-emerald-600">+15</td>
+<td class="py-space-md px-space-md text-error">-3</td>
+<td class="py-space-md px-space-md text-right font-semibold text-emerald-600">+₹92,000</td>
+</tr>
+<tr class="hover:bg-surface-container-low transition-colors">
+<td class="py-space-md px-space-md font-medium">February 2025</td>
+<td class="py-space-md px-space-md">₹12,73,000</td>
+<td class="py-space-md px-space-md">₹12,40,000</td>
+<td class="py-space-md px-space-md text-emerald-600">+14</td>
+<td class="py-space-md px-space-md text-error">-4</td>
+<td class="py-space-md px-space-md text-right font-semibold text-emerald-600">+₹84,000</td>
+</tr>
+<tr class="hover:bg-surface-container-low transition-colors">
+<td class="py-space-md px-space-md font-medium">January 2025</td>
+<td class="py-space-md px-space-md">₹11,89,000</td>
+<td class="py-space-md px-space-md">₹11,50,000</td>
+<td class="py-space-md px-space-md text-emerald-600">+12</td>
+<td class="py-space-md px-space-md text-error">-2</td>
+<td class="py-space-md px-space-md text-right font-semibold text-emerald-600">+₹78,000</td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+</div>
+<!-- Subscription Support Queue Table -->
+<div class="px-grid-margin mb-space-xl">
+<div class="bg-surface-container-lowest p-space-xl rounded-xl shadow-sm">
+<div class="flex flex-col lg:flex-row lg:items-center justify-between mb-space-lg gap-space-md">
+<div>
+<h2 class="text-headline-md font-headline-md text-on-surface">Subscription Support Queue</h2>
+<p class="text-body-sm text-text-secondary">Monitor failed renewals, retrying mandates, and active tenant billing states.</p>
+</div>
+<!-- Status Filters -->
+<div class="flex items-center gap-space-xs bg-surface-container-low p-1 rounded-lg">
+<button class="px-space-md py-space-xs rounded-md bg-surface-container-lowest text-on-surface text-label-md font-label-md shadow-sm transition-all">All (312)</button>
+<button class="px-space-md py-space-xs rounded-md text-text-secondary hover:text-on-surface text-label-md font-label-md transition-all">Payment Failed (8)</button>
+<button class="px-space-md py-space-xs rounded-md text-text-secondary hover:text-on-surface text-label-md font-label-md transition-all">Retrying (14)</button>
+<button class="px-space-md py-space-xs rounded-md text-text-secondary hover:text-on-surface text-label-md font-label-md transition-all">Active (290)</button>
+</div>
+</div>
+<div class="overflow-x-auto">
+<table class="w-full text-left border-collapse">
+<thead>
+<tr class="border-b border-border-hairline text-label-md font-label-md text-text-secondary">
+<th class="py-space-sm px-space-md">Tenant / Practice</th>
+<th class="py-space-sm px-space-md">Plan</th>
+<th class="py-space-sm px-space-md">Razorpay Sub ID</th>
+<th class="py-space-sm px-space-md">Status</th>
+<th class="py-space-sm px-space-md">Next Billing</th>
+<th class="py-space-sm px-space-md text-right">Quick Actions</th>
+</tr>
+</thead>
+<tbody class="text-body-md text-on-surface divide-y divide-border-hairline">
+<tr class="hover:bg-surface-container-low transition-colors">
+<td class="py-space-md px-space-md">
+<div class="font-medium">Apex Orthopedics Clinic</div>
+<div class="text-body-sm text-text-secondary">ID: PRAC-8842 • Mumbai</div>
+</td>
+<td class="py-space-md px-space-md">
+<span class="bg-primary/10 text-primary px-2 py-0.5 rounded text-label-sm font-label-md">Professional</span>
+</td>
+<td class="py-space-md px-space-md font-mono text-body-sm text-text-secondary">sub_I8j3K9s0Lm2NoP</td>
+<td class="py-space-md px-space-md">
+<span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-label-sm font-label-md bg-error-container text-on-error-container">
+<span class="w-1.5 h-1.5 rounded-full bg-error"></span>
+                  Payment Failed
+                </span>
+</td>
+<td class="py-space-md px-space-md text-text-secondary">Overdue 2 days</td>
+<td class="py-space-md px-space-md text-right space-x-space-sm">
+<button class="px-space-sm py-space-xs bg-surface-container-high hover:bg-surface-variant text-on-surface rounded text-label-md font-label-md transition-all">Retry Charge</button>
+<button class="px-space-sm py-space-xs bg-primary hover:bg-primary-container text-on-primary rounded text-label-md font-label-md transition-all">Invoice</button>
+</td>
+</tr>
+<tr class="hover:bg-surface-container-low transition-colors">
+<td class="py-space-md px-space-md">
+<div class="font-medium">Metro Heart &amp; Vascular Center</div>
+<div class="text-body-sm text-text-secondary">ID: PRAC-1092 • New Delhi</div>
+</td>
+<td class="py-space-md px-space-md">
+<span class="bg-tertiary/10 text-tertiary px-2 py-0.5 rounded text-label-sm font-label-md">Enterprise</span>
+</td>
+<td class="py-space-md px-space-md font-mono text-body-sm text-text-secondary">sub_X9v2B4n7Ml1QwE</td>
+<td class="py-space-md px-space-md">
+<span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-label-sm font-label-md bg-amber-500/10 text-amber-700">
+<span class="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
+                  Retrying (Attempt 2/4)
+                </span>
+</td>
+<td class="py-space-md px-space-md text-text-secondary">Today, 18:00 IST</td>
+<td class="py-space-md px-space-md text-right space-x-space-sm">
+<button class="px-space-sm py-space-xs bg-surface-container-high hover:bg-surface-variant text-on-surface rounded text-label-md font-label-md transition-all">Force Sync</button>
+<button class="px-space-sm py-space-xs bg-primary hover:bg-primary-container text-on-primary rounded text-label-md font-label-md transition-all">Invoice</button>
+</td>
+</tr>
+<tr class="hover:bg-surface-container-low transition-colors">
+<td class="py-space-md px-space-md">
+<div class="font-medium">Sunrise Pediatric Associates</div>
+<div class="text-body-sm text-text-secondary">ID: PRAC-4410 • Bengaluru</div>
+</td>
+<td class="py-space-md px-space-md">
+<span class="bg-surface-container-high text-on-surface-variant px-2 py-0.5 rounded text-label-sm font-label-md">Starter</span>
+</td>
+<td class="py-space-md px-space-md font-mono text-body-sm text-text-secondary">sub_A1b2C3d4E5f6G7</td>
+<td class="py-space-md px-space-md">
+<span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-label-sm font-label-md bg-emerald-50 text-emerald-700">
+<span class="w-1.5 h-1.5 rounded-full bg-emerald-600"></span>
+                  Active
+                </span>
+</td>
+<td class="py-space-md px-space-md text-text-secondary">14 May 2025</td>
+<td class="py-space-md px-space-md text-right space-x-space-sm">
+<button class="px-space-sm py-space-xs bg-surface-container-high hover:bg-surface-variant text-on-surface rounded text-label-md font-label-md transition-all">View Mandate</button>
+<button class="px-space-sm py-space-xs bg-primary hover:bg-primary-container text-on-primary rounded text-label-md font-label-md transition-all">Invoice</button>
+</td>
+</tr>
+<tr class="hover:bg-surface-container-low transition-colors">
+<td class="py-space-md px-space-md">
+<div class="font-medium">CityCare Multispecialty Hospital</div>
+<div class="text-body-sm text-text-secondary">ID: PRAC-9932 • Chennai</div>
+</td>
+<td class="py-space-md px-space-md">
+<span class="bg-tertiary/10 text-tertiary px-2 py-0.5 rounded text-label-sm font-label-md">Enterprise</span>
+</td>
+<td class="py-space-md px-space-md font-mono text-body-sm text-text-secondary">sub_Z9y8X7w6V5u4T3</td>
+<td class="py-space-md px-space-md">
+<span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-label-sm font-label-md bg-emerald-50 text-emerald-700">
+<span class="w-1.5 h-1.5 rounded-full bg-emerald-600"></span>
+                  Active
+                </span>
+</td>
+<td class="py-space-md px-space-md text-text-secondary">28 May 2025</td>
+<td class="py-space-md px-space-md text-right space-x-space-sm">
+<button class="px-space-sm py-space-xs bg-surface-container-high hover:bg-surface-variant text-on-surface rounded text-label-md font-label-md transition-all">View Mandate</button>
+<button class="px-space-sm py-space-xs bg-primary hover:bg-primary-container text-on-primary rounded text-label-md font-label-md transition-all">Invoice</button>
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+</div>
+<!-- Read-only Plans Reference Panel -->
+<div class="px-grid-margin mb-space-xl">
+<div class="bg-surface-container-lowest p-space-xl rounded-xl shadow-sm border-hairline">
+<div class="flex flex-col md:flex-row md:items-center justify-between mb-space-lg gap-space-sm">
+<div>
+<div class="flex items-center gap-space-sm mb-space-xs">
+<h2 class="text-headline-md font-headline-md text-on-surface">Plans &amp; Razorpay Object Mapping</h2>
+<span class="bg-surface-container-high text-on-surface-variant px-space-sm py-0.5 rounded text-label-sm font-label-md uppercase tracking-wider flex items-center gap-1">
+<span class="material-symbols-outlined text-xs">lock</span>
+              Read-Only Reference
+            </span>
+</div>
+<p class="text-body-sm text-text-secondary">Immutable pricing tiers bound to Razorpay Plan IDs. Modification requires root SEC-OP authorization.</p>
+</div>
+</div>
+<div class="grid grid-cols-1 md:grid-cols-3 gap-grid-gutter">
+<!-- Starter Plan -->
+<div class="bg-surface-container-low p-space-lg rounded-xl border border-border-hairline flex flex-col justify-between">
+<div>
+<div class="flex items-center justify-between mb-space-md">
+<span class="text-headline-sm font-headline-sm text-on-surface">Starter</span>
+<span class="text-headline-md font-headline-md text-primary">₹2,499<span class="text-body-sm text-text-secondary font-normal">/mo</span></span>
+</div>
+<p class="text-body-sm text-text-secondary mb-space-lg">For solo practitioners and micro-clinics starting secure appointment dispatch.</p>
+<div class="space-y-space-sm text-body-sm text-on-surface mb-space-lg">
+<div class="flex items-center gap-space-sm">
+<span class="material-symbols-outlined text-primary text-base">check</span>
+<span>Up to 3 Doctor Accounts</span>
+</div>
+<div class="flex items-center gap-space-sm">
+<span class="material-symbols-outlined text-primary text-base">check</span>
+<span>Standard Dispatch Queue</span>
+</div>
+<div class="flex items-center gap-space-sm">
+<span class="material-symbols-outlined text-primary text-base">check</span>
+<span>Email &amp; Telegram Alerts</span>
+</div>
+</div>
+</div>
+<div class="pt-space-md border-t border-border-hairline">
+<div class="text-label-sm text-text-secondary font-mono">Razorpay Plan ID:</div>
+<div class="text-label-md font-mono text-on-surface font-semibold bg-surface-container-lowest px-2 py-1 rounded mt-1">plan_STR_medpin_01</div>
+</div>
+</div>
+<!-- Professional Plan -->
+<div class="bg-surface-container-low p-space-lg rounded-xl border-2 border-primary flex flex-col justify-between relative shadow-sm">
+<div class="absolute -top-3 right-4 bg-primary text-on-primary text-label-sm px-2 py-0.5 rounded font-medium">Most Popular</div>
+<div>
+<div class="flex items-center justify-between mb-space-md">
+<span class="text-headline-sm font-headline-sm text-on-surface">Professional</span>
+<span class="text-headline-md font-headline-md text-primary">₹5,999<span class="text-body-sm text-text-secondary font-normal">/mo</span></span>
+</div>
+<p class="text-body-sm text-text-secondary mb-space-lg">Designed for mid-size multi-specialty clinics requiring advanced routing.</p>
+<div class="space-y-space-sm text-body-sm text-on-surface mb-space-lg">
+<div class="flex items-center gap-space-sm">
+<span class="material-symbols-outlined text-primary text-base">check</span>
+<span>Up to 15 Doctor Accounts</span>
+</div>
+<div class="flex items-center gap-space-sm">
+<span class="material-symbols-outlined text-primary text-base">check</span>
+<span>Priority Dispatch Engine</span>
+</div>
+<div class="flex items-center gap-space-sm">
+<span class="material-symbols-outlined text-primary text-base">check</span>
+<span>Advanced Audit Telemetry</span>
+</div>
+<div class="flex items-center gap-space-sm">
+<span class="material-symbols-outlined text-primary text-base">check</span>
+<span>WhatsApp API Integration</span>
+</div>
+</div>
+</div>
+<div class="pt-space-md border-t border-border-hairline">
+<div class="text-label-sm text-text-secondary font-mono">Razorpay Plan ID:</div>
+<div class="text-label-md font-mono text-on-surface font-semibold bg-surface-container-lowest px-2 py-1 rounded mt-1">plan_PRO_medpin_02</div>
+</div>
+</div>
+<!-- Enterprise Plan -->
+<div class="bg-surface-container-low p-space-lg rounded-xl border border-border-hairline flex flex-col justify-between">
+<div>
+<div class="flex items-center justify-between mb-space-md">
+<span class="text-headline-sm font-headline-sm text-on-surface">Enterprise</span>
+<span class="text-headline-md font-headline-md text-primary">₹14,999<span class="text-body-sm text-text-secondary font-normal">/mo</span></span>
+</div>
+<p class="text-body-sm text-text-secondary mb-space-lg">For corporate hospital chains with custom SLAs and high-volume data ingest.</p>
+<div class="space-y-space-sm text-body-sm text-on-surface mb-space-lg">
+<div class="flex items-center gap-space-sm">
+<span class="material-symbols-outlined text-primary text-base">check</span>
+<span>Unlimited Doctor Accounts</span>
+</div>
+<div class="flex items-center gap-space-sm">
+<span class="material-symbols-outlined text-primary text-base">check</span>
+<span>Dedicated DB Partition &amp; SLA</span>
+</div>
+<div class="flex items-center gap-space-sm">
+<span class="material-symbols-outlined text-primary text-base">check</span>
+<span>Custom Webhooks &amp; SIEM Log Export</span>
+</div>
+</div>
+</div>
+<div class="pt-space-md border-t border-border-hairline">
+<div class="text-label-sm text-text-secondary font-mono">Razorpay Plan ID:</div>
+<div class="text-label-md font-mono text-on-surface font-semibold bg-surface-container-lowest px-2 py-1 rounded mt-1">plan_ENT_medpin_03</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div></div><footer class="w-full bg-surface-container-lowest border-t border-border-hairline py-space-md px-space-xl mt-space-xl flex flex-col md:flex-row items-center justify-between text-body-sm text-text-secondary"><p>MedPin Operator Console • Internal System Administration &amp; Billing Management.</p><p class="text-outline">Note: This console contains platform telemetry and metadata only. It does not hold, process, or display patient health records (PHI).</p></footer></main></div></body></html>

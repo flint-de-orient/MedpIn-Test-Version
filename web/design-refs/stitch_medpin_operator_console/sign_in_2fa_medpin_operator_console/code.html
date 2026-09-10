@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+
+<html lang="en"><head><meta charset="utf-8"/><meta content="width=device-width, initial-scale=1.0" name="viewport"/><style>@layer base{html,body{margin:0;padding:0;}body{overscroll-behavior:none;}main>:first-child{margin-top:0!important;}main>:last-child{margin-bottom:0!important;}}::-webkit-scrollbar{display:none;}</style><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap" rel="stylesheet"/><link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/><script src="https://cdn.tailwindcss.com"></script><script id="tailwind-config">
+  tailwind.config = {
+    darkMode: "class",
+    theme: {
+      extend: {
+        "colors": {
+          "on-tertiary-fixed": "#3a0a00",
+          "text-primary": "#0f172a",
+          "on-secondary": "#ffffff",
+          "background": "#f8f9fa",
+          "on-error": "#ffffff",
+          "surface-variant": "#e1e3e4",
+          "tertiary": "#4f1100",
+          "primary-fixed-dim": "#b5c4ff",
+          "inverse-primary": "#b5c4ff",
+          "surface-container": "#edeeef",
+          "error": "#ba1a1a",
+          "on-secondary-fixed-variant": "#2a4386",
+          "border-hairline": "#e2e8f0",
+          "secondary-fixed-dim": "#b4c5ff",
+          "inverse-on-surface": "#f0f1f2",
+          "inverse-surface": "#2e3132",
+          "on-primary-fixed": "#00164e",
+          "on-tertiary-container": "#ff8561",
+          "primary-fixed": "#dce1ff",
+          "on-tertiary-fixed-variant": "#832707",
+          "surface-bright": "#f8f9fa",
+          "surface-white": "#ffffff",
+          "secondary-container": "#9cb3ff",
+          "secondary-fixed": "#dbe1ff",
+          "text-secondary": "#475569",
+          "outline-variant": "#c4c5d5",
+          "surface-container-high": "#e7e8e9",
+          "surface-dim": "#d9dadb",
+          "secondary": "#445ba0",
+          "on-tertiary": "#ffffff",
+          "surface": "#f8f9fa",
+          "on-surface": "#191c1d",
+          "outline": "#747684",
+          "error-container": "#ffdad6",
+          "surface-container-low": "#f3f4f5",
+          "on-secondary-fixed": "#00174b",
+          "tertiary-fixed-dim": "#ffb59f",
+          "on-surface-variant": "#444653",
+          "surface-tint": "#3557bc",
+          "on-error-container": "#93000a",
+          "on-background": "#191c1d",
+          "on-primary-container": "#8aa4ff",
+          "on-secondary-container": "#2b4387"
+        },
+        "borderRadius": {
+          "DEFAULT": "0.125rem",
+          "lg": "0.25rem",
+          "xl": "0.5rem",
+          "full": "0.75rem"
+        },
+        "spacing": {
+          "space-sm": "8px",
+          "space-md": "16px",
+          "space-xl": "32px",
+          "grid-margin": "24px",
+          "space-xs": "4px",
+          "grid-gutter": "16px",
+          "space-lg": "24px"
+        },
+        "fontFamily": {
+          "headline-sm": [
+            "Inter"
+          ],
+          "body-lg": [
+            "Inter"
+          ],
+          "body-sm": [
+            "Inter"
+          ],
+          "label-sm": [
+            "Inter"
+          ],
+          "label-md": [
+            "Inter"
+          ],
+          "body-md": [
+            "Inter"
+          ],
+          "headline-lg": [
+            "Inter"
+          ],
+          "headline-md": [
+            "Inter"
+          ]
+        },
+        "fontSize": {
+          "headline-sm": [
+            "16px",
+            {
+              "lineHeight": "24px",
+              "fontWeight": "600"
+            }
+          ],
+          "body-lg": [
+            "15px",
+            {
+              "lineHeight": "22px",
+              "fontWeight": "400"
+            }
+          ],
+          "body-sm": [
+            "13px",
+            {
+              "lineHeight": "18px",
+              "fontWeight": "400"
+            }
+          ],
+          "label-sm": [
+            "11px",
+            {
+              "lineHeight": "14px",
+              "fontWeight": "500"
+            }
+          ],
+          "label-md": [
+            "12px",
+            {
+              "lineHeight": "16px",
+              "fontWeight": "500"
+            }
+          ],
+          "body-md": [
+            "14px",
+            {
+              "lineHeight": "20px",
+              "fontWeight": "400"
+            }
+          ],
+          "headline-lg": [
+            "24px",
+            {
+              "lineHeight": "32px",
+              "fontWeight": "600"
+            }
+          ],
+          "headline-md": [
+            "20px",
+            {
+              "lineHeight": "28px",
+              "fontWeight": "600"
+            }
+          ]
+        }
+      },
+    },
+  }
+</script></head><body class="bg-surface font-body-md text-on-surface"><aside class="fixed left-0 top-0 h-full w-60 bg-surface-container-lowest z-50 flex flex-col py-space-xl border-r border-border-hairline"><div class="px-space-xl mb-space-lg flex items-center justify-between"><span class="text-headline-sm font-headline-sm text-primary tracking-tight">MedPin Console</span><span class="material-symbols-outlined text-outline cursor-pointer hover:text-on-surface">chevron_left</span></div><nav class="flex-1 px-space-md space-y-space-xs" data-active-classes="bg-primary-container text-on-primary-container font-semibold rounded-lg"><a aria-current="page" class="flex items-center px-space-md py-space-sm transition-all bg-primary-container text-on-primary-container font-semibold rounded-lg" data-path="overview" href="#"><span class="material-symbols-outlined mr-space-md text-xl">dashboard</span><span class="text-body-md">Overview</span></a><a class="flex items-center px-space-md py-space-sm rounded-lg text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-all" data-path="practices" href="#"><span class="material-symbols-outlined mr-space-md text-xl">local_hospital</span><span class="text-body-md">Register</span></a><a class="flex items-center px-space-md py-space-sm rounded-lg text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-all" data-path="billing" href="#"><span class="material-symbols-outlined mr-space-md text-xl">payments</span><span class="text-body-md">Revenue &amp; Subscriptions</span></a><a class="flex items-center px-space-md py-space-sm rounded-lg text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-all" data-path="analytics" href="#"><span class="material-symbols-outlined mr-space-md text-xl">analytics</span><span class="text-body-md">Platform Figures</span></a><a class="flex items-center px-space-md py-space-sm rounded-lg text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-all" data-path="audit" href="#"><span class="material-symbols-outlined mr-space-md text-xl">security</span><span class="text-body-md">Audit Trail</span></a><a class="flex items-center px-space-md py-space-sm rounded-lg text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-all" data-path="admins" href="#"><span class="material-symbols-outlined mr-space-md text-xl">group</span><span class="text-body-md">Administrators</span></a><a class="flex items-center px-space-md py-space-sm rounded-lg text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-all" data-path="account" href="#"><span class="material-symbols-outlined mr-space-md text-xl">manage_accounts</span><span class="text-body-md">Sign-in &amp; 2FA</span></a></nav></aside><div class="pl-60"><header class="fixed top-0 left-60 right-0 h-16 bg-surface-container-lowest/80 backdrop-blur-xl border-b border-border-hairline z-40 flex items-center justify-between px-space-xl"><div class="flex items-center bg-surface-container-low px-space-md py-space-xs rounded-lg w-96 border border-border-hairline"><span class="material-symbols-outlined text-outline text-lg mr-space-sm">search</span><input class="bg-transparent border-none outline-none text-body-md text-on-surface w-full placeholder:text-outline" placeholder="Search practices, logs, admins..." type="text"/></div><div class="flex items-center gap-space-md"><button class="relative p-space-xs rounded-full hover:bg-surface-container-high text-on-surface-variant"><span class="material-symbols-outlined text-xl">notifications</span><span class="absolute top-1 right-1 w-2 h-2 bg-error rounded-full"></span></button><div class="flex items-center gap-space-sm pl-space-sm border-l border-border-hairline"><img alt="Profile" class="w-8 h-8 rounded-full object-cover" src="https://lh3.googleusercontent.com/aida/AEtjO1Vywaal_Lget5eB5q2-D2XbnrdSJb6d3uufCd8ISfG444RpdFiDcvk_tOfl--GV8V487KaD1-qrZdtnhCUYcdrV7nJpM19fMIZYpat3RJFXjBk9vgWpa0pYLfQXBY973A7L-S9WmmLjlEm33xI21XLtrtc3WXWVTAt134oG0GiikBrKFpC9gR3GYfQB7Ha3thp-5l97Ay3H5ZRWr45BkfhGZC_mfSghZRUxWFSDiVZ-aMR7Pid1PMzMSfRtjkyJyBkRcgP5QxIwuNI"/><div class="flex flex-col"><span class="text-label-md font-label-md text-on-surface">Lead Operator</span><span class="text-label-sm text-text-secondary">SecOps Tier 3</span></div></div></div></header><main class="relative pt-16 min-h-screen bg-surface flex flex-col justify-between"><div><div class="flex flex-col w-full pb-16">
+<!-- Page Header -->
+<div class="px-grid-margin py-space-xl bg-surface-container-lowest border-b border-border-hairline flex flex-col md:flex-row md:items-center justify-between gap-space-md">
+<div>
+<div class="flex items-center gap-space-sm mb-space-xs">
+<span class="text-label-md font-label-md text-primary tracking-wider uppercase">Sign-in &amp; Security</span>
+<span class="bg-primary/10 text-primary px-space-sm py-0.5 rounded-full text-label-sm font-label-sm">SecOps Tier 3 Verified</span>
+</div>
+<h1 class="text-headline-lg font-headline-lg text-on-surface">Operator Account &amp; Security</h1>
+<p class="text-body-md text-text-secondary mt-1">Manage your credentials, password, hardware passkeys, and TOTP two-factor authentication.</p>
+</div>
+<div class="flex items-center gap-space-sm">
+<button class="bg-surface-container-low hover:bg-surface-container-high text-on-surface px-space-md py-space-sm rounded-lg text-body-md font-medium transition-all">Discard Changes</button>
+<button class="bg-primary-container text-on-primary-container hover:opacity-90 px-space-md py-space-sm rounded-lg text-body-md font-semibold transition-all">Save Profile</button>
+</div>
+</div>
+<!-- Main Content Grid -->
+<div class="px-grid-margin mt-space-xl grid grid-cols-1 lg:grid-cols-12 gap-space-xl">
+<!-- Left Column: Personal Information & Password + Notifications -->
+<div class="lg:col-span-7 flex flex-col gap-space-xl">
+<!-- Panel 1: Personal Information & Password -->
+<div class="bg-surface-container-lowest rounded-xl p-space-xl border border-border-hairline flex flex-col gap-space-lg">
+<div class="flex items-center justify-between border-b border-border-hairline pb-space-md">
+<div class="flex items-center gap-space-sm">
+<span class="material-symbols-outlined text-primary text-xl">manage_accounts</span>
+<h2 class="text-headline-md font-headline-md text-on-surface">Personal Information &amp; Password</h2>
+</div>
+<span class="text-label-sm text-text-secondary">ID: OP-9942-X</span>
+</div>
+<div class="grid grid-cols-1 md:grid-cols-2 gap-space-md">
+<div class="flex flex-col gap-space-xs">
+<label class="text-label-md font-label-md text-on-surface-variant">Full Name</label>
+<input class="bg-surface-container-low border border-border-hairline rounded-lg px-space-md py-space-sm text-body-md text-on-surface outline-none focus:border-primary" type="text" value="Alexander Wright"/>
+</div>
+<div class="flex flex-col gap-space-xs">
+<label class="text-label-md font-label-md text-on-surface-variant">Corporate Email</label>
+<input class="bg-surface-container-low border border-border-hairline rounded-lg px-space-md py-space-sm text-body-md text-on-surface outline-none focus:border-primary" type="email" value="a.wright@medpin-secops.internal"/>
+</div>
+</div>
+<div class="border-t border-border-hairline pt-space-lg flex flex-col gap-space-md">
+<h3 class="text-headline-sm font-headline-sm text-on-surface">Change Password</h3>
+<div class="grid grid-cols-1 md:grid-cols-3 gap-space-md">
+<div class="flex flex-col gap-space-xs">
+<label class="text-label-md font-label-md text-on-surface-variant">Current Password</label>
+<input class="bg-surface-container-low border border-border-hairline rounded-lg px-space-md py-space-sm text-body-md text-on-surface outline-none focus:border-primary" placeholder="••••••••••••" type="password"/>
+</div>
+<div class="flex flex-col gap-space-xs">
+<label class="text-label-md font-label-md text-on-surface-variant">New Password</label>
+<input class="bg-surface-container-low border border-border-hairline rounded-lg px-space-md py-space-sm text-body-md text-on-surface outline-none focus:border-primary" placeholder="••••••••••••" type="password"/>
+</div>
+<div class="flex flex-col gap-space-xs">
+<label class="text-label-md font-label-md text-on-surface-variant">Confirm New</label>
+<input class="bg-surface-container-low border border-border-hairline rounded-lg px-space-md py-space-sm text-body-md text-on-surface outline-none focus:border-primary" placeholder="••••••••••••" type="password"/>
+</div>
+</div>
+<div class="flex justify-end mt-space-xs">
+<button class="bg-surface-container-low hover:bg-surface-container-high text-on-surface px-space-md py-space-sm rounded-lg text-body-sm font-medium transition-all">Update Credentials</button>
+</div>
+</div>
+</div>
+<!-- Panel 4: Active Sessions -->
+<div class="bg-surface-container-lowest rounded-xl p-space-xl border border-border-hairline flex flex-col gap-space-lg">
+<div class="flex items-center justify-between border-b border-border-hairline pb-space-md">
+<div class="flex items-center gap-space-sm">
+<span class="material-symbols-outlined text-primary text-xl">devices</span>
+<h2 class="text-headline-md font-headline-md text-on-surface">Active Operator Sessions</h2>
+</div>
+<button class="text-error text-body-sm font-medium hover:underline">Revoke All Others</button>
+</div>
+<div class="flex flex-col gap-space-md">
+<div class="flex items-center justify-between p-space-md bg-surface-container-low rounded-lg border border-border-hairline">
+<div class="flex items-center gap-space-md">
+<span class="material-symbols-outlined text-primary text-2xl">laptop_mac</span>
+<div>
+<div class="flex items-center gap-space-sm">
+<span class="text-body-md font-medium text-on-surface">MacBook Pro 16" (Current Session)</span>
+<span class="bg-primary/10 text-primary px-space-xs py-0.5 rounded text-label-sm">Active Now</span>
+</div>
+<p class="text-body-sm text-text-secondary">Zurich, Switzerland • IP: 198.51.100.42</p>
+</div>
+</div>
+<span class="text-label-sm text-text-secondary">SecOps VPN</span>
+</div>
+<div class="flex items-center justify-between p-space-md bg-surface-container-low rounded-lg border border-border-hairline">
+<div class="flex items-center gap-space-md">
+<span class="material-symbols-outlined text-outline text-2xl">desktop_windows</span>
+<div>
+<div class="flex items-center gap-space-sm">
+<span class="text-body-md font-medium text-on-surface">Secure Terminal Node #04</span>
+</div>
+<p class="text-body-sm text-text-secondary">Frankfurt Datacenter • IP: 203.0.113.88</p>
+</div>
+</div>
+<button class="text-error hover:bg-error-container/20 px-space-sm py-1 rounded text-body-sm transition-all">Terminate</button>
+</div>
+</div>
+</div>
+<!-- Panel 5: Email Notifications -->
+<div class="bg-surface-container-lowest rounded-xl p-space-xl border border-border-hairline flex flex-col gap-space-lg">
+<div class="flex items-center justify-between border-b border-border-hairline pb-space-md">
+<div class="flex items-center gap-space-sm">
+<span class="material-symbols-outlined text-primary text-xl">notifications_active</span>
+<h2 class="text-headline-md font-headline-md text-on-surface">Email Notifications</h2>
+</div>
+</div>
+<div class="flex flex-col gap-space-md">
+<label class="flex items-center justify-between cursor-pointer p-space-sm hover:bg-surface-container-low rounded-lg transition-all">
+<div class="flex flex-col">
+<span class="text-body-md font-medium text-on-surface">Critical Security Alerts</span>
+<span class="text-body-sm text-text-secondary">Immediate notice on unauthorized login attempts or token revocation.</span>
+</div>
+<input checked="" class="w-4 h-4 accent-primary rounded" type="checkbox"/>
+</label>
+<label class="flex items-center justify-between cursor-pointer p-space-sm hover:bg-surface-container-low rounded-lg transition-all">
+<div class="flex flex-col">
+<span class="text-body-md font-medium text-on-surface">Platform Compliance Audits</span>
+<span class="text-body-sm text-text-secondary">Weekly summary of operator audit trail logs and export activities.</span>
+</div>
+<input checked="" class="w-4 h-4 accent-primary rounded" type="checkbox"/>
+</label>
+<label class="flex items-center justify-between cursor-pointer p-space-sm hover:bg-surface-container-low rounded-lg transition-all">
+<div class="flex flex-col">
+<span class="text-body-md font-medium text-on-surface">Billing &amp; Subscription Changes</span>
+<span class="text-body-sm text-text-secondary">Notifications when enterprise medical practices update tier subscriptions.</span>
+</div>
+<input class="w-4 h-4 accent-primary rounded" type="checkbox"/>
+</label>
+</div>
+</div>
+</div>
+<!-- Right Column: TOTP Two-Factor Authentication & Hardware Passkeys -->
+<div class="lg:col-span-5 flex flex-col gap-space-xl">
+<!-- Panel 2: Two-Factor Authentication (TOTP) -->
+<div class="bg-surface-container-lowest rounded-xl p-space-xl border border-border-hairline flex flex-col gap-space-lg">
+<div class="flex items-center justify-between border-b border-border-hairline pb-space-md">
+<div class="flex items-center gap-space-sm">
+<span class="material-symbols-outlined text-primary text-xl">vpn_key</span>
+<h2 class="text-headline-md font-headline-md text-on-surface">TOTP Two-Factor Auth</h2>
+</div>
+<span class="bg-primary/10 text-primary px-space-sm py-0.5 rounded-full text-label-sm font-label-sm">Enabled</span>
+</div>
+<p class="text-body-sm text-text-secondary">Your account requires time-based one-time passwords for all console operations and overrides.</p>
+<div class="flex flex-col items-center justify-center p-space-lg bg-surface-container-low rounded-lg border border-border-hairline gap-space-md">
+<!-- QR Code Placeholder graphic representation -->
+<div class="w-36 h-36 bg-surface-container-highest rounded flex items-center justify-center relative overflow-hidden p-2 border border-border-hairline">
+<div class="grid grid-cols-6 gap-1 w-full h-full opacity-80">
+<div class="bg-on-surface rounded-xs"></div><div class="bg-on-surface rounded-xs"></div><div class="bg-transparent"></div><div class="bg-on-surface rounded-xs"></div><div class="bg-on-surface rounded-xs"></div><div class="bg-on-surface rounded-xs"></div>
+<div class="bg-on-surface rounded-xs"></div><div class="bg-transparent"></div><div class="bg-on-surface rounded-xs"></div><div class="bg-transparent"></div><div class="bg-on-surface rounded-xs"></div><div class="bg-transparent"></div>
+<div class="bg-transparent"></div><div class="bg-on-surface rounded-xs"></div><div class="bg-on-surface rounded-xs"></div><div class="bg-on-surface rounded-xs"></div><div class="bg-transparent"></div><div class="bg-on-surface rounded-xs"></div>
+<div class="bg-on-surface rounded-xs"></div><div class="bg-on-surface rounded-xs"></div><div class="bg-transparent"></div><div class="bg-transparent"></div><div class="bg-on-surface rounded-xs"></div><div class="bg-on-surface rounded-xs"></div>
+<div class="bg-transparent"></div><div class="bg-transparent"></div><div class="bg-on-surface rounded-xs"></div><div class="bg-on-surface rounded-xs"></div><div class="bg-transparent"></div><div class="bg-transparent"></div>
+<div class="bg-on-surface rounded-xs"></div><div class="bg-on-surface rounded-xs"></div><div class="bg-transparent"></div><div class="bg-on-surface rounded-xs"></div><div class="bg-on-surface rounded-xs"></div><div class="bg-on-surface rounded-xs"></div>
+</div>
+<div class="absolute inset-0 flex items-center justify-center bg-surface-container-lowest/70 backdrop-blur-[1px]">
+<span class="material-symbols-outlined text-primary text-3xl">qr_code_2</span>
+</div>
+</div>
+<div class="flex flex-col items-center gap-space-xs w-full">
+<span class="text-label-sm text-text-secondary uppercase tracking-widest font-label-md">Secret Setup Key</span>
+<!-- Wide tracking text-metric font representation -->
+<div class="bg-surface-container-lowest px-space-md py-space-xs rounded border border-border-hairline text-center w-full">
+<span class="font-mono text-body-md tracking-[0.25em] text-on-surface font-bold">JBSWY3DPEHPK3PXP</span>
+</div>
+</div>
+</div>
+<div class="flex items-center gap-space-sm">
+<input class="bg-surface-container-low border border-border-hairline rounded-lg px-space-md py-space-sm text-body-md text-on-surface outline-none focus:border-primary flex-1 tracking-widest text-center font-mono" placeholder="Enter 6-digit TOTP code" type="text"/>
+<button class="bg-primary text-on-primary hover:opacity-90 px-space-md py-space-sm rounded-lg text-body-md font-medium transition-all">Verify &amp; Rotate</button>
+</div>
+</div>
+<!-- Panel 3: Hardware Passkeys (WebAuthn) -->
+<div class="bg-surface-container-lowest rounded-xl p-space-xl border border-border-hairline flex flex-col gap-space-lg">
+<div class="flex items-center justify-between border-b border-border-hairline pb-space-md">
+<div class="flex items-center gap-space-sm">
+<span class="material-symbols-outlined text-primary text-xl">fingerprint</span>
+<h2 class="text-headline-md font-headline-md text-on-surface">Hardware Passkeys</h2>
+</div>
+<button class="bg-surface-container-low hover:bg-surface-container-high text-on-surface px-space-sm py-1 rounded text-body-sm font-medium transition-all flex items-center gap-space-xs">
+<span class="material-symbols-outlined text-base">add</span> Register Key
+          </button>
+</div>
+<p class="text-body-sm text-text-secondary">FIDO2 / WebAuthn security keys for passwordless authentication and cryptographic approval.</p>
+<div class="flex flex-col gap-space-md">
+<div class="flex items-center justify-between p-space-md bg-surface-container-low rounded-lg border border-border-hairline">
+<div class="flex items-center gap-space-md">
+<span class="material-symbols-outlined text-primary text-2xl">key</span>
+<div>
+<div class="flex items-center gap-space-sm">
+<span class="text-body-md font-medium text-on-surface">YubiKey 5Ci NFC</span>
+<span class="bg-primary/10 text-primary px-space-xs py-0.5 rounded text-label-sm">Primary</span>
+</div>
+<p class="text-body-sm text-text-secondary">Added Oct 14, 2023 • FIDO2 Bio</p>
+</div>
+</div>
+<button class="text-text-secondary hover:text-error p-1 rounded transition-all">
+<span class="material-symbols-outlined text-xl">delete</span>
+</button>
+</div>
+<div class="flex items-center justify-between p-space-md bg-surface-container-low rounded-lg border border-border-hairline">
+<div class="flex items-center gap-space-md">
+<span class="material-symbols-outlined text-outline text-2xl">security</span>
+<div>
+<div class="flex items-center gap-space-sm">
+<span class="text-body-md font-medium text-on-surface">Apple TouchID Secure Enclave</span>
+</div>
+<p class="text-body-sm text-text-secondary">Added Jan 02, 2024 • Platform Authenticator</p>
+</div>
+</div>
+<button class="text-text-secondary hover:text-error p-1 rounded transition-all">
+<span class="material-symbols-outlined text-xl">delete</span>
+</button>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div></div><footer class="w-full bg-surface-container-lowest border-t border-border-hairline py-space-md px-space-xl mt-space-xl flex flex-col md:flex-row items-center justify-between text-body-sm text-text-secondary"><p>MedPin Operator Console • Internal System Administration &amp; Billing Management.</p><p class="text-outline">Note: This console contains platform telemetry and metadata only. It does not hold, process, or display patient health records (PHI).</p></footer></main></div></body></html>

@@ -1,0 +1,758 @@
+<!DOCTYPE html>
+
+<html lang="en"><head><meta charset="utf-8"/><meta content="width=device-width, initial-scale=1.0" name="viewport"/><style>@layer base{html,body{margin:0;padding:0;}body{overscroll-behavior:none;}main>:first-child{margin-top:0!important;}main>:last-child{margin-bottom:0!important;}}::-webkit-scrollbar{display:none;}</style><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap" rel="stylesheet"/><link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/><script src="https://cdn.tailwindcss.com"></script><script id="tailwind-config">
+  tailwind.config = {
+    darkMode: "class",
+    theme: {
+      extend: {
+        "colors": {
+          "on-tertiary-fixed": "#3a0a00",
+          "text-primary": "#0f172a",
+          "on-secondary": "#ffffff",
+          "background": "#f8f9fa",
+          "on-error": "#ffffff",
+          "surface-variant": "#e1e3e4",
+          "tertiary": "#4f1100",
+          "primary-fixed-dim": "#b5c4ff",
+          "inverse-primary": "#b5c4ff",
+          "surface-container": "#edeeef",
+          "error": "#ba1a1a",
+          "on-secondary-fixed-variant": "#2a4386",
+          "border-hairline": "#e2e8f0",
+          "secondary-fixed-dim": "#b4c5ff",
+          "inverse-on-surface": "#f0f1f2",
+          "inverse-surface": "#2e3132",
+          "on-primary-fixed": "#00164e",
+          "on-tertiary-container": "#ff8561",
+          "primary-fixed": "#dce1ff",
+          "on-tertiary-fixed-variant": "#832707",
+          "surface-bright": "#f8f9fa",
+          "surface-white": "#ffffff",
+          "secondary-container": "#9cb3ff",
+          "secondary-fixed": "#dbe1ff",
+          "text-secondary": "#475569",
+          "outline-variant": "#c4c5d5",
+          "surface-container-high": "#e7e8e9",
+          "surface-dim": "#d9dadb",
+          "secondary": "#445ba0",
+          "on-tertiary": "#ffffff",
+          "surface": "#f8f9fa",
+          "on-surface": "#191c1d",
+          "outline": "#747684",
+          "error-container": "#ffdad6",
+          "surface-container-low": "#f3f4f5",
+          "on-secondary-fixed": "#00174b",
+          "tertiary-fixed-dim": "#ffb59f",
+          "on-surface-variant": "#444653",
+          "surface-tint": "#3557bc",
+          "on-error-container": "#93000a",
+          "on-background": "#191c1d",
+          "on-primary-container": "#8aa4ff",
+          "on-secondary-container": "#2b4387"
+        },
+        "borderRadius": {
+          "DEFAULT": "0.125rem",
+          "lg": "0.25rem",
+          "xl": "0.5rem",
+          "full": "0.75rem"
+        },
+        "spacing": {
+          "space-sm": "8px",
+          "space-md": "16px",
+          "space-xl": "32px",
+          "grid-margin": "24px",
+          "space-xs": "4px",
+          "grid-gutter": "16px",
+          "space-lg": "24px"
+        },
+        "fontFamily": {
+          "headline-sm": [
+            "Inter"
+          ],
+          "body-lg": [
+            "Inter"
+          ],
+          "body-sm": [
+            "Inter"
+          ],
+          "label-sm": [
+            "Inter"
+          ],
+          "label-md": [
+            "Inter"
+          ],
+          "body-md": [
+            "Inter"
+          ],
+          "headline-lg": [
+            "Inter"
+          ],
+          "headline-md": [
+            "Inter"
+          ]
+        },
+        "fontSize": {
+          "headline-sm": [
+            "16px",
+            {
+              "lineHeight": "24px",
+              "fontWeight": "600"
+            }
+          ],
+          "body-lg": [
+            "15px",
+            {
+              "lineHeight": "22px",
+              "fontWeight": "400"
+            }
+          ],
+          "body-sm": [
+            "13px",
+            {
+              "lineHeight": "18px",
+              "fontWeight": "400"
+            }
+          ],
+          "label-sm": [
+            "11px",
+            {
+              "lineHeight": "14px",
+              "fontWeight": "500"
+            }
+          ],
+          "label-md": [
+            "12px",
+            {
+              "lineHeight": "16px",
+              "fontWeight": "500"
+            }
+          ],
+          "body-md": [
+            "14px",
+            {
+              "lineHeight": "20px",
+              "fontWeight": "400"
+            }
+          ],
+          "headline-lg": [
+            "24px",
+            {
+              "lineHeight": "32px",
+              "fontWeight": "600"
+            }
+          ],
+          "headline-md": [
+            "20px",
+            {
+              "lineHeight": "28px",
+              "fontWeight": "600"
+            }
+          ]
+        }
+      },
+    },
+  }
+</script></head><body class="bg-surface font-body-md text-on-surface"><aside class="fixed left-0 top-0 h-full w-60 bg-surface-container-lowest z-50 flex flex-col py-space-xl border-r border-border-hairline"><div class="px-space-xl mb-space-lg flex items-center justify-between"><span class="text-headline-sm font-headline-sm text-primary tracking-tight">MedPin Console</span><span class="material-symbols-outlined text-outline cursor-pointer hover:text-on-surface">chevron_left</span></div><nav class="flex-1 px-space-md space-y-space-xs" data-active-classes="bg-primary-container text-on-primary-container font-semibold rounded-lg"><a aria-current="page" class="flex items-center px-space-md py-space-sm transition-all bg-primary-container text-on-primary-container font-semibold rounded-lg" data-path="overview" href="#"><span class="material-symbols-outlined mr-space-md text-xl">dashboard</span><span class="text-body-md">Overview</span></a><a class="flex items-center px-space-md py-space-sm rounded-lg text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-all" data-path="practices" href="#"><span class="material-symbols-outlined mr-space-md text-xl">local_hospital</span><span class="text-body-md">Register</span></a><a class="flex items-center px-space-md py-space-sm rounded-lg text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-all" data-path="billing" href="#"><span class="material-symbols-outlined mr-space-md text-xl">payments</span><span class="text-body-md">Revenue &amp; Subscriptions</span></a><a class="flex items-center px-space-md py-space-sm rounded-lg text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-all" data-path="analytics" href="#"><span class="material-symbols-outlined mr-space-md text-xl">analytics</span><span class="text-body-md">Platform Figures</span></a><a class="flex items-center px-space-md py-space-sm rounded-lg text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-all" data-path="audit" href="#"><span class="material-symbols-outlined mr-space-md text-xl">security</span><span class="text-body-md">Audit Trail</span></a><a class="flex items-center px-space-md py-space-sm rounded-lg text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-all" data-path="admins" href="#"><span class="material-symbols-outlined mr-space-md text-xl">group</span><span class="text-body-md">Administrators</span></a><a class="flex items-center px-space-md py-space-sm rounded-lg text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-all" data-path="account" href="#"><span class="material-symbols-outlined mr-space-md text-xl">manage_accounts</span><span class="text-body-md">Sign-in &amp; 2FA</span></a></nav></aside><div class="pl-60"><header class="fixed top-0 left-60 right-0 h-16 bg-surface-container-lowest/80 backdrop-blur-xl border-b border-border-hairline z-40 flex items-center justify-between px-space-xl"><div class="flex items-center bg-surface-container-low px-space-md py-space-xs rounded-lg w-96 border border-border-hairline"><span class="material-symbols-outlined text-outline text-lg mr-space-sm">search</span><input class="bg-transparent border-none outline-none text-body-md text-on-surface w-full placeholder:text-outline" placeholder="Search practices, logs, admins..." type="text"/></div><div class="flex items-center gap-space-md"><button class="relative p-space-xs rounded-full hover:bg-surface-container-high text-on-surface-variant"><span class="material-symbols-outlined text-xl">notifications</span><span class="absolute top-1 right-1 w-2 h-2 bg-error rounded-full"></span></button><div class="flex items-center gap-space-sm pl-space-sm border-l border-border-hairline"><img alt="Profile" class="w-8 h-8 rounded-full object-cover" src="https://lh3.googleusercontent.com/aida/AEtjO1Vywaal_Lget5eB5q2-D2XbnrdSJb6d3uufCd8ISfG444RpdFiDcvk_tOfl--GV8V487KaD1-qrZdtnhCUYcdrV7nJpM19fMIZYpat3RJFXjBk9vgWpa0pYLfQXBY973A7L-S9WmmLjlEm33xI21XLtrtc3WXWVTAt134oG0GiikBrKFpC9gR3GYfQB7Ha3thp-5l97Ay3H5ZRWr45BkfhGZC_mfSghZRUxWFSDiVZ-aMR7Pid1PMzMSfRtjkyJyBkRcgP5QxIwuNI"/><div class="flex flex-col"><span class="text-label-md font-label-md text-on-surface">Lead Operator</span><span class="text-label-sm text-text-secondary">SecOps Tier 3</span></div></div></div></header><main class="relative pt-16 min-h-screen bg-surface flex flex-col justify-between"><div><div class="flex flex-col w-full">
+<!-- Page Header -->
+<div class="flex flex-col md:flex-row items-start md:items-center justify-between px-space-xl pt-space-xl pb-space-lg bg-surface-container-lowest">
+<div>
+<div class="flex items-center gap-space-sm mb-space-xs">
+<span class="text-label-sm font-label-sm uppercase tracking-wider text-primary">Directory &amp; Control</span>
+<span class="text-outline">/</span>
+<span class="text-label-sm font-label-sm text-text-secondary">Register</span>
+</div>
+<h1 class="text-headline-lg font-headline-lg text-on-surface">Practice Register</h1>
+<p class="text-body-md text-text-secondary mt-1">Manage platform practices, verification status, subscriptions, and administrative actions.</p>
+</div>
+<div class="flex items-center gap-space-md mt-space-md md:mt-0">
+<button class="flex items-center gap-space-xs px-space-md py-space-sm bg-surface-container-low hover:bg-surface-container-high text-on-surface text-body-md font-medium rounded transition-colors" onclick="openExportModal()">
+<span class="material-symbols-outlined text-xl">download</span>
+        Export Register
+      </button>
+<button class="flex items-center gap-space-xs px-space-md py-space-sm bg-primary-container hover:bg-primary text-on-primary text-body-md font-medium rounded transition-colors shadow-sm" onclick="openAddPracticeModal()">
+<span class="material-symbols-outlined text-xl">add</span>
+        Add Practice
+      </button>
+</div>
+</div>
+<!-- Search & Filter Bar -->
+<div class="px-space-xl py-space-md bg-surface-container-lowest border-t border-border-hairline flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-space-md">
+<div class="flex flex-col sm:flex-row items-stretch sm:items-center gap-space-md flex-1">
+<div class="relative flex-1 max-w-md">
+<span class="material-symbols-outlined absolute left-3 top-2.5 text-outline text-xl">search</span>
+<input class="w-full pl-10 pr-space-md py-2 bg-surface-container-low border border-border-hairline rounded text-body-md text-on-surface outline-none focus:border-primary transition-colors" id="practiceSearch" placeholder="Search practices by name, ID, or location..." type="text"/>
+</div>
+<div class="flex items-center gap-space-xs overflow-x-auto pb-2 sm:pb-0">
+<button class="status-pill px-space-md py-1.5 rounded text-label-md font-label-md bg-primary-container text-on-primary-container whitespace-nowrap transition-all" data-filter="all" onclick="filterStatus('all')">All (312)</button>
+<button class="status-pill px-space-md py-1.5 rounded text-label-md font-label-md bg-surface-container-low text-on-surface-variant hover:bg-surface-container-high whitespace-nowrap transition-all" data-filter="active" onclick="filterStatus('active')">Active &amp; Verified (284)</button>
+<button class="status-pill px-space-md py-1.5 rounded text-label-md font-label-md bg-surface-container-low text-on-surface-variant hover:bg-surface-container-high whitespace-nowrap transition-all" data-filter="pending" onclick="filterStatus('pending')">Pending (18)</button>
+<button class="status-pill px-space-md py-1.5 rounded text-label-md font-label-md bg-surface-container-low text-on-surface-variant hover:bg-surface-container-high whitespace-nowrap transition-all" data-filter="suspended" onclick="filterStatus('suspended')">Suspended (10)</button>
+</div>
+</div>
+<div class="flex items-center justify-between lg:justify-end gap-space-md">
+<div class="flex items-center gap-space-sm">
+<span class="text-body-sm text-text-secondary whitespace-nowrap">Sort by:</span>
+<select class="bg-surface-container-low border border-border-hairline px-space-md py-2 rounded text-body-md text-on-surface outline-none focus:border-primary">
+<option>Needs attention first</option>
+<option>Newest registered</option>
+<option>By Name (A-Z)</option>
+<option>Most Staff</option>
+</select>
+</div>
+<span class="text-body-sm text-text-secondary whitespace-nowrap">Showing 25 of 312 practices</span>
+</div>
+</div>
+<!-- Main Content Layout (Table + Slide-over Drawer) -->
+<div class="relative px-space-xl py-space-lg flex gap-space-lg items-start">
+<!-- Practices Table -->
+<div class="flex-1 bg-surface-container-lowest border border-border-hairline rounded-xl overflow-hidden shadow-sm">
+<div class="overflow-x-auto">
+<table class="w-full text-left border-collapse">
+<thead>
+<tr class="bg-surface-container-low border-b border-border-hairline text-label-md font-label-md text-text-secondary">
+<th class="py-space-md px-space-md font-medium">Practice Name &amp; ID</th>
+<th class="py-space-md px-space-md font-medium">Status</th>
+<th class="py-space-md px-space-md font-medium">Verification</th>
+<th class="py-space-md px-space-md font-medium">Location</th>
+<th class="py-space-md px-space-md font-medium">Staff</th>
+<th class="py-space-md px-space-md font-medium">Active Plan</th>
+<th class="py-space-md px-space-md font-medium text-right">Actions</th>
+</tr>
+</thead>
+<tbody class="divide-y divide-border-hairline text-body-md">
+<!-- Row 1: Attention Required -->
+<tr class="hover:bg-surface-container-low/50 transition-colors relative cursor-pointer group bg-amber-50/20" onclick="openDrawer('Bay Area Cardiology', 'MP-402')">
+<td class="py-space-md px-space-md relative">
+<div class="absolute left-0 top-0 bottom-0 w-1 bg-error"></div>
+<div class="flex items-center gap-space-sm">
+<div class="w-8 h-8 rounded bg-primary-container text-on-primary-container flex items-center justify-center font-bold text-label-md">BAC</div>
+<div>
+<div class="font-semibold text-on-surface group-hover:text-primary transition-colors">Bay Area Cardiology</div>
+<div class="text-body-sm text-text-secondary font-mono">MP-402</div>
+</div>
+</div>
+</td>
+<td class="py-space-md px-space-md">
+<span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-label-sm font-label-sm bg-amber-100 text-amber-900">
+<span class="w-1.5 h-1.5 rounded-full bg-amber-600 animate-pulse"></span>
+                  Action Req.
+                </span>
+</td>
+<td class="py-space-md px-space-md">
+<span class="text-body-sm text-text-secondary">Docs Expired</span>
+</td>
+<td class="py-space-md px-space-md text-text-secondary">San Francisco, CA</td>
+<td class="py-space-md px-space-md font-mono text-on-surface">42</td>
+<td class="py-space-md px-space-md">
+<span class="px-2 py-0.5 bg-surface-container border border-border-hairline rounded text-label-sm font-medium text-on-surface">Enterprise Pro</span>
+</td>
+<td class="py-space-md px-space-md text-right">
+<div class="flex items-center justify-end gap-2" onclick="event.stopPropagation()">
+<button class="p-1.5 hover:bg-surface-container-high rounded text-text-secondary hover:text-on-surface" onclick="openDrawer('Bay Area Cardiology', 'MP-402')" title="View details">
+<span class="material-symbols-outlined text-lg">visibility</span>
+</button>
+<button class="p-1.5 hover:bg-error-container rounded text-error" onclick="openSuspendModal('Bay Area Cardiology')" title="Suspend Practice">
+<span class="material-symbols-outlined text-lg">block</span>
+</button>
+</div>
+</td>
+</tr>
+<!-- Row 2: Active -->
+<tr class="hover:bg-surface-container-low/50 transition-colors cursor-pointer group" onclick="openDrawer('Metro General Health', 'MP-389')">
+<td class="py-space-md px-space-md">
+<div class="flex items-center gap-space-sm">
+<div class="w-8 h-8 rounded bg-surface-container-high text-on-surface-variant flex items-center justify-center font-bold text-label-md">MGH</div>
+<div>
+<div class="font-semibold text-on-surface group-hover:text-primary transition-colors">Metro General Health</div>
+<div class="text-body-sm text-text-secondary font-mono">MP-389</div>
+</div>
+</div>
+</td>
+<td class="py-space-md px-space-md">
+<span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-label-sm font-label-sm bg-emerald-100 text-emerald-900">
+<span class="w-1.5 h-1.5 rounded-full bg-emerald-600"></span>
+                  Active
+                </span>
+</td>
+<td class="py-space-md px-space-md">
+<span class="text-body-sm text-emerald-700 font-medium flex items-center gap-1">
+<span class="material-symbols-outlined text-sm">verified</span> Verified
+                </span>
+</td>
+<td class="py-space-md px-space-md text-text-secondary">Chicago, IL</td>
+<td class="py-space-md px-space-md font-mono text-on-surface">128</td>
+<td class="py-space-md px-space-md">
+<span class="px-2 py-0.5 bg-surface-container border border-border-hairline rounded text-label-sm font-medium text-on-surface">Enterprise Ultra</span>
+</td>
+<td class="py-space-md px-space-md text-right">
+<div class="flex items-center justify-end gap-2" onclick="event.stopPropagation()">
+<button class="p-1.5 hover:bg-surface-container-high rounded text-text-secondary hover:text-on-surface" onclick="openDrawer('Metro General Health', 'MP-389')">
+<span class="material-symbols-outlined text-lg">visibility</span>
+</button>
+<button class="p-1.5 hover:bg-error-container rounded text-text-secondary hover:text-error" onclick="openSuspendModal('Metro General Health')">
+<span class="material-symbols-outlined text-lg">block</span>
+</button>
+</div>
+</td>
+</tr>
+<!-- Row 3: Pending -->
+<tr class="hover:bg-surface-container-low/50 transition-colors cursor-pointer group" onclick="openDrawer('Cascade Family Practice', 'MP-412')">
+<td class="py-space-md px-space-md">
+<div class="flex items-center gap-space-sm">
+<div class="w-8 h-8 rounded bg-surface-container-high text-on-surface-variant flex items-center justify-center font-bold text-label-md">CFP</div>
+<div>
+<div class="font-semibold text-on-surface group-hover:text-primary transition-colors">Cascade Family Practice</div>
+<div class="text-body-sm text-text-secondary font-mono">MP-412</div>
+</div>
+</div>
+</td>
+<td class="py-space-md px-space-md">
+<span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-label-sm font-label-sm bg-blue-100 text-blue-900">
+<span class="w-1.5 h-1.5 rounded-full bg-blue-600"></span>
+                  Pending Review
+                </span>
+</td>
+<td class="py-space-md px-space-md">
+<span class="text-body-sm text-text-secondary">Awaiting DEA Check</span>
+</td>
+<td class="py-space-md px-space-md text-text-secondary">Seattle, WA</td>
+<td class="py-space-md px-space-md font-mono text-on-surface">14</td>
+<td class="py-space-md px-space-md">
+<span class="px-2 py-0.5 bg-surface-container border border-border-hairline rounded text-label-sm font-medium text-on-surface">Standard</span>
+</td>
+<td class="py-space-md px-space-md text-right">
+<div class="flex items-center justify-end gap-2" onclick="event.stopPropagation()">
+<button class="p-1.5 hover:bg-surface-container-high rounded text-text-secondary hover:text-on-surface" onclick="openDrawer('Cascade Family Practice', 'MP-412')">
+<span class="material-symbols-outlined text-lg">visibility</span>
+</button>
+<button class="p-1.5 hover:bg-error-container rounded text-text-secondary hover:text-error" onclick="openSuspendModal('Cascade Family Practice')">
+<span class="material-symbols-outlined text-lg">block</span>
+</button>
+</div>
+</td>
+</tr>
+<!-- Row 4: Suspended -->
+<tr class="hover:bg-surface-container-low/50 transition-colors cursor-pointer group opacity-75" onclick="openDrawer('Apex Orthopedics', 'MP-291')">
+<td class="py-space-md px-space-md">
+<div class="flex items-center gap-space-sm">
+<div class="w-8 h-8 rounded bg-error-container text-on-error-container flex items-center justify-center font-bold text-label-md">AO</div>
+<div>
+<div class="font-semibold text-on-surface group-hover:text-primary transition-colors line-through">Apex Orthopedics</div>
+<div class="text-body-sm text-text-secondary font-mono">MP-291</div>
+</div>
+</div>
+</td>
+<td class="py-space-md px-space-md">
+<span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-label-sm font-label-sm bg-rose-100 text-rose-900">
+<span class="w-1.5 h-1.5 rounded-full bg-rose-600"></span>
+                  Suspended
+                </span>
+</td>
+<td class="py-space-md px-space-md">
+<span class="text-body-sm text-error">Revoked</span>
+</td>
+<td class="py-space-md px-space-md text-text-secondary">Austin, TX</td>
+<td class="py-space-md px-space-md font-mono text-on-surface">0</td>
+<td class="py-space-md px-space-md">
+<span class="px-2 py-0.5 bg-surface-container border border-border-hairline rounded text-label-sm font-medium text-text-secondary">Cancelled</span>
+</td>
+<td class="py-space-md px-space-md text-right">
+<div class="flex items-center justify-end gap-2" onclick="event.stopPropagation()">
+<button class="p-1.5 hover:bg-surface-container-high rounded text-text-secondary hover:text-on-surface" onclick="openDrawer('Apex Orthopedics', 'MP-291')">
+<span class="material-symbols-outlined text-lg">visibility</span>
+</button>
+<button class="p-1.5 hover:bg-emerald-100 rounded text-emerald-700" onclick="openVerifyModal('Apex Orthopedics')" title="Reinstate Practice">
+<span class="material-symbols-outlined text-lg">check_circle</span>
+</button>
+</div>
+</td>
+</tr>
+<!-- Row 5: Active -->
+<tr class="hover:bg-surface-container-low/50 transition-colors cursor-pointer group" onclick="openDrawer('Summit Pediatrics', 'MP-304')">
+<td class="py-space-md px-space-md">
+<div class="flex items-center gap-space-sm">
+<div class="w-8 h-8 rounded bg-surface-container-high text-on-surface-variant flex items-center justify-center font-bold text-label-md">SP</div>
+<div>
+<div class="font-semibold text-on-surface group-hover:text-primary transition-colors">Summit Pediatrics</div>
+<div class="text-body-sm text-text-secondary font-mono">MP-304</div>
+</div>
+</div>
+</td>
+<td class="py-space-md px-space-md">
+<span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-label-sm font-label-sm bg-emerald-100 text-emerald-900">
+<span class="w-1.5 h-1.5 rounded-full bg-emerald-600"></span>
+                  Active
+                </span>
+</td>
+<td class="py-space-md px-space-md">
+<span class="text-body-sm text-emerald-700 font-medium flex items-center gap-1">
+<span class="material-symbols-outlined text-sm">verified</span> Verified
+                </span>
+</td>
+<td class="py-space-md px-space-md text-text-secondary">Denver, CO</td>
+<td class="py-space-md px-space-md font-mono text-on-surface">29</td>
+<td class="py-space-md px-space-md">
+<span class="px-2 py-0.5 bg-surface-container border border-border-hairline rounded text-label-sm font-medium text-on-surface">Enterprise Pro</span>
+</td>
+<td class="py-space-md px-space-md text-right">
+<div class="flex items-center justify-end gap-2" onclick="event.stopPropagation()">
+<button class="p-1.5 hover:bg-surface-container-high rounded text-text-secondary hover:text-on-surface" onclick="openDrawer('Summit Pediatrics', 'MP-304')">
+<span class="material-symbols-outlined text-lg">visibility</span>
+</button>
+<button class="p-1.5 hover:bg-error-container rounded text-text-secondary hover:text-error" onclick="openSuspendModal('Summit Pediatrics')">
+<span class="material-symbols-outlined text-lg">block</span>
+</button>
+</div>
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+<!-- Pagination Footer -->
+<div class="px-space-md py-space-sm bg-surface-container-low border-t border-border-hairline flex items-center justify-between text-body-sm text-text-secondary">
+<div>Page 1 of 13</div>
+<div class="flex items-center gap-space-xs">
+<button class="px-3 py-1 bg-surface-container-lowest border border-border-hairline rounded disabled:opacity-50" disabled="">Previous</button>
+<button class="px-3 py-1 bg-primary-container text-on-primary-container rounded">1</button>
+<button class="px-3 py-1 bg-surface-container-lowest border border-border-hairline rounded hover:bg-surface-container-high">2</button>
+<button class="px-3 py-1 bg-surface-container-lowest border border-border-hairline rounded hover:bg-surface-container-high">3</button>
+<button class="px-3 py-1 bg-surface-container-lowest border border-border-hairline rounded hover:bg-surface-container-high">Next</button>
+</div>
+</div>
+</div>
+</div>
+<!-- Interactive Detail View Drawer (Default open for Bay Area Cardiology MP-402) -->
+<div class="fixed inset-y-0 right-0 w-full max-w-2xl bg-surface-container-lowest shadow-2xl z-50 transform transition-transform duration-300 flex flex-col border-l border-border-hairline" id="practiceDrawer">
+<!-- Drawer Header -->
+<div class="p-space-xl bg-surface-container-low border-b border-border-hairline flex items-center justify-between">
+<div>
+<div class="flex items-center gap-space-sm mb-1">
+<span class="text-label-sm font-mono font-semibold px-2 py-0.5 bg-primary-container text-on-primary-container rounded" id="drawerId">MP-402</span>
+<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-label-sm bg-amber-100 text-amber-900">Action Required</span>
+</div>
+<h2 class="text-headline-md font-headline-md text-on-surface" id="drawerTitle">Bay Area Cardiology</h2>
+</div>
+<button class="p-2 hover:bg-surface-container-high rounded-full text-text-secondary hover:text-on-surface" onclick="closeDrawer()">
+<span class="material-symbols-outlined text-xl">close</span>
+</button>
+</div>
+<!-- Drawer Navigation Tabs -->
+<div class="flex border-b border-border-hairline px-space-xl bg-surface-container-lowest overflow-x-auto">
+<button class="drawer-tab py-space-md px-space-md text-body-md font-semibold text-primary border-b-2 border-primary whitespace-nowrap" data-tab="decisions" onclick="switchTab('decisions')">Decisions</button>
+<button class="drawer-tab py-space-md px-space-md text-body-md font-medium text-text-secondary hover:text-on-surface whitespace-nowrap" data-tab="locations" onclick="switchTab('locations')">Locations (3)</button>
+<button class="drawer-tab py-space-md px-space-md text-body-md font-medium text-text-secondary hover:text-on-surface whitespace-nowrap" data-tab="departments" onclick="switchTab('departments')">Departments (6)</button>
+<button class="drawer-tab py-space-md px-space-md text-body-md font-medium text-text-secondary hover:text-on-surface whitespace-nowrap" data-tab="people" onclick="switchTab('people')">People (42)</button>
+<button class="drawer-tab py-space-md px-space-md text-body-md font-medium text-text-secondary hover:text-on-surface whitespace-nowrap" data-tab="usage" onclick="switchTab('usage')">Usage &amp; Telemetry</button>
+<button class="drawer-tab py-space-md px-space-md text-body-md font-medium text-text-secondary hover:text-on-surface whitespace-nowrap" onclick="switchTab('plan')">Plan &amp; Billing</button>
+<button class="drawer-tab py-space-md px-space-md text-body-md font-medium text-text-secondary hover:text-on-surface whitespace-nowrap" onclick="switchTab('notes')">Notes &amp; Audit</button>
+</div>
+<!-- Drawer Content Body -->
+<div class="flex-1 overflow-y-auto p-space-xl space-y-space-xl">
+<!-- TAB CONTENT: DECISIONS -->
+<div class="tab-content space-y-space-lg" id="tab-decisions">
+<div class="bg-amber-50 border border-amber-200 p-space-lg rounded-xl">
+<div class="flex items-start gap-space-md">
+<span class="material-symbols-outlined text-amber-700 text-2xl mt-0.5">warning</span>
+<div>
+<h3 class="text-headline-sm text-amber-900">Verification Expiring / Missing Credentials</h3>
+<p class="text-body-md text-amber-800 mt-1">The primary DEA certificate for Dr. Aris Thorne expired on Oct 14, 2023. Automated routing to this practice has been restricted pending verification re-submission.</p>
+<div class="flex items-center gap-space-md mt-space-md">
+<button class="px-space-md py-2 bg-primary-container text-on-primary-container rounded text-label-md font-medium hover:bg-primary hover:text-white transition-colors" onclick="openVerifyModal('Bay Area Cardiology')">Approve &amp; Renew Verification</button>
+<button class="px-space-md py-2 bg-surface-container-lowest border border-border-hairline rounded text-label-md font-medium text-error hover:bg-error-container transition-colors" onclick="openSuspendModal('Bay Area Cardiology')">Issue Suspension</button>
+</div>
+</div>
+</div>
+</div>
+<div class="space-y-space-md">
+<h3 class="text-headline-sm text-on-surface">Active Administrative Overrides</h3>
+<div class="bg-surface-container-low p-space-md rounded border border-border-hairline flex items-center justify-between">
+<div>
+<div class="font-medium text-on-surface">Emergency Telehealth Relay Bypass</div>
+<div class="text-body-sm text-text-secondary">Granted by Ops Lead M. Vance on Nov 02, 2023</div>
+</div>
+<span class="px-2.5 py-1 bg-emerald-100 text-emerald-900 rounded text-label-sm font-medium">Active (Expires in 4 days)</span>
+</div>
+</div>
+</div>
+<!-- TAB CONTENT: LOCATIONS -->
+<div class="tab-content hidden space-y-space-md" id="tab-locations">
+<div class="flex justify-between items-center">
+<h3 class="text-headline-sm text-on-surface">Registered Practice Locations</h3>
+<button class="text-primary text-body-md font-medium flex items-center gap-1"><span class="material-symbols-outlined text-sm">add</span> Add Location</button>
+</div>
+<div class="space-y-space-sm">
+<div class="p-space-md bg-surface-container-low border border-border-hairline rounded flex items-center justify-between">
+<div>
+<div class="font-semibold text-on-surface">Main Campus - San Francisco Medical Center</div>
+<div class="text-body-sm text-text-secondary">450 Sutter St, Suite 1200, San Francisco, CA 94108</div>
+</div>
+<span class="px-2 py-0.5 bg-emerald-100 text-emerald-900 text-label-sm rounded font-medium">Primary</span>
+</div>
+<div class="p-space-md bg-surface-container-low border border-border-hairline rounded flex items-center justify-between">
+<div>
+<div class="font-semibold text-on-surface">Oakland Outpatient Clinic</div>
+<div class="text-body-sm text-text-secondary">1900 Broadway, Oakland, CA 94612</div>
+</div>
+<span class="px-2 py-0.5 bg-surface-container text-on-surface-variant text-label-sm rounded font-medium">Secondary</span>
+</div>
+<div class="p-space-md bg-surface-container-low border border-border-hairline rounded flex items-center justify-between">
+<div>
+<div class="font-semibold text-on-surface">Marin Cardiology Annex</div>
+<div class="text-body-sm text-text-secondary">1000 Sir Francis Drake Blvd, San Anselmo, CA 94960</div>
+</div>
+<span class="px-2 py-0.5 bg-surface-container text-on-surface-variant text-label-sm rounded font-medium">Satellite</span>
+</div>
+</div>
+</div>
+<!-- TAB CONTENT: DEPARTMENTS -->
+<div class="tab-content hidden space-y-space-md" id="tab-departments">
+<h3 class="text-headline-sm text-on-surface">Practice Departments &amp; Units</h3>
+<div class="grid grid-cols-2 gap-space-md">
+<div class="p-space-md bg-surface-container-low border border-border-hairline rounded">
+<div class="font-semibold text-on-surface">Electrophysiology</div>
+<div class="text-body-sm text-text-secondary mt-1">12 Staff Members • Lead: Dr. Aris Thorne</div>
+</div>
+<div class="p-space-md bg-surface-container-low border border-border-hairline rounded">
+<div class="font-semibold text-on-surface">Heart Failure Clinic</div>
+<div class="text-body-sm text-text-secondary mt-1">8 Staff Members • Lead: Dr. Sarah Chen</div>
+</div>
+<div class="p-space-md bg-surface-container-low border border-border-hairline rounded">
+<div class="font-semibold text-on-surface">Diagnostic Imaging</div>
+<div class="text-body-sm text-text-secondary mt-1">10 Staff Members • Lead: Marcus Vance</div>
+</div>
+<div class="p-space-md bg-surface-container-low border border-border-hairline rounded">
+<div class="font-semibold text-on-surface">Billing &amp; Admin</div>
+<div class="text-body-sm text-text-secondary mt-1">12 Staff Members • Lead: Elena Rostova</div>
+</div>
+</div>
+</div>
+<!-- TAB CONTENT: PEOPLE -->
+<div class="tab-content hidden space-y-space-md" id="tab-people">
+<div class="flex justify-between items-center">
+<h3 class="text-headline-sm text-on-surface">Associated Personnel (42)</h3>
+<input class="px-space-md py-1 bg-surface-container-low border border-border-hairline rounded text-body-sm" placeholder="Filter staff..." type="text"/>
+</div>
+<div class="space-y-space-xs">
+<div class="p-space-sm bg-surface-container-low border border-border-hairline rounded flex items-center justify-between">
+<div class="flex items-center gap-space-md">
+<div class="w-8 h-8 rounded-full bg-primary text-on-primary flex items-center justify-center font-bold text-label-sm">AT</div>
+<div>
+<div class="font-medium text-on-surface">Dr. Aris Thorne, MD</div>
+<div class="text-body-sm text-text-secondary">Chief Medical Officer • Full Access</div>
+</div>
+</div>
+<span class="px-2 py-0.5 bg-amber-100 text-amber-900 text-label-sm rounded font-medium">Cred. Expired</span>
+</div>
+<div class="p-space-sm bg-surface-container-low border border-border-hairline rounded flex items-center justify-between">
+<div class="flex items-center gap-space-md">
+<div class="w-8 h-8 rounded-full bg-primary text-on-primary flex items-center justify-center font-bold text-label-sm">SC</div>
+<div>
+<div class="font-medium text-on-surface">Dr. Sarah Chen, MD</div>
+<div class="text-body-sm text-text-secondary">Attending Physician • Full Access</div>
+</div>
+</div>
+<span class="px-2 py-0.5 bg-emerald-100 text-emerald-900 text-label-sm rounded font-medium">Verified</span>
+</div>
+</div>
+</div>
+<!-- TAB CONTENT: USAGE -->
+<div class="tab-content hidden space-y-space-lg" id="tab-usage">
+<h3 class="text-headline-sm text-on-surface">30-Day Platform Telemetry</h3>
+<div class="grid grid-cols-3 gap-space-md">
+<div class="p-space-md bg-surface-container-low rounded border border-border-hairline">
+<div class="text-body-sm text-text-secondary">Secure Referrals</div>
+<div class="text-headline-lg font-mono text-on-surface mt-1">1,428</div>
+<div class="text-label-sm text-emerald-700 mt-1">+12% vs last month</div>
+</div>
+<div class="p-space-md bg-surface-container-low rounded border border-border-hairline">
+<div class="text-body-sm text-text-secondary">API Payload Volume</div>
+<div class="text-headline-lg font-mono text-on-surface mt-1">42.8 GB</div>
+<div class="text-label-sm text-text-secondary mt-1">Nominal rate</div>
+</div>
+<div class="p-space-md bg-surface-container-low rounded border border-border-hairline">
+<div class="text-body-sm text-text-secondary">Active Sessions / Day</div>
+<div class="text-headline-lg font-mono text-on-surface mt-1">310</div>
+<div class="text-label-sm text-emerald-700 mt-1">High engagement</div>
+</div>
+</div>
+</div>
+<!-- TAB CONTENT: PLAN -->
+<div class="tab-content hidden space-y-space-md" id="tab-plan">
+<h3 class="text-headline-sm text-on-surface">Current Subscription</h3>
+<div class="p-space-lg bg-surface-container-low border border-border-hairline rounded-xl flex items-center justify-between">
+<div>
+<div class="text-headline-md text-primary">Enterprise Pro Plan</div>
+<div class="text-body-sm text-text-secondary mt-1">Billed annually at $1,250/mo • Renews Dec 15, 2024</div>
+</div>
+<button class="px-space-md py-2 bg-surface-container-lowest border border-border-hairline rounded text-body-md font-medium text-on-surface hover:bg-surface-container-high">Manage Subscription</button>
+</div>
+</div>
+<!-- TAB CONTENT: NOTES & AUDIT -->
+<div class="tab-content hidden space-y-space-md" id="tab-notes">
+<h3 class="text-headline-sm text-on-surface">Audit Trail &amp; Operator Notes</h3>
+<div class="space-y-space-md">
+<div class="p-space-md bg-surface-container-low border border-border-hairline rounded">
+<div class="flex justify-between text-body-sm text-text-secondary mb-1">
+<span class="font-medium text-on-surface">Operator #1042 (Sarah Jenkins)</span>
+<span>Nov 12, 2023 • 14:22 PST</span>
+</div>
+<p class="text-body-md text-on-surface">Automated system flag triggered due to missing DEA credential renewal. Sent reminder email to practice administrator.</p>
+</div>
+<div class="p-space-md bg-surface-container-low border border-border-hairline rounded">
+<div class="flex justify-between text-body-sm text-text-secondary mb-1">
+<span class="font-medium text-on-surface">System Auto-Log</span>
+<span>Oct 15, 2023 • 00:01 PST</span>
+</div>
+<p class="text-body-md text-on-surface">Annual compliance certificate renewed and indexed successfully.</p>
+</div>
+</div>
+</div>
+</div>
+</div>
+<!-- Suspension Modal with Typed Reason -->
+<div class="fixed inset-0 bg-on-surface/50 backdrop-blur-sm z-50 flex items-center justify-center hidden" id="suspendModal">
+<div class="bg-surface-container-lowest rounded-xl p-space-xl max-w-lg w-full mx-space-md shadow-2xl border border-border-hairline">
+<div class="flex items-center justify-between mb-space-lg">
+<div class="flex items-center gap-space-sm text-error">
+<span class="material-symbols-outlined text-2xl">error</span>
+<h3 class="text-headline-md font-headline-md text-on-surface">Confirm Practice Suspension</h3>
+</div>
+<button class="p-1 hover:bg-surface-container-high rounded text-outline" onclick="closeSuspendModal()"><span class="material-symbols-outlined">close</span></button>
+</div>
+<p class="text-body-md text-text-secondary mb-space-md">You are about to suspend <span class="font-semibold text-on-surface" id="suspendTargetName">Practice Name</span>. This will immediately halt all inbound secure routing and API access.</p>
+<div class="mb-space-lg">
+<label class="block text-label-md font-label-md text-on-surface mb-1">Reason for Suspension (Required for audit trail)</label>
+<textarea class="w-full p-space-md bg-surface-container-low border border-border-hairline rounded text-body-md text-on-surface outline-none focus:border-error" id="suspendReason" placeholder="Enter detailed compliance or operational reason..." rows="3"></textarea>
+</div>
+<div class="flex justify-end gap-space-md">
+<button class="px-space-md py-2 bg-surface-container-low hover:bg-surface-container-high text-on-surface rounded text-body-md font-medium" onclick="closeSuspendModal()">Cancel</button>
+<button class="px-space-md py-2 bg-error hover:bg-error/90 text-on-error rounded text-body-md font-medium" onclick="executeSuspension()">Confirm Suspension</button>
+</div>
+</div>
+</div>
+<!-- Verification Modal -->
+<div class="fixed inset-0 bg-on-surface/50 backdrop-blur-sm z-50 flex items-center justify-center hidden" id="verifyModal">
+<div class="bg-surface-container-lowest rounded-xl p-space-xl max-w-lg w-full mx-space-md shadow-2xl border border-border-hairline">
+<div class="flex items-center justify-between mb-space-lg">
+<div class="flex items-center gap-space-sm text-emerald-700">
+<span class="material-symbols-outlined text-2xl">verified</span>
+<h3 class="text-headline-md font-headline-md text-on-surface">Approve Practice Verification</h3>
+</div>
+<button class="p-1 hover:bg-surface-container-high rounded text-outline" onclick="closeVerifyModal()"><span class="material-symbols-outlined">close</span></button>
+</div>
+<p class="text-body-md text-text-secondary mb-space-md">Verify credentials and reinstate full platform routing for <span class="font-semibold text-on-surface" id="verifyTargetName">Practice Name</span>.</p>
+<div class="mb-space-lg">
+<label class="block text-label-md font-label-md text-on-surface mb-1">Verification Notes &amp; Credential ID</label>
+<input class="w-full p-space-md bg-surface-container-low border border-border-hairline rounded text-body-md text-on-surface outline-none focus:border-primary" placeholder="e.g. Verified DEA # and State Medical Board license..." type="text"/>
+</div>
+<div class="flex justify-end gap-space-md">
+<button class="px-space-md py-2 bg-surface-container-low hover:bg-surface-container-high text-on-surface rounded text-body-md font-medium" onclick="closeVerifyModal()">Cancel</button>
+<button class="px-space-md py-2 bg-primary-container hover:bg-primary text-on-primary rounded text-body-md font-medium" onclick="executeVerification()">Approve &amp; Verify</button>
+</div>
+</div>
+</div>
+<!-- Add Practice Modal -->
+<div class="fixed inset-0 bg-on-surface/50 backdrop-blur-sm z-50 flex items-center justify-center hidden" id="addPracticeModal">
+<div class="bg-surface-container-lowest rounded-xl p-space-xl max-w-xl w-full mx-space-md shadow-2xl border border-border-hairline">
+<div class="flex items-center justify-between mb-space-lg">
+<h3 class="text-headline-md font-headline-md text-on-surface">Register New Practice</h3>
+<button class="p-1 hover:bg-surface-container-high rounded text-outline" onclick="closeAddPracticeModal()"><span class="material-symbols-outlined">close</span></button>
+</div>
+<div class="space-y-space-md mb-space-lg">
+<div>
+<label class="block text-label-md font-label-md text-on-surface mb-1">Practice Legal Name</label>
+<input class="w-full p-2 bg-surface-container-low border border-border-hairline rounded text-body-md text-on-surface outline-none" placeholder="e.g. Silicon Valley Cardiology Associates" type="text"/>
+</div>
+<div class="grid grid-cols-2 gap-space-md">
+<div>
+<label class="block text-label-md font-label-md text-on-surface mb-1">Primary Location / City</label>
+<input class="w-full p-2 bg-surface-container-low border border-border-hairline rounded text-body-md text-on-surface outline-none" placeholder="San Jose, CA" type="text"/>
+</div>
+<div>
+<label class="block text-label-md font-label-md text-on-surface mb-1">Initial Subscription Tier</label>
+<select class="w-full p-2 bg-surface-container-low border border-border-hairline rounded text-body-md text-on-surface outline-none">
+<option>Standard</option>
+<option>Enterprise Pro</option>
+<option>Enterprise Ultra</option>
+</select>
+</div>
+</div>
+<div>
+<label class="block text-label-md font-label-md text-on-surface mb-1">Primary Administrator Email</label>
+<input class="w-full p-2 bg-surface-container-low border border-border-hairline rounded text-body-md text-on-surface outline-none" placeholder="admin@practice.com" type="email"/>
+</div>
+</div>
+<div class="flex justify-end gap-space-md">
+<button class="px-space-md py-2 bg-surface-container-low hover:bg-surface-container-high text-on-surface rounded text-body-md font-medium" onclick="closeAddPracticeModal()">Cancel</button>
+<button class="px-space-md py-2 bg-primary-container hover:bg-primary text-on-primary rounded text-body-md font-medium" onclick="closeAddPracticeModal()">Register Practice</button>
+</div>
+</div>
+</div>
+<!-- Client-side Interactive Script -->
+<script>
+    function openDrawer(name, id) {
+      document.getElementById('drawerTitle').innerText = name;
+      document.getElementById('drawerId').innerText = id;
+      document.getElementById('practiceDrawer').classList.remove('translate-x-full');
+    }
+
+    function closeDrawer() {
+      document.getElementById('practiceDrawer').classList.add('translate-x-full');
+    }
+
+    function switchTab(tabId) {
+      document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
+      document.querySelectorAll('.drawer-tab').forEach(el => {
+        el.classList.remove('text-primary', 'border-b-2', 'border-primary', 'font-semibold');
+        el.classList.add('text-text-secondary', 'font-medium');
+      });
+      document.getElementById('tab-' + tabId).classList.remove('hidden');
+      event.currentTarget.classList.remove('text-text-secondary', 'font-medium');
+      event.currentTarget.classList.add('text-primary', 'border-b-2', 'border-primary', 'font-semibold');
+    }
+
+    function filterStatus(status) {
+      document.querySelectorAll('.status-pill').forEach(el => {
+        el.classList.remove('bg-primary-container', 'text-on-primary-container');
+        el.classList.add('bg-surface-container-low', 'text-on-surface-variant');
+      });
+      event.currentTarget.classList.remove('bg-surface-container-low', 'text-on-surface-variant');
+      event.currentTarget.classList.add('bg-primary-container', 'text-on-primary-container');
+    }
+
+    function openSuspendModal(name) {
+      document.getElementById('suspendTargetName').innerText = name;
+      document.getElementById('suspendModal').classList.remove('hidden');
+    }
+    function closeSuspendModal() {
+      document.getElementById('suspendModal').classList.add('hidden');
+    }
+    function executeSuspension() {
+      alert('Suspension notice logged and execution enforced.');
+      closeSuspendModal();
+    }
+
+    function openVerifyModal(name) {
+      document.getElementById('verifyTargetName').innerText = name;
+      document.getElementById('verifyModal').classList.remove('hidden');
+    }
+    function closeVerifyModal() {
+      document.getElementById('verifyModal').classList.add('hidden');
+    }
+    function executeVerification() {
+      alert('Verification credentials approved and logged.');
+      closeVerifyModal();
+    }
+
+    function openAddPracticeModal() {
+      document.getElementById('addPracticeModal').classList.remove('hidden');
+    }
+    function closeAddPracticeModal() {
+      document.getElementById('addPracticeModal').classList.add('hidden');
+    }
+    function openExportModal() {
+      alert('Preparing CSV export of complete practice register with active metadata telemetry...');
+    }
+  </script>
+</div></div><footer class="w-full bg-surface-container-lowest border-t border-border-hairline py-space-md px-space-xl mt-space-xl flex flex-col md:flex-row items-center justify-between text-body-sm text-text-secondary"><p>MedPin Operator Console • Internal System Administration &amp; Billing Management.</p><p class="text-outline">Note: This console contains platform telemetry and metadata only. It does not hold, process, or display patient health records (PHI).</p></footer></main></div></body></html>
