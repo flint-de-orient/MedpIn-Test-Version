@@ -182,3 +182,55 @@ describe('what the console says about verification is true', () => {
     );
   });
 });
+
+/**
+ * What the console says protects an account.
+ *
+ * The administrators page counted "protected by a password alone" as
+ * `!totpEnabled`, which is false: sign-in offers a passkey *before* it asks for
+ * a code, and an account holding one never reaches the TOTP branch at all. So a
+ * passkey-only operator was told, in a banner, that their account had no second
+ * factor — a warning about something they had already done better than the
+ * accounts the check approved.
+ *
+ * The overview's attention panel asked the server, which derives it from both
+ * fields. Two screens, two answers, same account.
+ */
+describe('the console agrees with the server about what a second factor is', () => {
+  const admins = readFileSync(new URL('../../web/src/app/admins/page.tsx', import.meta.url), 'utf8');
+
+  test('the server derives it from both factors', () => {
+    const model = readFileSync(new URL('../src/models/PlatformAdmin.js', import.meta.url), 'utf8');
+    const derived = model.slice(model.indexOf('hasSecondFactor'));
+    assert.match(derived.slice(0, 200), /totpEnabled/);
+    assert.match(derived.slice(0, 200), /passkeys/);
+  });
+
+  test('and a passkey really is checked before a code is asked for', () => {
+    // The reason `!totpEnabled` is wrong rather than merely pessimistic. If
+    // this order ever reversed, a passkey would stop being sufficient on its
+    // own and the page's old test would become right again.
+    const passkeyBranch = routes.indexOf("code: 'PASSKEY_REQUIRED'");
+    const totpBranch = routes.indexOf("code: 'TOTP_REQUIRED'");
+    assert.ok(passkeyBranch > 0 && totpBranch > 0, 'a sign-in branch is gone');
+    assert.ok(passkeyBranch < totpBranch, 'a code is now asked for before a passkey');
+  });
+
+  test('so the page counts unprotected accounts with hasSecondFactor', () => {
+    assert.match(admins, /a\.isActive && !a\.hasSecondFactor/);
+  });
+
+  test('and never decides it from totpEnabled alone', () => {
+    /*
+     * Pinned as a pattern rather than a line, because the bug is not one
+     * expression — it is any place that treats the authenticator app as the
+     * only factor there is. `totpEnabled` may still be read to say *which*
+     * factor an account holds; it may not be read to say *whether* it holds
+     * one.
+     */
+    assert.ok(
+      !/!\s*a\.totpEnabled|!\s*admin\.totpEnabled\s*\)\s*return <Pill tone="waiting"/.test(admins),
+      'the administrators page is back to treating TOTP as the only second factor',
+    );
+  });
+});

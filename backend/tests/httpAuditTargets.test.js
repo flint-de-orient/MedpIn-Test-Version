@@ -107,6 +107,29 @@ describe('the audit trail names its target', () => {
     assert.equal(row.practice.name, null, 'a name was invented for a practice that is gone');
   });
 
+  test('and it says where the request came from', async () => {
+    /*
+     * `ip` and `userAgent` have been written on every entry since the
+     * collection existed and neither was ever returned, so the trail could say
+     * who signed in and not from where — which is the whole of the evidence
+     * when the question is whether an account was used by its owner.
+     *
+     * Recorded from the request, so this goes through one.
+     */
+    const res = await fetch(origin + '/admin/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'user-agent': 'a-browser/1.0' },
+      body: JSON.stringify({ email: 'ops@example.com', password: 'wrong-on-purpose' }),
+    });
+    assert.equal(res.status, 401);
+
+    const out = await call('/admin/audit?action=admin.login.failed');
+    const row = out.body.items[0];
+    assert.ok(row, 'the refused sign-in was not recorded');
+    assert.ok(row.ip, 'the entry does not say where from');
+    assert.equal(row.userAgent, 'a-browser/1.0');
+  });
+
   test('naming the targets costs one query however long the page is', async () => {
     /*
      * Ten entries against two practices. A per-row lookup would be ten reads

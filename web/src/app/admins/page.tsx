@@ -43,7 +43,20 @@ export default function Admins() {
     void load();
   }, [load]);
 
-  const weak = rows?.filter((a) => a.isActive && !a.totpEnabled).length ?? 0;
+  /*
+   * Accounts a password alone gets into.
+   *
+   * `hasSecondFactor`, not `!totpEnabled`. A passkey is a second factor — the
+   * sign-in offers it *before* the authenticator code and an account holding
+   * one never reaches the TOTP branch at all — so asking about TOTP alone
+   * called a passkey-only operator unprotected and told them to go and fix
+   * something they had already done better than the accounts it approved.
+   *
+   * The server derives this on the model that owns both fields, and the
+   * attention panel on the overview has always read it. This page recomputed
+   * it, so the two screens could say opposite things about the same account.
+   */
+  const weak = rows?.filter((a) => a.isActive && !a.hasSecondFactor).length ?? 0;
 
   return (
     <div className="flex flex-col gap-5">
@@ -95,11 +108,13 @@ export default function Admins() {
                   </span>
                 </div>
 
-                {a.totpEnabled ? (
-                  <Pill tone="ok">two-factor</Pill>
-                ) : (
-                  <Pill tone="waiting">password only</Pill>
-                )}
+                {/*
+                  Which factor, not just whether. Restoring an account, or
+                  helping somebody who has lost a phone, turns on what they
+                  actually hold: a passkey is bound to a device and gone with
+                  it, an authenticator code can be re-enrolled from the secret.
+                */}
+                <SecondFactor admin={a} />
 
                 <button
                   onClick={() => setTarget(a)}
@@ -311,4 +326,22 @@ function ToggleDialog({
       </Field>
     </Modal>
   );
+}
+
+/**
+ * What protects this account beyond its password.
+ *
+ * Four states, and the difference between the middle two is operational: a
+ * passkey cannot be moved to a new phone, an authenticator secret can be
+ * re-enrolled. "Two-factor" for both hid the question actually asked when
+ * somebody rings up locked out.
+ */
+function SecondFactor({ admin }: { admin: Admin }) {
+  const keys = admin.passkeys?.length ?? 0;
+
+  if (!admin.hasSecondFactor) return <Pill tone="waiting">password only</Pill>;
+  if (keys > 0 && admin.totpEnabled) return <Pill tone="ok">passkey + code</Pill>;
+  if (keys > 0)
+    return <Pill tone="ok">{keys === 1 ? "passkey" : `${keys} passkeys`}</Pill>;
+  return <Pill tone="ok">authenticator</Pill>;
 }

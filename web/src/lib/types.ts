@@ -176,6 +176,10 @@ export type AuditRow = {
    * exists is exactly the entry somebody comes looking for.
    */
   practice: { id: string; name: string | null } | null;
+  /** Where the request came from. Null on entries written before it was returned. */
+  ip: string | null;
+  /** The browser that made it, shown on hover rather than as a column. */
+  userAgent: string | null;
   reason: string | null;
   before: Record<string, unknown> | null;
   after: Record<string, unknown> | null;

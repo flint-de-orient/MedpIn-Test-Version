@@ -218,23 +218,69 @@ function Audit() {
               <tbody className="divide-border divide-y">
                 {rows.map((r) => (
                   <tr key={r.id} className="hover:bg-secondary/40 transition-colors">
+                    {/*
+                      A refused sign-in or a locked account is the row this page
+                      is opened to find, and 1,400 rows of identical grey
+                      monospace is a list nobody scans.
+
+                      Marked with the same left edge the attention panel uses,
+                      which is `--stopped` in the role globals.css documents for
+                      it — an accent, not body text. The action name still says
+                      "failed" in words, so the colour reinforces rather than
+                      carries.
+                    */}
                     <td
-                      className="tnum text-muted-foreground px-4 py-2.5 whitespace-nowrap"
+                      className={cn(
+                        "tnum text-muted-foreground px-4 py-2.5 align-top whitespace-nowrap",
+                        toneOf(r.action) === "alarm" && "border-stopped border-l-[3px]",
+                      )}
                       title={fullWhen(r.at)}
                     >
                       {when(r.at)}
                     </td>
-                    <td className="px-4 py-2.5 font-mono text-caption">{r.admin}</td>
-                    <td className="px-4 py-2.5 font-mono text-caption">{r.action}</td>
+                    <td className="px-4 py-2.5 align-top">
+                      <span className="block font-mono text-caption">{r.admin}</span>
+                      {/*
+                        Under the name rather than beside it. Where from is
+                        half of "who", and a column of its own would have cost
+                        more width than the answer is asked for — but a sign-in
+                        from an address nobody recognises is the whole of the
+                        evidence when this log is opened in anger.
+
+                        The browser is on the title, because it is a paragraph
+                        and it is the third question, not the second.
+                      */}
+                      {r.ip ? (
+                        <span
+                          className="text-muted-foreground block font-mono text-micro"
+                          title={r.userAgent ?? undefined}
+                        >
+                          {r.ip}
+                        </span>
+                      ) : null}
+                    </td>
+                    <td className="px-4 py-2.5 align-top">
+                      <span
+                        className={cn(
+                          "font-mono text-caption",
+                          // Reads recede. They are recorded on purpose and are
+                          // still the least of what is here.
+                          toneOf(r.action) === "read" && "text-muted-foreground",
+                          toneOf(r.action) === "alarm" && "font-semibold",
+                        )}
+                      >
+                        {r.action}
+                      </span>
+                    </td>
                     {practice ? null : (
-                      <td className="px-4 py-2.5">
+                      <td className="px-4 py-2.5 align-top">
                         <Target practice={r.practice} />
                       </td>
                     )}
-                    <td className="px-4 py-2.5">
+                    <td className="px-4 py-2.5 align-top">
                       <Diff row={r} />
                     </td>
-                    <td className="text-muted-foreground max-w-[22rem] px-4 py-2.5 text-caption">
+                    <td className="text-muted-foreground max-w-[22rem] px-4 py-2.5 align-top text-caption">
                       {r.reason ?? "—"}
                     </td>
                   </tr>
@@ -355,4 +401,24 @@ function Diff({ row }: { row: AuditRow }) {
       ))}
     </span>
   );
+}
+
+/**
+ * How loudly an action should read.
+ *
+ * The raw name stays on screen — a taxonomy invented for display is a second
+ * vocabulary to learn, and this one is the log's own. Only the weight changes,
+ * because 1,400 rows of identical grey monospace is a list nobody scans.
+ *
+ * A refused sign-in or a locked account is the row this page is opened to find.
+ * A read is the row it is opened to skip past — recorded on purpose, and still
+ * the least of what is here.
+ */
+function toneOf(action: string): "alarm" | "read" | "change" {
+  // `failed_*` rather than the three that exist today: a fourth way to fail a
+  // sign-in should be loud the day it is added, not the day somebody notices
+  // this list never grew.
+  if (/\.(locked|failed(_\w+)?)$/.test(action)) return "alarm";
+  if (/\.(read|list)$/.test(action)) return "read";
+  return "change";
 }

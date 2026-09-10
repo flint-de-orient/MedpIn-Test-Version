@@ -1381,6 +1381,18 @@ router.get(
       items: page.map((r) => ({
         id: String(r._id),
         admin: r.adminEmail,
+        /*
+         * Where from, and on what.
+         *
+         * Both have been recorded on every entry since the collection existed
+         * and neither was ever returned. "Who looked" is the half of an audit
+         * trail usually missing, and it is only half an answer without where
+         * they looked from: the question this log is opened for is whether an
+         * account was used by the person it belongs to, and one sign-in from
+         * an address nobody recognises is the whole of the evidence.
+         */
+        ip: r.ip ?? null,
+        userAgent: r.userAgent ?? null,
         action: r.action,
         practice: r.practice
           ? { id: String(r.practice), name: names.get(String(r.practice)) ?? null }
