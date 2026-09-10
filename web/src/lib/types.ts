@@ -302,3 +302,39 @@ export const SUBSCRIPTION_LABELS: Record<string, string> = {
   completed: "Completed",
   expired: "Expired",
 };
+
+/**
+ * What the platform earns.
+ *
+ * Every money field is `number | null`, and null means the prices could not
+ * be fetched from Razorpay — not that the figure is zero. A revenue
+ * dashboard reading zero during a provider outage is indistinguishable from
+ * a business that has lost every customer.
+ */
+export type Revenue = {
+  /** Paise a month, normalised: a yearly plan contributes a twelfth. */
+  mrr: number | null;
+  arr: number | null;
+  arpu: number | null;
+  subscriptions: {
+    active: number;
+    pastDue: number;
+    halted: number;
+    paused: number;
+    cancelled: number;
+    notStarted: number;
+  };
+  trials: number;
+  revenueByPlan: { plan: Plan; amount: number }[] | null;
+  /** So the page can say why the money is blank rather than looking broken. */
+  pricesKnown: boolean;
+  trend: {
+    month: string;
+    started: number;
+    cancelled: number;
+    /** Actually collected, from the ledger — a fact, not a projection. */
+    collected: number;
+    charges: number;
+  }[];
+  conversion: { practices: number; converted: number; rate: number | null };
+};

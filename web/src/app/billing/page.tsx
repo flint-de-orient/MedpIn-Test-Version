@@ -8,8 +8,19 @@ import {
   SUBSCRIPTION_LABELS,
   type PlanRow,
   type SubscriptionRow,
+  type Revenue,
 } from "@/lib/types";
-import { Alert, Empty, Failed, Loading, Panel, Pill, when } from "@/components/primitives";
+import {
+  Alert,
+  Empty,
+  Failed,
+  Loading,
+  Panel,
+  Pill,
+  Stat,
+  when,
+} from "@/components/primitives";
+import { LineChart } from "@/components/charts";
 import { cn } from "@/lib/utils";
 
 /**
@@ -46,6 +57,7 @@ export default function Billing() {
   const [rows, setRows] = useState<SubscriptionRow[] | null>(null);
   const [plans, setPlans] = useState<PlanRow[] | null>(null);
   const [canPrice, setCanPrice] = useState(true);
+  const [rev, setRev] = useState<Revenue | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -64,6 +76,18 @@ export default function Billing() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    // Same reasoning as the plans below: revenue depends on Razorpay prices,
+    // and a failure there must not take the queue down with it.
+    void (async () => {
+      try {
+        setRev(await api<Revenue>("/admin/billing/revenue"));
+      } catch {
+        setRev(null);
+      }
+    })();
+  }, []);
 
   useEffect(() => {
     // Separate from the list on purpose: a Razorpay outage should cost the
@@ -98,6 +122,8 @@ export default function Billing() {
             : `${disagreeing.length} practices are billed for a plan they are not on.`}
         </Alert>
       )}
+
+      {rev && <RevenueSection rev={rev} />}
 
       <Panel
         title="Subscriptions"
@@ -169,6 +195,138 @@ export default function Billing() {
       </Panel>
     </div>
   );
+}
+
+/**
+ * What the platform earns.
+ *
+ * ---- Unknown reads as unknown ------------------------------------------
+ *
+ * Every money tile shows an em dash rather than 0 when the prices could not be
+ * fetched, and the panel says why underneath. Zero would be the most damaging
+ * possible wrong answer here: a revenue figure of nothing during a Razorpay
+ * outage is indistinguishable from a business that has lost every customer, on
+ * exactly the morning that is hardest to check.
+ *
+ * ---- Two numbers that are not the same thing --------------------------
+ *
+ * MRR is a projection: what active subscriptions would bill in a month.
+ * "Collected" on the chart is a fact from the payment ledger. They are shown
+ * apart and labelled apart, because a dashboard that blurs them is one where
+ * nobody can tell a good month from an optimistic one.
+ */
+function RevenueSection({ rev }: { rev: Revenue }) {
+  const months = rev.trend.map((t) => t.month);
+
+  return (
+    <>
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <Stat value={money(rev.mrr)} label="MRR" hint="active subscriptions, per month" />
+        <Stat value={money(rev.arr)} label="ARR" hint="twelve times MRR" />
+        <Stat
+          value={rev.subscriptions.active.toLocaleString("en-IN")}
+          label="Active"
+          hint={`${rev.trials.toLocaleString("en-IN")} on trial`}
+        />
+        <Stat
+          value={money(rev.arpu)}
+          label="ARPU"
+          hint="per active subscription"
+          tone={rev.subscriptions.halted > 0 ? "waiting" : undefined}
+        />
+      </div>
+
+      {!rev.pricesKnown && (
+        <p className="text-muted-foreground text-xs leading-relaxed">
+          Razorpay prices could not be read, so the money figures are unknown
+          rather than zero. The counts above are unaffected.
+        </p>
+      )}
+
+      <Panel
+        title="Collected"
+        description="Money actually taken, from the payment ledger &mdash; not a projection."
+      >
+        <LineChart
+          months={months}
+          values={rev.trend.map((t) => Math.round(t.collected / 100))}
+          stroke="var(--primary)"
+          label="Collected"
+        />
+      </Panel>
+
+      <Panel title="Subscriptions started and cancelled">
+        <LineChart
+          months={months}
+          values={rev.trend.map((t) => t.started)}
+          stroke="var(--primary)"
+          label="Started"
+        />
+        <div className="border-border border-t">
+          <LineChart
+            months={months}
+            values={rev.trend.map((t) => t.cancelled)}
+            stroke="var(--destructive)"
+            label="Cancelled"
+          />
+        </div>
+      </Panel>
+
+      <div className="grid gap-6 lg:grid-cols-2">
+        <Panel title="Revenue by plan">
+          {rev.revenueByPlan === null || rev.revenueByPlan.length === 0 ? (
+            <Empty
+              title={rev.pricesKnown ? "Nothing recurring yet" : "Prices unavailable"}
+              hint={
+                rev.pricesKnown
+                  ? "Every practice is on a trial."
+                  : "Razorpay could not be reached."
+              }
+            />
+          ) : (
+            <ul className="divide-border divide-y">
+              {rev.revenueByPlan.map((r) => (
+                <li key={r.plan} className="flex items-baseline justify-between px-4 py-3">
+                  <span className="text-[13px]">{PLAN_LABELS[r.plan] ?? r.plan}</span>
+                  <span className="font-mono text-[13px]">{money(r.amount)}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Panel>
+
+        <Panel
+          title="Trial conversion"
+          description="Practices that have ever had an active subscription."
+        >
+          <dl className="grid grid-cols-3 gap-4 px-4 py-4">
+            <Fig label="Practices" value={rev.conversion.practices.toLocaleString("en-IN")} />
+            <Fig label="Converted" value={rev.conversion.converted.toLocaleString("en-IN")} />
+            {/* Null on an empty platform rather than NaN, which is where this
+                starts and where a naive percentage would print garbage. */}
+            <Fig
+              label="Rate"
+              value={rev.conversion.rate === null ? "—" : `${rev.conversion.rate}%`}
+            />
+          </dl>
+        </Panel>
+      </div>
+    </>
+  );
+}
+
+function Fig({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <dt className="text-muted-foreground text-xs">{label}</dt>
+      <dd className="mt-0.5 font-mono text-[15px]">{value}</dd>
+    </div>
+  );
+}
+
+/** Paise to rupees, or an em dash where the figure is genuinely unknown. */
+function money(paise: number | null): string {
+  return paise === null ? "—" : rupees(paise);
 }
 
 function SubscriptionItem({ row }: { row: SubscriptionRow }) {
