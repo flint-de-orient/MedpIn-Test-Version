@@ -7,6 +7,7 @@ import '../../../core/theme/tokens.dart';
 import '../../../shared/widgets/surfaces.dart';
 import '../data/billing_repository.dart';
 import '../data/checkout.dart';
+import 'widgets/billing_history_panel.dart';
 import 'widgets/subscribe_confirm_sheet.dart';
 import '../domain/billing.dart';
 
@@ -115,6 +116,11 @@ class _Body extends ConsumerWidget {
 
         _Usage(status: status),
         const SizedBox(height: T.s4),
+
+        // Below the usage and above the plans: what you were charged belongs
+        // nearer to what you are on than to what else you could buy.
+        BillingHistoryPanel(hasSubscription: status.subscription != null),
+        if (status.subscription != null) const SizedBox(height: T.s4),
 
         if (status.canPay)
           _Plans(status: status, mayPay: mayPay)

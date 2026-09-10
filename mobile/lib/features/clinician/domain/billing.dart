@@ -210,6 +210,144 @@ class PlanOption {
   };
 }
 
+/// One charge, as the provider recorded it.
+///
+/// Rendered from the server's copy rather than fetched from Razorpay, because a
+/// clinic holds no account there — "why was I charged this" is a question they
+/// ask us.
+@immutable
+class PaymentRecord {
+  const PaymentRecord({
+    required this.id,
+    required this.amountPaise,
+    required this.currency,
+    required this.status,
+    required this.method,
+    required this.failureReason,
+    required this.at,
+  });
+
+  final String id;
+  final int amountPaise;
+  final String? currency;
+
+  /// `captured`, `authorized`, `failed`, `refunded`. The server's word, kept as
+  /// a string so a status this app has not been taught still displays.
+  final String status;
+
+  /// `card`, `upi`, `netbanking`. The word only — no card detail exists
+  /// anywhere in this system to show.
+  final String? method;
+
+  /// The provider's reason, where there is one. "Your card was declined" and
+  /// "your bank is down" need different actions from the practice.
+  final String? failureReason;
+
+  final DateTime? at;
+
+  bool get succeeded => status == 'captured';
+  bool get failed => status == 'failed';
+
+  String get formatted =>
+      PlanPrice(plan: '', amountPaise: amountPaise, currency: currency, period: null, interval: null)
+          .formatted;
+
+  factory PaymentRecord.fromJson(Map<String, dynamic> json) => PaymentRecord(
+    id: json['id'] as String? ?? '',
+    amountPaise: (json['amount'] as num?)?.toInt() ?? 0,
+    currency: json['currency'] as String?,
+    status: json['status'] as String? ?? '',
+    method: json['method'] as String?,
+    failureReason: json['failureReason'] as String?,
+    at: json['at'] == null ? null : DateTime.tryParse(json['at'].toString())?.toLocal(),
+  );
+}
+
+/// One bill. The document itself lives at [url] on Razorpay.
+@immutable
+class InvoiceRecord {
+  const InvoiceRecord({
+    required this.id,
+    required this.number,
+    required this.totalPaise,
+    required this.currency,
+    required this.status,
+    required this.url,
+    required this.issuedAt,
+  });
+
+  final String id;
+
+  /// The provider's human-facing number, which is what an accountant quotes
+  /// back. Null where they did not give one.
+  final String? number;
+
+  final int totalPaise;
+  final String? currency;
+
+  /// `issued`, `paid`, `expired`, `cancelled`.
+  final String status;
+
+  /// Razorpay's hosted invoice. Null means no document to open, and the row
+  /// then renders without a link rather than with one that goes nowhere.
+  final String? url;
+
+  final DateTime? issuedAt;
+
+  bool get paid => status == 'paid';
+
+  /// Raised and not settled — the one a practice can still act on.
+  bool get outstanding => status == 'issued';
+
+  /// Only ever an https link, for the same reason the brand logo is: anything
+  /// else fails silently on a modern handset.
+  bool get openable => url != null && url!.startsWith('https://');
+
+  String get formatted =>
+      PlanPrice(plan: '', amountPaise: totalPaise, currency: currency, period: null, interval: null)
+          .formatted;
+
+  factory InvoiceRecord.fromJson(Map<String, dynamic> json) => InvoiceRecord(
+    id: json['id'] as String? ?? '',
+    number: json['number'] as String?,
+    totalPaise: (json['total'] as num?)?.toInt() ?? 0,
+    currency: json['currency'] as String?,
+    status: json['status'] as String? ?? '',
+    url: (json['url'] as String?)?.trim(),
+    issuedAt:
+        json['issuedAt'] == null ? null : DateTime.tryParse(json['issuedAt'].toString())?.toLocal(),
+  );
+}
+
+/// Everything a practice has been charged.
+@immutable
+class BillingHistory {
+  const BillingHistory({required this.payments, required this.invoices});
+
+  final List<PaymentRecord> payments;
+  final List<InvoiceRecord> invoices;
+
+  bool get isEmpty => payments.isEmpty && invoices.isEmpty;
+
+  /// The bill they can still do something about, if there is one. This is what
+  /// turns "your payment failed" from a notice into an action.
+  InvoiceRecord? get payable {
+    for (final i in invoices) {
+      if (i.outstanding && i.openable) return i;
+    }
+    return null;
+  }
+
+  factory BillingHistory.fromJson(Map<String, dynamic> json) => BillingHistory(
+    payments: ((json['payments'] as List?) ?? const [])
+        .map((e) => PaymentRecord.fromJson(e as Map<String, dynamic>))
+        .toList(),
+    invoices: ((json['invoices'] as List?) ?? const [])
+        .map((e) => InvoiceRecord.fromJson(e as Map<String, dynamic>))
+        .toList(),
+  );
+}
+
 /// What one plan costs, as Razorpay records it.
 ///
 /// The price is not in this app and not in our database. It is in Razorpay,

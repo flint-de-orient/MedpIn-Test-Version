@@ -39,6 +39,10 @@ class BillingRepository {
         .toList();
   }
 
+  /// Every charge and every bill, newest first.
+  Future<BillingHistory> history() async =>
+      BillingHistory.fromJson(await _client.getJson('/billing/history'));
+
   /// Hand the checkout result to the server and let it decide.
   ///
   /// The SDK's success callback is not payment. It arrives on a device the
@@ -85,4 +89,10 @@ final billingStatusProvider = FutureProvider.autoDispose<BillingStatus>(
 /// line and not the whole screen.
 final planPricesProvider = FutureProvider.autoDispose<List<PlanPrice>>(
   (ref) => ref.watch(billingRepositoryProvider).plans(),
+);
+
+/// Separate again, and for the same reason: a history that fails to load must
+/// cost the history panel and not the plan somebody came here to read.
+final billingHistoryProvider = FutureProvider.autoDispose<BillingHistory>(
+  (ref) => ref.watch(billingRepositoryProvider).history(),
 );
