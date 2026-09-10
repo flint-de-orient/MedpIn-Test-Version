@@ -80,7 +80,7 @@ export function MetricCard({
         {icon ? (
           <span
             className={cn(
-              "text-muted-foreground/70 shrink-0 transition-colors",
+              "text-muted-foreground shrink-0 transition-colors",
               href && "group-hover:text-primary",
             )}
           >
@@ -160,7 +160,7 @@ export function MetricCard({
       <span className="sr-only">— {to}</span>
       <IconChevron
         className={cn(
-          "text-muted-foreground/40 group-hover:text-primary absolute right-3 bottom-3 size-3.5",
+          "text-muted-foreground group-hover:text-primary absolute right-3 bottom-3 size-3.5",
           "transition-all group-hover:translate-x-0.5",
         )}
       />
@@ -227,10 +227,17 @@ export function UsageBar({
         <span
           className={cn(
             "tnum font-mono text-caption",
+            /*
+              The `-ink` tokens, not the accents. `--waiting` is 3.19:1 on a
+              light card — fine for the bar beneath this and the icon beside
+              it, and below the 4.5:1 that words need. This is the figure that
+              says a practice is running out of room; it is the last number on
+              the screen that should be hard to read.
+            */
             state === "stopped"
-              ? "text-stopped"
+              ? "text-stopped-ink"
               : state === "waiting"
-                ? "text-waiting"
+                ? "text-waiting-ink"
                 : "text-muted-foreground",
           )}
         >

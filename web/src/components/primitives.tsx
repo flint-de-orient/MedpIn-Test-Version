@@ -120,24 +120,37 @@ export function Stat({
 
 /* -------------------------------------------------------------------- alert */
 
+/*
+ * The edge is the accent; everything inside the tint is the ink.
+ *
+ * The icon used to be the accent too, which is the role globals.css tunes for
+ * 3:1 — correct against a card, and this icon is not on a card. `--waiting` on
+ * `--waiting-tint` is 2.86:1 in light, so the amber warning triangle was the
+ * least visible of the three, in the theme most people use, on the banner that
+ * exists to be noticed. The docblock below says the icon is what tells a
+ * reader who cannot separate amber from red which kind this is; at 2.86:1 it
+ * was not telling anybody anything.
+ *
+ * `--stopped` and `--ok` on their own tints are 5.51:1 and 5.83:1, so only one
+ * of the three was actually broken. All three moved anyway: "on a tint, use
+ * the ink" is a rule somebody can hold, and "on a tint use the ink unless the
+ * tint happens to be dark enough" is a table nobody will consult.
+ */
 const ALERT_TONE = {
   waiting: {
     edge: "border-l-waiting",
     surface: "bg-waiting-tint",
     ink: "text-waiting-ink",
-    icon: "text-waiting",
   },
   stopped: {
     edge: "border-l-stopped",
     surface: "bg-stopped-tint",
     ink: "text-stopped-ink",
-    icon: "text-stopped",
   },
   ok: {
     edge: "border-l-ok",
     surface: "bg-ok-tint",
     ink: "text-ok-ink",
-    icon: "text-ok",
   },
 } as const;
 
@@ -196,13 +209,16 @@ export function Alert({
       )}
     >
       {tone === "ok" ? (
-        <IconCheck className={cn("mt-px size-4 shrink-0", t.icon)} />
+        <IconCheck className={cn("mt-px size-4 shrink-0", t.ink)} />
       ) : (
-        <IconWarning className={cn("mt-px size-4 shrink-0", t.icon)} />
+        <IconWarning className={cn("mt-px size-4 shrink-0", t.ink)} />
       )}
       <div className={cn("min-w-0 flex-1 text-caption leading-relaxed", t.ink)}>
         <p className="font-semibold">{title}</p>
-        {children ? <p className="mt-0.5 opacity-90">{children}</p> : null}
+        {/* The line under the title was `opacity-90`, which is a fourth way of
+            saying "quieter" on a banner that already has weight to say it
+            with. The title is semibold and this is not. */}
+        {children ? <p className="mt-0.5">{children}</p> : null}
       </div>
       {action ? <div className="shrink-0 self-center">{action}</div> : null}
     </div>
@@ -247,7 +263,7 @@ export function Info({
         className="text-muted-foreground hover:text-foreground focus-visible:ring-ring inline-flex items-center gap-1 rounded-sm transition-colors focus-visible:ring-2 focus-visible:outline-none"
       >
         {term}
-        <IconInfo className="size-3 shrink-0 opacity-70" />
+        <IconInfo className="size-3 shrink-0" />
         <span className="sr-only">{open ? "Hide the definition" : "What this means"}</span>
       </button>
       {open ? (

@@ -231,7 +231,7 @@ function Analytics() {
                       <span>{PLAN_LABELS[k]}</span>
                       <span className="flex items-center gap-1.5">
                         <span className="tnum font-mono text-caption">{n}</span>
-                        <IconChevron className="text-muted-foreground/40 group-hover:text-primary size-3 transition-colors" />
+                        <IconChevron className="text-muted-foreground group-hover:text-primary size-3 transition-colors" />
                       </span>
                     </Link>
                   </li>

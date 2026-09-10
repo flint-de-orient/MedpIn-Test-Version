@@ -154,9 +154,16 @@ export default function Billing() {
                 >
                   {s.label}
                   {n === undefined ? null : (
-                    // Quieter than the label, because the count is the second
-                    // thing read and the state is the first.
-                    <span className="tnum ml-1.5 opacity-60">{n}</span>
+                    /*
+                      Quieter than the label, because the count is the second
+                      thing read and the state is the first — but by weight, not
+                      by opacity. Dimming inherited muted-foreground to 60% put
+                      it at 2.65:1 on a light ground, which is below the 4.5:1
+                      text needs and below the 3:1 anything meaningful needs.
+                      The palette's quiet grey is the floor; there is no step
+                      under it that is still readable.
+                    */
+                    <span className="tnum ml-1.5 font-normal">{n}</span>
                   )}
                 </button>
               );
@@ -471,7 +478,7 @@ function Fact({
 }) {
   return (
     <span>
-      <span className="text-muted-foreground/70">{label}: </span>
+      <span className="text-muted-foreground">{label}: </span>
       <span className={cn("text-foreground", mono && "font-mono")}>{value}</span>
     </span>
   );

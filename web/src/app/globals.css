@@ -150,12 +150,32 @@
   /* The app's semantic trio, under names that say what they mean here: a
      practice that is running, one waiting on a person, one stopped.
 
-     Three roles each, because one colour cannot do all three jobs. `--x` is the
-     accent — the icon, the left edge of a banner, the fill of a bar — and needs
-     3:1. `--x-ink` is text sitting ON `--x-tint`, and needs 4.5:1 there. Using
-     the accent for both is what made the amber banner hard to read: #b45309 on
-     #fef3c7 is 4.67:1, which passes and still looks like effort. #78350f on the
-     same tint is 9.3:1, which does not. */
+     Three roles each, because one colour cannot do all three jobs.
+
+     `--x` is the accent, and only ever a mark: the left edge of a banner, the
+     fill of a bar, a dot. It is tuned for the 3:1 that meaningful non-text
+     needs, against a card. Nothing that has to be read may be this colour —
+     `--waiting` on a card is 3.19:1, which is fine for a 3px edge and below
+     the 4.5:1 a word needs. Two figures and a warning were this colour before
+     anybody measured them.
+
+     `--x-tint` is the fill of a banner. Translucent, so it lies on whatever
+     surface it is given and stays the same colour in both themes.
+
+     `--x-ink` is everything on that tint — the words and the icon both. It is
+     also what a semantic word takes anywhere else, because a colour that
+     clears 8:1 on the tint clears more than that on a card. The alert's icon
+     used the accent until `--waiting` on `--waiting-tint` was measured at
+     2.86:1: the amber warning triangle was the least visible of the three
+     tones, in the theme most people use, on the banner whose whole job is to
+     be noticed.
+
+     Using the accent for ink is what made the amber banner hard to read:
+     #b45309 on #fef3c7 is 4.67:1, which passes and still looks like effort.
+     #78350f on the same tint is 9.3:1, which does not.
+
+     `backend/tests/contrastHolds.test.js` measures all of this, in both
+     themes, on every ground each colour can land on. */
   --ok: #076b3c;
   --ok-tint: #e3f5ec;
   --ok-ink: #064e3b;

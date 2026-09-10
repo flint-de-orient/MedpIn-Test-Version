@@ -306,7 +306,12 @@ function Audit() {
                 onClick={() => setCursors((c) => c.slice(0, -1))}
                 className={cn(
                   "border-border rounded-sm border px-2.5 py-1 text-caption font-medium transition-colors",
-                  page === 0 ? "opacity-40" : "hover:bg-secondary",
+                  // `disabled:` rather than a ternary on the same condition as
+                  // the `disabled` prop above it. WCAG exempts an unavailable
+                  // control from contrast; a dimmed-but-live button is not
+                  // exempt from anything.
+                  "disabled:opacity-40",
+                  "hover:bg-secondary disabled:hover:bg-transparent",
                 )}
               >
                 Newer
@@ -316,7 +321,8 @@ function Audit() {
                 onClick={() => setCursors((c) => [...c, rows[rows.length - 1].at])}
                 className={cn(
                   "border-border rounded-sm border px-2.5 py-1 text-caption font-medium transition-colors",
-                  !hasMore ? "opacity-40" : "hover:bg-secondary",
+                  "disabled:opacity-40",
+                  "hover:bg-secondary disabled:hover:bg-transparent",
                 )}
               >
                 Older

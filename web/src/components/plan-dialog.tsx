@@ -206,7 +206,9 @@ function Cap({
       <span
         className={cn(
           "text-micro",
-          over ? "text-waiting" : "text-muted-foreground",
+          // `-ink` rather than the accent: eleven pixels of amber at 3.19:1 was
+          // the warning that the cap being typed is already exceeded.
+          over ? "text-waiting-ink" : "text-muted-foreground",
         )}
       >
         {over ? `already at ${current}` : `now ${current}`}

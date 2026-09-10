@@ -75,7 +75,7 @@ export function Field({
       <span className="text-muted-foreground text-micro tracking-[0.04em] uppercase">
         {label}
         {hint ? (
-          <span className="text-muted-foreground/70 ml-1.5 normal-case tracking-normal">
+          <span className="text-muted-foreground ml-1.5 normal-case tracking-normal">
             {hint}
           </span>
         ) : null}

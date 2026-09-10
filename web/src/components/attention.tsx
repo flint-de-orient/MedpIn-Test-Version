@@ -78,9 +78,20 @@ export function AttentionBell() {
         <IconBell className="size-[17px]" />
         {count > 0 ? (
           <span
-            // A count, not a dot. "Three things" and "something" are different
-            // amounts of urgency and the badge may as well say which.
-            className="bg-waiting text-background absolute -top-0.5 -right-0.5 flex size-4 items-center justify-center rounded-full text-micro font-semibold tabular-nums"
+            /*
+              A count, not a dot. "Three things" and "something" are different
+              amounts of urgency and the badge may as well say which.
+
+              Brand rather than amber, for two reasons. Near-white on
+              `--waiting` is 3.10:1 in light — an eleven-pixel numeral below the
+              4.5:1 that words need, on the one element whose whole job is to
+              be noticed from across a room. And the count mixes waiting items
+              with stopped ones, so painting all of it amber claimed a severity
+              the number does not know: two practices awaiting verification and
+              one suspended is not an amber 3. The severities are on the items
+              themselves, where they are true.
+            */
+            className="bg-primary text-primary-foreground absolute -top-0.5 -right-0.5 flex size-4 items-center justify-center rounded-full text-micro font-semibold tabular-nums"
           >
             {count > 9 ? "9+" : count}
           </span>
