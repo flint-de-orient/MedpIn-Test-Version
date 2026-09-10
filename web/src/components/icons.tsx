@@ -55,6 +55,15 @@ export const IconBilling = ({ className }: Props) => (
   </svg>
 );
 
+/** A panel edge with an arrow into it. Rotated 180 when collapsed. */
+export const IconCollapse = ({ className }: Props) => (
+  <svg {...base} className={className}>
+    <path d="M4 5v14" />
+    <path d="M20 12H10" />
+    <path d="M13 9l-3 3 3 3" />
+  </svg>
+);
+
 /** A shield with a clock hand: what happened, and that it is kept. */
 export const IconAudit = ({ className }: Props) => (
   <svg {...base} className={className}>

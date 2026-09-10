@@ -14,7 +14,9 @@ import {
   IconAdmins,
   IconAnalytics,
   IconAudit,
+  IconBilling,
   IconClose,
+  IconCollapse,
   IconMenu,
   IconMonitor,
   IconMoon,
@@ -23,7 +25,6 @@ import {
   IconSearch,
   IconSun,
   Logo,
-  IconBilling,
 } from "@/components/icons";
 
 type Item = { href: string; label: string; Icon: (p: { className?: string }) => React.ReactElement };
@@ -63,6 +64,36 @@ export function Shell({ children }: { children: React.ReactNode }) {
   const path = usePathname();
   const { protected: hasFactor } = useSession();
   const [drawer, setDrawer] = useState(false);
+
+  /*
+   * Remembered, because it is a preference and not a mode.
+   *
+   * Somebody who collapses the rail to read a wide table wants it collapsed on
+   * the next page too. Read in an effect rather than in the initial state so
+   * the server-rendered markup and the first client render agree — reading
+   * localStorage during render is how a hydration mismatch happens.
+   */
+  const [collapsed, setCollapsed] = useState(false);
+
+  useEffect(() => {
+    try {
+      setCollapsed(localStorage.getItem("medpin.nav.collapsed") === "1");
+    } catch {
+      // A browser with storage blocked still gets a working sidebar.
+    }
+  }, []);
+
+  const toggleNav = useCallback(() => {
+    setCollapsed((was) => {
+      const next = !was;
+      try {
+        localStorage.setItem("medpin.nav.collapsed", next ? "1" : "0");
+      } catch {
+        /* not worth failing a click over */
+      }
+      return next;
+    });
+  }, []);
   const [palette, setPalette] = useState(false);
 
   // Navigating closes the drawer. Without this, tapping a link on a phone
@@ -77,7 +108,16 @@ export function Shell({ children }: { children: React.ReactNode }) {
     <div className="flex flex-1">
       <Sidebar
         path={path}
-        className="border-border bg-sidebar hidden w-[15rem] shrink-0 border-r lg:flex"
+        collapsed={collapsed}
+        onToggle={toggleNav}
+        className={cn(
+          "border-border bg-sidebar hidden shrink-0 border-r lg:flex",
+          // Width is the only thing that animates. 200ms, which is inside the
+          // brief's range for a layout change and short enough that the table
+          // beside it does not appear to slide.
+          "transition-[width] duration-200 ease-out",
+          collapsed ? "w-[4rem]" : "w-[15rem]",
+        )}
       />
 
       {/* Drawer, on anything narrower. A sheet rather than a squeezed sidebar:
@@ -147,21 +187,35 @@ function Sidebar({
   path,
   className,
   onClose,
+  collapsed = false,
+  onToggle,
 }: {
   path: string;
   className?: string;
   onClose?: () => void;
+  /** Icons only, for a narrow screen or somebody who wants the width back. */
+  collapsed?: boolean;
+  onToggle?: () => void;
 }) {
   return (
     <aside className={cn("flex-col", className)}>
-      <div className="border-border flex h-14 items-center gap-2.5 border-b px-4">
-        <Logo className="h-[26px] w-auto" />
-        <span className="flex items-baseline gap-1.5">
-          <span className="text-title font-bold tracking-tight">MedPin</span>
-          <span className="text-muted-foreground text-micro tracking-[0.1em] uppercase">
-            operator
+      <div
+        className={cn(
+          "border-border flex h-14 items-center border-b",
+          collapsed ? "justify-center px-2" : "gap-2.5 px-4",
+        )}
+      >
+        <Logo className="h-[26px] w-auto shrink-0" />
+        {/* The wordmark goes, the mark stays. A collapsed rail with no logo at
+            all stops looking like the product it belongs to. */}
+        {collapsed ? null : (
+          <span className="flex items-baseline gap-1.5">
+            <span className="text-title font-bold tracking-tight">MedPin</span>
+            <span className="text-muted-foreground text-micro tracking-[0.1em] uppercase">
+              operator
+            </span>
           </span>
-        </span>
+        )}
         {onClose ? (
           <button
             onClick={onClose}
@@ -176,10 +230,15 @@ function Sidebar({
       <nav className="flex flex-1 flex-col gap-5 overflow-y-auto px-3 py-4">
         {SECTIONS.map((section, i) => (
           <div key={i} className="flex flex-col gap-0.5">
-            {section.heading ? (
+            {section.heading && !collapsed ? (
               <span className="text-muted-foreground mb-1 px-2 text-micro font-medium tracking-[0.1em] uppercase">
                 {section.heading}
               </span>
+            ) : null}
+            {/* Collapsed, a heading becomes a rule. The grouping is information
+                and losing it entirely would make seven icons one list. */}
+            {section.heading && collapsed ? (
+              <span aria-hidden className="border-border mx-2 mb-1 border-t" />
             ) : null}
             {section.items.map(({ href, label, Icon }) => {
               // `/` would otherwise light up on every page.
@@ -189,8 +248,14 @@ function Sidebar({
                   key={href}
                   href={href}
                   aria-current={on ? "page" : undefined}
+                  // The label is the accessible name either way: a collapsed
+                  // rail of unlabelled icons is unusable with a screen reader,
+                  // and `title` alone does not fix that.
+                  aria-label={collapsed ? label : undefined}
+                  title={collapsed ? label : undefined}
                   className={cn(
-                    "group relative flex items-center gap-2.5 rounded-md px-2.5 py-2 text-body font-medium transition-colors",
+                    "group relative flex items-center rounded-md py-2 text-body font-medium transition-colors",
+                    collapsed ? "justify-center px-0" : "gap-2.5 px-2.5",
                     on
                       ? "bg-accent text-accent-foreground"
                       : "text-muted-foreground hover:text-foreground hover:bg-secondary/70",
@@ -205,13 +270,40 @@ function Sidebar({
                     />
                   ) : null}
                   <Icon className="size-[17px] shrink-0" />
-                  {label}
+                  {collapsed ? null : label}
                 </Link>
               );
             })}
           </div>
         ))}
       </nav>
+
+      {/*
+        At the foot rather than the header.
+
+        In the header it had nowhere to live once collapsed — the rail is a
+        centred logo and 64px of width — so the control that got you in would
+        not have got you out. Down here it is the same button in both states,
+        which is also the reason it reads as a toggle rather than two.
+      */}
+      {onToggle ? (
+        <button
+          onClick={onToggle}
+          aria-label={collapsed ? "Expand navigation" : "Collapse navigation"}
+          aria-expanded={!collapsed}
+          title={collapsed ? "Expand navigation" : "Collapse navigation"}
+          className={cn(
+            "border-border text-muted-foreground hover:text-foreground hover:bg-secondary/70",
+            "hidden items-center gap-2.5 border-t px-3 py-3 text-body font-medium transition-colors lg:flex",
+            collapsed ? "justify-center" : "",
+          )}
+        >
+          <IconCollapse
+            className={cn("size-4 shrink-0 transition-transform", collapsed && "rotate-180")}
+          />
+          {collapsed ? null : "Collapse"}
+        </button>
+      ) : null}
     </aside>
   );
 }
