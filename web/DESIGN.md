@@ -104,6 +104,94 @@ from green still reads the word.
 
 ---
 
+## Themes
+
+Three modes, and **system is the default** — a console nobody has expressed a
+preference about follows the machine it is on.
+
+| Mode | What it does | Stored as |
+|---|---|---|
+| `light` | Forces light | `medpin-admin-theme = "light"` |
+| `dark` | Forces dark | `medpin-admin-theme = "dark"` |
+| `system` | Follows `prefers-color-scheme`, and keeps following it | the key is **removed** |
+
+`system` is the absence of a stored value rather than the string `"system"`.
+Anything unreadable — a cleared key, a private window, a corrupted value —
+lands on `system`, which is the right answer to "we do not know what they want".
+
+The toggle cycles light → dark → system. Its label and `aria-label` name the
+**current** state and the next one: *"Theme: Dark. Switch to system."* A button
+labelled "Dark" that turns dark off is a coin toss every time it is pressed.
+
+### How dark is applied
+
+A single `.dark` class on `<html>`, toggled in JavaScript. Not a
+`@media (prefers-color-scheme: dark)` block, because a media query cannot be
+overridden by somebody who wants light on a dark machine — and that override is
+the whole point of having three modes rather than two.
+
+Every token is redefined under `.dark`. Nothing in a component branches on
+theme; a component that asked which theme it was in would be a component that
+gets it wrong somewhere.
+
+### Following the system means following it as it changes
+
+In `system` mode a `matchMedia` listener stays attached, so a laptop that
+switches to dark at sunset takes the console with it. Reading the preference
+once at load and stopping would be following the system *as it was*, which is a
+different and less useful thing.
+
+The listener is removed when the mode is not `system`.
+
+### No flash of the wrong theme
+
+`THEME_BOOTSTRAP` runs as a blocking script in `<head>`, before React and before
+first paint, and sets the class from storage. Without it the first paint is
+light and then corrects itself, which on a dark-mode machine is a white flash in
+a dark room.
+
+`<html>` carries `suppressHydrationWarning` because that script has already
+changed the DOM by the time React arrives — the mismatch is intended, and
+warning about it would train somebody to ignore real ones.
+
+### Storage, and why this one is allowed
+
+The theme is the one thing in this console that goes in `localStorage`. The
+argument against storing a session token does not extend to which colours
+somebody likes, and re-picking dark mode on every visit would be its own small
+insult.
+
+Every access is wrapped: a private window or a browser set to block site data
+throws on the accessor itself, and a theme toggle must not be able to take the
+console down with it. When a write fails the toggle still worked for that tab,
+which is most of the value.
+
+### Contrast in dark
+
+Dark is not light inverted. Four tokens are deliberately lifted rather than
+flipped, because the light values fail contrast on a dark ground:
+
+| Token | Light | Dark | Why |
+|---|---|---|---|
+| `--primary` | `#003399` | `#4da3ff` | `#003399` on `#141719` is unreadable. A brand colour that cannot be read is not a brand colour. |
+| `--ok` | `#076b3c` | `#34d399` | A dark green disappears into a dark card. |
+| `--waiting` | `#d97706` | `#f59e0b` | Amber needs lifting to stay amber. |
+| `--stopped` | `#b91c1c` | `#f87171` | Dark red on dark reads as brown. |
+
+The grounds are not pure either: `#141719` rather than black, and cards at
+`#16202b` — a fractionally blue card on a neutral ground gives the same
+separation in dark that `#ffffff` on `#fbfcfd` gives in light, without a border
+doing all the work.
+
+### Testing a change
+
+Any colour change has to be checked in **all three**, and system twice — once
+with the OS in light and once in dark. The mode that breaks is usually system,
+because it is the one nobody sets deliberately and therefore the one nobody
+looks at.
+
+---
+
 ## Type
 
 Seven steps, and no eighth. Declared in `@theme`, so they are real utilities.
@@ -201,29 +289,213 @@ unusable with a screen reader and `title` alone does not fix that.
 
 ## Pages
 
-| Route | What it is |
-|---|---|
-| `/` | Overview — what needs attention, recent activity |
-| `/practices` | The register, and every practice's detail |
-| `/billing` | Revenue, the subscription queue, the plan reference |
-| `/analytics` | Platform figures and trends |
-| `/audit` | Everything anybody did |
-| `/admins` | Who else can do all this |
-| `/account` | Your own sign-in and second factor |
+Seven routes. Each one below lists what it reads, what it composes, what it
+lets an operator do, and the decisions that are not obvious from the markup.
 
-### The register
+---
 
-Filtered, sorted and paged **on the server**. It used to return every practice
-and filter in the browser — correct at two practices, and a failure that arrives
-silently as the payload and the table grow together.
+### `/` — Overview
 
-The search box waits 250ms before asking, so a typed word is one request rather
-than one per keystroke. The total travels with the page: "25 of 312" answers
-something a pair of arrows cannot — whether a filter matched almost everything
-or almost nothing.
+**Reads** `GET /admin/overview`, `GET /admin/practices`
 
-Desktop renders a table; below `md` it renders cards. Not a shrunken table —
-a different layout for a different width.
+**Composes** two `Panel`s, an `Alert`, `Attention`, `Metrics`
+
+The first question an operator has is "what needs me today", so the page answers
+that before it answers anything else. Metric tiles across the top, then what is
+waiting, then what recently happened.
+
+**Attention is derived, never stored.** A dismissible notification table would
+need a rule for when something comes back, and the honest rule is "when it is
+still true" — which is what recomputing already means. Every item carries the
+link that acts on it: an alert that cannot be acted on from where it appears is
+a worry rather than a task.
+
+The attention panel shows a skeleton while loading, not an empty render. Those
+look identical and mean opposite things — "still asking" versus "nothing needs
+you" is the single distinction this panel exists to draw.
+
+**Empty here is success.** "Nothing is waiting on you — every practice is
+decided and every administrator has a second factor" is an `ok`-toned `Alert`,
+not an `Empty`. Reaching zero is the goal, and rendering it as an absence would
+make the good state look like a missing panel.
+
+---
+
+### `/practices` — The register, and every practice
+
+**Reads** `GET /admin/practices` (list) · `GET /admin/practices/:id` (detail)
+
+**Writes** `PATCH /admin/practices/:id/status` · `/verification` · `/plan`
+
+**Composes** 7 `Panel`s, 5 `Stat`s, 3 `Empty`s, 2 `Alert`s, plus
+`PracticeRegister`, `NewPracticeDialog`, `PlanDialog`, `MemberDialog`,
+`EditPractice`
+
+The largest page in the console, and two screens in one file: `?id=` shows the
+detail, its absence shows the register.
+
+**The register** filters, sorts and pages on the server. It used to fetch every
+practice and filter in the browser — correct at two practices, and a failure
+that arrives silently as the payload and the table grow together. The search box
+waits 250ms before asking, so a typed word is one request rather than one per
+keystroke.
+
+Filters write to the URL, so a filtered view is a link. Sort options are
+"Needs attention first" (the default), newest, by name, and most staff. The
+default is not alphabetical because the console is opened to find out what needs
+doing, not to browse an alphabet.
+
+The total travels with the page. "25 of 312" answers something a pair of arrows
+cannot — whether a filter matched almost everything or almost nothing.
+
+Desktop renders a table, below `md` a list of cards. A different layout for a
+different width, not a shrunken table. Practices awaiting a decision carry a 3px
+`waiting` edge in both.
+
+**Two empty states, because they need different actions.** "Nothing matches
+those filters" offers *Clear filters*; "No practices yet" offers *Add a
+practice* and says what creating one means — it arrives onboarding and
+unverified, because creating a practice is not vouching for it.
+
+**The detail** is sections rather than tabs: Decisions, then locations,
+departments, people, usage, plan, notes. Tabs were not used because they hide
+what an operator is scanning for.
+
+**Verification and suspension both require a typed reason.** They stop people
+working, and six months later the reason is what a review reads. The
+confirmation names the consequence rather than asking "are you sure".
+
+The plan panel shows where a plan came from — `granted, not billed` where nobody
+is paying, or the subscription's status — because two things write
+`practice.plan` now and the plan alone no longer says which.
+
+---
+
+### `/billing` — Money
+
+**Reads** `GET /admin/billing/revenue` · `/plans` · `/subscriptions`
+
+**Composes** 6 `Panel`s, 4 `Stat`s, 2 `LineChart`s, an `Alert`
+
+Four tiles — MRR, ARR, Active, ARPU — then charts, then the subscription queue,
+then the plan reference.
+
+**Every money figure is an em dash when unknown, never ₹0.** A revenue figure of
+nothing during a Razorpay outage is indistinguishable from a business that has
+lost every customer, on the morning that is hardest to check. The panel says why
+underneath rather than leaving a blank that reads as broken.
+
+**MRR and "Collected" are kept apart and labelled apart.** MRR projects what
+active subscriptions would bill; Collected is a fact from the payment ledger. A
+dashboard that blurs them is one where nobody can tell a good month from an
+optimistic one.
+
+**Started and cancelled are two lines, not one netted line.** A net zero can be
+a quiet month or five customers replaced by five others, and those need
+different conversations.
+
+ARPU carries the `waiting` tone whenever anything is halted, because a failing
+card is not revenue and ARPU would otherwise be the last figure to move.
+
+**The queue is a queue.** Status filters run across the top and "Payment failed"
+is one click away, because an unfiltered list of subscriptions is neither a
+support queue nor a revenue figure. A practice billed for one plan while sitting
+on another is lifted out of the list into a banner.
+
+**The plans panel is read-only, and says so on the page.** There is no "New
+plan" because a tier is an enum entry that gates capabilities plus an immutable
+Razorpay object — a row written from a web form would be a plan the resolver has
+never heard of, and unknown means unrestricted. What the panel answers is the
+question support actually gets: what does Professional include and what does it
+cost.
+
+Revenue and plans load separately from the queue, so a provider outage costs the
+price column rather than the work.
+
+---
+
+### `/analytics` — Platform figures
+
+**Reads** `GET /admin/analytics?months=N`
+
+**Composes** 4 `Panel`s, `LineChart`, 2 `Empty`s
+
+Growth over time, and which practices are near a cap. The range is selectable in
+months.
+
+`LineChart` lives in `components/charts.tsx` and is shared with `/billing` — a
+chart redrawn per page is two charts that disagree about their axis the first
+time one is tuned.
+
+**Every chart carries a table under it.** An SVG is unreadable to a screen
+reader and unusable to anybody who wants the number rather than the trend, and
+this console is operated by people doing support.
+
+**"No practice has a cap" is informative and stays.** It is the answer an
+operator came for — every practice is unlimited until somebody types a number
+into a plan — and hiding it would make a real state look like a missing panel.
+
+---
+
+### `/audit` — Everything anybody did
+
+**Reads** `GET /admin/audit?…` · `GET /admin/audit/actions`
+
+**Composes** 1 `Panel`, `Empty`, `Failed`, `Loading`
+
+The action list is fetched rather than hardcoded, so a filter cannot fall behind
+the actions the server records.
+
+Reads are logged as well as writes. "Who looked" is the half of an audit trail
+usually missing, and an administrator listing every practice on the platform is
+doing something worth a record.
+
+Entries carry before and after where a value changed, and the typed reason where
+one was required. "The trial was extended" without the old date cannot be
+reviewed, only believed.
+
+---
+
+### `/admins` — Who else can do all this
+
+**Reads** `GET /admin/admins`
+
+**Composes** 1 `Panel`, 2 `Modal`s, `Empty`, `Failed`, `Loading`
+
+A short list nobody looks at until something has gone wrong, at which point it
+is the first question.
+
+**The column that matters is the second factor.** "Who can suspend a practice
+with a password alone" is the useful form of it. An administrator with a passkey
+and no authenticator app is protected and is not warned — telling them otherwise
+is a warning about something they have already done, which teaches them to
+ignore the section.
+
+Deactivating an administrator requires a reason. There is no delete: what they
+did stays on the audit trail, so the account is deactivated rather than removed.
+
+---
+
+### `/account` — Your own sign-in
+
+**Reads** `GET /admin/me/totp/setup` when enrolling
+
+**Composes** 5 `Panel`s, 2 `Alert`s, `PasskeyPanel`
+
+Password, two-factor, passkeys, email verification.
+
+**The console nags about a missing second factor on every other page and not on
+this one.** Here it would be a banner pointing at the button underneath it.
+
+Enrolment shows the secret as a QR code and as text, because a QR code is
+unusable to somebody signing in on the machine displaying it.
+
+The TOTP code input is `text-metric` and mono with wide tracking — a code being
+typed is a figure read at a glance, not body text.
+
+While the session resolves the page renders a skeleton shaped like its own
+content. It used to return `null`, which on a slow connection is a blank page
+beside a sidebar — indistinguishable from a broken build.
 
 ---
 
