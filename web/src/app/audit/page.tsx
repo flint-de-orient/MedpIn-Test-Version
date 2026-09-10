@@ -218,24 +218,29 @@ function Audit() {
               <tbody className="divide-border divide-y">
                 {rows.map((r) => (
                   <tr key={r.id} className="hover:bg-secondary/40 transition-colors">
-                    {/*
-                      A refused sign-in or a locked account is the row this page
-                      is opened to find, and 1,400 rows of identical grey
-                      monospace is a list nobody scans.
-
-                      Marked with the same left edge the attention panel uses,
-                      which is `--stopped` in the role globals.css documents for
-                      it — an accent, not body text. The action name still says
-                      "failed" in words, so the colour reinforces rather than
-                      carries.
-                    */}
                     <td
-                      className={cn(
-                        "tnum text-muted-foreground px-4 py-2.5 align-top whitespace-nowrap",
-                        toneOf(r.action) === "alarm" && "border-stopped border-l-[3px]",
-                      )}
+                      className="tnum text-muted-foreground relative px-4 py-2.5 align-top whitespace-nowrap"
                       title={fullWhen(r.at)}
                     >
+                      {/*
+                        A refused sign-in or a locked account is the row this
+                        page is opened to find, and 1,400 rows of identical grey
+                        monospace is a list nobody scans.
+
+                        The same left edge the register puts on a practice
+                        awaiting a decision and the attention panel puts on an
+                        item — one language, drawn one way. `--stopped` here
+                        rather than `--waiting`, and in the accent role
+                        globals.css documents for it rather than as body text.
+                        The action name still says "failed" in words, so the
+                        colour reinforces rather than carries.
+                      */}
+                      {toneOf(r.action) === "alarm" ? (
+                        <span
+                          aria-hidden
+                          className="bg-stopped absolute top-0 bottom-0 left-0 w-[3px]"
+                        />
+                      ) : null}
                       {when(r.at)}
                     </td>
                     <td className="px-4 py-2.5 align-top">

@@ -145,10 +145,11 @@ export function Shell({ children }: { children: React.ReactNode }) {
 
         <main className="mx-auto w-full max-w-[80rem] flex-1 px-5 py-6 lg:px-8">
           {/* Shown until the account behind this password has more than a
-              password. The server returns `totpEnabled` on every sign-in for
-              exactly this, and it went unread for a while. Not on the screen
-              that fixes it, where it would be a banner pointing at the button
-              underneath it. */}
+              password. `protected` and not `totpEnabled`: a passkey is a second
+              factor, and sign-in asks for one before it asks for a code — the
+              administrators page tested TOTP alone and told passkey-only
+              operators they were unprotected. Not on the screen that fixes it,
+              where it would be a banner pointing at the button underneath it. */}
           {!hasFactor && path !== "/account/" ? <TotpNag /> : null}
           {children}
         </main>
