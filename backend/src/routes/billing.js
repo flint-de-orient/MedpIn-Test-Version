@@ -439,6 +439,75 @@ router.post(
       throw conflict('This practice already has a subscription. Cancel it before starting another.');
     }
 
+    /*
+     * ---- An abandoned checkout is not a reason to make another -----------
+     *
+     * A subscription created here is real at Razorpay whether or not anybody
+     * finishes paying, and `created` was missing from the guard above — so
+     * every abandoned checkout left another live, payable subscription behind.
+     * One test practice accumulated five in an afternoon.
+     *
+     * That is not only clutter. Each of those is a URL that still takes a card,
+     * so a customer could return to an old one and authorise a mandate this
+     * server has already moved on from — and if two were ever paid, both would
+     * charge every month.
+     *
+     * So: the same plan reuses the open subscription rather than adding to the
+     * pile, and a different plan cancels the old one first. Reuse is also
+     * simply correct — somebody who opened checkout, thought about it, and came
+     * back is continuing, not starting again.
+     */
+    const open = await Subscription.findOne({
+      practice: practiceId,
+      status: SUBSCRIPTION_STATUS.CREATED,
+    }).sort({ createdAt: -1 });
+
+    if (open && open.plan === req.body.plan) {
+      // Fetched rather than remembered: a checkout link has a life of its own
+      // at Razorpay, and one that has expired must not be handed back as live.
+      try {
+        const live = await fetchSubscription(open.providerSubscriptionId);
+        if (live?.status === 'created') {
+          logger.info(
+            { practice: String(practiceId), subscription: open.providerSubscriptionId },
+            'reusing an unfinished checkout',
+          );
+          return res.status(200).json({
+            subscriptionId: open.providerSubscriptionId,
+            shortUrl: live.short_url ?? null,
+            keyId: env.RAZORPAY_KEY_ID,
+            callbackUrl: env.RAZORPAY_CALLBACK_URL || null,
+            brand: brandForCheckout(),
+            reused: true,
+          });
+        }
+      } catch (err) {
+        // Their outage is not a reason to refuse a sale. Fall through and make
+        // a new one; the stale row is tidied below.
+        logger.warn({ err, subscription: open.providerSubscriptionId }, 'could not re-read a checkout');
+      }
+    }
+
+    if (open) {
+      /*
+       * Retire the old one before making another.
+       *
+       * Best-effort at the provider and unconditional here: if their cancel
+       * fails we still mark ours expired, because leaving it `created` would
+       * put it straight back into the reuse path above and into the console's
+       * queue. A logged orphan somebody can cancel by hand beats a row this
+       * server keeps offering.
+       */
+      await cancelSubscription(open.providerSubscriptionId, { atCycleEnd: false }).catch((err) =>
+        logger.warn(
+          { err, subscription: open.providerSubscriptionId },
+          'could not cancel an abandoned checkout at the provider',
+        ),
+      );
+      open.status = SUBSCRIPTION_STATUS.EXPIRED;
+      await open.save();
+    }
+
     const created = await createSubscription({
       planId,
       notes: { practice: String(practiceId), plan: req.body.plan },
