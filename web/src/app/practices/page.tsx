@@ -6,7 +6,8 @@ import { Suspense, useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { api, ApiError } from "@/lib/api";
 import type { Member, PracticeDetail } from "@/lib/types";
-import { PLAN_LABELS } from "@/lib/types";
+import { PERMISSION_LABELS, PLAN_LABELS } from "@/lib/types";
+import { cn } from "@/lib/utils";
 import {
   Alert,
   Empty,
@@ -217,6 +218,7 @@ function Detail() {
           { id: "staff", label: "Staff", n: d.members.length },
           { id: "locations", label: "Locations", n: d.locations.length },
           { id: "departments", label: "Departments", n: d.departments.length },
+          { id: "capabilities", label: "Can do", n: d.capabilities.filter((c) => c.has).length },
         ].map((sec) => (
           <a
             key={sec.id}
@@ -433,6 +435,67 @@ function Detail() {
                 ))}
               </ul>
             )}
+          </Panel>
+
+          {/*
+            What this practice can do, and what is stopping the rest.
+
+            Reported by the same resolver the app is answered from, so this
+            cannot disagree with what a doctor sees. It exists because the
+            console let an operator set a type and a plan and showed neither
+            the result nor the reasoning: `DEPARTMENT` clears three independent
+            gates, the app draws nothing when any one fails, and the only way
+            to find out which was to read two tables in capabilities.js.
+          */}
+          <Panel
+            id="capabilities"
+            title="What this practice can do"
+            description="Resolved from the type and the plan together. A member also needs the permission beside anything marked."
+          >
+            <ul className="divide-border divide-y">
+              {d.capabilities.map((c) => (
+                <li
+                  key={c.capability}
+                  className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-2"
+                >
+                  <span
+                    className={cn(
+                      "min-w-0 flex-1 font-mono text-caption",
+                      !c.has && "text-muted-foreground",
+                    )}
+                  >
+                    {c.capability}
+                  </span>
+
+                  {c.has ? (
+                    <>
+                      {/*
+                        The commonest reason a section is on one person's
+                        screen and not another's, and the one that is a
+                        conversation with the practice rather than a sale.
+                      */}
+                      {c.needsPermission ? (
+                        <span className="text-muted-foreground text-micro">
+                          needs {PERMISSION_LABELS[c.needsPermission] ?? c.needsPermission}
+                        </span>
+                      ) : null}
+                      <Pill tone="ok">on</Pill>
+                    </>
+                  ) : (
+                    <>
+                      <span className="text-muted-foreground text-micro">
+                        {c.blockedBy === "type"
+                          ? `not something a ${(p.practiceType ?? "practice").replace(/_/g, " ")} has`
+                          : c.blockedBy === "plan"
+                            ? `not on ${PLAN_LABELS[p.plan] ?? p.plan}`
+                            : "off"}
+                      </span>
+                      <Pill tone="muted">off</Pill>
+                    </>
+                  )}
+                </li>
+              ))}
+            </ul>
           </Panel>
 
           <Panel

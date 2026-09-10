@@ -385,7 +385,38 @@ class _Departments extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    if (!ref.watch(capabilitySetProvider).has(Cap.department)) {
+    final caps = ref.watch(capabilitySetProvider);
+
+    /*
+     * Two different silences, and only one of them should be silent.
+     *
+     * `has()` is false whether the practice cannot have departments at all or
+     * this person simply may not manage them, and the section vanished for
+     * both. For a solo clinic that is right — a greyed section advertising
+     * something that will never apply is worse than nothing.
+     *
+     * For a doctor at a practice that *does* run departments and has not been
+     * given MANAGE_DEPARTMENT, it is not: the screen shows no trace of a thing
+     * their colleagues can see, which reads as the feature being broken. That
+     * is what `withheld()` has always been for, and nothing used it.
+     */
+    if (caps.withheld(Cap.department)) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const SizedBox(height: T.s8),
+          const _Heading(title: 'Departments'),
+          const SizedBox(height: T.s2),
+          Text(
+            'This practice runs departments. Managing them needs permission '
+            'from whoever runs the practice.',
+            style: T.body.copyWith(color: T.inkMuted),
+          ),
+        ],
+      );
+    }
+
+    if (!caps.has(Cap.department)) {
       return const SizedBox.shrink();
     }
 

@@ -128,6 +128,28 @@ export async function enrolByPhone({
       });
       return { login, patient, enrollment: already, consentRequired: true, isNewLogin };
     }
+    /*
+     * Still waiting on the patient, and the desk has asked again.
+     *
+     * This used to return `consentRequired: true` and send nothing, so the
+     * counter was told "we have texted them a code — ask them to read it out"
+     * about a code sent hours ago and long expired. The desk's only way to
+     * chase a pending enrolment is to register the person again, so that is
+     * the moment a fresh code has to go out.
+     *
+     * A cooldown refusal is not a failure here. It means a code went out in
+     * the last minute and is still live, which is the same instruction to the
+     * person at the counter — so it is swallowed rather than turned into an
+     * error on a registration that otherwise succeeded.
+     */
+    if (already.status === ENROLLMENT_STATUS.PENDING) {
+      try {
+        await requestOtp({ phone: e164, purpose: ENROL_PURPOSE });
+      } catch (err) {
+        if (err?.status !== 429) throw err;
+      }
+    }
+
     return {
       login,
       patient,

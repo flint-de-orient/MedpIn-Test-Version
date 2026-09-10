@@ -303,4 +303,51 @@ export function describeCapabilities({ practice, membership, role = null }) {
   };
 }
 
+/**
+ * Every capability, and what is holding back the ones this practice lacks.
+ *
+ * ---- Why anything needs this -------------------------------------------
+ *
+ * `DEPARTMENT` clears three independent gates: the practice type must be one
+ * that has departments at all, the plan must pay for them, and the person must
+ * hold MANAGE_DEPARTMENT. Miss any one and the app draws nothing — deliberately,
+ * because a greyed section on a screen a solo doctor opens weekly is a
+ * permanent advertisement for something that will never apply to them.
+ *
+ * That is right for the doctor and useless for the operator who has just set a
+ * practice up and is looking at a screen with no departments on it. Nothing in
+ * the console showed what a type and a plan added up to, so the only way to
+ * find out was to read two tables in this file.
+ *
+ * Type first when both block it: a plan is a sale and a type is what the
+ * organisation is, so "a clinic does not have departments" is the more useful
+ * half of the answer and the one that does not resolve itself with money.
+ */
+export function explainCapabilities(practice) {
+  const byType = ceiling(BY_TYPE, practice?.practiceType);
+  const byPlan = ceiling(BY_PLAN, practice?.plan);
+  const held = capabilitiesOfPractice(practice);
+
+  return ALL.map((capability) => {
+    const typeAllows = byType === null || byType.includes(capability);
+    const planAllows = byPlan === null || byPlan.includes(capability);
+
+    return {
+      capability,
+      has: held.has(capability),
+      /// What stops it, or null when nothing does.
+      blockedBy: held.has(capability) ? null : !typeAllows ? 'type' : !planAllows ? 'plan' : null,
+      /**
+       * And what a member still needs before they can use it.
+       *
+       * Sent even when the practice has the capability, because "the practice
+       * has departments and this doctor cannot manage them" is the commonest
+       * reason the section is missing from one person's screen and not
+       * another's — and it is a conversation with the practice, not a sale.
+       */
+      needsPermission: NEEDS_PERMISSION[capability] ?? null,
+    };
+  });
+}
+
 export { ALL as ALL_CAPABILITIES, BY_TYPE, BY_PLAN, NEEDS_PERMISSION, ROLE_EXCLUDES };

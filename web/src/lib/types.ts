@@ -94,6 +94,8 @@ export type PracticeDetail = {
    * and the server refuses to record one.
    */
   registration: { number: string; where: string } | null;
+  /** Every capability, and what is stopping the ones this practice lacks. */
+  capabilities: CapabilityState[];
   usage: {
     patients: number;
     patientsEver: number;
@@ -366,3 +368,19 @@ export type Revenue = {
  * failed (8)" is a decision, "Payment failed" is a guess.
  */
 export type SubscriptionCounts = Record<string, number>;
+
+/**
+ * One capability, and what is holding it back.
+ *
+ * `blockedBy` is null when the practice has it. Type is reported ahead of plan
+ * when both block it: a plan is a sale and a type is what the organisation is,
+ * so "a clinic does not have departments" is the half that does not resolve
+ * itself with money.
+ */
+export type CapabilityState = {
+  capability: string;
+  has: boolean;
+  blockedBy: "type" | "plan" | null;
+  /** What a member still needs before they can use it, even where the practice has it. */
+  needsPermission: string | null;
+};

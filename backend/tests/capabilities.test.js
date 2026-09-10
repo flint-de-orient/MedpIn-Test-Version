@@ -9,6 +9,7 @@ import {
   effectiveCapabilities,
   can,
   describeCapabilities,
+  explainCapabilities,
 } from '../src/services/capabilities.js';
 import { PRACTICE_TYPE, PLAN, PRACTICE_TYPE_ORDER, RESPONSIBLE_LABEL } from '../src/models/Practice.js';
 import { PERMISSIONS, PRESETS } from '../src/models/Membership.js';
@@ -272,5 +273,100 @@ describe('hiding the button is not the feature', () => {
 
   test('and it permits a caller with no practice', () => {
     assert.match(guard, /if \(!ctx\.practice\) return next\(\);/);
+  });
+});
+
+/**
+ * Why a capability is off, not merely that it is.
+ *
+ * `DEPARTMENT` clears three independent gates — the practice type must be an
+ * organisation that has departments, the plan must pay for them, and the
+ * member must hold MANAGE_DEPARTMENT. The app draws nothing when any one
+ * fails, deliberately: a greyed section advertising something that will never
+ * apply to a solo clinic is worse than nothing.
+ *
+ * That leaves the operator who has just set a practice up looking at a screen
+ * with no departments on it, three possible reasons, and nothing anywhere that
+ * says which. The console showed the type and the plan and never what they
+ * added up to.
+ */
+describe('what is stopping a capability', () => {
+  const stateOf = (practice, capability) =>
+    explainCapabilities(practice).find((c) => c.capability === capability);
+
+  test('a clinic does not have departments, whatever it pays', () => {
+    for (const plan of [PLAN.ESSENTIAL, PLAN.PROFESSIONAL, PLAN.ENTERPRISE]) {
+      const d = stateOf({ practiceType: PRACTICE_TYPE.CLINIC, plan }, 'DEPARTMENT');
+      assert.equal(d.has, false);
+      assert.equal(d.blockedBy, 'type', `on ${plan} the block was reported as ${d.blockedBy}`);
+    }
+  });
+
+  test('and a specialty centre on Essential is blocked by the plan instead', () => {
+    // The distinction that matters to whoever has to fix it: one is a sale and
+    // the other is what the organisation is.
+    const d = stateOf(
+      { practiceType: PRACTICE_TYPE.SPECIALTY_CENTRE, plan: PLAN.ESSENTIAL },
+      'DEPARTMENT',
+    );
+    assert.equal(d.has, false);
+    assert.equal(d.blockedBy, 'plan');
+  });
+
+  test('type is named first when both would block it', () => {
+    // A plan resolves itself with money and a type does not, so the half that
+    // does not is the more useful answer.
+    const d = stateOf({ practiceType: PRACTICE_TYPE.CLINIC, plan: PLAN.ESSENTIAL }, 'DEPARTMENT');
+    assert.equal(d.blockedBy, 'type');
+  });
+
+  test('and nothing blocks it once both allow it', () => {
+    const d = stateOf(
+      { practiceType: PRACTICE_TYPE.SPECIALTY_CENTRE, plan: PLAN.PROFESSIONAL },
+      'DEPARTMENT',
+    );
+    assert.equal(d.has, true);
+    assert.equal(d.blockedBy, null);
+  });
+
+  test('the permission is reported even where the practice has it', () => {
+    // The commonest reason a section is on one colleague's screen and not
+    // another's, and the one that is a conversation rather than a sale.
+    const d = stateOf(
+      { practiceType: PRACTICE_TYPE.SPECIALTY_CENTRE, plan: PLAN.PROFESSIONAL },
+      'DEPARTMENT',
+    );
+    assert.equal(d.needsPermission, PERMISSIONS.MANAGE_DEPARTMENT);
+  });
+
+  test('an unclassified practice is blocked by nothing', () => {
+    // Absence permits, here as everywhere. Every practice predating these
+    // fields is in this state and must not be told it has lost anything.
+    for (const c of explainCapabilities({})) {
+      assert.equal(c.has, true, `${c.capability} was withheld from an unclassified practice`);
+      assert.equal(c.blockedBy, null);
+    }
+  });
+
+  test('and the explanation agrees with what the practice actually gets', () => {
+    /*
+     * The two must not drift. `explainCapabilities` computes the ceilings a
+     * second time to say *why*, and a second implementation of one rule is
+     * how a console ends up confidently describing something the app does not
+     * do.
+     */
+    for (const practiceType of [...Object.values(PRACTICE_TYPE), null]) {
+      for (const plan of [...Object.values(PLAN), null]) {
+        const practice = { practiceType, plan };
+        const held = capabilitiesOfPractice(practice);
+        for (const row of explainCapabilities(practice)) {
+          assert.equal(
+            row.has,
+            held.has(row.capability),
+            `${practiceType}/${plan}: ${row.capability} explained as ${row.has}`,
+          );
+        }
+      }
+    }
   });
 });

@@ -135,15 +135,43 @@ describe('the app is told what it may do, and does not work it out', () => {
   test('the practice screen asks rather than checking the plan', () => {
     // `if (plan == 'hospital')` in a client is the product's shape shipping on
     // an app-store review cycle.
-    assert.match(app, /capabilitySetProvider\)\.has\(Cap\.department\)/);
     const screen = readFileSync(
       new URL('../../mobile/lib/features/clinician/presentation/practice_screen.dart', import.meta.url),
       'utf8',
     );
+
+    /*
+     * The claim is that the screen asks the capability set, not that it asks
+     * in one particular expression.
+     *
+     * This pinned `capabilitySetProvider).has(Cap.department)` as a literal and
+     * failed the day the widget read the provider into a local so it could ask
+     * a second question of it — a refactor that made the screen better and
+     * changed nothing this test exists to protect. A test that fails on shape
+     * and passes on substance is one somebody eventually edits to make green.
+     */
+    assert.match(screen, /capabilitySetProvider/);
+    assert.match(screen, /\bCap\.department\b/);
     assert.ok(
       !/plan ==|practiceType ==/.test(screen),
       'the practice screen is deciding from the plan or the type directly',
     );
+  });
+
+  test('and it tells apart "cannot" from "may not"', () => {
+    /*
+     * `has()` is false whether the practice cannot have departments at all or
+     * this person simply may not manage them, and the section vanished for
+     * both. Right for a solo clinic, wrong for a doctor whose colleagues can
+     * see a thing their own screen shows no trace of — which reads as broken.
+     *
+     * `withheld()` was written for exactly this and nothing used it.
+     */
+    const screen = readFileSync(
+      new URL('../../mobile/lib/features/clinician/presentation/practice_screen.dart', import.meta.url),
+      'utf8',
+    );
+    assert.match(screen, /withheld\(Cap\.department\)/);
   });
 });
 

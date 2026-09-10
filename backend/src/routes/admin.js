@@ -22,6 +22,7 @@ import { Clinic } from '../models/Clinic.js';
 import { Subscription, SUBSCRIPTION_STATUS } from '../models/Subscription.js';
 import { Membership, MEMBERSHIP_STATUS, PERMISSIONS, presetFor } from '../models/Membership.js';
 import { Department } from '../models/Department.js';
+import { explainCapabilities } from '../services/capabilities.js';
 import {
   activePatientCount,
   everPatientCount,
@@ -1604,6 +1605,22 @@ router.get(
               subscription.plan !== practice.plan,
           }
         : null,
+
+      /*
+       * What this practice can actually do, and what is stopping the rest.
+       *
+       * The console let an operator set a type and a plan and showed neither
+       * the result nor the reasoning. `DEPARTMENT` clears three independent
+       * gates — the type must be an organisation that has departments, the
+       * plan must pay for them, and the member must hold MANAGE_DEPARTMENT —
+       * and the app draws nothing when any one fails, on purpose. Right for
+       * the doctor; useless for whoever set the practice up and is looking at
+       * a screen with no departments on it and no way to learn why.
+       *
+       * Resolved by the same function the app is answered from, so this panel
+       * cannot disagree with what the practice experiences.
+       */
+      capabilities: explainCapabilities(practice),
 
       usage: {
         patients: activePatients,

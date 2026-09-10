@@ -6,6 +6,7 @@ import '../../../shared/providers/core_providers.dart';
 import '../../chat/domain/chat_message.dart';
 import '../../medications/domain/medication.dart';
 import '../domain/appointment.dart';
+import '../domain/patient_registration.dart';
 import '../domain/chat_review.dart';
 import '../domain/department.dart';
 import '../domain/team_member.dart';
@@ -89,8 +90,9 @@ class ClinicianRepository {
   /// enrolled at the desk rather than downloading the app first. Beyond
   /// name/phone the desk can capture demographics and an optional vitals
   /// snapshot; all extra fields are omitted from the payload when null.
-  /// Returns the new patient's id so the caller can open their record.
-  Future<String> createPatient({
+  /// Returns what actually happened, which is not always "registered" — see
+  /// [PatientRegistration].
+  Future<PatientRegistration> createPatient({
     required String name,
     required String phone,
 
@@ -130,7 +132,20 @@ class ClinicianRepository {
         if (glucoseMgDl != null) 'glucoseMgDl': glucoseMgDl,
       },
     );
-    return json['id']?.toString() ?? '';
+    return PatientRegistration.fromJson(json);
+  }
+
+  /// The patient reads back the code texted to their own handset, and the
+  /// enrolment stops being pending.
+  ///
+  /// Until this succeeds the practice holds a row that grants nothing and the
+  /// patient appears in no list — which is the correct behaviour and was
+  /// indistinguishable, from the counter, from the registration having failed.
+  Future<void> confirmEnrolment({
+    required String enrollmentId,
+    required String code,
+  }) async {
+    await _client.postJson('/enrolments/$enrollmentId/confirm', body: {'code': code});
   }
 
   /// Today's clinic diary, earliest first. The API sorts newest-first and has no
