@@ -40,6 +40,7 @@ export function MetricCard({
   value,
   movement,
   hint,
+  breakdown,
   icon,
   href,
   to,
@@ -48,6 +49,21 @@ export function MetricCard({
   value: number | string;
   movement?: Movement;
   hint?: string;
+  /**
+   * What the figure is made of, where that is worth two lines.
+   *
+   * ---- Why not every card gets one ------------------------------------
+   *
+   * Four identical cards make a reader treat all four as equally important,
+   * which is a claim the page should not be making. The one an operator opens
+   * this console for can say more than the others, and saying more is how a
+   * row of numbers becomes a hierarchy.
+   *
+   * Rows with a zero are dropped by the caller rather than shown as "0", so a
+   * platform with nothing suspended does not carry a line saying so. A zero on
+   * a breakdown is noise; its absence is the same information.
+   */
+  breakdown?: { label: string; value: number }[];
   icon?: React.ReactNode;
   href?: string;
   /** Where the link goes, for a reader who cannot see it move. Required with `href`. */
@@ -104,10 +120,27 @@ export function MetricCard({
           hint
         )}
       </p>
+
+      {breakdown?.length ? (
+        <dl className="border-border/70 mt-0.5 flex flex-col gap-1 border-t pt-2.5">
+          {breakdown.map((b) => (
+            <div key={b.label} className="flex items-baseline justify-between gap-2">
+              <dt className="text-muted-foreground truncate text-micro">{b.label}</dt>
+              <dd className="tnum text-caption font-medium">
+                {b.value.toLocaleString()}
+              </dd>
+            </div>
+          ))}
+        </dl>
+      ) : null}
     </>
   );
 
-  const shell = "border-border bg-card flex min-w-0 flex-col gap-3 rounded-lg border p-4";
+  // `self-start` so one card carrying a breakdown does not stretch the other
+  // three into three-quarters of whitespace. Uneven heights are the point:
+  // they are what makes the row read as a hierarchy rather than a template.
+  const shell =
+    "border-border bg-card flex min-w-0 flex-col gap-3 self-start rounded-lg border p-4";
 
   if (!href) return <div className={shell}>{body}</div>;
 

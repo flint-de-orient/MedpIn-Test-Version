@@ -105,6 +105,24 @@ export default function OverviewPage() {
           label="Active practices"
           value={o?.practices.active ?? 0}
           movement={o?.trends.practices}
+          /*
+            The card this console exists for says more than the other three.
+            `o.practices` already carries the whole status breakdown and only
+            `.active` was ever read from it — so an operator had to open the
+            register to learn that two practices were mid-onboarding.
+
+            Zeroes are dropped rather than rendered. A platform with nothing
+            suspended should not carry a line saying "Suspended 0"; the absence
+            is the same information and one less thing to read.
+          */
+          breakdown={
+            o
+              ? [
+                  { label: "Onboarding", value: o.practices.onboarding ?? 0 },
+                  { label: "Suspended", value: o.practices.suspended ?? 0 },
+                ].filter((b) => b.value > 0)
+              : undefined
+          }
           icon={<IconPractice className="size-4" />}
           href="/practices/?status=active"
           to="the active practices"
