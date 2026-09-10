@@ -12,6 +12,11 @@ import { capabilitiesOfPractice } from '../services/capabilities.js';
 import { catalogue, SELLABLE } from '../services/billing/catalogue.js';
 import { configured, pauseSubscription, resumeSubscription } from '../services/billing/razorpay.js';
 import { mayPause, mayResume } from '../services/billing/lifecycle.js';
+import {
+  revenueSnapshot,
+  revenueTrend,
+  trialConversion,
+} from '../services/billing/revenue.js';
 import { logger } from '../config/logger.js';
 
 /**
@@ -163,6 +168,30 @@ router.get(
       payments: payments.map((p) => p.toPublic()),
       invoices: invoices.map((i) => i.toPublic()),
     });
+  }),
+);
+
+/* --------------------------------------------------------------- revenue */
+
+/**
+ * What the platform earns, and the shape of the customer base.
+ *
+ * Every money figure is null rather than zero when the prices could not be
+ * fetched. A revenue dashboard reading zero the morning Razorpay has an outage
+ * is indistinguishable from a business that has lost every customer, and the
+ * difference matters most on the day it is hardest to check.
+ */
+router.get(
+  '/revenue',
+  validate({ query: z.object({ months: z.coerce.number().int().min(1).max(36).default(12) }) }),
+  asyncHandler(async (req, res) => {
+    const [snapshot, trend, conversion] = await Promise.all([
+      revenueSnapshot(),
+      revenueTrend(req.query.months),
+      trialConversion(),
+    ]);
+
+    res.json({ ...snapshot, trend, conversion });
   }),
 );
 
