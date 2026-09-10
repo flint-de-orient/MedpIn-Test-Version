@@ -13,7 +13,6 @@ import '../domain/clinician_models.dart';
 import '../domain/knowledge_chunk.dart';
 import '../domain/patient_summary.dart';
 import '../../../shared/widgets/notification_list_sheet.dart';
-import '../domain/staff_member.dart';
 import '../domain/prescription_scan.dart';
 
 /// Talks to `/doctor/*` — the clinician (doctor + staff) API: dashboard
@@ -500,76 +499,19 @@ class ClinicianRepository {
         .toList();
   }
 
-  /// Creates a dietician account (the doctor onboarding one directly). Returns
-  /// the new dietician so it can be assigned right away.
-  ///
-  /// Takes a [phoneToken], not a phone. The number has to have been answered:
-  /// a regex tests the shape of a phone number and nothing about who holds it,
-  /// and one mistyped digit used to produce a working clinical account bound to
-  /// a stranger's handset — who could then receive its login code.
-  /// The password is optional, as it is for a desk account. A dietician has
-  /// their own phone and has just answered a code on it; one the doctor invents
-  /// and reads out is a credential travelling by word of mouth.
-  Future<({String id, String name})> addDietician({
-    required String name,
-    required String phoneToken,
-    String? password,
-  }) async {
-    final json = await _client.postJson(
-      '/doctor/dieticians',
-      body: {
-        'name': name,
-        'phoneToken': phoneToken,
-        if (password != null && password.isNotEmpty) 'password': password,
-      },
-    );
-    return (
-      id: json['id']?.toString() ?? '',
-      name: json['name']?.toString() ?? '',
-    );
-  }
-
-  // ---- the front desk -------------------------------------------------------
-
-  /// The clinic's staff accounts, with every number that can sign into each.
-  Future<List<StaffMember>> staff() async {
-    final json = await _client.getJson('/doctor/staff');
-    return ((json['items'] as List?) ?? const [])
-        .whereType<Map<String, dynamic>>()
-        .map(StaffMember.fromJson)
-        .toList();
-  }
-
-  /// Creates a front-desk account. A password is optional — staff can sign in
-  /// with a texted code like anyone else, and one is only worth setting for a
-  /// shared handset that stays on the counter.
-  /// [phoneToken], not a phone — see [addDietician]. Sharper here: the
-  /// password below is optional and off by default, so for most desk accounts
-  /// the number is the entire credential.
-  Future<StaffMember> createStaff({
-    required String name,
-    required String phoneToken,
-    String? password,
-  }) async {
-    final json = await _client.postJson(
-      '/doctor/staff',
-      body: {
-        'name': name,
-        'phoneToken': phoneToken,
-        if (password != null && password.isNotEmpty) 'password': password,
-      },
-    );
-    return StaffMember(
-      id: json['id']?.toString() ?? '',
-      name: json['name']?.toString() ?? name,
-      phone: json['phone']?.toString() ?? '',
-    );
-  }
-
-  /// Closes a front-desk account. Deactivated rather than deleted, so what
-  /// they did stays on the audit trail.
-  Future<void> removeStaff(String id) => _client.delete('/doctor/staff/$id');
-
+  /*
+   * Creating people moved to /team, and these went with it.
+   *
+   * `addDietician`, `staff`, `createStaff` and `removeStaff` pointed at
+   * `/doctor/dieticians` (POST) and `/doctor/staff`, neither of which the
+   * server has any more — the unified People screen replaced them. Nothing
+   * called any of the four, so they were a 404 waiting for whoever wired one
+   * up next, with no obvious cause.
+   *
+   * `dieticians()` above stays. It is not a duplicate of /team: it is the
+   * picker for assigning a patient, and /team would fetch limits, permissions,
+   * departments and locations to fill a dropdown.
+   */
 
   /// Assign the patient's dietician and food-log review cadence. A null
   /// [dieticianId] unassigns; a null [reviewIntervalDays] clears the cadence.
