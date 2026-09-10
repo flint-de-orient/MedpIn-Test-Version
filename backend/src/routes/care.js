@@ -378,6 +378,15 @@ router.post(
 
 router.get(
   '/labs',
+  /*
+   * Reading results is its own capability, separate from ordering them.
+   *
+   * A diagnostic centre reports labs and never prescribes; a clinic on the
+   * cheapest plan orders them. They are two different questions and the
+   * resolver has always answered them separately — this route simply never
+   * asked, so the paywall was a hidden button and the URL was open.
+   */
+  requireCapability(CAPABILITIES.LAB_RESULT),
   validate({ query: pageParams }),
   audit('read', 'LabReport'),
   asyncHandler(async (req, res) => {
@@ -393,6 +402,7 @@ router.get(
 
 router.get(
   '/labs/:id',
+  requireCapability(CAPABILITIES.LAB_RESULT),
   audit('read', 'LabReport'),
   asyncHandler(async (req, res) => {
     const r = await LabReport.findOne({

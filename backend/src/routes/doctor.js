@@ -56,6 +56,8 @@ import {
   practiceMembers,
 } from '../middleware/practiceScope.js';
 import { enrollmentGate } from '../middleware/authorise.js';
+import { requireCapability } from '../middleware/requireCapability.js';
+import { CAPABILITIES } from '../services/capabilities.js';
 
 const router = Router();
 router.use(requireAuth, requireClinician);
@@ -433,6 +435,15 @@ router.get(
  */
 router.get(
   '/analytics',
+  /*
+   * The figures a practice pays for.
+   *
+   * `/overview` stays open: counts of today's queue are how a clinic runs, and
+   * withholding them would sell a plan that cannot see its own day. This is the
+   * cohort and trend analysis on top of that, which is the thing Professional
+   * adds over Essential.
+   */
+  requireCapability(CAPABILITIES.ADVANCED_ANALYTICS),
   asyncHandler(async (req, res) => {
     const days = Math.min(180, Math.max(7, Number(req.query.days) || 30));
 
@@ -1100,6 +1111,10 @@ router.get(
 
 router.get(
   '/patients/:id/summary',
+  // A generated summary of a patient's course, rather than the record itself.
+  // The record stays readable on every plan — see the note in lapse.js on
+  // withholding insight versus withholding access.
+  requireCapability(CAPABILITIES.ADVANCED_REPORTS),
   audit('read', 'PatientSummary'),
   asyncHandler(async (req, res) => {
     const patient = await User.findOne({ _id: req.params.id, role: ROLES.PATIENT }).lean();
@@ -1260,6 +1275,7 @@ router.get(
 /** Medication adherence for a chosen window (week/month/year), for the sheet's filter. */
 router.get(
   '/patients/:id/adherence',
+  requireCapability(CAPABILITIES.ADVANCED_REPORTS),
   validate({ query: z.object({ days: z.coerce.number().int().min(1).max(400).default(30) }) }),
   audit('read', 'Medication'),
   asyncHandler(async (req, res) => {
