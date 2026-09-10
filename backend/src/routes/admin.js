@@ -745,40 +745,128 @@ router.get(
     query: z.object({
       status: z.enum(Object.values(PRACTICE_STATUS)).optional(),
       verification: z.enum(Object.values(VERIFICATION)).optional(),
+      plan: z.enum(Object.values(PLAN)).optional(),
+      /// Name, registration number or the doctor's display name.
+      q: z.string().trim().max(120).optional(),
+      sort: z.enum(['waiting', 'newest', 'name', 'staff']).default('waiting'),
+      page: z.coerce.number().int().min(1).default(1),
+      limit: z.coerce.number().int().min(1).max(100).default(25),
     }),
   }),
   asyncHandler(async (req, res) => {
-    const { status, verification } = q(req);
+    const { status, verification, plan, sort, page, limit } = q(req);
+    const search = (req.query.q ?? '').trim();
+
+    /*
+     * ---- Why this moved off the client ---------------------------------
+     *
+     * This route used to return every practice on the platform, unbounded, and
+     * the console filtered and sorted the result in the browser. That was a
+     * deliberate trade and a correct one at two practices: a round trip per
+     * keystroke is slower than filtering a list already in memory.
+     *
+     * It stops being correct somewhere well before five hundred, and it fails
+     * in the least visible way — the console keeps working while the payload
+     * and the table grow, until one day it does not. Moving it here bounds
+     * both, and the console debounces its search box so the round trip the old
+     * comment feared never happens per keystroke.
+     */
+    const escaped = search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const filter = {
       ...(status ? { status } : {}),
       ...(verification ? { verification } : {}),
+      ...(plan ? { plan } : {}),
+      ...(escaped
+        ? {
+            $or: [
+              { name: { $regex: escaped, $options: 'i' } },
+              { registrationNo: { $regex: escaped, $options: 'i' } },
+              { doctorDisplayName: { $regex: escaped, $options: 'i' } },
+            ],
+          }
+        : {}),
     };
 
-    const practices = await Practice.find(filter).sort({ createdAt: -1 }).lean();
-    const ids = practices.map((p) => p._id);
+    /*
+     * `waiting` first, because the console is opened to find out what needs
+     * doing rather than to browse an alphabet. Computed here rather than
+     * sorted on two columns, so "undecided" stays one idea in one place.
+     */
+    const SORTS = {
+      waiting: { waiting: -1, createdAt: -1 },
+      newest: { createdAt: -1 },
+      name: { name: 1 },
+      staff: { staff: -1 },
+    };
 
-    // Counts, never contents. How many patients a practice has is a number the
-    // platform needs for billing and support; who they are is not.
-    const [locations, members] = await Promise.all([
-      Clinic.aggregate([
-        { $match: { practice: { $in: ids } } },
-        { $group: { _id: '$practice', count: { $sum: 1 } } },
-      ]),
-      Membership.aggregate([
-        { $match: { practice: { $in: ids }, status: MEMBERSHIP_STATUS.ACTIVE, endedOn: null } },
-        { $group: { _id: '$practice', count: { $sum: 1 } } },
-      ]),
+    // One pipeline: filter, count the members and locations, sort on those
+    // counts if asked, then page. Sorting by staff needs the count before the
+    // page is chosen, which is the whole reason this is an aggregation rather
+    // than a find().
+    const [result] = await Practice.aggregate([
+      { $match: filter },
+      {
+        $lookup: {
+          from: 'memberships',
+          localField: '_id',
+          foreignField: 'practice',
+          as: 'm',
+          pipeline: [
+            { $match: { status: MEMBERSHIP_STATUS.ACTIVE, endedOn: null } },
+            { $project: { _id: 1 } },
+          ],
+        },
+      },
+      {
+        $lookup: {
+          from: 'clinics',
+          localField: '_id',
+          foreignField: 'practice',
+          as: 'c',
+          pipeline: [{ $project: { _id: 1 } }],
+        },
+      },
+      {
+        $addFields: {
+          // Counts, never contents. How many people a practice has is a number
+          // the platform needs for billing and support; who they are is not,
+          // and the $project below drops the ids these were counted from.
+          staff: { $size: '$m' },
+          locations: { $size: '$c' },
+          waiting: {
+            $or: [
+              { $eq: ['$verification', VERIFICATION.PENDING] },
+              { $eq: ['$status', PRACTICE_STATUS.ONBOARDING] },
+            ],
+          },
+        },
+      },
+      { $project: { m: 0, c: 0 } },
+      { $sort: SORTS[sort] ?? SORTS.waiting },
+      {
+        $facet: {
+          items: [{ $skip: (page - 1) * limit }, { $limit: limit }],
+          total: [{ $count: 'n' }],
+        },
+      },
     ]);
-    const countOf = (rows, id) => rows.find((r) => String(r._id) === String(id))?.count ?? 0;
+
+    const rows = result?.items ?? [];
+    const total = result?.total?.[0]?.n ?? 0;
 
     await AdminAuditLog.record({ admin: req.admin, action: 'admin.practices.list', req });
 
     res.json({
-      items: practices.map((p) => ({
+      items: rows.map((p) => ({
         ...Practice.hydrate(p).toPublic(),
-        locations: countOf(locations, p._id),
-        staff: countOf(members, p._id),
+        locations: p.locations,
+        staff: p.staff,
       })),
+      // So the console can say "25 of 312" rather than leaving somebody to
+      // wonder whether a filter matched everything or the page simply ended.
+      total,
+      page,
+      limit,
     });
   }),
 );

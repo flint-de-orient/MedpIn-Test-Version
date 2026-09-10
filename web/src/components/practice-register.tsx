@@ -21,7 +21,11 @@ import { NewPracticeDialog } from "@/components/new-practice";
 import { IconChevron, IconSearch } from "@/components/icons";
 import { cn } from "@/lib/utils";
 
-type Sort = "waiting" | "name" | "newest" | "patients";
+/** `staff`, not `patients` — the label always said "Most staff". */
+type Sort = "waiting" | "name" | "newest" | "staff";
+
+/** One screen of register. Bounded by the server at 100 whatever this says. */
+const PER_PAGE = 25;
 
 /**
  * Every practice on the platform.
@@ -52,6 +56,8 @@ export function PracticeRegister() {
   const [error, setError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [sort, setSort] = useState<Sort>("waiting");
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
 
   const setParam = useCallback(
     (key: string, value: string) => {
@@ -63,6 +69,32 @@ export function PracticeRegister() {
     [params, router],
   );
 
+  /*
+   * The search box, a beat behind the typing.
+   *
+   * Filtering used to happen in the browser because the whole register was
+   * already loaded, and the comment here said a round trip per keystroke would
+   * be slower than the filter it replaced. That was true, and it stopped being
+   * the right trade once the list could be long enough to matter.
+   *
+   * So the filtering moved to the server and the round trip the old comment
+   * feared is avoided the ordinary way: 250ms of quiet before asking. Long
+   * enough that a typed word is one request, short enough that nobody notices
+   * waiting.
+   */
+  const [debounced, setDebounced] = useState(query);
+
+  useEffect(() => {
+    const t = setTimeout(() => setDebounced(query), 250);
+    return () => clearTimeout(t);
+  }, [query]);
+
+  // A new filter starts at page one. Staying on page four of a register that
+  // now has two matches shows an empty table and no reason for it.
+  useEffect(() => {
+    setPage(1);
+  }, [status, verification, plan, debounced, sort]);
+
   const load = useCallback(async () => {
     setError(null);
     setRows(null);
@@ -70,49 +102,33 @@ export function PracticeRegister() {
       const qs = new URLSearchParams();
       if (status) qs.set("status", status);
       if (verification) qs.set("verification", verification);
-      const out = await api<{ items: PracticeRow[] }>(
-        `/admin/practices${qs.toString() ? `?${qs}` : ""}`,
-      );
+      if (plan) qs.set("plan", plan);
+      if (debounced.trim()) qs.set("q", debounced.trim());
+      qs.set("sort", sort);
+      qs.set("page", String(page));
+      qs.set("limit", String(PER_PAGE));
+
+      const out = await api<{
+        items: PracticeRow[];
+        total: number;
+        page: number;
+      }>(`/admin/practices?${qs}`);
       setRows(out.items);
+      setTotal(out.total);
     } catch (ex) {
       setError((ex as ApiError).message);
       setRows([]);
+      setTotal(0);
     }
-  }, [status, verification]);
+  }, [status, verification, plan, debounced, sort, page]);
 
   useEffect(() => {
     void load();
   }, [load]);
 
-  const shown = useMemo(() => {
-    if (!rows) return null;
-    const q = query.trim().toLowerCase();
-
-    // Plan and text are filtered here rather than server-side: the list is
-    // already loaded, and a round trip per keystroke would be slower than the
-    // filter it replaces.
-    const filtered = rows.filter((p) => {
-      if (plan && p.plan !== plan) return false;
-      if (!q) return true;
-      return (
-        p.name.toLowerCase().includes(q) ||
-        (p.registrationNo ?? "").toLowerCase().includes(q) ||
-        (p.doctorDisplayName ?? "").toLowerCase().includes(q)
-      );
-    });
-
-    const waiting = (p: PracticeRow) =>
-      p.verification === "pending" || p.status === "onboarding";
-
-    return [...filtered].sort((a, b) => {
-      if (sort === "name") return a.name.localeCompare(b.name);
-      if (sort === "newest") return +new Date(b.createdAt) - +new Date(a.createdAt);
-      if (sort === "patients") return b.staff - a.staff;
-      // Default: anything undecided first. The console is opened to find out
-      // what needs doing, not to browse an alphabet.
-      return Number(waiting(b)) - Number(waiting(a));
-    });
-  }, [rows, query, plan, sort]);
+  // The server has already filtered, sorted and paged. Doing any of it again
+  // here is how two implementations of one rule start to disagree.
+  const shown = rows;
 
   const filtered = Boolean(status || verification || plan || query);
 
@@ -189,7 +205,7 @@ export function PracticeRegister() {
             ["waiting", "Needs attention first"],
             ["newest", "Newest first"],
             ["name", "By name"],
-            ["patients", "Most staff"],
+            ["staff", "Most staff"],
           ]}
         />
 
@@ -266,6 +282,13 @@ export function PracticeRegister() {
                 <Card key={p.id} p={p} />
               ))}
             </ul>
+
+            <Pager
+              page={page}
+              total={total}
+              shown={shown.length}
+              onPage={setPage}
+            />
           </>
         )}
       </Panel>
@@ -285,6 +308,72 @@ export function PracticeRegister() {
 
 const waiting = (p: PracticeRow) =>
   p.verification === "pending" || p.status === "onboarding";
+
+/**
+ * Where you are in the register, and how to move.
+ *
+ * ---- It says the total, not just the page ---------------------------
+ *
+ * "25 of 312" answers a question a pair of arrows cannot: whether a filter
+ * matched almost everything or almost nothing. Without it, an operator who
+ * filters to `halted` and sees a full page has no idea whether that is four
+ * practices or four hundred.
+ *
+ * Hidden entirely when everything fits. A pager under a list of three is a
+ * control that can only ever do nothing.
+ */
+function Pager({
+  page,
+  total,
+  shown,
+  onPage,
+}: {
+  page: number;
+  total: number;
+  shown: number;
+  onPage: (p: number) => void;
+}) {
+  const pages = Math.max(1, Math.ceil(total / PER_PAGE));
+  if (pages <= 1) return null;
+
+  const first = (page - 1) * PER_PAGE + 1;
+  const last = first + shown - 1;
+
+  return (
+    <div className="border-border flex items-center justify-between gap-3 border-t px-4 py-3">
+      <p className="text-muted-foreground text-caption" aria-live="polite">
+        <span className="tnum">
+          {first}&ndash;{last}
+        </span>{" "}
+        of <span className="tnum">{total.toLocaleString("en-IN")}</span>
+      </p>
+
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          onClick={() => onPage(page - 1)}
+          disabled={page <= 1}
+          className="border-border hover:bg-secondary disabled:hover:bg-transparent rounded-sm border px-2.5 py-1 text-caption font-medium transition-colors disabled:opacity-40"
+        >
+          Previous
+        </button>
+        {/* The page number between the buttons, so the disabled state of each
+            is read as a boundary rather than as a broken control. */}
+        <span className="text-muted-foreground text-caption tnum">
+          {page} / {pages}
+        </span>
+        <button
+          type="button"
+          onClick={() => onPage(page + 1)}
+          disabled={page >= pages}
+          className="border-border hover:bg-secondary disabled:hover:bg-transparent rounded-sm border px-2.5 py-1 text-caption font-medium transition-colors disabled:opacity-40"
+        >
+          Next
+        </button>
+      </div>
+    </div>
+  );
+}
 
 function Row({ p }: { p: PracticeRow }) {
   return (

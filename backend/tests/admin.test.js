@@ -100,10 +100,34 @@ describe('the namespace holds no clinical data', () => {
   });
 
   test('it reports counts, never contents', () => {
-    // How many patients a practice has is a number the platform needs. Who
-    // they are is not.
+    /*
+     * How many people a practice has is a number the platform needs. Who they
+     * are is not.
+     *
+     * This used to assert the exact aggregation stage — `$group: { _id:
+     * '$practice', count: { $sum: 1 } }` — and broke the day that became a
+     * `$lookup` with `$size`, which is the same guarantee written differently.
+     * A test that pins an implementation fails on refactors and passes on
+     * regressions, which is the wrong way round.
+     *
+     * So it asserts the property instead: whatever joins members or clinics
+     * pulls back ids and nothing else, so no name can reach this route to be
+     * leaked from it. `httpPracticeList.test.js` proves the outcome over real
+     * HTTP — that no member's name appears in the response — and this is the
+     * cheap structural half of the same rule.
+     */
     assert.match(route, /Counts, never contents/);
-    assert.match(route, /\$group: \{ _id: '\$practice', count: \{ \$sum: 1 \} \}/);
+
+    for (const collection of ['memberships', 'clinics']) {
+      const at = route.indexOf(`from: '${collection}'`);
+      assert.ok(at > -1, `admin.js no longer joins ${collection}`);
+      const stage = route.slice(at, at + 400);
+      assert.match(
+        stage,
+        /\$project: \{ _id: 1 \}/,
+        `the ${collection} join pulls back more than ids`,
+      );
+    }
   });
 
   test('the admin audit log is its own collection', () => {
