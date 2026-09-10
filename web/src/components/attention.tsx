@@ -80,7 +80,7 @@ export function AttentionBell() {
           <span
             // A count, not a dot. "Three things" and "something" are different
             // amounts of urgency and the badge may as well say which.
-            className="bg-waiting text-background absolute -top-0.5 -right-0.5 flex size-4 items-center justify-center rounded-full text-[10px] font-semibold tabular-nums"
+            className="bg-waiting text-background absolute -top-0.5 -right-0.5 flex size-4 items-center justify-center rounded-full text-micro font-semibold tabular-nums"
           >
             {count > 9 ? "9+" : count}
           </span>
@@ -90,7 +90,7 @@ export function AttentionBell() {
       {open ? (
         <div className="border-border bg-popover absolute right-0 z-40 mt-2 w-[22rem] rounded-lg border shadow-xl">
           <div className="border-border border-b px-4 py-2.5">
-            <h2 className="text-[13px] font-semibold tracking-tight">Needs attention</h2>
+            <h2 className="text-body font-semibold tracking-tight">Needs attention</h2>
           </div>
 
           {items === null ? (
@@ -99,7 +99,7 @@ export function AttentionBell() {
             <div className="flex flex-col items-center gap-2 px-4 py-8 text-center">
               <IconCheck className="text-ok size-5" />
               <p className="text-xs font-medium">Nothing is waiting on you</p>
-              <p className="text-muted-foreground text-[11px] leading-relaxed">
+              <p className="text-muted-foreground text-micro leading-relaxed">
                 Every practice is decided and every administrator has a second
                 factor.
               </p>
@@ -120,10 +120,10 @@ export function AttentionBell() {
                       )}
                     />
                     <span className="min-w-0">
-                      <span className="block text-[13px] leading-snug font-medium">
+                      <span className="block text-body leading-snug font-medium">
                         {it.title}
                       </span>
-                      <span className="text-muted-foreground mt-0.5 block text-[11px] leading-relaxed">
+                      <span className="text-muted-foreground mt-0.5 block text-micro leading-relaxed">
                         {it.detail}
                       </span>
                     </span>

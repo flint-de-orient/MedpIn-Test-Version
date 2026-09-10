@@ -105,7 +105,7 @@ export function PasskeyPanel() {
             <li key={k.id} className="flex flex-wrap items-center gap-x-4 gap-y-1 px-4 py-3">
               <IconCheck className="text-ok size-4 shrink-0" />
               <div className="min-w-0 flex-1">
-                <p className="text-[13px] font-medium">{k.name}</p>
+                <p className="text-body font-medium">{k.name}</p>
                 <p className="text-muted-foreground text-xs">
                   added <span title={fullWhen(k.createdAt)}>{when(k.createdAt)}</span>
                   {k.lastUsedAt ? (
@@ -149,7 +149,7 @@ export function PasskeyPanel() {
         <button
           onClick={() => setNaming(true)}
           disabled={busy || available === false}
-          className="bg-primary text-primary-foreground w-fit rounded-sm px-3 py-2 text-[13px] font-medium disabled:opacity-55"
+          className="bg-primary text-primary-foreground w-fit rounded-sm px-3 py-2 text-body font-medium disabled:opacity-55"
         >
           {keys.length ? "Add another passkey" : "Use a passkey"}
         </button>

@@ -84,7 +84,7 @@ export default function Audit() {
             <select
               value={action}
               onChange={(e) => resetTo(() => setAction(e.target.value))}
-              className="border-border bg-card rounded-sm border px-2 py-1 font-mono text-[11px]"
+              className="border-border bg-card rounded-sm border px-2 py-1 font-mono text-micro"
             >
               <option value="">every action</option>
               {facets.actions.map((a) => (
@@ -96,7 +96,7 @@ export default function Audit() {
             <select
               value={admin}
               onChange={(e) => resetTo(() => setAdmin(e.target.value))}
-              className="border-border bg-card rounded-sm border px-2 py-1 font-mono text-[11px]"
+              className="border-border bg-card rounded-sm border px-2 py-1 font-mono text-micro"
             >
               <option value="">anybody</option>
               {facets.admins.map((a) => (
@@ -113,7 +113,7 @@ export default function Audit() {
                     setAdmin("");
                   })
                 }
-                className="text-primary text-[11px] underline underline-offset-4"
+                className="text-primary text-micro underline underline-offset-4"
               >
                 clear
               </button>
@@ -136,9 +136,9 @@ export default function Audit() {
           />
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-[13px]">
+            <table className="w-full text-body">
               <thead>
-                <tr className="border-border text-muted-foreground border-b text-left text-[11px] tracking-[0.04em] uppercase">
+                <tr className="border-border text-muted-foreground border-b text-left text-micro tracking-[0.04em] uppercase">
                   <th className="px-4 py-2 font-medium">When</th>
                   <th className="px-4 py-2 font-medium">Who</th>
                   <th className="px-4 py-2 font-medium">Action</th>

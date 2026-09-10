@@ -154,7 +154,7 @@ function Detail() {
 
           <button
             onClick={() => setEditing(true)}
-            className="border-border hover:bg-secondary shrink-0 rounded-sm border px-3 py-1.5 text-[13px] font-medium transition-colors"
+            className="border-border hover:bg-secondary shrink-0 rounded-sm border px-3 py-1.5 text-body font-medium transition-colors"
           >
             Edit details
           </button>
@@ -311,7 +311,7 @@ function Detail() {
                     >
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-2">
-                          <span className="truncate text-[13px] font-medium">{m.name}</span>
+                          <span className="truncate text-body font-medium">{m.name}</span>
                           {m.isOwner ? <Pill tone="accent">owner</Pill> : null}
                         </div>
                         <div className="text-muted-foreground mt-0.5 flex flex-wrap items-center gap-x-2 text-xs">
@@ -362,7 +362,7 @@ function Detail() {
               <ul className="divide-border divide-y">
                 {d.locations.map((l) => (
                   <li key={l.id} className="px-4 py-3">
-                    <div className="text-[13px] font-medium">{l.name}</div>
+                    <div className="text-body font-medium">{l.name}</div>
                     <div className="text-muted-foreground mt-0.5 text-xs">
                       {[l.addressLine, l.city].filter(Boolean).join(", ") ||
                         "no address on file"}
@@ -396,8 +396,8 @@ function Detail() {
                     key={dep.id}
                     className="border-border flex items-center gap-2 rounded-sm border px-2.5 py-1.5"
                   >
-                    <span className="text-[13px]">{dep.name}</span>
-                    <span className="text-muted-foreground font-mono text-[11px]">
+                    <span className="text-body">{dep.name}</span>
+                    <span className="text-muted-foreground font-mono text-micro">
                       {dep.key}
                     </span>
                     {dep.hasAssistant ? (
@@ -524,7 +524,7 @@ function Detail() {
 
           {d.notes ? (
             <Panel title="Notes">
-              <p className="px-4 py-3.5 text-[13px] leading-relaxed whitespace-pre-wrap">
+              <p className="px-4 py-3.5 text-body leading-relaxed whitespace-pre-wrap">
                 {d.notes}
               </p>
             </Panel>
@@ -627,7 +627,7 @@ function Action({
       disabled={busy || disabled}
       title={title}
       className={
-        "rounded-sm px-3 py-1.5 text-[13px] font-medium transition-colors " +
+        "rounded-sm px-3 py-1.5 text-body font-medium transition-colors " +
         "disabled:cursor-not-allowed disabled:opacity-55 " +
         (primary
           ? "bg-primary text-primary-foreground"

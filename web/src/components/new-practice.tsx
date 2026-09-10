@@ -290,7 +290,7 @@ export function NewPracticeDialog({
             hint="optional — the doctor's own is used if this is blank"
           >
             <input
-              className={`${textInput} font-mono text-[13px]`}
+              className={`${textInput} font-mono text-body`}
               value={reg}
               onChange={(e) => setReg(e.target.value)}
               onBlur={() => void check()}
@@ -332,7 +332,7 @@ export function NewPracticeDialog({
 
           <Field label="Phone number" hint="they sign in with this">
             <input
-              className={`${textInput} font-mono text-[13px]`}
+              className={`${textInput} font-mono text-body`}
               value={phone}
               onChange={(e) => setPhone(e.target.value)}
               inputMode="tel"
@@ -409,7 +409,7 @@ export function NewPracticeDialog({
                 hint="optional — what verification checks"
               >
                 <input
-                  className={`${textInput} font-mono text-[13px]`}
+                  className={`${textInput} font-mono text-body`}
                   value={docReg}
                   onChange={(e) => setDocReg(e.target.value)}
                   maxLength={60}
@@ -426,7 +426,7 @@ export function NewPracticeDialog({
       ) : null}
 
       {step === 3 ? (
-        <dl className="border-border divide-border divide-y rounded-md border text-[13px]">
+        <dl className="border-border divide-border divide-y rounded-md border text-body">
           <Row label="Practice">{name.trim()}</Row>
           <Row label="Type">
             {chosen?.label ?? <span className="text-muted-foreground">not set</span>}
@@ -443,7 +443,7 @@ export function NewPracticeDialog({
           </Row>
           <Row label={responsible}>{docName.trim()}</Row>
           <Row label="Phone" mono>
-            {phone.trim()} <span className="text-ok text-[11px]">confirmed</span>
+            {phone.trim()} <span className="text-ok text-micro">confirmed</span>
           </Row>
           {quals.trim() ? <Row label="Qualifications">{quals.trim()}</Row> : null}
           <Row label="Plan">
@@ -455,7 +455,7 @@ export function NewPracticeDialog({
               question, and the answer belongs on the word that raised it. */}
           <div className="flex flex-col gap-2 px-3 py-2">
             <div className="flex items-baseline justify-between gap-4">
-              <dt className="text-muted-foreground text-[11px] tracking-[0.04em] uppercase">
+              <dt className="text-muted-foreground text-micro tracking-[0.04em] uppercase">
                 Starts as
               </dt>
               <dd className="flex flex-wrap items-center justify-end gap-x-3 gap-y-1.5">
@@ -503,7 +503,7 @@ export function NewPracticeDialog({
 function Steps({ current }: { current: Step }) {
   const labels = ["Practice", "Responsible", "Review"];
   return (
-    <ol className="flex items-center gap-1.5 text-[11px]">
+    <ol className="flex items-center gap-1.5 text-micro">
       {labels.map((l, i) => {
         const n = (i + 1) as Step;
         const done = n < current;
@@ -512,7 +512,7 @@ function Steps({ current }: { current: Step }) {
           <li key={l} className="flex items-center gap-1.5">
             <span
               className={cn(
-                "tnum flex size-5 items-center justify-center rounded-full text-[10px] font-semibold",
+                "tnum flex size-5 items-center justify-center rounded-full text-micro font-semibold",
                 on
                   ? "bg-primary text-primary-foreground"
                   : done
@@ -544,10 +544,10 @@ function Row({
 }) {
   return (
     <div className="flex items-baseline justify-between gap-4 px-3 py-2">
-      <dt className="text-muted-foreground text-[11px] tracking-[0.04em] uppercase">
+      <dt className="text-muted-foreground text-micro tracking-[0.04em] uppercase">
         {label}
       </dt>
-      <dd className={cn("min-w-0 text-right", mono && "font-mono text-[13px]")}>
+      <dd className={cn("min-w-0 text-right", mono && "font-mono text-body")}>
         {children}
       </dd>
     </div>

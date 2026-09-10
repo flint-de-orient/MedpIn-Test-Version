@@ -155,7 +155,7 @@ export function CommandPalette({
           aria-label="Search"
           className="w-full bg-transparent py-3.5 text-sm outline-none"
         />
-        <kbd className="border-border text-muted-foreground shrink-0 rounded border px-1.5 py-0.5 font-mono text-[10px]">
+        <kbd className="border-border text-muted-foreground shrink-0 rounded border px-1.5 py-0.5 font-mono text-micro">
           esc
         </kbd>
       </div>
@@ -172,7 +172,7 @@ export function CommandPalette({
                 onMouseEnter={() => setCursor(i)}
                 onClick={() => go(r)}
                 className={cn(
-                  "flex w-full items-center gap-2.5 rounded-md px-3 py-2 text-left text-[13px] transition-colors",
+                  "flex w-full items-center gap-2.5 rounded-md px-3 py-2 text-left text-body transition-colors",
                   i === cursor ? "bg-accent text-accent-foreground" : "text-foreground",
                 )}
               >
@@ -183,7 +183,7 @@ export function CommandPalette({
                 )}
                 <span className="truncate">{r.label}</span>
                 {r.kind === "practice" ? (
-                  <span className="text-muted-foreground ml-auto truncate text-[11px]">
+                  <span className="text-muted-foreground ml-auto truncate text-micro">
                     {r.hint}
                   </span>
                 ) : (

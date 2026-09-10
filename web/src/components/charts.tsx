@@ -68,7 +68,7 @@ export function LineChart({
                   x={PAD.left - 8}
                   y={y(v) + 3.5}
                   textAnchor="end"
-                  className="fill-[var(--muted-foreground)] text-[10px]"
+                  className="fill-[var(--muted-foreground)] text-micro"
                 >
                   {v}
                 </text>
@@ -97,7 +97,7 @@ export function LineChart({
                 x={x(i)}
                 y={H - 8}
                 textAnchor="middle"
-                className="fill-[var(--muted-foreground)] text-[10px]"
+                className="fill-[var(--muted-foreground)] text-micro"
               >
                 {m.slice(5)}/{m.slice(2, 4)}
               </text>
@@ -107,7 +107,7 @@ export function LineChart({
       </div>
 
       <div className="border-border overflow-x-auto border-t">
-        <table className="w-full text-[11px]">
+        <table className="w-full text-micro">
           <caption className="sr-only">{label} at the end of each month</caption>
           <thead>
             <tr className="text-muted-foreground text-left">

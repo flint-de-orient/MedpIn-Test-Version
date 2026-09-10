@@ -43,7 +43,7 @@ export function Pill({
   return (
     <span
       className={cn(
-        "inline-flex items-center rounded-sm px-1.5 py-0.5 text-[11px] font-medium tracking-[0.02em] whitespace-nowrap",
+        "inline-flex items-center rounded-sm px-1.5 py-0.5 text-micro font-medium tracking-[0.02em] whitespace-nowrap",
         TONE[tone],
         className,
       )}
@@ -98,7 +98,7 @@ export function Stat({
       >
         {value}
       </span>
-      <span className="text-muted-foreground text-[11px] tracking-[0.04em] uppercase">
+      <span className="text-muted-foreground text-micro tracking-[0.04em] uppercase">
         {label}
       </span>
       {hint ? <span className="text-muted-foreground text-xs">{hint}</span> : null}
@@ -253,7 +253,7 @@ export function Info({
       {open ? (
         <span
           id={id}
-          className="text-muted-foreground border-border bg-muted/50 block rounded-sm border px-2 py-1.5 text-[11px] leading-relaxed font-normal normal-case"
+          className="text-muted-foreground border-border bg-muted/50 block rounded-sm border px-2 py-1.5 text-micro leading-relaxed font-normal normal-case"
         >
           {children}
         </span>
@@ -306,7 +306,7 @@ export function Panel({
       {title ? (
         <header className="border-border flex flex-wrap items-start justify-between gap-x-4 gap-y-2 border-b px-4 py-3">
           <div className="min-w-0">
-            <h2 className="text-[13px] font-semibold tracking-tight">{title}</h2>
+            <h2 className="text-body font-semibold tracking-tight">{title}</h2>
             {description ? (
               <p className="text-muted-foreground mt-0.5 text-xs leading-relaxed">
                 {description}
@@ -338,10 +338,10 @@ export function Field({
 }) {
   return (
     <div className="flex min-w-0 flex-col gap-1">
-      <dt className="text-muted-foreground text-[11px] tracking-[0.04em] uppercase">
+      <dt className="text-muted-foreground text-micro tracking-[0.04em] uppercase">
         {label}
       </dt>
-      <dd className={cn("text-sm break-words", mono && "font-mono tnum text-[13px]")}>
+      <dd className={cn("text-sm break-words", mono && "font-mono tnum text-body")}>
         {children}
       </dd>
     </div>

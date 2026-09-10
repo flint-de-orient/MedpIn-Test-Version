@@ -109,7 +109,7 @@ export default function Billing() {
     <div className="space-y-6">
       <header>
         <h1 className="text-xl font-semibold tracking-tight">Billing</h1>
-        <p className="text-muted-foreground mt-1 text-[13px]">
+        <p className="text-muted-foreground mt-1 text-body">
           Every subscription on the platform. Plans and prices are read-only —
           a tier is a deploy and a price is a new Razorpay plan.
         </p>
@@ -287,8 +287,8 @@ function RevenueSection({ rev }: { rev: Revenue }) {
             <ul className="divide-border divide-y">
               {rev.revenueByPlan.map((r) => (
                 <li key={r.plan} className="flex items-baseline justify-between px-4 py-3">
-                  <span className="text-[13px]">{PLAN_LABELS[r.plan] ?? r.plan}</span>
-                  <span className="font-mono text-[13px]">{money(r.amount)}</span>
+                  <span className="text-body">{PLAN_LABELS[r.plan] ?? r.plan}</span>
+                  <span className="font-mono text-body">{money(r.amount)}</span>
                 </li>
               ))}
             </ul>
@@ -319,7 +319,7 @@ function Fig({ label, value }: { label: string; value: string }) {
   return (
     <div>
       <dt className="text-muted-foreground text-xs">{label}</dt>
-      <dd className="mt-0.5 font-mono text-[15px]">{value}</dd>
+      <dd className="mt-0.5 font-mono text-title">{value}</dd>
     </div>
   );
 }
@@ -346,14 +346,14 @@ function SubscriptionItem({ row }: { row: SubscriptionRow }) {
           {row.practice ? (
             <Link
               href={`/practices/?id=${row.practice.id}`}
-              className="text-[14px] font-medium hover:underline"
+              className="text-title font-medium hover:underline"
             >
               {row.practice.name}
             </Link>
           ) : (
             // A subscription whose practice is gone. Worth showing rather than
             // filtering out: it is money against nothing.
-            <span className="text-muted-foreground text-[14px]">Practice deleted</span>
+            <span className="text-muted-foreground text-title">Practice deleted</span>
           )}
           <div className="text-muted-foreground mt-0.5 font-mono text-xs">
             {row.providerSubscriptionId}
@@ -362,7 +362,7 @@ function SubscriptionItem({ row }: { row: SubscriptionRow }) {
 
         <div className="flex flex-wrap items-center gap-2">
           <Pill tone={tone}>{SUBSCRIPTION_LABELS[row.status] ?? row.status}</Pill>
-          <span className="text-[13px]">{PLAN_LABELS[row.plan] ?? row.plan}</span>
+          <span className="text-body">{PLAN_LABELS[row.plan] ?? row.plan}</span>
         </div>
       </div>
 
@@ -402,14 +402,14 @@ function PlanItem({ row }: { row: PlanRow }) {
     <li className="px-4 py-3.5">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <div className="flex items-center gap-2">
-          <span className="text-[14px] font-medium">{PLAN_LABELS[row.plan] ?? row.plan}</span>
+          <span className="text-title font-medium">{PLAN_LABELS[row.plan] ?? row.plan}</span>
           {!row.sellable && (
             // Granted, not purchased. Worth saying, because its absence from
             // checkout otherwise looks like a bug.
             <Pill tone="muted">granted only</Pill>
           )}
         </div>
-        <span className="font-mono text-[13px]">
+        <span className="font-mono text-body">
           {row.amount === null ? (
             <span className="text-muted-foreground">no price</span>
           ) : (

@@ -5,6 +5,39 @@
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
+  /* ----------------------------------------------------- type scale
+   *
+   * Six steps, and no seventh.
+   *
+   * Colour in this console was fully tokenised and type was not: 57 uses of
+   * `text-[13px]`, 35 of `text-[11px]`, then 10px, 14px and 17px scattered
+   * across files and chosen per component. Nothing was individually wrong,
+   * which is exactly why it read as slightly unfinished — the numbers
+   * disagreed with each other rather than with any rule.
+   *
+   * Named for the job rather than the size, so a step can be retuned without
+   * a rename: `text-body` stays `text-body` if 13 becomes 13.5.
+   *
+   * 10px folded into 11. Three sizes below 12px is a distinction nobody can
+   * see and everybody has to decide between.
+   *
+   * Line heights ride with the size. A dense admin table and a paragraph of
+   * explanation want different leading, and setting it separately at each
+   * call site is how two identical-looking rows end up different heights.
+   */
+  --text-micro: 0.6875rem;        /* 11px — table headers, badges, labels  */
+  --text-micro--line-height: 1.45;
+  --text-caption: 0.75rem;        /* 12px — hints, secondary detail        */
+  --text-caption--line-height: 1.5;
+  --text-body: 0.8125rem;         /* 13px — the workhorse                  */
+  --text-body--line-height: 1.55;
+  --text-title: 0.9375rem;        /* 15px — card and row titles            */
+  --text-title--line-height: 1.4;
+  --text-heading: 1.0625rem;      /* 17px — section headings               */
+  --text-heading--line-height: 1.35;
+  --text-display: 1.25rem;        /* 20px — page titles                    */
+  --text-display--line-height: 1.25;
+
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --font-sans: var(--font-sans);

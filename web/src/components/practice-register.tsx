@@ -127,7 +127,7 @@ export function PracticeRegister() {
         </div>
         <button
           onClick={() => setCreating(true)}
-          className="bg-primary text-primary-foreground rounded-md px-3 py-2 text-[13px] font-medium"
+          className="bg-primary text-primary-foreground rounded-md px-3 py-2 text-body font-medium"
         >
           Add a practice
         </button>
@@ -142,7 +142,7 @@ export function PracticeRegister() {
             onChange={(e) => setParam("q", e.target.value)}
             placeholder="Name, registration number, doctor"
             aria-label="Search practices"
-            className="w-full bg-transparent text-[13px] outline-none"
+            className="w-full bg-transparent text-body outline-none"
           />
         </label>
 
@@ -240,9 +240,9 @@ export function PracticeRegister() {
           <>
             {/* Desktop: a table. */}
             <div className="hidden overflow-x-auto md:block">
-              <table className="w-full text-[13px]">
+              <table className="w-full text-body">
                 <thead>
-                  <tr className="border-border text-muted-foreground border-b text-left text-[10px] tracking-[0.06em] uppercase">
+                  <tr className="border-border text-muted-foreground border-b text-left text-micro tracking-[0.06em] uppercase">
                     <th className="px-4 py-2 font-medium">Practice</th>
                     <th className="px-4 py-2 font-medium">Plan</th>
                     <th className="px-4 py-2 font-medium">Staff</th>
@@ -295,7 +295,7 @@ function Row({ p }: { p: PracticeRow }) {
         ) : null}
         <Link href={`/practices/?id=${p.id}`} className="block">
           <span className="block font-medium">{p.name}</span>
-          <span className="text-muted-foreground font-mono text-[11px]">
+          <span className="text-muted-foreground font-mono text-micro">
             {p.registrationNo ?? "no registration number"}
           </span>
         </Link>
@@ -330,8 +330,8 @@ function Card({ p }: { p: PracticeRow }) {
       <Link href={`/practices/?id=${p.id}`} className="block px-4 py-3.5">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
-            <span className="block truncate text-[13px] font-medium">{p.name}</span>
-            <span className="text-muted-foreground font-mono text-[11px]">
+            <span className="block truncate text-body font-medium">{p.name}</span>
+            <span className="text-muted-foreground font-mono text-micro">
               {p.registrationNo ?? "no registration number"}
             </span>
           </div>
@@ -344,7 +344,7 @@ function Card({ p }: { p: PracticeRow }) {
           <Pill tone="muted">{PLAN_LABELS[p.plan]}</Pill>
         </div>
 
-        <dl className="text-muted-foreground mt-2.5 grid grid-cols-3 gap-2 text-[11px]">
+        <dl className="text-muted-foreground mt-2.5 grid grid-cols-3 gap-2 text-micro">
           <div>
             <dt className="uppercase">Staff</dt>
             <dd className="tnum text-foreground font-mono">{p.staff}</dd>
@@ -380,7 +380,7 @@ function Choice({
       value={value}
       onChange={(e) => onChange(e.target.value)}
       className={cn(
-        "border-border bg-card h-8 min-w-0 flex-1 rounded-md border px-2 text-[12px] transition-colors sm:flex-none",
+        "border-border bg-card h-8 min-w-0 flex-1 rounded-md border px-2 text-caption transition-colors sm:flex-none",
         value ? "border-primary text-foreground" : "text-muted-foreground",
       )}
     >

@@ -118,10 +118,10 @@ export function MemberDialog({
                   className="accent-primary mt-0.5 size-3.5"
                 />
                 <span className="min-w-0">
-                  <span className="block text-[13px] leading-snug">
+                  <span className="block text-body leading-snug">
                     {PERMISSION_LABELS[p]}
                   </span>
-                  <span className="text-muted-foreground block font-mono text-[10px]">
+                  <span className="text-muted-foreground block font-mono text-micro">
                     {p}
                   </span>
                 </span>
@@ -156,7 +156,7 @@ export function MemberDialog({
             onChange={(e) => setEnding(e.target.checked)}
             className="accent-stopped mt-0.5 size-3.5"
           />
-          <span className="text-[13px] leading-snug">
+          <span className="text-body leading-snug">
             {willSuspend ? "End this membership" : "Restore this membership"}
             <span className="text-muted-foreground mt-0.5 block text-xs">
               {willSuspend

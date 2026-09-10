@@ -72,7 +72,7 @@ export function SignIn() {
       <header className="border-border border-b px-5 py-3">
         <div className="mx-auto flex max-w-[78rem] items-center gap-2.5">
           <Wordmark className="h-6 w-auto" />
-          <span className="border-border text-muted-foreground border-l pl-2.5 text-[11px] tracking-[0.08em] uppercase">
+          <span className="border-border text-muted-foreground border-l pl-2.5 text-micro tracking-[0.08em] uppercase">
             operator
           </span>
         </div>
@@ -117,7 +117,7 @@ function Label({ htmlFor, children }: { htmlFor: string; children: React.ReactNo
   return (
     <label
       htmlFor={htmlFor}
-      className="text-muted-foreground mb-1.5 block text-[11px] tracking-[0.04em] uppercase"
+      className="text-muted-foreground mb-1.5 block text-micro tracking-[0.04em] uppercase"
     >
       {children}
     </label>
@@ -313,7 +313,7 @@ function LoginForm({ onForgot }: { onForgot: () => void }) {
         {/* Was two clauses of what this console does and does not hold — true,
             and not what somebody signing in needs. The full sentence still runs
             along the bottom of every screen inside. */}
-        <p className="text-muted-foreground mt-1 text-[13px]">
+        <p className="text-muted-foreground mt-1 text-body">
           The MedPin operator console.
         </p>
       </div>
@@ -429,7 +429,7 @@ function ForgotForm({
           <p className="text-waiting-ink border-waiting/30 bg-waiting-tint rounded-sm border-l-2 px-3 py-2 text-xs leading-relaxed">
             This server has no mail configured, so nothing was actually sent. The
             link is in the server log, or mint one with{" "}
-            <code className="font-mono text-[11px]">scripts/resetAdmin.js</code>.
+            <code className="font-mono text-micro">scripts/resetAdmin.js</code>.
           </p>
         ) : null}
         <button

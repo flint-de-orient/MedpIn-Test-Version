@@ -4,7 +4,12 @@ import Link from "next/link";
 import { Suspense, useCallback, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { api, ApiError } from "@/lib/api";
-import { Empty, Failed, Panel } from "@/components/primitives";
+import {
+  Empty,
+  Failed,
+  Loading,
+  Panel,
+} from "@/components/primitives";
 import { UsageBar } from "@/components/metrics";
 import { IconChevron } from "@/components/icons";
 import { PLAN_LABELS, type Plan } from "@/lib/types";
@@ -142,7 +147,7 @@ function Analytics() {
                 key={l.key}
                 onClick={() => setParam("line", l.key)}
                 className={cn(
-                  "flex items-center gap-1.5 rounded-md border px-2 py-1 text-[11px] font-medium transition-colors",
+                  "flex items-center gap-1.5 rounded-md border px-2 py-1 text-micro font-medium transition-colors",
                   line === l.key
                     ? "border-primary bg-accent text-accent-foreground"
                     : "border-border text-muted-foreground hover:bg-secondary",
@@ -180,7 +185,7 @@ function Analytics() {
                 <Segment n={a.status.onboarding} total={total} className="bg-waiting" />
                 <Segment n={a.status.suspended} total={total} className="bg-stopped" />
               </div>
-              <dl className="grid grid-cols-3 gap-3 text-[13px]">
+              <dl className="grid grid-cols-3 gap-3 text-body">
                 <Legend label="Active" status="active" n={a.status.active} className="bg-ok" />
                 <Legend
                   label="Onboarding"
@@ -210,7 +215,7 @@ function Analytics() {
                   return (
                     <li
                       key={k}
-                      className="text-muted-foreground flex items-center justify-between px-4 py-2.5 text-[13px]"
+                      className="text-muted-foreground flex items-center justify-between px-4 py-2.5 text-body"
                     >
                       <span>{PLAN_LABELS[k]}</span>
                       <span className="tnum font-mono text-xs">0</span>
@@ -221,7 +226,7 @@ function Analytics() {
                   <li key={k}>
                     <Link
                       href={`/practices/?plan=${k}`}
-                      className="hover:bg-secondary/50 group flex items-center justify-between px-4 py-2.5 text-[13px] transition-colors"
+                      className="hover:bg-secondary/50 group flex items-center justify-between px-4 py-2.5 text-body transition-colors"
                     >
                       <span>{PLAN_LABELS[k]}</span>
                       <span className="flex items-center gap-1.5">
@@ -244,7 +249,9 @@ function Analytics() {
         description="Practices with a patient cap set, closest to it first."
       >
         {!a ? (
-          <div className="h-32" />
+          // A skeleton shaped like the list, rather than an empty box holding
+          // space. A blank rectangle and a slow request look the same.
+          <Loading rows={3} />
         ) : a.utilisation.length === 0 ? (
           <Empty
             title="No practice has a cap"
@@ -299,7 +306,7 @@ function Legend({
 }) {
   const inner = (
     <>
-      <dt className="text-muted-foreground flex items-center gap-1.5 text-[11px] uppercase">
+      <dt className="text-muted-foreground flex items-center gap-1.5 text-micro uppercase">
         <span aria-hidden className={cn("size-1.5 rounded-full", className)} />
         {label}
       </dt>

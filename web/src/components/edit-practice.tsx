@@ -112,7 +112,7 @@ export function EditPracticeDialog({
 
       <Field label="Registration number" hint="what verification checks">
         <input
-          className={`${textInput} font-mono text-[13px]`}
+          className={`${textInput} font-mono text-body`}
           value={reg}
           onChange={(e) => setReg(e.target.value)}
           maxLength={60}

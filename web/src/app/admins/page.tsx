@@ -58,7 +58,7 @@ export default function Admins() {
         </div>
         <button
           onClick={() => setAdding(true)}
-          className="bg-primary text-primary-foreground rounded-sm px-3 py-2 text-[13px] font-medium"
+          className="bg-primary text-primary-foreground rounded-sm px-3 py-2 text-body font-medium"
         >
           Add an administrator
         </button>
@@ -80,7 +80,7 @@ export default function Admins() {
               >
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2">
-                    <span className="truncate text-[13px] font-medium">{a.name}</span>
+                    <span className="truncate text-body font-medium">{a.name}</span>
                     {a.isSelf ? <Pill tone="accent">you</Pill> : null}
                     {!a.isActive ? <Pill tone="stopped">deactivated</Pill> : null}
                   </div>
@@ -214,7 +214,7 @@ function AddDialog({
       </Field>
       <Field label="Email">
         <input
-          className={`${textInput} font-mono text-[13px]`}
+          className={`${textInput} font-mono text-body`}
           type="email"
           value={email}
           onChange={(e) => setEmail(e.target.value)}

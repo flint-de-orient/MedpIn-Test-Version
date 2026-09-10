@@ -58,7 +58,7 @@ export function MetricCard({
   const body = (
     <>
       <div className="flex items-center justify-between gap-2">
-        <span className="text-muted-foreground text-[11px] font-medium tracking-[0.06em] uppercase">
+        <span className="text-muted-foreground text-micro font-medium tracking-[0.06em] uppercase">
           {label}
         </span>
         {icon ? (
@@ -79,7 +79,7 @@ export function MetricCard({
 
       <p
         className={cn(
-          "text-muted-foreground min-h-[1rem] text-[11px] leading-snug text-pretty",
+          "text-muted-foreground min-h-[1rem] text-micro leading-snug text-pretty",
           // The chevron lands in this line's bottom-right corner.
           href && "pr-5",
         )}
@@ -174,7 +174,7 @@ export function UsageBar({
     return (
       <div className="flex flex-col gap-1">
         <div className="flex items-baseline justify-between gap-2">
-          <span className="text-[13px]">{label}</span>
+          <span className="text-body">{label}</span>
           <span className="tnum text-muted-foreground font-mono text-xs">
             {used.toLocaleString()} · no cap
           </span>
@@ -190,7 +190,7 @@ export function UsageBar({
   return (
     <div className="flex flex-col gap-1">
       <div className="flex items-baseline justify-between gap-2">
-        <span className="text-[13px]">{label}</span>
+        <span className="text-body">{label}</span>
         <span
           className={cn(
             "tnum font-mono text-xs",

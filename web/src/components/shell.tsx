@@ -113,7 +113,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
           {children}
         </main>
 
-        <footer className="border-border text-muted-foreground border-t px-5 py-3 text-[11px] lg:px-8">
+        <footer className="border-border text-muted-foreground border-t px-5 py-3 text-micro lg:px-8">
           This console creates practices and decides whether they may operate. It
           holds no patient records.
         </footer>
@@ -157,8 +157,8 @@ function Sidebar({
       <div className="border-border flex h-14 items-center gap-2.5 border-b px-4">
         <Logo className="h-[26px] w-auto" />
         <span className="flex items-baseline gap-1.5">
-          <span className="text-[15px] font-bold tracking-tight">MedPin</span>
-          <span className="text-muted-foreground text-[10px] tracking-[0.1em] uppercase">
+          <span className="text-title font-bold tracking-tight">MedPin</span>
+          <span className="text-muted-foreground text-micro tracking-[0.1em] uppercase">
             operator
           </span>
         </span>
@@ -177,7 +177,7 @@ function Sidebar({
         {SECTIONS.map((section, i) => (
           <div key={i} className="flex flex-col gap-0.5">
             {section.heading ? (
-              <span className="text-muted-foreground mb-1 px-2 text-[10px] font-medium tracking-[0.1em] uppercase">
+              <span className="text-muted-foreground mb-1 px-2 text-micro font-medium tracking-[0.1em] uppercase">
                 {section.heading}
               </span>
             ) : null}
@@ -190,7 +190,7 @@ function Sidebar({
                   href={href}
                   aria-current={on ? "page" : undefined}
                   className={cn(
-                    "group relative flex items-center gap-2.5 rounded-md px-2.5 py-2 text-[13px] font-medium transition-colors",
+                    "group relative flex items-center gap-2.5 rounded-md px-2.5 py-2 text-body font-medium transition-colors",
                     on
                       ? "bg-accent text-accent-foreground"
                       : "text-muted-foreground hover:text-foreground hover:bg-secondary/70",
@@ -239,11 +239,11 @@ function TopBar({ onMenu, onSearch }: { onMenu: () => void; onSearch: () => void
           behave differently. */}
       <button
         onClick={onSearch}
-        className="border-border text-muted-foreground hover:bg-secondary/60 hidden h-9 w-full max-w-[22rem] min-w-0 items-center gap-2 rounded-md border px-3 text-[13px] transition-colors sm:flex"
+        className="border-border text-muted-foreground hover:bg-secondary/60 hidden h-9 w-full max-w-[22rem] min-w-0 items-center gap-2 rounded-md border px-3 text-body transition-colors sm:flex"
       >
         <IconSearch className="size-4 shrink-0" />
         <span className="truncate">Search practices, staff, locations…</span>
-        <kbd className="border-border text-muted-foreground ml-auto hidden shrink-0 rounded border px-1.5 py-0.5 font-mono text-[10px] sm:inline">
+        <kbd className="border-border text-muted-foreground ml-auto hidden shrink-0 rounded border px-1.5 py-0.5 font-mono text-micro sm:inline">
           {mac ? "⌘" : "Ctrl"} K
         </kbd>
       </button>

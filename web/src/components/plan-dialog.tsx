@@ -125,7 +125,7 @@ export function PlanDialog({
               type="button"
               onClick={() => setPlan(k)}
               className={cn(
-                "rounded-sm border px-2.5 py-1.5 text-[13px] font-medium transition-colors",
+                "rounded-sm border px-2.5 py-1.5 text-body font-medium transition-colors",
                 plan === k
                   ? "border-primary bg-accent text-accent-foreground"
                   : "border-border text-muted-foreground hover:bg-secondary",
@@ -156,7 +156,7 @@ export function PlanDialog({
       <Field label="Renews on" hint="empty for open-ended">
         <input
           type="date"
-          className={`${textInput} font-mono text-[13px]`}
+          className={`${textInput} font-mono text-body`}
           value={renews}
           onChange={(e) => setRenews(e.target.value)}
         />
@@ -197,7 +197,7 @@ function Cap({
   return (
     <Field label={label}>
       <input
-        className={cn(textInput, "tnum font-mono text-[13px]", over && "border-waiting")}
+        className={cn(textInput, "tnum font-mono text-body", over && "border-waiting")}
         inputMode="numeric"
         placeholder="no cap"
         value={value}
@@ -205,7 +205,7 @@ function Cap({
       />
       <span
         className={cn(
-          "text-[11px]",
+          "text-micro",
           over ? "text-waiting" : "text-muted-foreground",
         )}
       >

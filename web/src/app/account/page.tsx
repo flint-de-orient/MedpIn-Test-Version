@@ -23,7 +23,15 @@ export default function Account() {
     setStage(admin?.totpEnabled ? "on" : "off");
   }, [admin?.totpEnabled]);
 
-  if (!admin) return null;
+  /*
+   * A skeleton, not nothing.
+   *
+   * This returned `null` while the session resolved, which on a slow
+   * connection is a blank page with a sidebar beside it — indistinguishable
+   * from a broken build. The shape below is the shape of the real content, so
+   * nothing jumps when it arrives.
+   */
+  if (!admin) return <AccountSkeleton />;
 
   async function begin() {
     setError(null);
@@ -154,7 +162,7 @@ export default function Account() {
               <button
                 onClick={() => void begin()}
                 disabled={busy}
-                className="bg-primary text-primary-foreground w-fit rounded-sm px-3 py-2 text-[13px] font-medium disabled:opacity-55"
+                className="bg-primary text-primary-foreground w-fit rounded-sm px-3 py-2 text-body font-medium disabled:opacity-55"
               >
                 Set up two-factor
               </button>
@@ -240,7 +248,7 @@ export default function Account() {
                 <button
                   onClick={() => void enable()}
                   disabled={busy}
-                  className="bg-primary text-primary-foreground rounded-sm px-3 py-2 text-[13px] font-medium disabled:opacity-55"
+                  className="bg-primary text-primary-foreground rounded-sm px-3 py-2 text-body font-medium disabled:opacity-55"
                 >
                   Turn it on
                 </button>
@@ -250,13 +258,13 @@ export default function Account() {
                     setSecret("");
                     setError(null);
                   }}
-                  className="border-border hover:bg-secondary rounded-sm border px-3 py-2 text-[13px] font-medium transition-colors"
+                  className="border-border hover:bg-secondary rounded-sm border px-3 py-2 text-body font-medium transition-colors"
                 >
                   Cancel
                 </button>
               </div>
 
-              <p className="text-muted-foreground border-border border-t pt-3 text-[11px] leading-relaxed">
+              <p className="text-muted-foreground border-border border-t pt-3 text-micro leading-relaxed">
                 Shown as text rather than a QR code on purpose: drawing one means a
                 library on the page that handles the secret, and this is the one page
                 where an extra script is worth refusing. Every authenticator app takes
@@ -282,7 +290,7 @@ export default function Account() {
               <button
                 onClick={() => void disable()}
                 disabled={busy}
-                className="border-stopped/40 text-stopped hover:bg-stopped-tint w-fit rounded-sm border px-3 py-2 text-[13px] font-medium transition-colors disabled:opacity-55"
+                className="border-stopped/40 text-stopped hover:bg-stopped-tint w-fit rounded-sm border px-3 py-2 text-body font-medium transition-colors disabled:opacity-55"
               >
                 Turn off two-factor
               </button>
@@ -308,7 +316,7 @@ export default function Account() {
           <p>
             If a session were ever taken, the remedies are to wait out the two
             hours or rotate{" "}
-            <code className="font-mono text-[11px]">ADMIN_JWT_SECRET</code> on the
+            <code className="font-mono text-micro">ADMIN_JWT_SECRET</code> on the
             server, which ends every session at once. That is why two hours is
             short: when you cannot revoke one, the next best thing is that it does
             not last.
@@ -392,12 +400,12 @@ function Step({
     <div className="flex gap-3">
       <span
         aria-hidden
-        className="bg-accent text-accent-foreground tnum mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold"
+        className="bg-accent text-accent-foreground tnum mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full text-micro font-semibold"
       >
         {n}
       </span>
       <div className="min-w-0">
-        <p className="text-[13px] font-medium">{title}</p>
+        <p className="text-body font-medium">{title}</p>
         <p className="text-muted-foreground mt-0.5 text-xs leading-relaxed">{children}</p>
       </div>
     </div>
@@ -437,7 +445,7 @@ function Code({
     <div className="flex flex-col gap-1.5">
       <label
         htmlFor="totp-code"
-        className="text-muted-foreground text-[11px] tracking-[0.04em] uppercase"
+        className="text-muted-foreground text-micro tracking-[0.04em] uppercase"
       >
         {label}
       </label>
@@ -473,6 +481,31 @@ function Code({
       ) : hint ? (
         <span className="text-muted-foreground text-xs leading-relaxed">{hint}</span>
       ) : null}
+    </div>
+  );
+}
+
+/** The page's own outline, so the fill-in does not move anything. */
+function AccountSkeleton() {
+  return (
+    <div className="space-y-6" aria-busy="true" aria-live="polite">
+      <span className="sr-only">Loading your account</span>
+      <div>
+        <div className="bg-muted h-6 w-40 animate-pulse rounded-sm" />
+        <div className="bg-muted mt-2 h-4 w-72 animate-pulse rounded-sm" />
+      </div>
+      <Panel title="Sign-in">
+        <div className="space-y-3 px-4 py-4">
+          <div className="bg-muted h-4 w-56 animate-pulse rounded-sm" />
+          <div className="bg-muted h-4 w-40 animate-pulse rounded-sm" />
+        </div>
+      </Panel>
+      <Panel title="Two-factor authentication">
+        <div className="space-y-3 px-4 py-4">
+          <div className="bg-muted h-4 w-64 animate-pulse rounded-sm" />
+          <div className="bg-muted h-9 w-32 animate-pulse rounded-sm" />
+        </div>
+      </Panel>
     </div>
   );
 }

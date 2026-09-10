@@ -72,7 +72,7 @@ export function Field({
 }) {
   return (
     <label className="flex flex-col gap-1.5">
-      <span className="text-muted-foreground text-[11px] tracking-[0.04em] uppercase">
+      <span className="text-muted-foreground text-micro tracking-[0.04em] uppercase">
         {label}
         {hint ? (
           <span className="text-muted-foreground/70 ml-1.5 normal-case tracking-normal">
@@ -179,7 +179,7 @@ export function Modal({
           <button
             type="button"
             onClick={onCancel ?? onClose}
-            className="border-border hover:bg-secondary rounded-sm border px-3 py-1.5 text-[13px] font-medium transition-colors"
+            className="border-border hover:bg-secondary rounded-sm border px-3 py-1.5 text-body font-medium transition-colors"
           >
             {cancelLabel}
           </button>
@@ -187,7 +187,7 @@ export function Modal({
             type="submit"
             disabled={busy}
             className={cn(
-              "rounded-sm px-3 py-1.5 text-[13px] font-medium transition-opacity disabled:opacity-55",
+              "rounded-sm px-3 py-1.5 text-body font-medium transition-opacity disabled:opacity-55",
               destructive
                 ? "bg-stopped text-white"
                 : "bg-primary text-primary-foreground",

@@ -6,7 +6,16 @@ import { api, ApiError } from "@/lib/api";
 import { useSession } from "@/lib/session";
 import { useAttention } from "@/components/attention";
 import { MetricCard } from "@/components/metrics";
-import { Alert, Empty, Failed, Panel, Pill, statusTone, when } from "@/components/primitives";
+import {
+  Alert,
+  Empty,
+  Failed,
+  Loading,
+  Panel,
+  Pill,
+  statusTone,
+  when,
+} from "@/components/primitives";
 import {
   IconAdmins,
   IconAlert,
@@ -170,7 +179,7 @@ export default function OverviewPage() {
                     className="hover:bg-secondary/50 flex items-center gap-3 px-4 py-3 transition-colors"
                   >
                     <span className="min-w-0 flex-1">
-                      <span className="block truncate text-[13px] font-medium">
+                      <span className="block truncate text-body font-medium">
                         {p.name}
                       </span>
                       <span className="text-muted-foreground text-xs">
@@ -200,7 +209,7 @@ export default function OverviewPage() {
                   return (
                     <li
                       key={k}
-                      className="text-muted-foreground flex items-center justify-between px-4 py-2.5 text-[13px]"
+                      className="text-muted-foreground flex items-center justify-between px-4 py-2.5 text-body"
                     >
                       <span className="capitalize">{k}</span>
                       <span className="tnum font-mono text-xs">0</span>
@@ -212,7 +221,7 @@ export default function OverviewPage() {
                   <li key={k}>
                     <Link
                       href={`/practices/?plan=${k}`}
-                      className="hover:bg-secondary/50 group flex items-center justify-between px-4 py-2.5 text-[13px] transition-colors"
+                      className="hover:bg-secondary/50 group flex items-center justify-between px-4 py-2.5 text-body transition-colors"
                     >
                       <span className="capitalize">{k}</span>
                       <span className="flex items-center gap-1.5">
@@ -227,7 +236,7 @@ export default function OverviewPage() {
           ) : (
             <div className="px-4 py-8" />
           )}
-          <p className="text-muted-foreground border-border border-t px-4 py-3 text-[11px] leading-relaxed">
+          <p className="text-muted-foreground border-border border-t px-4 py-3 text-micro leading-relaxed">
             A plan is a name. What actually restrains anything is the caps on
             each practice, which are set individually.
           </p>
@@ -242,7 +251,10 @@ function AttentionPanel({
 }: {
   items: ReturnType<typeof useAttention>["items"];
 }) {
-  if (items === null) return null;
+  // Loading, not empty. Rendering nothing here made a slow request look
+  // identical to "nothing needs you", which is the one thing this panel exists
+  // to distinguish.
+  if (items === null) return <Loading rows={2} />;
 
   if (items.length === 0) {
     return (
@@ -256,7 +268,7 @@ function AttentionPanel({
     <section className="border-border bg-card overflow-hidden rounded-lg border">
       <header className="border-border flex items-center gap-2 border-b px-4 py-2.5">
         <IconAlert className="text-waiting size-4" />
-        <h2 className="text-[13px] font-semibold tracking-tight">Action required</h2>
+        <h2 className="text-body font-semibold tracking-tight">Action required</h2>
       </header>
       <ul className="divide-border divide-y">
         {items.map((it, i) => (
@@ -270,7 +282,7 @@ function AttentionPanel({
             />
             <div className="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3">
               <div className="min-w-0 flex-1">
-                <p className="text-[13px] font-medium">{it.title}</p>
+                <p className="text-body font-medium">{it.title}</p>
                 <p className="text-muted-foreground mt-0.5 text-xs leading-relaxed">
                   {it.detail}
                 </p>
