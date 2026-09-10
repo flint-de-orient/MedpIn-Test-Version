@@ -234,3 +234,68 @@ describe('the console agrees with the server about what a second factor is', () 
     );
   });
 });
+
+/**
+ * What the Edit details dialog says prints.
+ *
+ * It said "these appear on the practice's letterhead and on every prescription
+ * it issues" over five fields, one of which was labelled "not shown to the
+ * practice" three lines below — two sentences on one screen saying opposite
+ * things about the same box.
+ *
+ * The subtler half: two of the four that do print are fallbacks. The PDF
+ * prefers the prescribing doctor's own name and council number, so an operator
+ * correcting a registration number on a practice whose doctor has their own was
+ * editing a field that changes nothing on any prescription, having been told it
+ * appears on all of them. That is worse than a typo — it is a correction
+ * somebody believes they have made.
+ */
+describe('the letterhead dialog describes the letterhead', () => {
+  const dialog = readFileSync(
+    new URL('../../web/src/components/edit-practice.tsx', import.meta.url),
+    'utf8',
+  );
+  const pdf = readFileSync(new URL('../src/services/prescriptionPdf.js', import.meta.url), 'utf8');
+
+  test('the doctor name and registration really are fallbacks', () => {
+    // If these ever became the first choice, the hints below would be wrong in
+    // the other direction and this test should fail so they get rewritten.
+    assert.match(pdf, /doctor\?\.name \?\? identity\?\.doctorName/);
+    assert.match(pdf, /doctor\?\.registrationNo \|\| identity\?\.registrationNo/);
+  });
+
+  test('and the dialog says so rather than promising they print', () => {
+    assert.match(dialog, /used only when the prescribing doctor has no name on file/);
+    assert.match(dialog, /a doctor's own council number wins on the page/);
+  });
+
+  test('notes are not described as printed', () => {
+    assert.ok(
+      !/These appear on the practice's letterhead and on every prescription/.test(dialog),
+      'the header claims every field on the form reaches a prescription',
+    );
+    assert.match(dialog, /never printed, never shown to the practice/);
+  });
+
+  test('and the letterhead the page is built from cannot carry them', () => {
+    /*
+     * The claim is only worth making because the snapshot has no room for it.
+     *
+     * Asserted against the snapshot rather than against the word "notes"
+     * anywhere in the file — the first version of this test did that and failed
+     * on a comment describing a *medicine's* notes, which is a different field
+     * on a different model. A test that cannot tell two things called notes
+     * apart fails on refactors and passes on regressions.
+     */
+    const from = pdf.indexOf('letterheadToPersist');
+    // `lastIndexOf`, because the builder's own definition destructures the same
+    // shape and comes first in the file.
+    const snapshot = pdf.slice(from, pdf.lastIndexOf('buildPrescriptionPdf({'));
+    assert.ok(snapshot.length > 100, 'the letterhead snapshot moved');
+    assert.ok(!/\bnotes\b/.test(snapshot), 'the letterhead snapshot now carries notes');
+    assert.ok(
+      !/identity\??\.notes|practice\??\.notes/.test(pdf),
+      'the prescription builder now reads a practice note',
+    );
+  });
+});

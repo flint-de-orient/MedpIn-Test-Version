@@ -2,15 +2,34 @@
 
 import { useEffect, useState } from "react";
 import { api, ApiError } from "@/lib/api";
-import { Modal, Field, textInput } from "@/components/form";
-import type { Practice } from "@/lib/types";
+import { Modal, Field, Select, textInput } from "@/components/form";
+import type { Practice, PracticeOptions, PracticeType } from "@/lib/types";
 
 /**
- * The letterhead.
+ * The letterhead, and one field that is not on it.
  *
- * These four fields are printed on every prescription this practice issues, so
- * a typo here is a typo on a legal document — which is the reason they are
- * editable at all rather than fixed at creation.
+ * What prints at the top of every prescription this practice issues, so a typo
+ * here is a typo on a legal document — the reason these are editable at all
+ * rather than fixed at creation.
+ *
+ * ---- Two of them are fallbacks, and the dialog used to hide that ---------
+ *
+ * `prescriptionPdf.js` prefers the prescribing doctor's own name and council
+ * number and reaches for the practice's only when the doctor has none:
+ *
+ *   doctor?.name ?? identity?.doctorName ?? env.DOCTOR_DISPLAY_NAME
+ *   doctor?.registrationNo || identity?.registrationNo
+ *
+ * So an operator correcting a registration number on a practice whose doctor
+ * has their own was editing a field that changes nothing on any prescription,
+ * having been told it appears on all of them.
+ *
+ * ---- And one is not printed anywhere ------------------------------------
+ *
+ * `notes` is the operator's own note about a customer. The header said
+ * "these appear on the practice's letterhead and on every prescription it
+ * issues" over a field whose own hint said it is not shown to the practice —
+ * two sentences on one screen saying opposite things about the same box.
  */
 export function EditPracticeDialog({
   open,
@@ -29,6 +48,11 @@ export function EditPracticeDialog({
   const [tagline, setTagline] = useState(practice.tagline ?? "");
   const [doctor, setDoctor] = useState(practice.doctorDisplayName ?? "");
   const [reg, setReg] = useState(practice.registrationNo ?? "");
+  const [practiceType, setPracticeType] = useState<PracticeType | "">(
+    practice.practiceType ?? "",
+  );
+  const [specialty, setSpecialty] = useState(practice.specialty ?? "");
+  const [options, setOptions] = useState<PracticeOptions | null>(null);
   const [note, setNote] = useState(notes);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -41,9 +65,23 @@ export function EditPracticeDialog({
     setTagline(practice.tagline ?? "");
     setDoctor(practice.doctorDisplayName ?? "");
     setReg(practice.registrationNo ?? "");
+    setPracticeType(practice.practiceType ?? "");
+    setSpecialty(practice.specialty ?? "");
     setNote(notes);
     setError(null);
   }, [open, practice, notes]);
+
+  // The same vocabulary the create form offers, from the same endpoint. A
+  // second list typed out here would disagree with that one the first time
+  // either changed.
+  useEffect(() => {
+    if (!open || options) return;
+    api<PracticeOptions>("/admin/practice-options")
+      .then(setOptions)
+      .catch(() => {
+        /* the rest of the form still saves */
+      });
+  }, [open, options]);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -62,6 +100,10 @@ export function EditPracticeDialog({
           doctorDisplayName: doctor.trim(),
           registrationNo: reg.trim(),
           notes: note.trim(),
+          // Empty means "no answer", which the server stores as null — the
+          // value the capability resolver reads as unclassified.
+          practiceType: practiceType || null,
+          specialty: specialty || null,
         },
       });
       onSaved();
@@ -77,7 +119,7 @@ export function EditPracticeDialog({
       open={open}
       onClose={onClose}
       title="Edit details"
-      description="These appear on the practice's letterhead and on every prescription it issues."
+      description="What prints at the top of this practice's prescriptions — except the notes, which are yours."
       onSubmit={submit}
       confirmLabel={busy ? "Saving…" : "Save"}
       busy={busy}
@@ -92,7 +134,7 @@ export function EditPracticeDialog({
         />
       </Field>
 
-      <Field label="Tagline" hint="optional">
+      <Field label="Tagline" hint="optional — prints under the name">
         <input
           className={textInput}
           value={tagline}
@@ -101,7 +143,10 @@ export function EditPracticeDialog({
         />
       </Field>
 
-      <Field label="Doctor's printed name" hint="optional">
+      <Field
+        label="Doctor's printed name"
+        hint="used only when the prescribing doctor has no name on file"
+      >
         <input
           className={textInput}
           value={doctor}
@@ -110,7 +155,52 @@ export function EditPracticeDialog({
         />
       </Field>
 
-      <Field label="Registration number" hint="what verification checks">
+      {/*
+        What kind of practice, and what it treats.
+
+        Both were on the create form and on no edit path, so a practice created
+        before either field existed could never acquire them and one created
+        with the wrong answer could never lose it. The register drew both as
+        pills that nothing on the platform could change.
+
+        `practiceType` feeds the capability resolver and `specialty` is what
+        the AI assistant tells patients their doctor practises, so neither is
+        decoration.
+      */}
+      <div className="grid gap-4 sm:grid-cols-2">
+        <Field label="Practice type" hint="what kind of organisation">
+          <Select
+            value={practiceType}
+            onChange={(v) => setPracticeType(v as PracticeType | "")}
+            placeholder="Not saying"
+          >
+            {options?.types.map((t) => (
+              <option key={t.key} value={t.key}>
+                {t.label}
+              </option>
+            ))}
+          </Select>
+        </Field>
+
+        <Field label="Primary specialty" hint="what it mainly treats">
+          <Select
+            value={specialty}
+            onChange={setSpecialty}
+            placeholder="Not saying"
+          >
+            {options?.specialties.map((sp) => (
+              <option key={sp.key} value={sp.key}>
+                {sp.label}
+              </option>
+            ))}
+          </Select>
+        </Field>
+      </div>
+
+      <Field
+        label="Registration number"
+        hint="what verification checks — a doctor's own council number wins on the page"
+      >
         <input
           className={`${textInput} font-mono text-body`}
           value={reg}
@@ -119,18 +209,19 @@ export function EditPracticeDialog({
         />
       </Field>
 
-      <Field
-        label="Notes"
-        hint="for you — not shown to the practice"
-      >
-        <textarea
-          className={`${textInput} resize-y`}
-          rows={3}
-          maxLength={2000}
-          value={note}
-          onChange={(e) => setNote(e.target.value)}
-        />
-      </Field>
+      {/* Set apart, because it is the one box on this form that is not the
+          letterhead. Everything above prints; this never does. */}
+      <div className="border-border -mx-5 mt-1 border-t px-5 pt-4">
+        <Field label="Notes" hint="yours — never printed, never shown to the practice">
+          <textarea
+            className={`${textInput} resize-y`}
+            rows={3}
+            maxLength={2000}
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+          />
+        </Field>
+      </div>
     </Modal>
   );
 }

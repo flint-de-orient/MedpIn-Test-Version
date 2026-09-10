@@ -72,12 +72,19 @@ export function Field({
 }) {
   return (
     <label className="flex flex-col gap-1.5">
-      <span className="text-muted-foreground text-micro tracking-[0.04em] uppercase">
+      {/*
+        The label carries the weight; the hint does not.
+
+        The hint used to be `text-muted-foreground/70` — a dimmer grey at
+        3.24:1, which is not a hint, it is a hint nobody can read. Both are the
+        token now, so the difference between them is weight and case rather
+        than legibility: LABEL in medium uppercase, hint in normal weight and
+        normal case beside it.
+      */}
+      <span className="text-muted-foreground text-micro font-medium tracking-[0.04em] uppercase">
         {label}
         {hint ? (
-          <span className="text-muted-foreground ml-1.5 normal-case tracking-normal">
-            {hint}
-          </span>
+          <span className="ml-1.5 font-normal normal-case tracking-normal">{hint}</span>
         ) : null}
       </span>
       {children}
@@ -176,10 +183,17 @@ export function Modal({
         </div>
 
         <div className="border-border flex justify-end gap-2 border-t px-5 py-3">
+          {/*
+            `shrink-0` on both. Flex items shrink by default, so a long label —
+            "Saving…", "Suspend this practice" — squeezes the pair inside a
+            dialog that is `calc(100vw-2rem)` wide on a phone, and the last
+            button is the one that loses. The way out of a dialog and the way
+            through it are the two things on it that must always be whole.
+          */}
           <button
             type="button"
             onClick={onCancel ?? onClose}
-            className="border-border hover:bg-secondary rounded-sm border px-3 py-1.5 text-body font-medium transition-colors"
+            className="border-border hover:bg-secondary shrink-0 rounded-sm border px-3 py-1.5 text-body font-medium whitespace-nowrap transition-colors"
           >
             {cancelLabel}
           </button>
@@ -187,9 +201,20 @@ export function Modal({
             type="submit"
             disabled={busy}
             className={cn(
-              "rounded-sm px-3 py-1.5 text-body font-medium transition-opacity disabled:opacity-55",
+              "shrink-0 rounded-sm px-3 py-1.5 text-body font-medium whitespace-nowrap transition-opacity disabled:opacity-55",
+              /*
+                `--destructive` and its own foreground, not `--stopped` and a
+                literal white. `--stopped` is #f87171 in dark and white on it is
+                2.77:1 — the least readable thing in the console was the confirm
+                button on "Suspend this practice", in the theme half of people
+                use. `--destructive-foreground` is defined per theme for exactly
+                this and reads 6.47:1 in light, 6.51:1 in dark.
+
+                It was also the only raw colour left in the console, which is
+                how it went unmeasured: the contrast test reads tokens.
+              */
               destructive
-                ? "bg-stopped text-white"
+                ? "bg-destructive text-destructive-foreground"
                 : "bg-primary text-primary-foreground",
             )}
           >

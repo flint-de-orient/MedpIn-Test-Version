@@ -338,6 +338,36 @@ describe('the console is readable in both themes', () => {
     });
   }
 
+  test('and no colour is written outside the palette', () => {
+    /*
+     * How a 2.77:1 button went unmeasured for months.
+     *
+     * The confirm button on "Suspend this practice" was `bg-stopped
+     * text-white`. Everything above reads tokens, and `white` is not one, so
+     * the pair was never looked at: `--stopped` is #f87171 in dark, and white
+     * on it is 2.77:1 — the least readable thing in the console, on its most
+     * consequential button, in the theme half of people use.
+     *
+     * A literal cannot be theme-aware. That is the whole objection: whatever
+     * it reads against in one theme, it reads against the opposite in the
+     * other, and only one of those was ever looked at.
+     */
+    const literals = new Set();
+    for (const [file, body] of FILES) {
+      for (const m of body.matchAll(
+        /\b(?:text|bg|border|fill|stroke|ring|from|via|to)-(white|black|\[#[0-9a-fA-F]{3,8}\]|\[rgb[^\]]*\])/g,
+      )) {
+        literals.add(`  ${m[0]} — ${rel(file)}`);
+      }
+    }
+    assert.deepEqual(
+      [...literals].sort(),
+      [],
+      `\ncolour written outside the palette:\n${[...literals].sort().join('\n')}\n` +
+        `\nA literal cannot change with the theme, so half its uses are never measured.\n`,
+    );
+  });
+
   test('and nothing dims an ink below the palette floor', () => {
     /*
      * The ratchet, and the reason this file exists.
