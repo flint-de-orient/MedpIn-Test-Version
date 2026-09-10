@@ -167,7 +167,15 @@ export type AuditRow = {
   id: string;
   admin: string;
   action: string;
-  practice: string | null;
+  /**
+   * Who it was done to, or null where the action was aimed at the platform
+   * rather than at a customer.
+   *
+   * `name` is null when the practice has since been deleted — the id outlives
+   * it, because the entry recording what was done to a practice that no longer
+   * exists is exactly the entry somebody comes looking for.
+   */
+  practice: { id: string; name: string | null } | null;
   reason: string | null;
   before: Record<string, unknown> | null;
   after: Record<string, unknown> | null;

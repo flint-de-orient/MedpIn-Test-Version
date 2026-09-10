@@ -1348,6 +1348,33 @@ router.get(
     const hasMore = rows.length > limit;
     const page = hasMore ? rows.slice(0, limit) : rows;
 
+    /*
+     * Who it was done to.
+     *
+     * The id has been recorded since this collection existed and nothing ever
+     * showed it, so the trail could say a plan moved from essential to
+     * professional without saying whose — which on a platform with one
+     * practice is obvious and on a platform with twenty is unreviewable.
+     *
+     * Looked up rather than populated, because `.populate()` on a practice
+     * that has since been deleted yields null and takes the id with it. The
+     * row would then read as though it had never been practice-scoped at all:
+     * a missing name drawn as "nothing was targeted". Here the id survives its
+     * practice, and the name is null — which the console can say out loud.
+     *
+     * After paging, so it asks about the fifty ids on this page rather than
+     * every practice that has ever appeared in the log.
+     */
+    const practiceIds = [...new Set(page.filter((r) => r.practice).map((r) => String(r.practice)))];
+    const names = new Map(
+      practiceIds.length
+        ? (await Practice.find({ _id: { $in: practiceIds } })
+            .select('name')
+            .lean()
+          ).map((p) => [String(p._id), p.name])
+        : [],
+    );
+
     res.json({
       hasMore,
       nextBefore: hasMore ? page[page.length - 1].at : null,
@@ -1355,7 +1382,9 @@ router.get(
         id: String(r._id),
         admin: r.adminEmail,
         action: r.action,
-        practice: r.practice ? String(r.practice) : null,
+        practice: r.practice
+          ? { id: String(r.practice), name: names.get(String(r.practice)) ?? null }
+          : null,
         reason: r.reason ?? null,
         before: r.before ?? null,
         after: r.after ?? null,

@@ -152,12 +152,31 @@ function Detail() {
             </p>
           </div>
 
-          <button
-            onClick={() => setEditing(true)}
-            className="border-border hover:bg-secondary shrink-0 rounded-sm border px-3 py-1.5 text-body font-medium transition-colors"
-          >
-            Edit details
-          </button>
+          <div className="flex shrink-0 gap-2">
+            {/*
+              What has been done to this practice, and by whom.
+
+              The audit endpoint has taken a practice filter since it was
+              written and nothing sent it, so the answer existed and the way to
+              ask for it was to copy an id out of the URL and into another
+              screen — which is to say it was not answerable. It is a link
+              rather than a panel here because the trail has paging, filters and
+              a diff column already, and a second half-built copy of it on this
+              page would be the one that goes stale.
+            */}
+            <Link
+              href={`/audit/?practice=${p.id}`}
+              className="border-border hover:bg-secondary rounded-sm border px-3 py-1.5 text-body font-medium transition-colors"
+            >
+              History
+            </Link>
+            <button
+              onClick={() => setEditing(true)}
+              className="border-border hover:bg-secondary rounded-sm border px-3 py-1.5 text-body font-medium transition-colors"
+            >
+              Edit details
+            </button>
+          </div>
         </div>
       </div>
 

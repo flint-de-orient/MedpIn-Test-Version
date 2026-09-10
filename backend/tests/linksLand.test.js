@@ -72,7 +72,10 @@ const ACCEPTS = {
     months: ['6', '12', '24'],
   },
   '/admins/': {},
-  '/audit/': {},
+  /// An id, so it cannot be checked here beyond its name. The trail scopes to
+  /// one practice, which is how the practice view answers "what have we done
+  /// to them" without keeping a second copy of the log.
+  '/audit/': { practice: null },
   '/account/': {},
   '/': {},
 };

@@ -1,6 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
+import { Suspense, useCallback, useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { api, ApiError } from "@/lib/api";
 import type { AuditPage, AuditRow } from "@/lib/types";
 import { Empty, Failed, Loading, Panel, when, fullWhen } from "@/components/primitives";
@@ -14,7 +16,30 @@ import { cn } from "@/lib/utils";
  * succeeds quietly and nobody thinks to record it. It is also the half that
  * matters when the question is whether somebody went somewhere they shouldn't.
  */
-export default function Audit() {
+export default function Page() {
+  // `useSearchParams` suspends, and a static export has no server to fall back
+  // on — without this the whole route fails to prerender.
+  return (
+    <Suspense fallback={<Loading rows={6} />}>
+      <Audit />
+    </Suspense>
+  );
+}
+
+function Audit() {
+  /*
+   * Scoped to one practice when arrived at from that practice.
+   *
+   * The endpoint has taken this filter since it was written and nothing sent
+   * it, so "what have we done to this practice" was a question you answered by
+   * copying an id out of one screen and into another — which nobody does, so
+   * in practice it was not answerable at all.
+   *
+   * In the URL rather than in state, so it is a link the practice view can
+   * hold and a page an operator can send to somebody.
+   */
+  const practice = useSearchParams().get("practice");
+
   const [rows, setRows] = useState<AuditRow[] | null>(null);
   const [cursors, setCursors] = useState<(string | null)[]>([null]);
   const [hasMore, setHasMore] = useState(false);
@@ -35,6 +60,7 @@ export default function Audit() {
     setRows(null);
     try {
       const params = new URLSearchParams({ limit: "50" });
+      if (practice) params.set("practice", practice);
       if (action) params.set("action", action);
       if (admin) params.set("admin", admin);
       if (before) params.set("before", before);
@@ -46,7 +72,7 @@ export default function Audit() {
       setError((ex as ApiError).message);
       setRows([]);
     }
-  }, [action, admin, before]);
+  }, [practice, action, admin, before]);
 
   useEffect(() => {
     void load();
@@ -72,10 +98,39 @@ export default function Audit() {
       <div>
         <h1 className="text-display font-semibold tracking-tight">Audit</h1>
         <p className="text-muted-foreground mt-1 text-caption">
-          Every action taken here, newest first — including the ones that only
-          looked.
+          {practice
+            ? "Everything done to one practice, newest first — including the times somebody only looked."
+            : "Every action taken here, newest first — including the ones that only looked."}
         </p>
       </div>
+
+      {/*
+        Named from the rows rather than from the URL. A name in a link goes
+        stale the moment the practice is renamed, and a heading that disagrees
+        with the table beneath it is worse than one that says nothing.
+      */}
+      {practice ? (
+        <div className="border-border bg-secondary/40 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-md border px-4 py-2.5">
+          <span className="text-caption">
+            <span className="text-muted-foreground">Filtered to </span>
+            <span className="font-medium">
+              {rows?.[0]?.practice?.name ?? "one practice"}
+            </span>
+          </span>
+          <Link
+            href={`/practices/?id=${practice}`}
+            className="text-primary text-caption underline underline-offset-4"
+          >
+            Open it
+          </Link>
+          <Link
+            href="/audit/"
+            className="text-muted-foreground hover:text-foreground ml-auto text-caption underline underline-offset-4"
+          >
+            Show the whole log
+          </Link>
+        </div>
+      ) : null}
 
       <Panel
         title="Actions"
@@ -127,11 +182,19 @@ export default function Audit() {
           <Loading rows={6} />
         ) : rows.length === 0 ? (
           <Empty
-            title={action || admin ? "Nothing matches those filters" : "Nothing recorded yet"}
+            title={
+              practice
+                ? "Nothing has been done to this practice yet"
+                : action || admin
+                  ? "Nothing matches those filters"
+                  : "Nothing recorded yet"
+            }
             hint={
-              action || admin
-                ? "Clear them to see the whole log."
-                : "Actions appear here as soon as somebody takes one."
+              practice
+                ? "Every action taken on it will appear here."
+                : action || admin
+                  ? "Clear them to see the whole log."
+                  : "Actions appear here as soon as somebody takes one."
             }
           />
         ) : (
@@ -142,6 +205,12 @@ export default function Audit() {
                   <th className="px-4 py-2 font-medium">When</th>
                   <th className="px-4 py-2 font-medium">Who</th>
                   <th className="px-4 py-2 font-medium">Action</th>
+                  {/*
+                    Dropped when the whole table is one practice. A column
+                    repeating the same name on every row is a column that costs
+                    width and answers nothing.
+                  */}
+                  {practice ? null : <th className="px-4 py-2 font-medium">Practice</th>}
                   <th className="px-4 py-2 font-medium">Change</th>
                   <th className="px-4 py-2 font-medium">Reason</th>
                 </tr>
@@ -157,6 +226,11 @@ export default function Audit() {
                     </td>
                     <td className="px-4 py-2.5 font-mono text-caption">{r.admin}</td>
                     <td className="px-4 py-2.5 font-mono text-caption">{r.action}</td>
+                    {practice ? null : (
+                      <td className="px-4 py-2.5">
+                        <Target practice={r.practice} />
+                      </td>
+                    )}
                     <td className="px-4 py-2.5">
                       <Diff row={r} />
                     </td>
@@ -206,6 +280,42 @@ export default function Audit() {
         read, and an offset would show the same row twice or skip one entirely.
       </p>
     </div>
+  );
+}
+
+/**
+ * Who the action was aimed at.
+ *
+ * Links, because an entry an operator cannot act on from where it appears is a
+ * worry rather than a task — the question after "who suspended them" is always
+ * "show me them".
+ *
+ * A practice that has since been deleted keeps its id and says what it is. The
+ * alternative is a dash, which is what a platform-wide action renders, and the
+ * two mean opposite things: one was aimed at nobody, the other at somebody who
+ * is no longer here.
+ */
+function Target({ practice }: { practice: AuditRow["practice"] }) {
+  if (!practice) return <span className="text-muted-foreground">—</span>;
+
+  if (!practice.name) {
+    return (
+      <span
+        className="text-muted-foreground font-mono text-caption"
+        title={`Deleted practice · ${practice.id}`}
+      >
+        deleted · {practice.id.slice(-6)}
+      </span>
+    );
+  }
+
+  return (
+    <Link
+      href={`/practices/?id=${practice.id}`}
+      className="hover:text-primary text-caption underline decoration-transparent underline-offset-4 transition-colors hover:decoration-current"
+    >
+      {practice.name}
+    </Link>
   );
 }
 
