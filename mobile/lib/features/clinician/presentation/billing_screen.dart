@@ -225,6 +225,22 @@ class _CurrentPlan extends ConsumerWidget {
             ),
           ],
 
+          // A practice that predates plans. `labelFor(null)` already reads
+          // "No plan", which is true and says nothing about what that means —
+          // and this screen is where somebody would go to worry about it.
+          //
+          // "Not restricted by a plan" rather than "everything is available":
+          // the plan contributes no ceiling, and practice type and permissions
+          // still do.
+          if (status.planUnrecorded) ...[
+            const SizedBox(height: T.s2),
+            Text(
+              'This practice was set up before plans existed. Nothing is being '
+              'charged and nothing is restricted by a plan.',
+              style: T.body.copyWith(color: T.inkMuted),
+            ),
+          ],
+
           if (status.renewsOn != null) ...[
             const SizedBox(height: T.s3),
             _Fact(label: 'Renews on', value: _day(status.renewsOn!)),

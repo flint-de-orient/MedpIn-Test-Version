@@ -88,6 +88,7 @@ class BillingStatus {
     required this.subscription,
     required this.canPay,
     required this.testMode,
+    required this.hasPracticeFlag,
   });
 
   /// Null when this account has no practice yet — a real state with its own
@@ -118,7 +119,25 @@ class BillingStatus {
   /// trying a checkout is entitled to know no money will move.
   final bool testMode;
 
-  bool get hasPractice => plan != null;
+  /// Whether this account belongs to a practice at all.
+  ///
+  /// Sent by the server. It used to be inferred here as `plan != null`, which
+  /// is also true of a practice created before the plan field existed — so the
+  /// founding practice, which has no plan written on it, was shown "No practice
+  /// yet" on its own billing screen.
+  ///
+  /// Null only when talking to a server that predates the field, where the old
+  /// inference is still the best available guess.
+  final bool? hasPracticeFlag;
+
+  bool get hasPractice => hasPracticeFlag ?? (plan != null);
+
+  /// A practice that exists and has never been put on a plan.
+  ///
+  /// Ordinary rather than broken: every practice predating the field is in this
+  /// state, and `capabilities.js` grants an unknown plan everything. It is not
+  /// a trial and must not be drawn as one — there is no date for it to end on.
+  bool get planUnrecorded => hasPractice && plan == null;
 
   static DateTime? _date(Object? v) =>
       v == null ? null : DateTime.tryParse(v.toString())?.toLocal();
@@ -155,6 +174,10 @@ class BillingStatus {
               ),
       canPay: json['canPay'] as bool? ?? false,
       testMode: json['testMode'] as bool? ?? false,
+      // Absent on a server older than the field; `hasPractice` falls back to
+      // the old inference in that case rather than deciding there is no
+      // practice because a key is missing.
+      hasPracticeFlag: json['hasPractice'] as bool?,
     );
   }
 }

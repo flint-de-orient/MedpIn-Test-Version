@@ -297,8 +297,27 @@ router.get(
   '/',
   requireDoctor,
   asyncHandler(async (req, res) => {
+    /*
+     * Whether there is a practice at all, said out loud.
+     *
+     * The app used to work this out as `plan != null`, which is true of an
+     * account with no membership and equally true of a practice created before
+     * the plan field existed — and Dr. Dey's founding practice is exactly
+     * that. Mongoose defaults apply on insert, not to documents already
+     * written, so the oldest and most important customer on the platform
+     * opened Plan and billing and was told "No practice yet".
+     *
+     * One missing field had three readers and three answers: capabilities.js
+     * treats an unknown plan as granting everything, `Practice.toPublic()`
+     * reports it to the console as "trial", and this route reported it to the
+     * practice as not existing. The absence is real and it is worth reporting
+     * honestly — but it is an absence of a *plan*, and nothing about it says
+     * anything about whether there is a practice.
+     */
     const practiceId = await practiceOf(req);
-    if (!practiceId) return res.json({ plan: null, subscription: null, canPay: false });
+    if (!practiceId) {
+      return res.json({ hasPractice: false, plan: null, subscription: null, canPay: false });
+    }
 
     const [practice, sub, patients, staff, locations] = await Promise.all([
       Practice.findById(practiceId).select('plan limits planRenewsOn').lean(),
@@ -321,6 +340,12 @@ router.get(
     ]);
 
     res.json({
+      // There is a practice. Whether it has been put on a plan is the next
+      // question down, and a separate one.
+      hasPractice: true,
+      // Not defaulted to trial. A practice predating the field is unrestricted
+      // — `capabilities.js` grants an unknown plan everything — and calling
+      // that a trial would put an expiry on screen that nothing will enforce.
       plan: practice?.plan ?? null,
       limits: practice?.limits ?? null,
       // Counted the same way the guards count. A screen that measured
