@@ -114,8 +114,8 @@ function Analytics() {
     <div className="flex flex-col gap-5">
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <h1 className="text-xl font-semibold tracking-tight">Analytics</h1>
-          <p className="text-muted-foreground mt-1 text-xs">
+          <h1 className="text-display font-semibold tracking-tight">Analytics</h1>
+          <p className="text-muted-foreground mt-1 text-caption">
             How much of the platform there is, and how that changed.
           </p>
         </div>
@@ -125,7 +125,7 @@ function Analytics() {
               key={m}
               onClick={() => setParam("months", String(m))}
               className={cn(
-                "rounded-md border px-2.5 py-1 text-xs font-medium transition-colors",
+                "rounded-md border px-2.5 py-1 text-caption font-medium transition-colors",
                 months === m
                   ? "border-primary bg-accent text-accent-foreground"
                   : "border-border text-muted-foreground hover:bg-secondary",
@@ -218,7 +218,7 @@ function Analytics() {
                       className="text-muted-foreground flex items-center justify-between px-4 py-2.5 text-body"
                     >
                       <span>{PLAN_LABELS[k]}</span>
-                      <span className="tnum font-mono text-xs">0</span>
+                      <span className="tnum font-mono text-caption">0</span>
                     </li>
                   );
                 }
@@ -230,7 +230,7 @@ function Analytics() {
                     >
                       <span>{PLAN_LABELS[k]}</span>
                       <span className="flex items-center gap-1.5">
-                        <span className="tnum font-mono text-xs">{n}</span>
+                        <span className="tnum font-mono text-caption">{n}</span>
                         <IconChevron className="text-muted-foreground/40 group-hover:text-primary size-3 transition-colors" />
                       </span>
                     </Link>

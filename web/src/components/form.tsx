@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 
 export const textInput =
-  "border-input bg-card focus-visible:border-ring w-full rounded-sm border px-2.5 py-1.5 text-sm outline-none transition-colors disabled:opacity-55";
+  "border-input bg-card focus-visible:border-ring w-full rounded-sm border px-2.5 py-1.5 text-title outline-none transition-colors disabled:opacity-55";
 
 /**
  * A select that matches the text input beside it.
@@ -155,9 +155,9 @@ export function Modal({
     >
       <form onSubmit={onSubmit} noValidate className="flex flex-col">
         <div className="border-border border-b px-5 py-4">
-          <h2 className="text-sm font-semibold tracking-tight">{title}</h2>
+          <h2 className="text-title font-semibold tracking-tight">{title}</h2>
           {description ? (
-            <p className="text-muted-foreground mt-1 text-xs leading-relaxed">
+            <p className="text-muted-foreground mt-1 text-caption leading-relaxed">
               {description}
             </p>
           ) : null}
@@ -168,7 +168,7 @@ export function Modal({
           {error ? (
             <p
               role="alert"
-              className="text-stopped-ink border-l-stopped bg-stopped-tint rounded-sm border-l-2 px-3 py-2 text-xs leading-relaxed"
+              className="text-stopped-ink border-l-stopped bg-stopped-tint rounded-sm border-l-2 px-3 py-2 text-caption leading-relaxed"
             >
               {error}
             </p>

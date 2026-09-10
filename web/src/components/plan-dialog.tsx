@@ -162,7 +162,7 @@ export function PlanDialog({
         />
       </Field>
 
-      <p className="text-muted-foreground text-xs leading-relaxed">
+      <p className="text-muted-foreground text-caption leading-relaxed">
         All three caps are enforced, each at the point somebody would exceed it:
         enrolling a patient, adding a person, adding a location. &ldquo;People&rdquo;
         counts every active membership including the doctors and the owner, so a
@@ -170,7 +170,7 @@ export function PlanDialog({
         cap below what a practice already has is allowed and removes nobody — it
         is a brake on growth, not a shredder.
       </p>
-      <p className="text-muted-foreground text-xs leading-relaxed">
+      <p className="text-muted-foreground text-caption leading-relaxed">
         Changing the plan resets the caps to that plan&rsquo;s defaults; numbers
         typed here are kept. A lapsed renewal date suspends nobody — a clinic
         locked out of its records by a billing date is a patient safety problem,

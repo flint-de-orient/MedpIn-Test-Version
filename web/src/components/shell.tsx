@@ -172,7 +172,7 @@ function TotpNag() {
       action={
         <Link
           href="/account/"
-          className="border-border bg-card hover:bg-secondary rounded-sm border px-2.5 py-1 text-xs font-medium transition-colors"
+          className="border-border bg-card hover:bg-secondary rounded-sm border px-2.5 py-1 text-caption font-medium transition-colors"
         >
           Set one up
         </Link>
@@ -345,14 +345,14 @@ function TopBar({ onMenu, onSearch }: { onMenu: () => void; onSearch: () => void
         <ThemeToggle />
         <span className="bg-border mx-1 hidden h-5 w-px sm:block" />
         <span
-          className="text-muted-foreground hidden max-w-[12rem] truncate font-mono text-xs lg:inline xl:max-w-[16rem]"
+          className="text-muted-foreground hidden max-w-[12rem] truncate font-mono text-caption lg:inline xl:max-w-[16rem]"
           title={admin?.email}
         >
           {admin?.email}
         </span>
         <button
           onClick={signOut}
-          className="border-border hover:bg-secondary rounded-sm border px-2.5 py-1 text-xs font-medium transition-colors"
+          className="border-border hover:bg-secondary rounded-sm border px-2.5 py-1 text-caption font-medium transition-colors"
         >
           Sign out
         </button>

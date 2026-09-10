@@ -94,11 +94,11 @@ export function AttentionBell() {
           </div>
 
           {items === null ? (
-            <p className="text-muted-foreground px-4 py-6 text-center text-xs">Checking…</p>
+            <p className="text-muted-foreground px-4 py-6 text-center text-caption">Checking…</p>
           ) : items.length === 0 ? (
             <div className="flex flex-col items-center gap-2 px-4 py-8 text-center">
               <IconCheck className="text-ok size-5" />
-              <p className="text-xs font-medium">Nothing is waiting on you</p>
+              <p className="text-caption font-medium">Nothing is waiting on you</p>
               <p className="text-muted-foreground text-micro leading-relaxed">
                 Every practice is decided and every administrator has a second
                 factor.

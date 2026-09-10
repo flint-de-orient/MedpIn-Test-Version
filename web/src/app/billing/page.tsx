@@ -108,7 +108,7 @@ export default function Billing() {
   return (
     <div className="space-y-6">
       <header>
-        <h1 className="text-xl font-semibold tracking-tight">Billing</h1>
+        <h1 className="text-display font-semibold tracking-tight">Billing</h1>
         <p className="text-muted-foreground mt-1 text-body">
           Every subscription on the platform. Plans and prices are read-only —
           a tier is a deploy and a price is a new Razorpay plan.
@@ -135,7 +135,7 @@ export default function Billing() {
                 type="button"
                 onClick={() => setStatus(s.key)}
                 className={cn(
-                  "rounded-sm border px-2.5 py-1 text-xs font-medium transition-colors",
+                  "rounded-sm border px-2.5 py-1 text-caption font-medium transition-colors",
                   status === s.key
                     ? "border-primary bg-accent text-accent-foreground"
                     : "border-border text-muted-foreground hover:bg-secondary",
@@ -179,7 +179,7 @@ export default function Billing() {
             {!canPrice && (
               // Said rather than left blank. Every price missing looks like a
               // broken page unless the page explains itself.
-              <p className="text-muted-foreground border-border border-b px-4 py-3 text-xs">
+              <p className="text-muted-foreground border-border border-b px-4 py-3 text-caption">
                 Razorpay is not configured on this server, so no prices can be
                 shown. The capabilities and limits below are still what a
                 practice on each tier gets.
@@ -237,7 +237,7 @@ function RevenueSection({ rev }: { rev: Revenue }) {
       </div>
 
       {!rev.pricesKnown && (
-        <p className="text-muted-foreground text-xs leading-relaxed">
+        <p className="text-muted-foreground text-caption leading-relaxed">
           Razorpay prices could not be read, so the money figures are unknown
           rather than zero. The counts above are unaffected.
         </p>
@@ -318,7 +318,7 @@ function RevenueSection({ rev }: { rev: Revenue }) {
 function Fig({ label, value }: { label: string; value: string }) {
   return (
     <div>
-      <dt className="text-muted-foreground text-xs">{label}</dt>
+      <dt className="text-muted-foreground text-caption">{label}</dt>
       <dd className="mt-0.5 font-mono text-title">{value}</dd>
     </div>
   );
@@ -355,7 +355,7 @@ function SubscriptionItem({ row }: { row: SubscriptionRow }) {
             // filtering out: it is money against nothing.
             <span className="text-muted-foreground text-title">Practice deleted</span>
           )}
-          <div className="text-muted-foreground mt-0.5 font-mono text-xs">
+          <div className="text-muted-foreground mt-0.5 font-mono text-caption">
             {row.providerSubscriptionId}
           </div>
         </div>
@@ -366,7 +366,7 @@ function SubscriptionItem({ row }: { row: SubscriptionRow }) {
         </div>
       </div>
 
-      <dl className="text-muted-foreground mt-2 flex flex-wrap gap-x-5 gap-y-1 text-xs">
+      <dl className="text-muted-foreground mt-2 flex flex-wrap gap-x-5 gap-y-1 text-caption">
         {row.pendingPlan && (
           // A downgrade asked for and not landed. The practice still has the
           // larger tier, and this is the only place that says so.
@@ -388,7 +388,7 @@ function SubscriptionItem({ row }: { row: SubscriptionRow }) {
       </dl>
 
       {row.disagrees && (
-        <p className="text-destructive mt-2 text-xs">
+        <p className="text-destructive mt-2 text-caption">
           Billed for {PLAN_LABELS[row.plan] ?? row.plan}; the practice is on{" "}
           {PLAN_LABELS[row.practice!.plan] ?? row.practice!.plan}.
         </p>
@@ -418,14 +418,14 @@ function PlanItem({ row }: { row: PlanRow }) {
         </span>
       </div>
 
-      <dl className="text-muted-foreground mt-1.5 flex flex-wrap gap-x-5 gap-y-1 text-xs">
+      <dl className="text-muted-foreground mt-1.5 flex flex-wrap gap-x-5 gap-y-1 text-caption">
         <Fact label="Patients" value={cap(row.limits.patients)} />
         {/* "People", because the cap counts doctors and the owner too. */}
         <Fact label="People" value={cap(row.limits.staff)} />
         <Fact label="Locations" value={cap(row.limits.locations)} />
       </dl>
 
-      <p className="text-muted-foreground mt-2 text-xs leading-relaxed">
+      <p className="text-muted-foreground mt-2 text-caption leading-relaxed">
         {row.capabilities.length} capabilities:{" "}
         <span className="font-mono">{row.capabilities.join(", ").toLowerCase()}</span>
       </p>

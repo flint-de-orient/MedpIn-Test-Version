@@ -49,8 +49,8 @@ export default function Admins() {
     <div className="flex flex-col gap-5">
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <h1 className="text-xl font-semibold tracking-tight">Administrators</h1>
-          <p className="text-muted-foreground mt-1 text-xs">
+          <h1 className="text-display font-semibold tracking-tight">Administrators</h1>
+          <p className="text-muted-foreground mt-1 text-caption">
             {weak > 0
               ? `${weak} active account${weak === 1 ? "" : "s"} protected by a password alone.`
               : "Every active account has a second factor."}
@@ -84,12 +84,12 @@ export default function Admins() {
                     {a.isSelf ? <Pill tone="accent">you</Pill> : null}
                     {!a.isActive ? <Pill tone="stopped">deactivated</Pill> : null}
                   </div>
-                  <div className="text-muted-foreground mt-0.5 font-mono text-xs">
+                  <div className="text-muted-foreground mt-0.5 font-mono text-caption">
                     {a.email}
                   </div>
                 </div>
 
-                <div className="text-muted-foreground w-32 text-xs">
+                <div className="text-muted-foreground w-32 text-caption">
                   <span title={fullWhen(a.lastLoginAt)}>
                     {a.lastLoginAt ? `seen ${when(a.lastLoginAt)}` : "never signed in"}
                   </span>
@@ -109,7 +109,7 @@ export default function Admins() {
                       ? "You cannot deactivate your own account — that is the last door locked from the inside."
                       : undefined
                   }
-                  className="border-border hover:bg-secondary rounded-sm border px-2.5 py-1 text-xs font-medium transition-colors disabled:opacity-40"
+                  className="border-border hover:bg-secondary rounded-sm border px-2.5 py-1 text-caption font-medium transition-colors disabled:opacity-40"
                 >
                   {a.isActive ? "Deactivate" : "Restore"}
                 </button>
@@ -119,7 +119,7 @@ export default function Admins() {
         )}
       </Panel>
 
-      <p className="text-muted-foreground text-xs leading-relaxed">
+      <p className="text-muted-foreground text-caption leading-relaxed">
         A deactivated account keeps its second factor, so restoring it does not
         quietly hand back an account protected by a password alone. There is no
         delete: an administrator who took actions is named in the audit log, and
@@ -229,7 +229,7 @@ function AddDialog({
           onChange={(e) => setPassword(e.target.value)}
         />
       </Field>
-      <p className="text-muted-foreground text-xs leading-relaxed">
+      <p className="text-muted-foreground text-caption leading-relaxed">
         Tell them out of band, and ask them to enrol a second factor on their
         Account screen before they do anything else. Until they do, this account
         is protected by a password alone.

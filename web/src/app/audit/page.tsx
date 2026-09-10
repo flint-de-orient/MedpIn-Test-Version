@@ -70,8 +70,8 @@ export default function Audit() {
   return (
     <div className="flex flex-col gap-5">
       <div>
-        <h1 className="text-xl font-semibold tracking-tight">Audit</h1>
-        <p className="text-muted-foreground mt-1 text-xs">
+        <h1 className="text-display font-semibold tracking-tight">Audit</h1>
+        <p className="text-muted-foreground mt-1 text-caption">
           Every action taken here, newest first — including the ones that only
           looked.
         </p>
@@ -155,12 +155,12 @@ export default function Audit() {
                     >
                       {when(r.at)}
                     </td>
-                    <td className="px-4 py-2.5 font-mono text-xs">{r.admin}</td>
-                    <td className="px-4 py-2.5 font-mono text-xs">{r.action}</td>
+                    <td className="px-4 py-2.5 font-mono text-caption">{r.admin}</td>
+                    <td className="px-4 py-2.5 font-mono text-caption">{r.action}</td>
                     <td className="px-4 py-2.5">
                       <Diff row={r} />
                     </td>
-                    <td className="text-muted-foreground max-w-[22rem] px-4 py-2.5 text-xs">
+                    <td className="text-muted-foreground max-w-[22rem] px-4 py-2.5 text-caption">
                       {r.reason ?? "—"}
                     </td>
                   </tr>
@@ -172,7 +172,7 @@ export default function Audit() {
 
         {rows && rows.length > 0 ? (
           <div className="border-border flex items-center justify-between border-t px-4 py-2.5">
-            <span className="text-muted-foreground text-xs">
+            <span className="text-muted-foreground text-caption">
               Page <span className="tnum">{page + 1}</span>
             </span>
             <div className="flex gap-2">
@@ -180,7 +180,7 @@ export default function Audit() {
                 disabled={page === 0}
                 onClick={() => setCursors((c) => c.slice(0, -1))}
                 className={cn(
-                  "border-border rounded-sm border px-2.5 py-1 text-xs font-medium transition-colors",
+                  "border-border rounded-sm border px-2.5 py-1 text-caption font-medium transition-colors",
                   page === 0 ? "opacity-40" : "hover:bg-secondary",
                 )}
               >
@@ -190,7 +190,7 @@ export default function Audit() {
                 disabled={!hasMore}
                 onClick={() => setCursors((c) => [...c, rows[rows.length - 1].at])}
                 className={cn(
-                  "border-border rounded-sm border px-2.5 py-1 text-xs font-medium transition-colors",
+                  "border-border rounded-sm border px-2.5 py-1 text-caption font-medium transition-colors",
                   !hasMore ? "opacity-40" : "hover:bg-secondary",
                 )}
               >
@@ -201,7 +201,7 @@ export default function Audit() {
         ) : null}
       </Panel>
 
-      <p className="text-muted-foreground text-xs leading-relaxed">
+      <p className="text-muted-foreground text-caption leading-relaxed">
         Paged by timestamp rather than by offset. The log grows while it is being
         read, and an offset would show the same row twice or skip one entirely.
       </p>
@@ -217,13 +217,13 @@ export default function Audit() {
  */
 function Diff({ row }: { row: AuditRow }) {
   if (!row.after) return <span className="text-muted-foreground">—</span>;
-  if (!row.before) return <span className="text-muted-foreground text-xs">created</span>;
+  if (!row.before) return <span className="text-muted-foreground text-caption">created</span>;
 
   const moved = Object.keys(row.after).filter(
     (k) => JSON.stringify(row.before?.[k]) !== JSON.stringify(row.after?.[k]),
   );
   if (moved.length === 0)
-    return <span className="text-muted-foreground text-xs">no change</span>;
+    return <span className="text-muted-foreground text-caption">no change</span>;
 
   const show = (v: unknown) =>
     v === null || v === undefined || v === ""
@@ -237,7 +237,7 @@ function Diff({ row }: { row: AuditRow }) {
   return (
     <span className="flex flex-wrap gap-x-3 gap-y-1">
       {moved.map((k) => (
-        <span key={k} className="text-xs whitespace-nowrap">
+        <span key={k} className="text-caption whitespace-nowrap">
           <span className="text-muted-foreground">{k} </span>
           <s className="text-muted-foreground decoration-1">{show(row.before?.[k])}</s>{" "}
           <b className="font-semibold">{show(row.after?.[k])}</b>

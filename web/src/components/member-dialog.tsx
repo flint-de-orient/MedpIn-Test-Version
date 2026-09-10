@@ -132,7 +132,7 @@ export function MemberDialog({
       </Field>
 
       {member.usingPreset ? (
-        <p className="text-muted-foreground border-border bg-muted/40 rounded-sm border px-3 py-2 text-xs leading-relaxed">
+        <p className="text-muted-foreground border-border bg-muted/40 rounded-sm border px-3 py-2 text-caption leading-relaxed">
           These are the defaults for a <strong>{member.role.toLowerCase()}</strong>, not
           a saved list — the grant is empty and the role's preset is standing in.
           Saving writes them down, and this membership stops following the preset
@@ -141,7 +141,7 @@ export function MemberDialog({
       ) : null}
 
       {perms.length === 0 ? (
-        <p className="text-waiting-ink border-waiting/30 bg-waiting-tint rounded-sm border-l-2 px-3 py-2 text-xs leading-relaxed">
+        <p className="text-waiting-ink border-waiting/30 bg-waiting-tint rounded-sm border-l-2 px-3 py-2 text-caption leading-relaxed">
           An empty list falls back to the role's default rather than denying
           everything. To actually restrict this person, suspend the membership
           instead.
@@ -158,7 +158,7 @@ export function MemberDialog({
           />
           <span className="text-body leading-snug">
             {willSuspend ? "End this membership" : "Restore this membership"}
-            <span className="text-muted-foreground mt-0.5 block text-xs">
+            <span className="text-muted-foreground mt-0.5 block text-caption">
               {willSuspend
                 ? "They stop being able to open this practice's records immediately. Their own account and any other practice they work at are untouched."
                 : "They regain access to this practice with the permissions above."}

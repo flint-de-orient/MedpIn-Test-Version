@@ -89,8 +89,8 @@ export default function Account() {
   return (
     <div className="flex max-w-3xl flex-col gap-5">
       <div>
-        <h1 className="text-xl font-semibold tracking-tight">Account</h1>
-        <p className="text-muted-foreground mt-1 text-xs">
+        <h1 className="text-display font-semibold tracking-tight">Account</h1>
+        <p className="text-muted-foreground mt-1 text-caption">
           Signed in as <span className="font-mono">{admin.email}</span>
         </p>
       </div>
@@ -134,7 +134,7 @@ export default function Account() {
         <div className="flex flex-col gap-4 px-4 py-4">
           {stage === "off" ? (
             <>
-              <div className="text-muted-foreground flex flex-col gap-2 text-xs leading-relaxed">
+              <div className="text-muted-foreground flex flex-col gap-2 text-caption leading-relaxed">
                 <p>
                   You will need an <strong className="text-foreground">authenticator
                   app</strong> on your phone. Install one from the Play Store or App
@@ -192,7 +192,7 @@ export default function Account() {
                     range entirely. A key that vanishes when copied is worse than
                     one that needs two clicks.
                   */}
-                  <code className="tnum font-mono text-base leading-relaxed font-medium break-all">
+                  <code className="tnum font-mono text-heading leading-relaxed font-medium break-all">
                     {(secret.match(/.{1,4}/g) ?? []).join(" ")}
                   </code>
                   <button
@@ -205,7 +205,7 @@ export default function Account() {
                         toast.error("Copy is blocked here — type it from the screen.");
                       }
                     }}
-                    className="border-border hover:bg-secondary ml-auto shrink-0 rounded-sm border px-2.5 py-1 text-xs font-medium transition-colors"
+                    className="border-border hover:bg-secondary ml-auto shrink-0 rounded-sm border px-2.5 py-1 text-caption font-medium transition-colors"
                   >
                     Copy
                   </button>
@@ -218,7 +218,7 @@ export default function Account() {
                     <button
                       type="button"
                       onClick={() => void begin()}
-                      className="border-border bg-card hover:bg-secondary rounded-sm border px-2.5 py-1 text-xs font-medium transition-colors"
+                      className="border-border bg-card hover:bg-secondary rounded-sm border px-2.5 py-1 text-caption font-medium transition-colors"
                     >
                       Try again
                     </button>
@@ -275,7 +275,7 @@ export default function Account() {
 
           {stage === "on" ? (
             <>
-              <p className="text-muted-foreground text-xs leading-relaxed">
+              <p className="text-muted-foreground text-caption leading-relaxed">
                 Turning it off needs a current code as well as this session —
                 otherwise a stolen token could remove the factor protecting the
                 account, which is the same as not having one.
@@ -300,7 +300,7 @@ export default function Account() {
       </Panel>
 
       <Panel title="This session">
-        <div className="text-muted-foreground flex flex-col gap-2 px-4 py-4 text-xs leading-relaxed">
+        <div className="text-muted-foreground flex flex-col gap-2 px-4 py-4 text-caption leading-relaxed">
           <p>
             Kept in a cookie your browser will not let this page read, so a
             refresh keeps you signed in and nothing that runs script here can
@@ -370,7 +370,7 @@ function VerifyEmail({ email }: { email: string }) {
         A password reset would go to <span className="font-mono">{email}</span>.
       </Alert>
       {state === "sent" ? (
-        <p className="text-muted-foreground text-xs leading-relaxed">
+        <p className="text-muted-foreground text-caption leading-relaxed">
           Sent. Open the link in that message — it works for a day.
           {note ? ` ${note}` : ""}
         </p>
@@ -378,7 +378,7 @@ function VerifyEmail({ email }: { email: string }) {
         <button
           onClick={() => void send()}
           disabled={state === "sending"}
-          className="border-waiting/40 hover:bg-waiting/10 w-fit rounded-sm border px-2.5 py-1 text-xs font-medium transition-colors disabled:opacity-55"
+          className="border-waiting/40 hover:bg-waiting/10 w-fit rounded-sm border px-2.5 py-1 text-caption font-medium transition-colors disabled:opacity-55"
         >
           {state === "sending" ? "Sending..." : "Send a confirmation email"}
         </button>
@@ -406,7 +406,7 @@ function Step({
       </span>
       <div className="min-w-0">
         <p className="text-body font-medium">{title}</p>
-        <p className="text-muted-foreground mt-0.5 text-xs leading-relaxed">{children}</p>
+        <p className="text-muted-foreground mt-0.5 text-caption leading-relaxed">{children}</p>
       </div>
     </div>
   );
@@ -470,16 +470,16 @@ function Code({
         aria-describedby={error ? "totp-error" : undefined}
         className={cn(
           textInput,
-          "tnum h-12 max-w-[11rem] text-center font-mono text-2xl tracking-[0.35em] placeholder:tracking-[0.35em] placeholder:opacity-35",
+          "tnum h-12 max-w-[11rem] text-center font-mono text-metric tracking-[0.35em] placeholder:tracking-[0.35em] placeholder:opacity-35",
           error && "border-stopped",
         )}
       />
       {error ? (
-        <span id="totp-error" role="alert" className="text-stopped text-xs">
+        <span id="totp-error" role="alert" className="text-stopped text-caption">
           {error}
         </span>
       ) : hint ? (
-        <span className="text-muted-foreground text-xs leading-relaxed">{hint}</span>
+        <span className="text-muted-foreground text-caption leading-relaxed">{hint}</span>
       ) : null}
     </div>
   );

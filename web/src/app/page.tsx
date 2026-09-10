@@ -75,11 +75,11 @@ export default function OverviewPage() {
   return (
     <div className="flex flex-col gap-6">
       <header>
-        <h1 className="text-xl font-semibold tracking-tight">
+        <h1 className="text-display font-semibold tracking-tight">
           {greeting()}
           {admin?.name ? `, ${admin.name.split(" ")[0]}` : ""}
         </h1>
-        <p className="text-muted-foreground mt-1 text-xs">
+        <p className="text-muted-foreground mt-1 text-caption">
           {attention === null
             ? "Checking what needs you…"
             : attention.length === 0
@@ -142,7 +142,7 @@ export default function OverviewPage() {
           actions={
             <Link
               href="/practices/"
-              className="text-primary text-xs underline underline-offset-4"
+              className="text-primary text-caption underline underline-offset-4"
             >
               All practices
             </Link>
@@ -164,7 +164,7 @@ export default function OverviewPage() {
               action={
                 <Link
                   href="/practices/"
-                  className="bg-primary text-primary-foreground rounded-sm px-3 py-1.5 text-xs font-medium"
+                  className="bg-primary text-primary-foreground rounded-sm px-3 py-1.5 text-caption font-medium"
                 >
                   Add the first one
                 </Link>
@@ -182,7 +182,7 @@ export default function OverviewPage() {
                       <span className="block truncate text-body font-medium">
                         {p.name}
                       </span>
-                      <span className="text-muted-foreground text-xs">
+                      <span className="text-muted-foreground text-caption">
                         added {when(p.createdAt)}
                       </span>
                     </span>
@@ -212,7 +212,7 @@ export default function OverviewPage() {
                       className="text-muted-foreground flex items-center justify-between px-4 py-2.5 text-body"
                     >
                       <span className="capitalize">{k}</span>
-                      <span className="tnum font-mono text-xs">0</span>
+                      <span className="tnum font-mono text-caption">0</span>
                     </li>
                   );
                 }
@@ -225,7 +225,7 @@ export default function OverviewPage() {
                     >
                       <span className="capitalize">{k}</span>
                       <span className="flex items-center gap-1.5">
-                        <span className="tnum font-mono text-xs">{n}</span>
+                        <span className="tnum font-mono text-caption">{n}</span>
                         <IconChevron className="text-muted-foreground/40 group-hover:text-primary size-3 transition-colors" />
                       </span>
                     </Link>
@@ -283,13 +283,13 @@ function AttentionPanel({
             <div className="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3">
               <div className="min-w-0 flex-1">
                 <p className="text-body font-medium">{it.title}</p>
-                <p className="text-muted-foreground mt-0.5 text-xs leading-relaxed">
+                <p className="text-muted-foreground mt-0.5 text-caption leading-relaxed">
                   {it.detail}
                 </p>
               </div>
               <Link
                 href={it.href}
-                className="border-border hover:bg-secondary shrink-0 rounded-sm border px-2.5 py-1 text-xs font-medium transition-colors"
+                className="border-border hover:bg-secondary shrink-0 rounded-sm border px-2.5 py-1 text-caption font-medium transition-colors"
               >
                 Review
               </Link>

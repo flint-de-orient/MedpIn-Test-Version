@@ -85,8 +85,8 @@ export function SignIn() {
               role="status"
               className={
                 verified === "ok"
-                  ? "text-ok-ink border-l-ok bg-ok-tint rounded-sm border-l-2 px-3 py-2 text-xs leading-relaxed"
-                  : "text-stopped-ink border-l-stopped bg-stopped-tint rounded-sm border-l-2 px-3 py-2 text-xs leading-relaxed"
+                  ? "text-ok-ink border-l-ok bg-ok-tint rounded-sm border-l-2 px-3 py-2 text-caption leading-relaxed"
+                  : "text-stopped-ink border-l-stopped bg-stopped-tint rounded-sm border-l-2 px-3 py-2 text-caption leading-relaxed"
               }
             >
               {verified === "ok"
@@ -125,7 +125,7 @@ function Label({ htmlFor, children }: { htmlFor: string; children: React.ReactNo
 }
 
 const inputCls =
-  "border-input bg-card focus-visible:border-ring w-full rounded-md border px-3 py-2 text-sm outline-none transition-colors disabled:opacity-55";
+  "border-input bg-card focus-visible:border-ring w-full rounded-md border px-3 py-2 text-title outline-none transition-colors disabled:opacity-55";
 
 /**
  * The message slot, whether or not there is a message.
@@ -148,7 +148,7 @@ function Problem({ children }: { children: React.ReactNode }) {
       // Announced, because a message that only appears visually is invisible to
       // whoever is using a screen reader and cannot see the form clear itself.
       role="alert"
-      className="text-stopped-ink border-l-stopped bg-stopped-tint animate-in fade-in-0 rounded-md border-l-2 px-3 py-2 text-xs leading-relaxed duration-150"
+      className="text-stopped-ink border-l-stopped bg-stopped-tint animate-in fade-in-0 rounded-md border-l-2 px-3 py-2 text-caption leading-relaxed duration-150"
     >
       {children}
     </p>
@@ -170,7 +170,7 @@ function Submit({ busy, children }: { busy: boolean; children: React.ReactNode }
       disabled={busy}
       aria-busy={busy}
       className={cn(
-        "bg-primary text-primary-foreground flex h-10 items-center justify-center gap-2 rounded-md px-3 text-sm font-medium transition-all",
+        "bg-primary text-primary-foreground flex h-10 items-center justify-center gap-2 rounded-md px-3 text-title font-medium transition-all",
         "hover:brightness-110 active:brightness-95",
         // Not just dimmed: a dimmed button still looks pressable, and the
         // cursor is the part that says it is not.
@@ -309,7 +309,7 @@ function LoginForm({ onForgot }: { onForgot: () => void }) {
   return (
     <form onSubmit={submit} noValidate className="flex flex-col gap-4">
       <div>
-        <h1 className="text-xl font-semibold tracking-tight">Sign in</h1>
+        <h1 className="text-display font-semibold tracking-tight">Sign in</h1>
         {/* Was two clauses of what this console does and does not hold — true,
             and not what somebody signing in needs. The full sentence still runs
             along the bottom of every screen inside. */}
@@ -350,7 +350,7 @@ function LoginForm({ onForgot }: { onForgot: () => void }) {
             maxLength={6}
             value={totp}
             onChange={(e) => setTotp(e.target.value.replace(/\D/g, ""))}
-            className={cn(inputCls, "tnum max-w-[9rem] font-mono text-lg tracking-[0.3em]")}
+            className={cn(inputCls, "tnum max-w-[9rem] font-mono text-heading tracking-[0.3em]")}
           />
         </div>
       ) : null}
@@ -364,7 +364,7 @@ function LoginForm({ onForgot }: { onForgot: () => void }) {
       <button
         type="button"
         onClick={onForgot}
-        className="text-primary self-start text-xs underline underline-offset-4"
+        className="text-primary self-start text-caption underline underline-offset-4"
       >
         Forgot password?
       </button>
@@ -415,18 +415,18 @@ function ForgotForm({
   if (sent) {
     return (
       <div className="flex flex-col gap-4">
-        <h1 className="text-lg font-semibold tracking-tight">Check your email</h1>
-        <p className="text-muted-foreground text-xs leading-relaxed">
+        <h1 className="text-heading font-semibold tracking-tight">Check your email</h1>
+        <p className="text-muted-foreground text-caption leading-relaxed">
           If <span className="font-mono">{email.trim()}</span> has an account, a link
           is on its way. It works once and stops working in thirty minutes.
         </p>
-        <p className="text-muted-foreground text-xs leading-relaxed">
+        <p className="text-muted-foreground text-caption leading-relaxed">
           You will still need your passkey or authenticator code to finish. The link
           on its own cannot get anybody into the account, which is what makes it safe
           to send one at all.
         </p>
         {!sent.mailConfigured ? (
-          <p className="text-waiting-ink border-waiting/30 bg-waiting-tint rounded-sm border-l-2 px-3 py-2 text-xs leading-relaxed">
+          <p className="text-waiting-ink border-waiting/30 bg-waiting-tint rounded-sm border-l-2 px-3 py-2 text-caption leading-relaxed">
             This server has no mail configured, so nothing was actually sent. The
             link is in the server log, or mint one with{" "}
             <code className="font-mono text-micro">scripts/resetAdmin.js</code>.
@@ -434,7 +434,7 @@ function ForgotForm({
         ) : null}
         <button
           onClick={onBack}
-          className="bg-primary text-primary-foreground self-start rounded-sm px-3 py-2 text-sm font-medium"
+          className="bg-primary text-primary-foreground self-start rounded-sm px-3 py-2 text-title font-medium"
         >
           Back to sign in
         </button>
@@ -445,8 +445,8 @@ function ForgotForm({
   return (
     <form onSubmit={submit} noValidate className="flex flex-col gap-4">
       <div>
-        <h1 className="text-lg font-semibold tracking-tight">Reset your password</h1>
-        <p className="text-muted-foreground mt-1 text-xs leading-relaxed">
+        <h1 className="text-heading font-semibold tracking-tight">Reset your password</h1>
+        <p className="text-muted-foreground mt-1 text-caption leading-relaxed">
           We will email a link to the address on your account.
         </p>
       </div>
@@ -473,14 +473,14 @@ function ForgotForm({
         <button
           type="button"
           onClick={onBack}
-          className="text-primary text-xs underline underline-offset-4"
+          className="text-primary text-caption underline underline-offset-4"
         >
           Back to sign in
         </button>
         <button
           type="button"
           onClick={onHaveToken}
-          className="text-muted-foreground text-xs underline underline-offset-4"
+          className="text-muted-foreground text-caption underline underline-offset-4"
         >
           I already have a token
         </button>
@@ -539,15 +539,15 @@ function ResetForm({
   if (done) {
     return (
       <div className="flex flex-col gap-4">
-        <h1 className="text-lg font-semibold tracking-tight">Password changed</h1>
-        <p className="text-muted-foreground text-xs leading-relaxed">
+        <h1 className="text-heading font-semibold tracking-tight">Password changed</h1>
+        <p className="text-muted-foreground text-caption leading-relaxed">
           Sign in with it. Choosing a password is not signing in — a reset that
           handed back a session would let a stolen token skip the login it just
           re-enabled.
         </p>
         <button
           onClick={onBack}
-          className="bg-primary text-primary-foreground self-start rounded-sm px-3 py-2 text-sm font-medium"
+          className="bg-primary text-primary-foreground self-start rounded-sm px-3 py-2 text-title font-medium"
         >
           Back to sign in
         </button>
@@ -558,8 +558,8 @@ function ResetForm({
   return (
     <form onSubmit={submit} noValidate className="flex flex-col gap-4">
       <div>
-        <h1 className="text-lg font-semibold tracking-tight">Set a new password</h1>
-        <p className="text-muted-foreground mt-1 text-xs leading-relaxed">
+        <h1 className="text-heading font-semibold tracking-tight">Set a new password</h1>
+        <p className="text-muted-foreground mt-1 text-caption leading-relaxed">
           {prefill
             ? "The link filled this in. Choose a password, then confirm with your passkey or authenticator code."
             : "Paste the token from the email, or one minted on the server with scripts/resetAdmin.js."}
@@ -587,7 +587,7 @@ function ResetForm({
           spellCheck={false}
           value={token}
           onChange={(e) => setToken(e.target.value)}
-          className={cn(inputCls, "font-mono text-xs")}
+          className={cn(inputCls, "font-mono text-caption")}
           required
         />
       </div>
@@ -609,7 +609,7 @@ function ResetForm({
           maxLength={6}
           value={totp}
           onChange={(e) => setTotp(e.target.value.replace(/\D/g, ""))}
-          className={cn(inputCls, "tnum max-w-[9rem] font-mono text-lg tracking-[0.3em]")}
+          className={cn(inputCls, "tnum max-w-[9rem] font-mono text-heading tracking-[0.3em]")}
         />
       </div>
 
@@ -620,7 +620,7 @@ function ResetForm({
       <button
         type="button"
         onClick={onBack}
-        className="text-primary self-start text-xs underline underline-offset-4"
+        className="text-primary self-start text-caption underline underline-offset-4"
       >
         Back to sign in
       </button>

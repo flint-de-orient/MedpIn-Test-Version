@@ -347,7 +347,7 @@ export function NewPracticeDialog({
                   ref={codeRef}
                   className={cn(
                     textInput,
-                    "tnum h-12 max-w-[11rem] text-center font-mono text-2xl tracking-[0.3em]",
+                    "tnum h-12 max-w-[11rem] text-center font-mono text-metric tracking-[0.3em]",
                   )}
                   value={code}
                   onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))}
@@ -361,7 +361,7 @@ export function NewPracticeDialog({
                   No SMS credentials on this server — the code is in the server log.
                 </Alert>
               ) : (
-                <p className="text-muted-foreground text-xs leading-relaxed">
+                <p className="text-muted-foreground text-caption leading-relaxed">
                   Sent to <span className="font-mono">{phone.trim()}</span>. Ask them
                   to read it out.
                 </p>
@@ -372,7 +372,7 @@ export function NewPracticeDialog({
                   setSent(null);
                   setCode("");
                 }}
-                className="text-primary self-start text-xs underline underline-offset-4"
+                className="text-primary self-start text-caption underline underline-offset-4"
               >
                 Wrong number — change it
               </button>
@@ -380,7 +380,7 @@ export function NewPracticeDialog({
           ) : (
             <>
               {phoneToken ? (
-                <p className="text-ok-ink bg-ok-tint border-l-ok rounded-sm border-l-2 px-3 py-2 text-xs">
+                <p className="text-ok-ink bg-ok-tint border-l-ok rounded-sm border-l-2 px-3 py-2 text-caption">
                   <span className="font-mono">{phone.trim()}</span> confirmed.{" "}
                   <button
                     type="button"
@@ -416,7 +416,7 @@ export function NewPracticeDialog({
                 />
               </Field>
               {!phoneToken ? (
-                <p className="text-muted-foreground text-xs leading-relaxed">
+                <p className="text-muted-foreground text-caption leading-relaxed">
                   Continuing sends a verification code to this number.
                 </p>
               ) : null}
@@ -480,7 +480,7 @@ export function NewPracticeDialog({
             <button
               type="button"
               onClick={() => setStep(2)}
-              className="border-border bg-card hover:bg-secondary rounded-sm border px-2.5 py-1 text-xs font-medium transition-colors"
+              className="border-border bg-card hover:bg-secondary rounded-sm border px-2.5 py-1 text-caption font-medium transition-colors"
             >
               Add one
             </button>
@@ -491,7 +491,7 @@ export function NewPracticeDialog({
       ) : null}
 
       {step === 3 ? (
-        <p className="text-muted-foreground text-xs leading-relaxed">
+        <p className="text-muted-foreground text-caption leading-relaxed">
           The {responsible.toLowerCase()} becomes the owner and adds their own staff
           and locations.
         </p>

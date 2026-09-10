@@ -92,7 +92,7 @@ export function Stat({
     <>
       <span
         className={cn(
-          "tnum text-2xl leading-none font-semibold tracking-tight",
+          "tnum text-metric leading-none font-semibold tracking-tight",
           tone === "waiting" && "text-waiting",
         )}
       >
@@ -101,7 +101,7 @@ export function Stat({
       <span className="text-muted-foreground text-micro tracking-[0.04em] uppercase">
         {label}
       </span>
-      {hint ? <span className="text-muted-foreground text-xs">{hint}</span> : null}
+      {hint ? <span className="text-muted-foreground text-caption">{hint}</span> : null}
     </>
   );
 
@@ -200,7 +200,7 @@ export function Alert({
       ) : (
         <IconWarning className={cn("mt-px size-4 shrink-0", t.icon)} />
       )}
-      <div className={cn("min-w-0 flex-1 text-xs leading-relaxed", t.ink)}>
+      <div className={cn("min-w-0 flex-1 text-caption leading-relaxed", t.ink)}>
         <p className="font-semibold">{title}</p>
         {children ? <p className="mt-0.5 opacity-90">{children}</p> : null}
       </div>
@@ -308,7 +308,7 @@ export function Panel({
           <div className="min-w-0">
             <h2 className="text-body font-semibold tracking-tight">{title}</h2>
             {description ? (
-              <p className="text-muted-foreground mt-0.5 text-xs leading-relaxed">
+              <p className="text-muted-foreground mt-0.5 text-caption leading-relaxed">
                 {description}
               </p>
             ) : null}
@@ -341,7 +341,7 @@ export function Field({
       <dt className="text-muted-foreground text-micro tracking-[0.04em] uppercase">
         {label}
       </dt>
-      <dd className={cn("text-sm break-words", mono && "font-mono tnum text-body")}>
+      <dd className={cn("text-title break-words", mono && "font-mono tnum text-body")}>
         {children}
       </dd>
     </div>
@@ -367,9 +367,9 @@ export function Empty({
 }) {
   return (
     <div className="flex flex-col items-center gap-2 px-6 py-14 text-center">
-      <p className="text-sm font-medium">{title}</p>
+      <p className="text-title font-medium">{title}</p>
       {hint ? (
-        <p className="text-muted-foreground max-w-sm text-xs leading-relaxed">{hint}</p>
+        <p className="text-muted-foreground max-w-sm text-caption leading-relaxed">{hint}</p>
       ) : null}
       {action ? <div className="mt-2">{action}</div> : null}
     </div>
@@ -379,12 +379,12 @@ export function Empty({
 export function Failed({ message, retry }: { message: string; retry?: () => void }) {
   return (
     <div className="flex flex-col items-center gap-3 px-6 py-14 text-center">
-      <p className="text-stopped text-sm font-medium">Could not load this</p>
-      <p className="text-muted-foreground max-w-md text-xs leading-relaxed">{message}</p>
+      <p className="text-stopped text-title font-medium">Could not load this</p>
+      <p className="text-muted-foreground max-w-md text-caption leading-relaxed">{message}</p>
       {retry ? (
         <button
           onClick={retry}
-          className="border-border hover:bg-muted mt-1 rounded-sm border px-3 py-1.5 text-xs font-medium transition-colors"
+          className="border-border hover:bg-muted mt-1 rounded-sm border px-3 py-1.5 text-caption font-medium transition-colors"
         >
           Try again
         </button>

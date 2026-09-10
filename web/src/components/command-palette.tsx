@@ -153,7 +153,7 @@ export function CommandPalette({
           onKeyDown={onKeyDown}
           placeholder="Search practices, staff, locations…"
           aria-label="Search"
-          className="w-full bg-transparent py-3.5 text-sm outline-none"
+          className="w-full bg-transparent py-3.5 text-title outline-none"
         />
         <kbd className="border-border text-muted-foreground shrink-0 rounded border px-1.5 py-0.5 font-mono text-micro">
           esc
@@ -162,7 +162,7 @@ export function CommandPalette({
 
       <ul className="max-h-[52vh] overflow-y-auto p-2">
         {results.length === 0 ? (
-          <li className="text-muted-foreground px-3 py-8 text-center text-xs">
+          <li className="text-muted-foreground px-3 py-8 text-center text-caption">
             Nothing matches “{query}”.
           </li>
         ) : (

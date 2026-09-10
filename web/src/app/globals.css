@@ -37,6 +37,8 @@
   --text-heading--line-height: 1.35;
   --text-display: 1.25rem;        /* 20px — page titles                    */
   --text-display--line-height: 1.25;
+  --text-metric: 1.5rem;          /* 24px — a figure, or a code being typed */
+  --text-metric--line-height: 1.1;
 
   --color-background: var(--background);
   --color-foreground: var(--foreground);

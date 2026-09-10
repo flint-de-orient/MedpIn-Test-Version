@@ -73,7 +73,7 @@ export function MetricCard({
         ) : null}
       </div>
 
-      <span className="tnum truncate text-[27px] leading-none font-semibold tracking-tight">
+      <span className="tnum truncate text-metric font-semibold tracking-tight">
         {typeof value === "number" ? value.toLocaleString() : value}
       </span>
 
@@ -175,7 +175,7 @@ export function UsageBar({
       <div className="flex flex-col gap-1">
         <div className="flex items-baseline justify-between gap-2">
           <span className="text-body">{label}</span>
-          <span className="tnum text-muted-foreground font-mono text-xs">
+          <span className="tnum text-muted-foreground font-mono text-caption">
             {used.toLocaleString()} · no cap
           </span>
         </div>
@@ -193,7 +193,7 @@ export function UsageBar({
         <span className="text-body">{label}</span>
         <span
           className={cn(
-            "tnum font-mono text-xs",
+            "tnum font-mono text-caption",
             state === "stopped"
               ? "text-stopped"
               : state === "waiting"

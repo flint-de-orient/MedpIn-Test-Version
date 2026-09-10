@@ -110,7 +110,7 @@ function Detail() {
       <div>
         <Link
           href="/practices/"
-          className="text-muted-foreground hover:text-foreground text-xs transition-colors"
+          className="text-muted-foreground hover:text-foreground text-caption transition-colors"
         >
           ← Practices
         </Link>
@@ -118,7 +118,7 @@ function Detail() {
         <div className="mt-2 flex flex-wrap items-start justify-between gap-4">
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
-              <h1 className="text-xl font-semibold tracking-tight">{p.name}</h1>
+              <h1 className="text-display font-semibold tracking-tight">{p.name}</h1>
               {/* What kind of thing this is. Absent on every practice created
                   before types existed, and absent is not "unknown-and-broken" —
                   it is unclassified, which the capability resolver reads as
@@ -139,7 +139,7 @@ function Detail() {
                 </Pill>
               ) : null}
             </div>
-            <p className="text-muted-foreground mt-1 font-mono text-xs">
+            <p className="text-muted-foreground mt-1 font-mono text-caption">
               {/* Was p.registrationNo alone, which is blank on most solo
                   practices because the number is the doctor's. It read as
                   "nothing on file" for practices that were fine. */}
@@ -176,7 +176,7 @@ function Detail() {
         is one line. What is left above the buttons is the state, in a row.
       */}
       <Panel title="Decisions">
-        <div className="border-border flex flex-wrap items-center gap-x-5 gap-y-2 border-b px-4 py-2.5 text-xs">
+        <div className="border-border flex flex-wrap items-center gap-x-5 gap-y-2 border-b px-4 py-2.5 text-caption">
           <Info
             term={
               <span className="flex items-center gap-1.5">
@@ -211,7 +211,7 @@ function Detail() {
             action={
               <button
                 onClick={() => setEditing(true)}
-                className="border-border bg-card hover:bg-secondary rounded-sm border px-2.5 py-1 text-xs font-medium transition-colors"
+                className="border-border bg-card hover:bg-secondary rounded-sm border px-2.5 py-1 text-caption font-medium transition-colors"
               >
                 Add one
               </button>
@@ -314,7 +314,7 @@ function Detail() {
                           <span className="truncate text-body font-medium">{m.name}</span>
                           {m.isOwner ? <Pill tone="accent">owner</Pill> : null}
                         </div>
-                        <div className="text-muted-foreground mt-0.5 flex flex-wrap items-center gap-x-2 text-xs">
+                        <div className="text-muted-foreground mt-0.5 flex flex-wrap items-center gap-x-2 text-caption">
                           <span className="capitalize">{m.role.toLowerCase()}</span>
                           {m.phone ? (
                             <>
@@ -363,7 +363,7 @@ function Detail() {
                 {d.locations.map((l) => (
                   <li key={l.id} className="px-4 py-3">
                     <div className="text-body font-medium">{l.name}</div>
-                    <div className="text-muted-foreground mt-0.5 text-xs">
+                    <div className="text-muted-foreground mt-0.5 text-caption">
                       {[l.addressLine, l.city].filter(Boolean).join(", ") ||
                         "no address on file"}
                       {l.phone ? (
@@ -454,7 +454,7 @@ function Detail() {
             actions={
               <button
                 onClick={() => setPlanning(true)}
-                className="border-border hover:bg-secondary rounded-sm border px-2.5 py-1 text-xs font-medium transition-colors"
+                className="border-border hover:bg-secondary rounded-sm border px-2.5 py-1 text-caption font-medium transition-colors"
               >
                 Change
               </button>
@@ -514,7 +514,7 @@ function Detail() {
                 </>
               )}
             </dl>
-            <p className="text-muted-foreground border-border border-t px-4 py-3 text-xs leading-relaxed">
+            <p className="text-muted-foreground border-border border-t px-4 py-3 text-caption leading-relaxed">
               A cap is a brake on growth, not a shredder. Lowering one below the
               current count stops the next registration and touches nothing that
               already exists. A lapsed date does not suspend anybody either —

@@ -106,7 +106,7 @@ export function PasskeyPanel() {
               <IconCheck className="text-ok size-4 shrink-0" />
               <div className="min-w-0 flex-1">
                 <p className="text-body font-medium">{k.name}</p>
-                <p className="text-muted-foreground text-xs">
+                <p className="text-muted-foreground text-caption">
                   added <span title={fullWhen(k.createdAt)}>{when(k.createdAt)}</span>
                   {k.lastUsedAt ? (
                     <>
@@ -121,7 +121,7 @@ export function PasskeyPanel() {
               <button
                 onClick={() => setRemoving(k.id)}
                 disabled={busy}
-                className="border-border hover:bg-secondary rounded-sm border px-2.5 py-1 text-xs font-medium transition-colors disabled:opacity-55"
+                className="border-border hover:bg-secondary rounded-sm border px-2.5 py-1 text-caption font-medium transition-colors disabled:opacity-55"
               >
                 Remove
               </button>
@@ -132,14 +132,14 @@ export function PasskeyPanel() {
 
       <div className="flex flex-col gap-3 px-4 py-4">
         {available === false ? (
-          <p className="text-muted-foreground text-xs leading-relaxed">
+          <p className="text-muted-foreground text-caption leading-relaxed">
             This device has no fingerprint reader, face camera or PIN that a
             passkey can use, and no security key is plugged in. You can still add
             one from a device that does — a passkey belongs to the account, not to
             one machine — or use a code from an app instead.
           </p>
         ) : (
-          <p className="text-muted-foreground text-xs leading-relaxed">
+          <p className="text-muted-foreground text-caption leading-relaxed">
             {keys.length
               ? "Add another for a second device, so losing one does not lock you out."
               : "Your browser will ask for whatever unlocks this device. Nothing leaves it — the key stays on the machine and only a signature is sent."}
@@ -174,7 +174,7 @@ export function PasskeyPanel() {
             autoFocus
           />
         </Field>
-        <p className="text-muted-foreground text-xs leading-relaxed">
+        <p className="text-muted-foreground text-caption leading-relaxed">
           Your browser will prompt as soon as you continue. If nothing appears,
           the device may have no fingerprint reader or PIN set up.
         </p>
@@ -197,7 +197,7 @@ export function PasskeyPanel() {
           if (removing) void remove(removing);
         }}
       >
-        <p className="text-muted-foreground text-xs leading-relaxed">
+        <p className="text-muted-foreground text-caption leading-relaxed">
           The key itself stays on the device — this only stops the account
           accepting it. Delete it there too if the device is no longer yours.
         </p>

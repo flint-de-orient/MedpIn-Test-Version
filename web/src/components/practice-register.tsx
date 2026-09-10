@@ -120,8 +120,8 @@ export function PracticeRegister() {
     <div className="flex flex-col gap-5">
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <h1 className="text-xl font-semibold tracking-tight">Practices</h1>
-          <p className="text-muted-foreground mt-1 text-xs">
+          <h1 className="text-display font-semibold tracking-tight">Practices</h1>
+          <p className="text-muted-foreground mt-1 text-caption">
             Counts only — this console cannot open a patient record.
           </p>
         </div>
@@ -198,7 +198,7 @@ export function PracticeRegister() {
         {filtered ? (
           <Link
             href="/practices/"
-            className="text-primary self-start text-xs underline underline-offset-4"
+            className="text-primary self-start text-caption underline underline-offset-4"
           >
             Clear
           </Link>
@@ -222,14 +222,14 @@ export function PracticeRegister() {
               filtered ? (
                 <Link
                   href="/practices/"
-                  className="border-border hover:bg-secondary rounded-sm border px-3 py-1.5 text-xs font-medium"
+                  className="border-border hover:bg-secondary rounded-sm border px-3 py-1.5 text-caption font-medium"
                 >
                   Clear filters
                 </Link>
               ) : (
                 <button
                   onClick={() => setCreating(true)}
-                  className="bg-primary text-primary-foreground rounded-sm px-3 py-1.5 text-xs font-medium"
+                  className="bg-primary text-primary-foreground rounded-sm px-3 py-1.5 text-caption font-medium"
                 >
                   Add a practice
                 </button>
@@ -301,15 +301,15 @@ function Row({ p }: { p: PracticeRow }) {
         </Link>
       </td>
       <td className="text-muted-foreground px-4 py-2.5">{PLAN_LABELS[p.plan]}</td>
-      <td className="tnum px-4 py-2.5 font-mono text-xs">{p.staff}</td>
-      <td className="tnum px-4 py-2.5 font-mono text-xs">{p.locations}</td>
+      <td className="tnum px-4 py-2.5 font-mono text-caption">{p.staff}</td>
+      <td className="tnum px-4 py-2.5 font-mono text-caption">{p.locations}</td>
       <td className="px-4 py-2.5">
         <span className="flex flex-wrap gap-1">
           <Pill tone={statusTone(p.status)}>{p.status}</Pill>
           <Pill tone={verificationTone(p.verification)}>{p.verification}</Pill>
         </span>
       </td>
-      <td className="tnum text-muted-foreground px-4 py-2.5 text-xs whitespace-nowrap">
+      <td className="tnum text-muted-foreground px-4 py-2.5 text-caption whitespace-nowrap">
         {when(p.createdAt)}
       </td>
       <td className="px-2">
