@@ -19,7 +19,15 @@ import { practiceOfPatient, memberIdsOf } from '../middleware/practiceScope.js';
  * must not roll back the clinical write that triggered it. The alert is already
  * persisted and visible in the clinician panel regardless.
  */
-async function deliver({ tokens, title, body, data }) {
+/**
+ * Exported so the billing surfaces can use it too.
+ *
+ * Kept private for a long time on purpose — a shared push helper invites a push
+ * from anywhere. It is exported rather than reimplemented because the retry,
+ * the token pruning and the size limits in here are the parts nobody would get
+ * right a second time.
+ */
+export async function deliver({ tokens, title, body, data }) {
   if (!tokens?.length) {
     logger.debug({ title }, 'no device tokens registered; notification skipped');
     return { delivered: 0 };

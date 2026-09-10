@@ -6,6 +6,7 @@ import { toE164 } from '../utils/phone.js';
 import { conflict, badRequest, notFound } from '../middleware/errors.js';
 import { Practice } from '../models/Practice.js';
 import { billingBlocks } from './billing/lapse.js';
+import { noticeUsage } from './billing/usageNotice.js';
 import { activePatientCount } from './practiceUsage.js';
 import { ConsentEvent, CONSENT_ACTION, CONSENT_METHOD } from '../models/ConsentEvent.js';
 
@@ -167,6 +168,19 @@ export async function enrolByPhone({
     wording: CONSENT_WORDING,
     note: consentRequired ? null : 'First practice — no other record existed to reach',
   });
+
+  /*
+   * After the add, never before.
+   *
+   * A notice alongside a refusal would be a second message about something the
+   * person is already reading. This fires on the way past 80, 90 and 100 per
+   * cent, once each — see billing/usageNotice.js.
+   *
+   * Deliberately not awaited. A push that is slow, or a provider that is down,
+   * must not hold up the response to somebody registering a patient with them
+   * standing at the desk.
+   */
+  noticeUsage(practiceId, 'patients', await activePatientCount(practiceId)).catch(() => {});
 
   return { login, patient, enrollment, consentRequired, isNewLogin };
 }

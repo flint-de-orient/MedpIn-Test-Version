@@ -9,6 +9,7 @@ import { audit } from '../middleware/audit.js';
 import { Membership, MEMBERSHIP_STATUS, PERMISSIONS, presetFor } from '../models/Membership.js';
 import { Practice } from '../models/Practice.js';
 import { billingBlocks } from '../services/billing/lapse.js';
+import { noticeUsage } from '../services/billing/usageNotice.js';
 import { Department } from '../models/Department.js';
 import { Clinic } from '../models/Clinic.js';
 import { User, ROLES } from '../models/User.js';
@@ -279,6 +280,27 @@ router.post(
       await User.deleteOne({ _id: user._id });
       throw err;
     }
+
+    /*
+     * After the add, never before.
+     *
+     * A notice alongside a refusal would be a second message about something the
+     * person is already reading. This fires on the way past 80, 90 and 100 per
+     * cent, once each — see billing/usageNotice.js.
+     *
+     * Deliberately not awaited. A push that is slow, or a provider that is down,
+     * must not hold up the response to somebody registering a patient with them
+     * standing at the desk.
+     */
+    noticeUsage(
+      practiceId,
+      'staff',
+      await Membership.countDocuments({
+        practice: practiceId,
+        status: MEMBERSHIP_STATUS.ACTIVE,
+        endedOn: null,
+      }),
+    ).catch(() => {});
 
     res.status(201).json({
       id: String(membership._id),

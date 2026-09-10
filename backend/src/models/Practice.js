@@ -305,6 +305,23 @@ const practiceSchema = new mongoose.Schema(
       index: true,
     },
 
+    /**
+     * The highest usage band already announced, per limit.
+     *
+     * 0, 80, 90 or 100. Kept so a practice at 85% is told once rather than on
+     * every registration — a notice that repeats is one people learn to swipe
+     * away, and the cost of that is paid later by a clinical alert nobody
+     * opens.
+     *
+     * Steps back down when a cap is raised or people leave, so the warning is
+     * re-armed for the next time they climb.
+     */
+    limitNotices: {
+      patients: { type: Number, default: 0, min: 0, max: 100 },
+      staff: { type: Number, default: 0, min: 0, max: 100 },
+      locations: { type: Number, default: 0, min: 0, max: 100 },
+    },
+
     limits: {
       patients: { type: Number, default: null, min: 0 },
 
