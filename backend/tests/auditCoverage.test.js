@@ -172,22 +172,52 @@ describe('every mutating route is audited', () => {
 });
 
 describe('the clinical log and the platform log stay apart', () => {
+  /*
+   * The platform surface, by name.
+   *
+   * Was `admin.js` alone, which read as "the admin file" and meant "the admin
+   * surface" — fine until the surface outgrew one file. Listed explicitly
+   * rather than matched on a prefix, so adding `adminSomething.js` does not
+   * quietly grant itself the right to write platform audit entries: putting a
+   * file on this list is a deliberate act with a test diff attached.
+   */
+  const PLATFORM = new Set(['admin.js', 'adminBilling.js']);
+
   test('the admin namespace writes only to its own', () => {
     // Sharing AuditLog would mean a practice-scoped viewer has to remember to
     // exclude platform actions, and a filter that must be remembered is one
     // that will be forgotten.
-    const src = readFileSync(path.join(ROUTES, 'admin.js'), 'utf8');
-    assert.match(src, /AdminAuditLog\.record\(/);
-    assert.ok(
-      !/[^n]AuditLog\.create\(/.test(src),
-      'admin.js writes into the clinical audit log',
-    );
+    for (const file of PLATFORM) {
+      const src = readFileSync(path.join(ROUTES, file), 'utf8');
+      assert.match(src, /AdminAuditLog\.record\(/, `${file} records nothing`);
+      assert.ok(
+        !/[^n]AuditLog\.create\(/.test(src),
+        `${file} writes into the clinical audit log`,
+      );
+    }
   });
 
   test('no clinical route writes into the admin log', () => {
-    for (const file of readdirSync(ROUTES).filter((f) => f.endsWith('.js') && f !== 'admin.js')) {
+    for (const file of readdirSync(ROUTES).filter((f) => f.endsWith('.js') && !PLATFORM.has(f))) {
       const src = readFileSync(path.join(ROUTES, file), 'utf8');
       assert.ok(!src.includes('AdminAuditLog'), `${file} writes into the platform audit log`);
+    }
+  });
+
+  test('and every platform file is actually mounted behind requireAdmin', () => {
+    // The reason this list is safe to extend. A platform file that is not
+    // nested under the admin guard would answer anybody who typed the URL,
+    // which is a worse failure than the audit split this describe() is about.
+    const admin = readFileSync(path.join(ROUTES, 'admin.js'), 'utf8');
+    const guardAt = admin.indexOf('router.use(requireAdmin)');
+    assert.ok(guardAt > -1, 'admin.js no longer applies requireAdmin');
+
+    for (const file of PLATFORM) {
+      if (file === 'admin.js') continue;
+      const mount = admin.indexOf(file.replace('.js', ''));
+      assert.ok(mount > -1, `${file} is not referenced from admin.js`);
+      const mountedAfterGuard = admin.indexOf('adminBillingRoutes)', guardAt);
+      assert.ok(mountedAfterGuard > guardAt, `${file} is mounted before the guard`);
     }
   });
 });

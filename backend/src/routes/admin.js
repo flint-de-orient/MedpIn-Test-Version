@@ -3,6 +3,7 @@ import rateLimit from 'express-rate-limit';
 import { z } from 'zod';
 
 import { requireAdmin } from '../middleware/requireAdmin.js';
+import adminBillingRoutes from './adminBilling.js';
 import { validate, q } from '../middleware/validate.js';
 import { asyncHandler, unauthorized, notFound, badRequest } from '../middleware/errors.js';
 import { PlatformAdmin } from '../models/PlatformAdmin.js';
@@ -444,6 +445,16 @@ router.post(
 
 // Everything below needs an admin session.
 router.use(requireAdmin);
+
+/*
+ * Billing, mounted here rather than in routes/index.js on purpose.
+ *
+ * `requireAdmin` is applied to this router as a whole, and a sibling mount
+ * would not inherit it — the console's billing surface would answer anybody who
+ * typed the URL. Nesting it means the guard cannot be forgotten for a route
+ * added to that file later.
+ */
+router.use('/billing', adminBillingRoutes);
 
 router.get(
   '/me',
