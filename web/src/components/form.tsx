@@ -74,10 +74,20 @@ export function Select({
 export function Field({
   label,
   hint,
+  error,
   children,
 }: {
   label: string;
   hint?: string;
+  /**
+   * What is wrong with this field, under this field.
+   *
+   * A form that answers "that does not look like an email address" in one
+   * banner at the bottom has told somebody that one of six boxes is wrong. The
+   * message belongs where the box is, and appears once the field has been
+   * touched rather than while it is still being typed into for the first time.
+   */
+  error?: string | null;
   children: React.ReactNode;
 }) {
   return (
@@ -98,6 +108,16 @@ export function Field({
         ) : null}
       </span>
       {children}
+      {error ? (
+        <span
+          // Announced. A message that only appears visually is invisible to
+          // somebody who cannot see the field it belongs to.
+          role="alert"
+          className="text-stopped-ink text-caption leading-relaxed"
+        >
+          {error}
+        </span>
+      ) : null}
     </label>
   );
 }

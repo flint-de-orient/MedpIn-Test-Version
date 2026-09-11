@@ -4,7 +4,27 @@ import { z } from 'zod';
 
 import { validate } from '../middleware/validate.js';
 import { asyncHandler, badRequest, notFound } from '../middleware/errors.js';
-import { phoneFromToken } from '../services/otp.js';
+import {
+  phoneFromToken,
+  requestOtp,
+  signPhoneToken,
+  verifyOtp,
+} from '../services/otp.js';
+import { User } from '../models/User.js';
+import { toE164 } from '../utils/phone.js';
+
+/** The one purpose these codes are spent on. See the note on /verify/send. */
+const PRACTICE_PURPOSE = 'practice';
+
+/**
+ * Normalised before it is validated, so ten bare digits and a +91 number are
+ * the same string — the code is looked up by exact match.
+ */
+const applicantPhone = z
+  .string()
+  .trim()
+  .transform(toE164)
+  .pipe(z.string().regex(/^\+?[1-9]\d{7,14}$/, 'Enter a valid phone number'));
 import { PRACTICE_TYPE, PRACTICE_TYPE_ORDER } from '../models/Practice.js';
 import {
   PracticeApplication,
@@ -101,6 +121,74 @@ router.get(
   }),
 );
 
+/*
+ * Proving the number, from inside this router.
+ *
+ * ---- Why not /auth/otp/request, which does the same thing ---------------
+ *
+ * It did call that, and it 404ed in production for a reason no amount of
+ * reading the code would show: the console is served from its own host and
+ * reverse-proxies the API, and the proxy covers `/api/v1/admin/` and
+ * `/api/v1/applications/` — not `/api/v1/auth/`. Widening it would put the
+ * clinic's entire patient-facing API on the operator origin to gain one
+ * endpoint, which is the wall this deployment exists to keep.
+ *
+ * So the public application flow owns its verification, and everything a
+ * practice touches while applying sits under one prefix. A narrow proxy stays
+ * narrow, and the next call added here cannot 404 for being in the wrong
+ * namespace.
+ *
+ * `practice` is its own OTP purpose. A code for an enrolment or a login
+ * arriving mid-application would otherwise burn the one being waited on — one
+ * live code per number per purpose is the rule that makes that safe.
+ */
+const verifyLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  limit: () => env.APPLICATION_RATE_LIMIT * 4,
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  message: { error: { code: 'RATE_LIMITED', message: 'Too many codes requested. Try later.' } },
+});
+
+router.post(
+  '/verify/send',
+  verifyLimiter,
+  validate({ body: z.object({ phone: applicantPhone }) }),
+  asyncHandler(async (req, res) => {
+    /*
+     * A number that already has an account is refused.
+     *
+     * Applying is for a practice that is not on the platform. Somebody who can
+     * already sign in is either an existing customer — whose practice should be
+     * edited, not re-created — or is about to be sent a code that would let an
+     * application claim their number.
+     */
+    const existing = await User.findByLoginPhone(req.body.phone).select('_id').lean();
+    if (existing) {
+      throw badRequest(
+        'This number already has a MedPin account. Sign in on the app, or use a different number.',
+      );
+    }
+
+    res.json(await requestOtp({ phone: req.body.phone, purpose: PRACTICE_PURPOSE }));
+  }),
+);
+
+router.post(
+  '/verify/check',
+  verifyLimiter,
+  validate({
+    body: z.object({ phone: applicantPhone, code: z.string().trim().regex(/^\d{4,8}$/) }),
+  }),
+  asyncHandler(async (req, res) => {
+    await verifyOtp({ phone: req.body.phone, purpose: PRACTICE_PURPOSE, code: req.body.code });
+    // The token carries the number, so the submission never takes it from a
+    // field beside the proof — a form that did could verify one number and
+    // apply with another.
+    res.json({ phoneToken: signPhoneToken(req.body.phone) });
+  }),
+);
+
 router.post(
   '/',
   submitLimiter,
@@ -110,10 +198,29 @@ router.post(
       practiceName: z.string().trim().min(2).max(160),
       practiceType: z.enum(Object.values(PRACTICE_TYPE)).optional(),
       specialty: optionalText(80),
-      addressLine: optionalText(200),
-      city: optionalText(80),
-      state: optionalText(80),
-      postalCode: optionalText(12),
+
+      /*
+       * Where the practice is, and it is not optional.
+       *
+       * These were, and an operator reviewing an application is deciding
+       * whether a real clinic exists at a real address — a submission with no
+       * location is not a thing anybody can approve or refuse on the evidence.
+       * It also has to be checked here and not only on the form: a client is a
+       * convenience, and the route is the rule.
+       *
+       * `practiceType` and `specialty` stay optional, because the model permits
+       * null and the capability resolver reads null as unclassified. Requiring
+       * them here would be stricter than what the rest of the system enforces.
+       */
+      addressLine: z.string().trim().min(4).max(200),
+      city: z.string().trim().min(2).max(80),
+      state: z.string().trim().min(2).max(80),
+      // Six digits, which is what an Indian PIN is. A reviewer looking one up
+      // cannot do anything with five.
+      postalCode: z
+        .string()
+        .trim()
+        .regex(/^\d{6}$/, 'A PIN code is six digits'),
 
       // ---- who is asking --------------------------------------------------
       contactName: z.string().trim().min(2).max(120),

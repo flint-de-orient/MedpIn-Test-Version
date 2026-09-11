@@ -137,29 +137,57 @@ export function PracticeSignup({
 
   /* ------------------------------------------------------------- validation */
 
-  function invalid(): string | null {
+  /**
+   * What is wrong with each field, rather than what is wrong with the step.
+   *
+   * This returned one sentence for the whole step, so a form with six boxes
+   * answered "That does not look like an email address" in a banner under all
+   * of them and left the reader to work out which. The message belongs beside
+   * the box, and the step is blocked when any of them has one.
+   */
+  function problems(): Record<string, string> {
+    const p: Record<string, string> = {};
+
     if (step === 0) {
-      if (practiceName.trim().length < 2) return "The practice needs a name.";
-      return null;
+      if (practiceName.trim().length < 2) p.practiceName = "The practice needs a name.";
+      // Optional on purpose: the model permits null for both and the capability
+      // resolver reads null as unclassified, so requiring them here would be
+      // stricter than anything else enforces.
+      if (addressLine.trim().length < 4) p.addressLine = "Where is the practice?";
+      if (city.trim().length < 2) p.city = "Which city?";
+      if (stateName.trim().length < 2) p.state = "Which state?";
+      if (!/^\d{6}$/.test(postalCode.trim())) p.postalCode = "Six digits.";
     }
+
     if (step === 1) {
-      if (contactName.trim().length < 2) return "Who should we contact?";
+      if (contactName.trim().length < 2) p.contactName = "Who should we contact?";
       if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(contactEmail.trim()))
-        return "That does not look like an email address.";
-      if (!e164) return "Enter a ten-digit mobile number.";
-      // The proof, on the step that asked for the number.
-      if (!phoneToken) return "Verify the mobile number to continue.";
-      return null;
+        p.contactEmail = "That does not look like an email address.";
+      if (!e164) p.phone = "Enter a ten-digit mobile number.";
+      else if (!phoneToken) p.phone = "Verify this number to continue.";
     }
-    return null;
+
+    return p;
   }
 
+  /**
+   * Which fields have been visited.
+   *
+   * An error under a box somebody has not typed in yet is the form telling them
+   * off for not having started. Pressing Continue marks the whole step touched,
+   * so nothing stays hidden at the moment it blocks them.
+   */
+  const [touched, setTouched] = useState<Record<string, boolean>>({});
+  const found = problems();
+  const shown = (k: string) => (touched[k] ? found[k] : undefined);
+
   function next() {
-    const problem = invalid();
-    if (problem) {
-      setError(problem);
+    const keys = Object.keys(found);
+    if (keys.length) {
+      setTouched((t) => ({ ...t, ...Object.fromEntries(keys.map((k) => [k, true])) }));
       return;
     }
+    setTouched({});
     setStep((s) => Math.min(s + 1, STEPS.length - 1));
   }
 
@@ -169,12 +197,13 @@ export function PracticeSignup({
     setBusy(true);
     setError(null);
     try {
-      await api("/auth/otp/request", {
+      // This router's own, not `/auth/otp/request`. The console reverse-proxies
+      // `/applications/` and `/admin/` and not `/auth/`, so the shared endpoint
+      // 404ed in production and nowhere else — see the note on the route.
+      await api("/applications/verify/send", {
         method: "POST",
         anonymous: true,
-        // Its own purpose. A code for an enrolment arriving mid-application
-        // would otherwise burn one the applicant was part-way through.
-        body: { phone: e164, purpose: "practice" },
+        body: { phone: e164 },
       });
       setSent(true);
     } catch (ex) {
@@ -188,10 +217,10 @@ export function PracticeSignup({
     setBusy(true);
     setError(null);
     try {
-      const out = await api<{ phoneToken: string }>("/auth/otp/verify", {
+      const out = await api<{ phoneToken: string }>("/applications/verify/check", {
         method: "POST",
         anonymous: true,
-        body: { phone: e164, purpose: "practice", code: value },
+        body: { phone: e164, code: value },
       });
       setPhoneToken(out.phoneToken);
       setStep(3);
@@ -266,11 +295,12 @@ export function PracticeSignup({
         <div className="mt-5 flex flex-col gap-4">
           {step === 0 ? (
             <>
-              <Field label="Practice name">
+              <Field label="Practice name" error={shown("practiceName")}>
                 <input
                   className={textInput}
                   value={practiceName}
                   onChange={(e) => setPracticeName(e.target.value)}
+                  onBlur={() => setTouched((t) => ({ ...t, practiceName: true }))}
                   maxLength={160}
                   autoFocus
                 />
@@ -307,36 +337,40 @@ export function PracticeSignup({
                   maxLength={80}
                 />
               </Field>
-              <Field label="Address" hint="optional">
+              <Field label="Address" error={shown("addressLine")}>
                 <input
                   className={textInput}
                   value={addressLine}
                   onChange={(e) => setAddressLine(e.target.value)}
+                  onBlur={() => setTouched((t) => ({ ...t, addressLine: true }))}
                   maxLength={200}
                 />
               </Field>
               <div className="grid gap-4 sm:grid-cols-3">
-                <Field label="City" hint="optional">
+                <Field label="City" error={shown("city")}>
                   <input
                     className={textInput}
                     value={city}
                     onChange={(e) => setCity(e.target.value)}
+                  onBlur={() => setTouched((t) => ({ ...t, city: true }))}
                     maxLength={80}
                   />
                 </Field>
-                <Field label="State" hint="optional">
+                <Field label="State" error={shown("state")}>
                   <input
                     className={textInput}
                     value={stateName}
                     onChange={(e) => setStateName(e.target.value)}
+                  onBlur={() => setTouched((t) => ({ ...t, state: true }))}
                     maxLength={80}
                   />
                 </Field>
-                <Field label="PIN" hint="optional">
+                <Field label="PIN" hint="six digits" error={shown("postalCode")}>
                   <input
                     className={`${textInput} tnum font-mono`}
                     value={postalCode}
                     onChange={(e) => setPostalCode(e.target.value.replace(/\D/g, ""))}
+                    onBlur={() => setTouched((t) => ({ ...t, postalCode: true }))}
                     maxLength={6}
                     inputMode="numeric"
                   />
@@ -347,27 +381,30 @@ export function PracticeSignup({
 
           {step === 1 ? (
             <>
-              <Field label="Your name">
+              <Field label="Your name" error={shown("contactName")}>
                 <input
                   className={textInput}
                   value={contactName}
                   onChange={(e) => setContactName(e.target.value)}
+                  onBlur={() => setTouched((t) => ({ ...t, contactName: true }))}
                   maxLength={120}
                   autoFocus
                 />
               </Field>
-              <Field label="Email">
+              <Field label="Email" error={shown("contactEmail")}>
                 <input
                   className={textInput}
                   type="email"
                   value={contactEmail}
                   onChange={(e) => setContactEmail(e.target.value)}
+                  onBlur={() => setTouched((t) => ({ ...t, contactEmail: true }))}
                   maxLength={160}
                 />
               </Field>
               <Field
                 label="Mobile number"
                 hint="we text a code to this, and it becomes the sign-in for the practice"
+                error={shown("phone")}
               >
                 <input
                   className={`${textInput} tnum font-mono`}
@@ -380,6 +417,7 @@ export function PracticeSignup({
                     setPhoneToken(null);
                     setSent(false);
                   }}
+                  onBlur={() => setTouched((t) => ({ ...t, phone: true }))}
                   inputMode="tel"
                   maxLength={16}
                   placeholder="+91"

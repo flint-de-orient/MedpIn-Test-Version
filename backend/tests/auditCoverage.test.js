@@ -36,6 +36,20 @@ const LOGGERS = /audit\(|AuditLog\.create\(|AdminAuditLog\.record\(/;
  */
 const EXEMPT = new Map([
   [
+    'applications.js /verify/send',
+    'Pre-identity, like auth.js /otp/request and for the same reason: an ' +
+      'applicant has no account by definition, so there is no actor either ' +
+      'log can name. It sends a code and writes nothing else — the OTP ' +
+      'challenge row is the record that it happened, and the application it ' +
+      'leads to carries the proved number and the address it came from.',
+  ],
+  [
+    'applications.js /verify/check',
+    'The other half of the same exchange, and the same absence of an actor. ' +
+      'Spending a code creates nothing; the submission that spends the token ' +
+      'afterwards is the row that records any of it.',
+  ],
+  [
     'applications.js /',
     'A practice asking to exist, submitted by somebody with no account — that ' +
       'being the point of it. Neither log can hold it: AdminAuditLog records ' +
@@ -164,10 +178,23 @@ describe('every mutating route is audited', () => {
   });
 
   test('the exemption list is small', () => {
-    // Not a hard limit so much as a tripwire. If this list grows, the question
-    // is whether auditing has become inconvenient rather than whether four more
-    // routes genuinely have nothing to say.
-    assert.ok(EXEMPT.size <= 14, `${EXEMPT.size} exemptions — is auditing being avoided?`);
+    /*
+     * Not a hard limit so much as a tripwire. If this list grows, the question
+     * is whether auditing has become inconvenient rather than whether a few
+     * more routes genuinely have nothing to say.
+     *
+     * Raised from 14 to 16 when the public application surface arrived. Both
+     * additions are the two halves of one pre-identity exchange — sending a
+     * code and spending it — and an applicant has no account by definition, so
+     * neither log has an actor to name. That is the same reason auth.js's own
+     * OTP pair is exempt, and it is a property of the flow rather than a
+     * preference about it.
+     *
+     * If it needs raising again, read the new entries before doing it: two
+     * arriving together for one stated reason is different from two arriving
+     * separately because writing an audit line was awkward.
+     */
+    assert.ok(EXEMPT.size <= 16, `${EXEMPT.size} exemptions — is auditing being avoided?`);
   });
 
   test('every exempt route still exists', () => {

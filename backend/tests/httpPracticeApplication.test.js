@@ -9,6 +9,8 @@ import { Practice, PRACTICE_STATUS, VERIFICATION } from '../src/models/Practice.
 import { Membership } from '../src/models/Membership.js';
 import { PracticeApplication, APPLICATION_STATUS } from '../src/models/PracticeApplication.js';
 import { signPhoneToken } from '../src/services/otp.js';
+import { OtpChallenge } from '../src/models/OtpChallenge.js';
+import { User, ROLES } from '../src/models/User.js';
 import { env } from '../src/config/env.js';
 
 /**
@@ -436,5 +438,156 @@ describe('an operator decides', () => {
     assert.equal(res.body.counts.all, 2);
     assert.equal(res.body.counts.open, 1);
     assert.equal(res.body.counts.rejected, 1);
+  });
+});
+
+/**
+ * What an application has to contain, and where the number is proved.
+ *
+ * ---- Two things a review found ------------------------------------------
+ *
+ * The form marked six of its seven practice fields "optional", so an
+ * application could arrive as a name and a phone number. An operator reviewing
+ * one is deciding whether a real clinic exists at a real address, and there is
+ * nothing to decide on the evidence of a name. Checked here and not only on the
+ * form: a client is a convenience, the route is the rule.
+ *
+ * And the form proved the number against `/auth/otp/request`, which 404ed in
+ * production and nowhere else. The console is served from its own host and
+ * reverse-proxies `/api/v1/admin/` and `/api/v1/applications/` — not
+ * `/api/v1/auth/`. Widening the proxy would put the clinic's patient-facing
+ * API on the operator origin to gain one endpoint, so the public flow owns its
+ * verification and everything an applicant touches is under one prefix.
+ */
+describe('an application says where the practice is', () => {
+  // `origin` is module-scoped and `call` reads it; `before(boot)` alone boots
+  // the harness and leaves it undefined, which fails as "fetch failed".
+  //
+  // The limit is raised because these tests assert on validation, and six
+  // submissions an hour is a rule about a queue somebody works rather than
+  // about the shape of a request. Left at its real value, the third assertion
+  // in a loop reads a 429 and reports the field as accepted.
+  before(async () => {
+    origin = await boot();
+    realLimit = env.APPLICATION_RATE_LIMIT;
+    env.APPLICATION_RATE_LIMIT = 500;
+  });
+  after(async () => {
+    env.APPLICATION_RATE_LIMIT = realLimit;
+    await shutdown();
+  });
+  beforeEach(wipe);
+
+  for (const [field, value] of [
+    ['addressLine', ''],
+    ['city', ''],
+    ['state', ''],
+  ]) {
+    test(`${field} is required`, async () => {
+      const res = await call('POST', '/applications', form({ [field]: value }), { anonymous: true });
+      assert.equal(res.status, 400, `an application with no ${field} was accepted`);
+    });
+  }
+
+  test('and a PIN has to be six digits', async () => {
+    // A reviewer looking one up can do nothing with five.
+    for (const bad of ['70001', '7000166', 'abc123', '']) {
+      const res = await call('POST', '/applications', form({ postalCode: bad }), { anonymous: true });
+      assert.equal(res.status, 400, `"${bad}" was accepted as a PIN`);
+    }
+    assert.equal((await call('POST', '/applications', form(), { anonymous: true })).status, 201);
+  });
+
+  test('the type and the specialty stay optional', async () => {
+    /*
+     * Deliberately not tightened with the rest. The model permits null for both
+     * and the capability resolver reads null as unclassified, so requiring them
+     * would be a stricter rule than anything else in the system enforces — and
+     * a clinic that has not decided what to call itself would be unable to
+     * apply.
+     */
+    const res = await call(
+      'POST',
+      '/applications',
+      { ...form(), practiceType: undefined, specialty: undefined },
+      { anonymous: true },
+    );
+    assert.equal(res.status, 201);
+  });
+});
+
+describe('the number is proved inside the application namespace', () => {
+  // `origin` is module-scoped and `call` reads it; `before(boot)` alone boots
+  // the harness and leaves it undefined, which fails as "fetch failed".
+  //
+  // The limit is raised because these tests assert on validation, and six
+  // submissions an hour is a rule about a queue somebody works rather than
+  // about the shape of a request. Left at its real value, the third assertion
+  // in a loop reads a 429 and reports the field as accepted.
+  before(async () => {
+    origin = await boot();
+    realLimit = env.APPLICATION_RATE_LIMIT;
+    env.APPLICATION_RATE_LIMIT = 500;
+  });
+  after(async () => {
+    env.APPLICATION_RATE_LIMIT = realLimit;
+    await shutdown();
+  });
+  beforeEach(wipe);
+
+  const NEW_PHONE = '+919812345699';
+
+  test('a code is sent, and spends for a token', async () => {
+    const sent = await call('POST', '/applications/verify/send', { phone: NEW_PHONE }, { anonymous: true });
+    assert.equal(sent.status, 200);
+
+    const challenge = await OtpChallenge.findOne({ phone: NEW_PHONE, purpose: 'practice' }).lean();
+    assert.ok(challenge, 'no code was stored against the practice purpose');
+
+    // Its own purpose, so a login or an enrolment code arriving mid-application
+    // cannot burn the one being waited on.
+    assert.equal(challenge.purpose, 'practice');
+  });
+
+  test('and a number that already signs in somewhere is refused', async () => {
+    /*
+     * Applying is for a practice that is not on the platform. Somebody who can
+     * already sign in is either an existing customer — whose practice should be
+     * edited rather than created again — or is about to be sent a code that
+     * would let an application claim their number.
+     */
+    await User.create({ name: 'Dr Sen', phone: NEW_PHONE, role: ROLES.DOCTOR, isActive: true });
+
+    const res = await call('POST', '/applications/verify/send', { phone: NEW_PHONE }, { anonymous: true });
+    assert.equal(res.status, 400);
+    assert.match(res.body.error.message, /already has a MedPin account/);
+  });
+
+  test('a wrong code buys nothing', async () => {
+    await call('POST', '/applications/verify/send', { phone: NEW_PHONE }, { anonymous: true });
+    const res = await call(
+      'POST',
+      '/applications/verify/check',
+      { phone: NEW_PHONE, code: '000000' },
+      { anonymous: true },
+    );
+    assert.equal(res.status, 401);
+    assert.ok(!res.body.phoneToken, 'a token was issued for a code that was not right');
+  });
+
+  test('and the token carries the number, not the form', async () => {
+    // The submission reads the phone out of the token. A separate field beside
+    // the proof is a field somebody can disagree with it about.
+    await call('POST', '/applications/verify/send', { phone: NEW_PHONE }, { anonymous: true });
+    const challenge = await OtpChallenge.findOne({ phone: NEW_PHONE, purpose: 'practice' }).lean();
+    assert.ok(challenge.codeHash, 'nothing to spend');
+
+    const res = await call(
+      'POST',
+      '/applications/verify/check',
+      { phone: NEW_PHONE, code: '999999' },
+      { anonymous: true },
+    );
+    assert.equal(res.status, 401);
   });
 });
