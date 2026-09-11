@@ -103,8 +103,19 @@ describe('the button says whether anything is happening', () => {
 
 describe('the layout is balanced on a phone', () => {
   test('the form sits near the top on a small screen', () => {
-    // Centring in the remaining height put a short form in the middle of a tall
-    // phone with a fold of dead space under it.
-    assert.match(src, /items-start justify-center[^"]*sm:items-center/);
+    /*
+     * Centring in the remaining height put a short form in the middle of a
+     * tall phone with a fold of dead space under it.
+     *
+     * Read from the entry shell rather than the form. The two-audience door
+     * split the layout out of sign-in.tsx, and this test went on reading the
+     * file that no longer owns the rule — a test pinned to where a class lives
+     * rather than to what it does.
+     */
+    const shell = readFileSync(
+      new URL('../../web/src/components/entry-shell.tsx', import.meta.url),
+      'utf8',
+    );
+    assert.match(shell, /items-start justify-center[^"]*sm:items-center/);
   });
 });

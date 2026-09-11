@@ -5,7 +5,8 @@ import { api, ApiError } from "@/lib/api";
 import { useSession } from "@/lib/session";
 import type { LoginResult } from "@/lib/types";
 import { cn } from "@/lib/utils";
-import { IconEye, IconEyeOff, Spinner, Wordmark } from "@/components/icons";
+import { IconEye, IconEyeOff, Spinner, Logo, Wordmark } from "@/components/icons";
+import { AudienceTabs, EntryShell } from "@/components/entry-shell";
 import { signInWithPasskey, type PublicKeyCredentialRequestOptionsJSON } from "@/lib/passkey";
 
 /**
@@ -19,6 +20,15 @@ import { signInWithPasskey, type PublicKeyCredentialRequestOptionsJSON } from "@
  */
 export function SignIn() {
   const [mode, setMode] = useState<"login" | "forgot" | "reset">("login");
+
+  /*
+   * Which of the two audiences this is.
+   *
+   * Admin first, and default, because this is the operator console — the
+   * practice side is the guest here. Held in state rather than the URL: there
+   * is one page, and a tab is not a place somebody links to.
+   */
+  const [who, setWho] = useState<"admin" | "practice">("admin");
 
   /**
    * A reset link opens straight into the form that spends it.
@@ -68,44 +78,171 @@ export function SignIn() {
     }
   }, []);
   return (
-    <div className="flex flex-1 flex-col">
-      <header className="border-border border-b px-5 py-3">
-        <div className="mx-auto flex max-w-[78rem] items-center gap-2.5">
+    <EntryShell>
+      <div className="flex flex-col gap-5">
+        {/* The mark, for the phone where the brand panel does not render. */}
+        <div className="flex items-center gap-2.5 lg:hidden">
+          <Logo className="size-7" />
           <Wordmark className="h-6 w-auto" />
-          <span className="border-border text-muted-foreground border-l pl-2.5 text-micro tracking-[0.08em] uppercase">
-            operator
-          </span>
         </div>
-      </header>
 
-      <div className="flex flex-1 items-start justify-center px-5 pt-10 pb-16 sm:items-center sm:py-10">
-        <div className="flex w-full max-w-[23rem] flex-col gap-4">
-          {verified ? (
-            <p
-              role="status"
-              className={
-                verified === "ok"
-                  ? "text-ok-ink border-l-ok bg-ok-tint rounded-sm border-l-2 px-3 py-2 text-caption leading-relaxed"
-                  : "text-stopped-ink border-l-stopped bg-stopped-tint rounded-sm border-l-2 px-3 py-2 text-caption leading-relaxed"
-              }
+        <AudienceTabs value={who} onChange={setWho} />
+
+        <div className="border-border bg-card rounded-md border p-6 sm:p-7">
+          {who === "admin" ? (
+            <div
+              role="tabpanel"
+              id="panel-admin"
+              aria-labelledby="tab-admin"
+              className="flex flex-col gap-4"
             >
-              {verified === "ok"
-                ? "Email confirmed. Sign in as usual."
-                : "That confirmation link is not valid or has expired. Send another from the Account screen."}
-            </p>
-          ) : null}
+              <Eyebrow>Admin / Operator</Eyebrow>
+              <Heading
+                title={
+                  mode === "login"
+                    ? "Sign in"
+                    : mode === "forgot"
+                      ? "Reset your password"
+                      : "Choose a new password"
+                }
+                detail={
+                  mode === "login"
+                    ? "Access the MedPin operator console to manage practices, plans and platform records."
+                    : mode === "forgot"
+                      ? "We will email a link to the address on your operator account."
+                      : "The link you followed is spent once this is saved."
+                }
+              />
 
-          {mode === "login" ? (
-            <LoginForm onForgot={() => setMode("forgot")} />
-          ) : mode === "forgot" ? (
-            <ForgotForm
-              onBack={() => setMode("login")}
-              onHaveToken={() => setMode("reset")}
-            />
+              {verified ? (
+                <p
+                  role="status"
+                  className={
+                    verified === "ok"
+                      ? "text-ok-ink border-l-ok bg-ok-tint rounded-sm border-l-2 px-3 py-2 text-caption leading-relaxed"
+                      : "text-stopped-ink border-l-stopped bg-stopped-tint rounded-sm border-l-2 px-3 py-2 text-caption leading-relaxed"
+                  }
+                >
+                  {verified === "ok"
+                    ? "Email confirmed. Sign in as usual."
+                    : "That confirmation link is not valid or has expired. Send another from the Account screen."}
+                </p>
+              ) : null}
+
+              {mode === "login" ? (
+                <LoginForm onForgot={() => setMode("forgot")} />
+              ) : mode === "forgot" ? (
+                <ForgotForm
+                  onBack={() => setMode("login")}
+                  onHaveToken={() => setMode("reset")}
+                />
+              ) : (
+                <ResetForm onBack={() => setMode("login")} prefill={prefill} />
+              )}
+            </div>
           ) : (
-            <ResetForm onBack={() => setMode("login")} prefill={prefill} />
+            <PracticePanel />
           )}
         </div>
+
+        <p className="text-muted-foreground text-center text-micro leading-relaxed">
+          This console holds practices, plans and counts. It does not hold
+          patient records.
+        </p>
+      </div>
+    </EntryShell>
+  );
+}
+
+/* ------------------------------------------------------------------- entry */
+
+function Eyebrow({ children }: { children: React.ReactNode }) {
+  return (
+    <p className="text-primary text-micro font-semibold tracking-[0.1em] uppercase">
+      {children}
+    </p>
+  );
+}
+
+function Heading({ title, detail }: { title: string; detail: string }) {
+  return (
+    <div className="-mt-2">
+      {/* `h2`, because the brand panel holds the page's h1. On a phone that
+          panel is not rendered and this is the first heading either way. */}
+      <h2 className="text-foreground text-heading font-semibold tracking-tight">
+        {title}
+      </h2>
+      <p className="text-muted-foreground mt-1.5 text-caption leading-relaxed">
+        {detail}
+      </p>
+    </div>
+  );
+}
+
+/**
+ * The practice side of the door.
+ *
+ * ---- What is actually here ----------------------------------------------
+ *
+ * Nothing, yet, and saying so is the whole job of this panel.
+ *
+ * A practice does not sign into this console. Clinicians and front-desk staff
+ * use the MedPin app, and the app identifies them by phone number — a code to
+ * that number, or a password on the accounts that have one. There is no
+ * email-and-password login for a practice anywhere in the product, on this
+ * domain or any other, so drawing one here would be a form that cannot
+ * succeed on the screen where somebody has least patience for that.
+ *
+ * The first version of this panel said there was no password at all. There is
+ * one: `doctor_password_login_screen.dart`, against `/auth/login`. Getting
+ * that wrong would have sent a doctor looking for a code they never set up.
+ *
+ * Self-registration has no backend either: there is no application record, no
+ * review queue and no provisioning. A practice is created by a MedPin operator
+ * in this console, which is why the way to get one is to ask.
+ *
+ * So this panel routes people to the two things that exist — the app, and a
+ * conversation — and the registration flow is drawn when there is something
+ * behind it to submit to.
+ */
+function PracticePanel() {
+  return (
+    <div
+      role="tabpanel"
+      id="panel-practice"
+      aria-labelledby="tab-practice"
+      className="flex flex-col gap-4"
+    >
+      <Eyebrow>Practice</Eyebrow>
+      <Heading
+        title="Practices sign in on the app"
+        detail="There is no practice login on this domain. The console is for MedPin operators; a clinic's own people work in the MedPin app."
+      />
+
+      <div className="border-border bg-secondary/40 flex flex-col gap-2 rounded-md border px-4 py-3.5">
+        <p className="text-title font-medium">Already using MedPin</p>
+        <p className="text-muted-foreground text-caption leading-relaxed">
+          Open the MedPin app and sign in with the phone number your practice
+          registered — by a code sent to that number, or by a password where
+          the account has one. Either way it is the phone that identifies you,
+          not an email address.
+        </p>
+      </div>
+
+      <div className="border-border flex flex-col gap-2 rounded-md border px-4 py-3.5">
+        <p className="text-title font-medium">Registering a new practice</p>
+        <p className="text-muted-foreground text-caption leading-relaxed">
+          Self-registration is not open yet. A MedPin operator creates a
+          practice, verifies its registration number and invites the first
+          doctor — so the way in today is to ask us to set one up.
+        </p>
+        <a
+          href="mailto:hello@flintdeorient.in?subject=Registering%20a%20practice%20with%20MedPin"
+          className="border-border hover:bg-secondary focus-visible:ring-ring mt-1 inline-flex w-fit items-center gap-2 rounded-md border px-3 py-2 text-body font-medium transition-colors duration-150 focus-visible:ring-2 focus-visible:outline-none"
+        >
+          Ask about registering
+          <span aria-hidden>→</span>
+        </a>
       </div>
     </div>
   );

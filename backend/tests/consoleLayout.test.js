@@ -34,9 +34,24 @@ function files(dir) {
   return out;
 }
 
+/**
+ * Comments blanked, line numbers kept.
+ *
+ * This scanner reads for class names, and a comment is not a class name. It
+ * flagged the line explaining why `min-h-full` is wrong, in the file that had
+ * just been corrected to use `min-h-dvh` — the rule failing on the prose
+ * written to keep it.
+ *
+ * Replaced with spaces rather than removed, so every reported line number
+ * still points where a reader would look.
+ */
+function withoutComments(body) {
+  return body.replace(/\/\*[\s\S]*?\*\/|\/\/[^\n]*/g, (m) => m.replace(/[^\n]/g, ' '));
+}
+
 const sources = files(WEB).map((f) => ({
   rel: path.relative(WEB, f).replace(/\\/g, '/'),
-  src: readFileSync(f, 'utf8'),
+  src: withoutComments(readFileSync(f, 'utf8')),
 }));
 
 const all = sources.map((s) => s.src).join('\n');

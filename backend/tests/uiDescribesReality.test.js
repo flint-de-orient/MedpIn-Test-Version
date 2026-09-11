@@ -299,3 +299,64 @@ describe('the letterhead dialog describes the letterhead', () => {
     );
   });
 });
+
+/**
+ * What the entry screen tells a practice about signing in.
+ *
+ * The console is reached at a bare domain by two audiences, and the practice
+ * half of the door is entirely explanatory: there is no practice login here and
+ * no self-registration behind it. Every sentence on that panel is therefore a
+ * claim about a product somebody is about to go and use, made on the screen
+ * where they have least patience for being sent the wrong way.
+ *
+ * The first draft said a practice signs in "with a phone number and a code —
+ * there is no password to remember". There is one. `doctor_password_login_screen.dart`
+ * posts to `/auth/login` with a phone and a password, and a doctor who has set
+ * one would have been sent looking for a code they never arranged.
+ */
+describe('the entry screen is right about how a practice signs in', () => {
+  const entry = readFileSync(
+    new URL('../../web/src/components/sign-in.tsx', import.meta.url),
+    'utf8',
+  );
+  const auth = readFileSync(new URL('../src/routes/auth.js', import.meta.url), 'utf8');
+
+  test('both ways in still exist', () => {
+    // If either disappeared, the panel would be describing a door that is not
+    // there — and this test is the only thing connecting the two.
+    assert.match(auth, /'\/otp\/request'/);
+    assert.match(auth, /'\/login'/);
+  });
+
+  test('and the app really does identify a clinician by phone, not email', () => {
+    // The claim the panel leads with, and the reason it refuses to draw an
+    // email-and-password form for a practice.
+    const login = auth.slice(auth.indexOf("'/login'"), auth.indexOf("'/login'") + 400);
+    assert.match(login, /phone: phoneSchema/);
+    assert.ok(!/email/.test(login), 'the clinician login now takes an email');
+  });
+
+  test('the panel says both, not just the code', () => {
+    assert.match(entry, /by a code sent to that number, or by a password/);
+  });
+
+  test('and does not offer a practice login this product does not have', () => {
+    /*
+     * The failure this panel exists to avoid. A form here would post to
+     * nothing: there is no practice session, no practice password reset, and
+     * no email identity for a clinic anywhere in the product.
+     */
+    const panel = entry.slice(entry.indexOf('function PracticePanel'));
+    assert.ok(
+      !/type="password"/.test(panel),
+      'the practice panel has grown a password field with nothing behind it',
+    );
+  });
+
+  test('and says registration is not open rather than collecting for nowhere', () => {
+    // There is no application record, no review queue and no provisioning.
+    // A five-step form that ends in a POST to a route that does not exist is
+    // the thing the brief calls fabricating an integration.
+    assert.match(entry, /Self-registration is not open yet/);
+  });
+});
