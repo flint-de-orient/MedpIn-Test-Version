@@ -5,7 +5,7 @@ import { api, ApiError } from "@/lib/api";
 import { useSession } from "@/lib/session";
 import type { LoginResult } from "@/lib/types";
 import { cn } from "@/lib/utils";
-import { IconEye, IconEyeOff, Spinner, Wordmark } from "@/components/icons";
+import { IconEye, IconEyeOff, IconPractice, Spinner, Wordmark } from "@/components/icons";
 import { AudienceTabs, EntryShell } from "@/components/entry-shell";
 import { PracticeSignup } from "@/components/practice-signup";
 import { ApplicationStatusView } from "@/components/application-status";
@@ -288,42 +288,50 @@ function PracticeSide({
       ) : (
         <>
           <Heading
-            title="Practices sign in on the app"
-            detail="There is no practice login on this domain. The console is for MedPin operators; a clinic's own people work in the MedPin app."
+            title="Bring your practice to MedPin"
+            detail="Apply here. A clinic's own doctors and front desk work in the MedPin app, not on this domain."
           />
 
-          <div className="border-border bg-secondary/40 flex flex-col gap-2 rounded-md border px-4 py-3.5">
-            <p className="text-title font-medium">Already using MedPin</p>
-            <p className="text-muted-foreground text-caption leading-relaxed">
-              Open the MedPin app and sign in with the phone number your practice
-              registered — by a code sent to that number, or by a password where
-              the account has one. Either way it is the phone that identifies you,
-              not an email address.
-            </p>
-          </div>
+          {/*
+            Filled, because this is the one thing the tab is for.
 
+            It was an outlined ghost button under a paragraph about the app,
+            which put the tab's only action below its footnote and drew it as a
+            secondary control. There is no sign-in form on this side competing
+            for primacy — registering is the action, so it looks like one.
+          */}
           <button
             type="button"
             onClick={() => onView("register")}
-            className="border-border hover:bg-secondary focus-visible:ring-ring flex w-full items-center justify-center gap-2 rounded-md border px-4 py-3 text-body font-medium transition-colors duration-150 focus-visible:ring-2 focus-visible:outline-none"
+            className="bg-primary text-primary-foreground hover:brightness-110 active:brightness-95 focus-visible:ring-ring flex w-full items-center justify-center gap-2.5 rounded-md px-4 py-3.5 text-title font-semibold transition-all duration-150 focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
           >
+            <IconPractice className="size-4" />
             Register your practice
-            <span aria-hidden>→</span>
           </button>
-          <p className="text-muted-foreground -mt-2 text-center text-micro leading-relaxed">
-            Your application is reviewed before the practice is created.
+          <p className="text-muted-foreground -mt-1 text-center text-micro leading-relaxed">
+            Reviewed by MedPin before anything is created. Nothing is set up
+            until somebody has read it.
           </p>
 
-          <p className="text-muted-foreground border-border border-t pt-4 text-caption leading-relaxed">
-            Already applied?{" "}
-            <button
-              type="button"
-              onClick={() => onView("status")}
-              className="text-primary underline underline-offset-4"
-            >
-              Check your application
-            </button>
-          </p>
+          <div className="border-border mt-1 flex flex-col gap-2 border-t pt-4">
+            <p className="text-title font-medium">Already using MedPin?</p>
+            <p className="text-muted-foreground text-caption leading-relaxed">
+              Open the MedPin app and sign in with the phone number your practice
+              registered — by a code sent to that number, or by a password where
+              the account has one. It is the phone that identifies you, not an
+              email address.
+            </p>
+            <p className="text-muted-foreground mt-1 text-caption leading-relaxed">
+              Applied already?{" "}
+              <button
+                type="button"
+                onClick={() => onView("status")}
+                className="text-primary underline underline-offset-4"
+              >
+                Check your application
+              </button>
+            </p>
+          </div>
         </>
       )}
     </div>
