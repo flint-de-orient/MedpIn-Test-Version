@@ -56,7 +56,7 @@ class WaitingOnConsent extends ConsumerWidget {
               children: [
                 Icon(
                   Icons.hourglass_top_rounded,
-                  size: 20,
+                  size: T.s5,
                   color: AppColors.warningOn(context),
                 ),
                 const SizedBox(width: AppSpacing.sm),
@@ -70,7 +70,7 @@ class WaitingOnConsent extends ConsumerWidget {
                             : '${waiting.length} patients are waiting on their code',
                         style: Theme.of(context).textTheme.titleSmall,
                       ),
-                      const SizedBox(height: 2),
+                      const SizedBox(height: AppSpacing.xs),
                       // Says why they are missing, on the screen they are
                       // missing from. Colour is not carrying this: the words
                       // are the whole message.
