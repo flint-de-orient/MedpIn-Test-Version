@@ -6,6 +6,7 @@ import '../domain/appointment.dart';
 import '../../medications/domain/medication.dart';
 import '../domain/chat_review.dart';
 import '../domain/department.dart';
+import '../domain/patient_registration.dart';
 import '../domain/team_member.dart';
 import '../domain/clinician_models.dart';
 import '../domain/knowledge_chunk.dart';
@@ -82,6 +83,16 @@ final patientsProvider = FutureProvider.autoDispose
             limit: 100,
           );
     });
+
+/// Who the practice is waiting on a code from.
+///
+/// Not `autoDispose`: the patient list reads it for the banner and the sheet
+/// behind it reads it for the rows, and disposing between the two would refetch
+/// on every open. Invalidated when a code is confirmed, which is the only thing
+/// that changes it from this side.
+final pendingEnrolmentsProvider = FutureProvider<List<PendingEnrolment>>((ref) {
+  return ref.watch(clinicianRepositoryProvider).pendingEnrolments();
+});
 
 final patientSummaryProvider = FutureProvider.autoDispose
     .family<PatientSummary, String>((ref, id) {

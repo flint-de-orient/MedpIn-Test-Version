@@ -67,3 +67,37 @@ class PatientRegistration {
   /// must not say "registered" for both outcomes.
   bool get isEnrolledNow => !consentRequired;
 }
+
+/// Somebody the practice has registered who has not yet agreed.
+///
+/// The desk typed all of this in themselves — a name, the number the code went
+/// to, and when. Nothing clinical: a pending enrolment grants no access to a
+/// record, and a list of people who have not consented is the last place to
+/// start showing one.
+class PendingEnrolment {
+  const PendingEnrolment({
+    required this.id,
+    required this.patientId,
+    required this.name,
+    required this.phone,
+    required this.registeredOn,
+  });
+
+  /// The enrolment, which is what a code is confirmed against.
+  final String id;
+  final String patientId;
+  final String name;
+
+  /// Which number the code went to — how a desk tells two people with the same
+  /// name apart, and checks they did not mistype it.
+  final String? phone;
+  final DateTime? registeredOn;
+
+  factory PendingEnrolment.fromJson(Map<String, dynamic> json) => PendingEnrolment(
+    id: json['id']?.toString() ?? '',
+    patientId: json['patientId']?.toString() ?? '',
+    name: json['name']?.toString() ?? 'Unknown patient',
+    phone: json['phone']?.toString(),
+    registeredOn: DateTime.tryParse(json['registeredOn']?.toString() ?? '')?.toLocal(),
+  );
+}

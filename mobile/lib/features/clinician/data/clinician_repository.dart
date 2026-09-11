@@ -135,6 +135,19 @@ class ClinicianRepository {
     return PatientRegistration.fromJson(json);
   }
 
+  /// Everybody this practice has registered who has not yet read back a code.
+  ///
+  /// Correctly absent from every clinical list — a pending enrolment grants
+  /// nothing — and absent from everything else too until this existed, so a
+  /// desk that did not get the code on the spot had a patient in limbo with no
+  /// screen showing it.
+  Future<List<PendingEnrolment>> pendingEnrolments() async {
+    final json = await _client.getJson('/enrolments/pending');
+    return ((json['items'] as List?) ?? const [])
+        .map((e) => PendingEnrolment.fromJson(e as Map<String, dynamic>))
+        .toList();
+  }
+
   /// The patient reads back the code texted to their own handset, and the
   /// enrolment stops being pending.
   ///

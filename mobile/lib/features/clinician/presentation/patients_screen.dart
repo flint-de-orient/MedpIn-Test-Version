@@ -13,6 +13,7 @@ import '../../auth/presentation/auth_controller.dart';
 import '../domain/clinician_models.dart';
 import 'clinician_providers.dart';
 import 'widgets/panel_ui.dart';
+import 'widgets/waiting_on_consent.dart';
 import 'widgets/clinician_notification_sheet.dart';
 import '../../../core/router/area.dart';
 import '../../../shared/widgets/clinic_brand.dart';
@@ -173,6 +174,9 @@ class _PatientsScreenState extends ConsumerState<PatientsScreen>
                       onChanged: _onSearchChanged,
                     ),
                     const SizedBox(height: AppSpacing.md),
+                    // Above the roll, because somebody missing from it is the
+                    // reason a desk arrives at this screen confused.
+                    const WaitingOnConsent(),
                     async.when(
                       loading:
                           () => const Padding(

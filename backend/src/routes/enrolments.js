@@ -31,6 +31,58 @@ const router = Router();
 router.use(requireAuth);
 
 /**
+ * Everybody this practice has registered who has not yet said yes.
+ *
+ * ---- Why this had to exist -----------------------------------------------
+ *
+ * A pending enrolment grants nothing and is scoped out of every clinical list,
+ * which is correct — the practice is reaching for a record it did not create
+ * and the patient has not agreed. It also meant the row was invisible to the
+ * practice that made it. A desk that registered somebody and did not get the
+ * code read back on the spot had a patient in limbo, no screen anywhere
+ * showing it, and no way to find them again except remembering the phone
+ * number and typing it in a second time.
+ *
+ * "I added one patient but it did not show any patient" is what that looks
+ * like from the counter.
+ *
+ * Nothing clinical is exposed. A name, a number and a date: what the desk
+ * typed in themselves, handed back so they can finish what they started.
+ */
+router.get(
+  '/pending',
+  requireClinician,
+  audit('read', 'Enrollment'),
+  asyncHandler(async (req, res) => {
+    const practiceId = await practiceOf(req);
+    // No practice means no relationships to be waiting on. An empty list, not
+    // an error: this is a screen that loads on every visit to the register.
+    if (!practiceId) return res.json({ items: [] });
+
+    const rows = await Enrollment.find({ practice: practiceId, status: 'pending' })
+      .sort({ createdAt: -1 })
+      .limit(50)
+      .populate({ path: 'patient', select: 'name login', populate: { path: 'login', select: 'phone' } })
+      .lean();
+
+    res.json({
+      items: rows
+        // A row whose patient has since gone is a row nobody can act on.
+        .filter((r) => r.patient)
+        .map((r) => ({
+          id: String(r._id),
+          patientId: String(r.patient._id),
+          name: r.patient.name ?? 'Unknown patient',
+          // The number the code went to, so the desk can tell two people with
+          // the same name apart and check they typed it correctly.
+          phone: r.patient.login?.phone ?? null,
+          registeredOn: r.createdAt,
+        })),
+    });
+  }),
+);
+
+/**
  * The patient reads back their code and the enrolment becomes real.
  *
  * Until this succeeds the row is PENDING and grants nothing, which is the

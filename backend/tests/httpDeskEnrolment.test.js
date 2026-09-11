@@ -1,7 +1,7 @@
 import { test, describe, before, after, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { boot, shutdown, wipe } from './helpers/httpHarness.js';
+import { boot, shutdown, wipe, as } from './helpers/httpHarness.js';
 import { makePractice, makeMember } from './helpers/factories.js';
 import { enrolByPhone } from '../src/services/enrolByPhone.js';
 import { Enrollment, ENROLLMENT_STATUS } from '../src/models/Enrollment.js';
@@ -129,6 +129,54 @@ describe('a second practice reaching for an existing patient', () => {
       practiceId: second._id,
     });
     assert.equal(out.consentRequired, true, 'a cooldown turned into a failed registration');
+  });
+
+  test('and the practice can find who it is waiting on', async () => {
+    /*
+     * The reason the reported patient stayed missing even after the app was
+     * fixed. A pending enrolment is scoped out of every clinical list, which
+     * is right, and it was scoped out of everything else too — so a desk that
+     * did not get the code read back on the spot had a patient in limbo, no
+     * screen anywhere showing it, and no way back except remembering the phone
+     * number.
+     */
+    const { second, deskAtSecond } = await alreadyElsewhere();
+    await enrolByPhone({ phone: PHONE_A, name: 'Anita Sengupta', practiceId: second._id });
+
+    const res = await as(deskAtSecond.token).get('/enrolments/pending');
+    assert.equal(res.status, 200);
+    assert.equal(res.body.items.length, 1);
+    assert.equal(res.body.items[0].name, 'Anita Sengupta');
+    assert.equal(res.body.items[0].phone, PHONE_A, 'the desk cannot tell which number the code went to');
+    assert.ok(res.body.items[0].id, 'nothing to confirm the code against');
+  });
+
+  test('and stops waiting once the code is read back', async () => {
+    const { second, deskAtSecond } = await alreadyElsewhere();
+    const out = await enrolByPhone({
+      phone: PHONE_A,
+      name: 'Anita Sengupta',
+      practiceId: second._id,
+    });
+
+    await Enrollment.updateOne(
+      { _id: out.enrollment._id },
+      { $set: { status: ENROLLMENT_STATUS.ACTIVE } },
+    );
+
+    const res = await as(deskAtSecond.token).get('/enrolments/pending');
+    assert.equal(res.body.items.length, 0, 'a confirmed patient is still shown as waiting');
+  });
+
+  test('one practice cannot see who another is waiting on', async () => {
+    // The list is a list of people who have not agreed to be visible. Scoping
+    // it is the whole reason it is safe to have at all.
+    const { first, second } = await alreadyElsewhere();
+    await enrolByPhone({ phone: PHONE_A, name: 'Anita Sengupta', practiceId: second._id });
+
+    const deskAtFirst = await makeMember(first, { name: 'Other desk' });
+    const res = await as(deskAtFirst.token).get('/enrolments/pending');
+    assert.equal(res.body.items.length, 0, 'a practice was shown another practice’s pending patient');
   });
 
   test('a patient nobody has a record for is enrolled outright', async () => {
