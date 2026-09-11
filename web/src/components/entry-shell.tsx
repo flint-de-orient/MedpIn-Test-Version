@@ -101,7 +101,32 @@ function BrandPanel() {
         </ul>
       </div>
 
-      <Clinic className="text-primary mt-12 w-full" />
+      {/*
+        The illustration, framed rather than bled.
+
+        Its own background is a near-white, which on the pale panel in light is
+        very nearly seamless and on the dark panel would be a bright rectangle
+        with a hard edge. A rounded frame and a hairline make that a deliberate
+        image in both themes instead of an accident in one.
+
+        `width`/`height` are the real pixel dimensions of the file so the
+        browser reserves the box before it loads — without them the panel
+        reflows when the image arrives, which on a sign-in screen moves the
+        form somebody is already reaching for.
+
+        Not `next/image`: this console is a static export, and the loader adds
+        configuration for a single decorative asset that is already 26KB.
+      */}
+      <img
+        src="/entry-illustration.webp"
+        alt=""
+        // Decorative. Everything it depicts is said in words above it, and a
+        // description read aloud before a sign-in form is an obstacle.
+        aria-hidden
+        width={928}
+        height={506}
+        className="border-border/60 mt-12 w-full rounded-lg border"
+      />
     </aside>
   );
 }
@@ -158,56 +183,6 @@ const POINTS = [
     ),
   },
 ];
-
-/**
- * A building, drawn flat and quiet.
- *
- * Two tints of the brand and nothing else — no gradients, no shadow, no
- * perspective. It is scenery at the foot of a column, and scenery that tries
- * is the thing that makes a page look bought rather than built.
- */
-function Clinic({ className }: { className?: string }) {
-  return (
-    <svg
-      viewBox="0 0 360 120"
-      fill="none"
-      aria-hidden
-      className={cn("h-auto", className)}
-    >
-      <g opacity="0.18" fill="currentColor">
-        <rect x="8" y="56" width="46" height="52" rx="2" />
-        <rect x="300" y="48" width="52" height="60" rx="2" />
-        <rect x="62" y="72" width="30" height="36" rx="2" />
-        <rect x="270" y="68" width="24" height="40" rx="2" />
-      </g>
-
-      <g opacity="0.34" fill="currentColor">
-        <rect x="112" y="34" width="136" height="74" rx="3" />
-        <rect x="96" y="62" width="18" height="46" rx="2" />
-        <rect x="246" y="62" width="18" height="46" rx="2" />
-      </g>
-
-      {/* The one mark that says what kind of building it is. */}
-      <g opacity="0.9" fill="currentColor">
-        <rect x="172" y="46" width="16" height="5" rx="1" />
-        <rect x="177.5" y="40.5" width="5" height="16" rx="1" />
-      </g>
-
-      <g opacity="0.2" fill="currentColor">
-        <rect x="126" y="66" width="16" height="14" rx="1.5" />
-        <rect x="152" y="66" width="16" height="14" rx="1.5" />
-        <rect x="192" y="66" width="16" height="14" rx="1.5" />
-        <rect x="218" y="66" width="16" height="14" rx="1.5" />
-        <rect x="126" y="88" width="16" height="14" rx="1.5" />
-        <rect x="152" y="88" width="16" height="14" rx="1.5" />
-        <rect x="218" y="88" width="16" height="14" rx="1.5" />
-      </g>
-
-      <rect x="186" y="88" width="22" height="20" rx="1.5" fill="currentColor" opacity="0.42" />
-      <rect y="108" width="360" height="1.5" rx="0.75" fill="currentColor" opacity="0.22" />
-    </svg>
-  );
-}
 
 /**
  * Which of the two audiences is signing in.
