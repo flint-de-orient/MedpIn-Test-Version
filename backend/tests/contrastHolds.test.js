@@ -463,3 +463,77 @@ describe('the console is readable in both themes', () => {
     );
   });
 });
+
+/**
+ * The class merger has to know this console's type scale.
+ *
+ * ---- How a white button ended up with black text -----------------------
+ *
+ * `cn` resolves Tailwind conflicts by keeping the last class in a group, and a
+ * text colour and a font size are both written `text-*`. It tells them apart by
+ * recognising the size names — `text-sm`, `text-lg` — and this console uses
+ * none of those. Its scale is named for the job: `text-body`, `text-title`,
+ * `text-caption`.
+ *
+ * So every one of those was classified as a colour, and any real colour written
+ * before it in the same call was dropped as a conflict:
+ *
+ *   cn("bg-primary text-primary-foreground ... text-title")
+ *     -> "bg-primary ... text-title"
+ *
+ * 184 class strings across 24 files were losing a `text-*` class that way. The
+ * sign-in button rendered #111827 on #003399 — the least readable thing in the
+ * console, on the control it exists for, in both themes.
+ *
+ * Nothing could see it. The source said `text-primary-foreground`, the built
+ * CSS defined the utility, and the element never carried it — so reading the
+ * code proved nothing, and the contrast checks above read the source, so they
+ * were satisfied too. It took sampling the pixels of a screenshot.
+ *
+ * The fix is registering the scale as font sizes. This test exists because the
+ * failure is silent: a seventh step added to `@theme` and not to `utils.ts`
+ * starts eating colours again, everywhere, with no error anywhere.
+ */
+describe('the class merger knows the type scale', () => {
+  const utils = readFileSync(path.join(WEB, 'lib/utils.ts'), 'utf8');
+
+  /** The steps `@theme` actually declares, which is the list that matters. */
+  const declared = [
+    ...new Set(
+      [...CSS.matchAll(/--text-([a-z]+):/g)].map((m) => m[1]),
+    ),
+  ].sort();
+
+  test('the scale was found at all', () => {
+    // Every assertion below passes on an empty list.
+    assert.ok(declared.length >= 5, `only ${declared.length} type steps found in @theme`);
+    assert.ok(declared.includes('body'), 'the workhorse step is gone from @theme');
+  });
+
+  test('and every step of it is registered as a font size', () => {
+    const registered = [
+      ...new Set(
+        [...utils.matchAll(/"([a-z]+)"/g)].map((m) => m[1]),
+      ),
+    ];
+
+    const missing = declared.filter((step) => !registered.includes(step));
+    assert.deepEqual(
+      missing,
+      [],
+      `\n${missing.join(', ')} declared in @theme and not registered in lib/utils.ts.\n` +
+        `Any colour written before one of those in a cn() call is dropped at\n` +
+        `runtime, on every element, with nothing to see in the source.\n`,
+    );
+  });
+
+  test('and cn is the configured one, not the default export', () => {
+    // `export { cn } from "cn"` is the line this replaced. It reads as a
+    // perfectly ordinary re-export and is the whole bug.
+    assert.match(utils, /createCn\(/);
+    assert.ok(
+      !/export \{ cn \} from "cn"/.test(utils),
+      'utils.ts re-exports the unconfigured cn again',
+    );
+  });
+});
