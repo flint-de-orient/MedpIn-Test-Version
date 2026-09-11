@@ -52,7 +52,19 @@ function BrandPanel() {
       // Decorative in the accessibility tree on small screens it does not
       // render at all, and on large ones it repeats nothing the form needs.
       aria-label="About MedPin"
-      className="bg-accent/60 border-border hidden shrink-0 flex-col justify-between border-r px-10 py-12 lg:flex lg:w-[42%] lg:max-w-[34rem]"
+      /*
+        Stays put while the form scrolls.
+        
+        The registration is five steps and the tallest of them runs well past a
+        laptop viewport. Without this the panel stretched to match it, which
+        pushed the illustration hundreds of pixels below the fold and left a
+        column of empty tint beside the fields — the brand argument visible
+        only to somebody who had already decided to scroll past it.
+        
+        `max-h-dvh` with its own scroll, so a short viewport can still reach the
+        bottom of the panel rather than clipping it.
+      */
+      className="bg-accent/60 border-border hidden shrink-0 flex-col justify-between border-r px-10 py-12 lg:sticky lg:top-0 lg:flex lg:max-h-dvh lg:w-[42%] lg:max-w-[34rem] lg:overflow-y-auto"
     >
       <div>
         <div className="flex items-center gap-3">
@@ -222,7 +234,14 @@ export function AudienceTabs({
     <div
       role="tablist"
       aria-label="Who is signing in"
-      className="grid grid-cols-2 gap-2"
+      /*
+        Stacked on a phone, side by side from `sm`.
+        
+        "Admin / Operator" in a half-width button at 360px is two lines of
+        11px or a mid-word break. Two full-width rows read at a glance and
+        give a thumb something the size of a thumb.
+      */
+      className="grid grid-cols-1 gap-2 sm:grid-cols-2"
       onKeyDown={(e) => {
         if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
         e.preventDefault();

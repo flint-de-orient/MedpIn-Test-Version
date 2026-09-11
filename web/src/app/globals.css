@@ -189,7 +189,25 @@
   /* outlineVariant, and Tokens.line one step softer for rows inside a table. */
   --border: #dde3ea;
   --border-strong: #cbd4de;
-  --input: #dde3ea;
+
+  /*
+   * The edge of a control, which is not the same thing as a separator.
+   *
+   * `--border` draws panel edges and table hairlines: decoration, and WCAG
+   * asks nothing of it. `--input` draws the boundary of a text field, which is
+   * "visual information required to identify a user interface component" and
+   * needs 3:1 against what is behind it.
+   *
+   * It was #dde3ea — the same value as the separator — which is 1.29:1 on a
+   * white card. Every input in this console had an edge nobody could see, and
+   * a review that described the fields as indistinct was right about that even
+   * though it blamed a blue tint that does not exist here.
+   *
+   * #69738a is the app's own slate: 4.75:1 on a white card and 3.46:1 on the
+   * dark one, so one value clears the bar in both themes and no tenth colour
+   * joins the derived list.
+   */
+  --input: #69738a;
   --ring: #003399;
 
   /* 6px. Sharp enough to read as an instrument; a 16px radius on a data table
@@ -260,7 +278,8 @@
 
   --border: #2c3945;
   --border-strong: #43525f;
-  --input: #43525f;
+  /* The same slate as light: 3.46:1 on this card, where #43525f was 2.05:1. */
+  --input: #69738a;
   --ring: #4da3ff;
 
   --sidebar: #121a23;

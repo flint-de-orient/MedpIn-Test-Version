@@ -36,7 +36,20 @@ import { cn } from "@/lib/utils";
  * accounts, and a working-looking upload that stores nothing is worse than
  * none. An operator asks for papers in a note.
  */
-export function PracticeSignup({ onDone }: { onDone: (reference: string) => void }) {
+export function PracticeSignup({
+  onDone,
+  onLeave,
+}: {
+  onDone: (reference: string) => void;
+  /**
+   * Back on step one.
+   *
+   * The form owns the only Back on the screen, so on the first step it has to
+   * mean "leave" — a disabled control at the start of a flow is a dead button
+   * somebody presses twice before believing it.
+   */
+  onLeave: () => void;
+}) {
   const [step, setStep] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -230,7 +243,10 @@ export function PracticeSignup({ onDone }: { onDone: (reference: string) => void
                 <Select
                   value={practiceType}
                   onChange={(v) => setPracticeType(v as PracticeType | "")}
-                  placeholder="Not saying yet"
+                  // "Not saying yet" is how an operator talks to another
+                  // operator. This form is read by a customer filling in a
+                  // registration, and the field is genuinely optional.
+                  placeholder="Select a type (optional)"
                 >
                   {types.map((t) => (
                     <option key={t.key} value={t.key}>
@@ -478,8 +494,8 @@ export function PracticeSignup({ onDone }: { onDone: (reference: string) => void
         <div className="border-border mt-6 flex items-center justify-between gap-3 border-t pt-5">
           <button
             type="button"
-            onClick={() => setStep((s) => Math.max(0, s - 1))}
-            disabled={step === 0 || busy}
+            onClick={() => (step === 0 ? onLeave() : setStep((s) => s - 1))}
+            disabled={busy}
             className="border-border hover:bg-secondary shrink-0 rounded-md border px-4 py-2 text-body font-medium transition-colors disabled:opacity-40"
           >
             Back
@@ -511,49 +527,87 @@ export function PracticeSignup({ onDone }: { onDone: (reference: string) => void
 }
 
 /**
- * Where you are in a five-step form.
+ * Where you are in a five-step form, and what is behind you.
  *
- * Numbered rather than a bar: a progress bar says how far, and what somebody
- * filling this in wants to know is what is left. The current step is named
- * above the fields as well, because a row of dots is not a label.
+ * ---- Three states, told apart without colour ----------------------------
+ *
+ * Done is a tick, current is a filled badge, ahead is an outline. A reader who
+ * cannot separate the blues still has three different shapes, and the current
+ * step is named in full above the fields as well — a row of numbers is a
+ * position, not a label.
+ *
+ * The labels collapse to numbers below `sm`. Five words at 11px across a 360px
+ * screen either wrap into three lines or shrink until nobody reads them, and
+ * what somebody actually needs on a phone is "three of five".
  */
 function Progress({ steps, at }: { steps: string[]; at: number }) {
   return (
-    <ol className="flex flex-wrap items-center gap-x-2 gap-y-1" aria-label="Progress">
-      {steps.map((label, i) => (
-        <li key={label} className="flex items-center gap-2">
-          <span
-            aria-current={i === at ? "step" : undefined}
-            className={cn(
-              "flex items-center gap-1.5 text-micro font-medium",
-              i === at
-                ? "text-primary"
-                : i < at
-                  ? "text-muted-foreground"
-                  : "text-muted-foreground",
-            )}
-          >
+    <ol
+      className="flex flex-wrap items-center gap-x-1.5 gap-y-2"
+      aria-label={`Step ${at + 1} of ${steps.length}: ${steps[at]}`}
+    >
+      {steps.map((label, i) => {
+        const done = i < at;
+        const current = i === at;
+
+        return (
+          <li key={label} className="flex items-center gap-1.5">
             <span
+              aria-current={current ? "step" : undefined}
               className={cn(
-                "tnum flex size-5 items-center justify-center rounded-full border text-micro",
-                i === at
+                "flex items-center gap-1.5 rounded-full border py-1 pr-1 pl-1 transition-colors duration-150 sm:pr-2.5",
+                current
                   ? "border-primary bg-primary text-primary-foreground"
-                  : i < at
-                    ? "border-primary text-primary"
-                    : "border-border",
+                  : done
+                    ? "border-primary/40 text-primary"
+                    : "border-border text-muted-foreground",
               )}
             >
-              {i + 1}
+              <span
+                className={cn(
+                  "tnum flex size-5 shrink-0 items-center justify-center rounded-full text-micro font-semibold",
+                  current
+                    ? "bg-primary-foreground text-primary"
+                    : done
+                      ? "bg-accent text-primary"
+                      : "bg-secondary",
+                )}
+              >
+                {done ? (
+                  <svg viewBox="0 0 24 24" fill="none" className="size-3" aria-hidden>
+                    <path
+                      d="m5 13 4 4L19 7"
+                      stroke="currentColor"
+                      strokeWidth="3"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  </svg>
+                ) : (
+                  i + 1
+                )}
+              </span>
+              {/* The word, where there is room for it. */}
+              <span className="hidden text-micro font-medium sm:inline">{label}</span>
+              {/* And for anybody who cannot see the badge at all. */}
+              <span className="sr-only">
+                {label}
+                {done ? " — done" : current ? " — current" : ""}
+              </span>
             </span>
-            {label}
-          </span>
-          {i < steps.length - 1 ? (
-            <span aria-hidden className="text-muted-foreground">
-              ·
-            </span>
-          ) : null}
-        </li>
-      ))}
+
+            {i < steps.length - 1 ? (
+              <span
+                aria-hidden
+                className={cn(
+                  "h-px w-3 sm:w-4",
+                  done ? "bg-primary/40" : "bg-border",
+                )}
+              />
+            ) : null}
+          </li>
+        );
+      })}
     </ol>
   );
 }

@@ -139,6 +139,21 @@ const GROUNDS = [
   ['--sidebar', 'the sidebar'],
 ];
 
+/**
+ * A file whose contents all sit on one surface of its own.
+ *
+ * A review said the entry screen's brand panel was too faint and this test had
+ * no opinion: the panel paints `bg-accent/60` on a container and its text sits
+ * in child elements, so neither GROUNDS nor the own-fill reader ever looked at
+ * the pairing. It measures 6.16:1 in light — the review was wrong about the
+ * colour and right that nothing was watching.
+ *
+ * Scoped to the file rather than added to GROUNDS. As a universal ground it
+ * reported amber icons against a marketing panel they are never drawn in,
+ * which is the false pairing this test already learned not to make.
+ */
+const PANEL_GROUNDS = new Map([['components/entry-shell.tsx', ['--accent', 0.6]]]);
+
 /** `bg-secondary/60`, `bg-waiting-tint` — what an element paints under itself. */
 const OWN_FILL = /\bbg-([a-z][\w-]*?)(?:\/(\d{1,3}))?(?=["'\s`])/g;
 
@@ -305,11 +320,15 @@ describe('the console is readable in both themes', () => {
          * button's label — is checked against that fill alone, because the
          * page behind it is a ground it never touches.
          */
+        const panel = PANEL_GROUNDS.get(rel(file));
+
         const grounds = own.length
           ? own.map(([t, a, label]) => [t, a, label])
           : ON_FILL.has(token)
             ? [[ON_FILL.get(token), 1, ON_FILL.get(token).slice(2)]]
-            : GROUNDS.map(([t, label]) => [t, 1, label]);
+            : panel
+              ? [[panel[0], panel[1], 'its own panel']]
+              : GROUNDS.map(([t, label]) => [t, 1, label]);
 
         for (const [groundToken, groundAlpha, where] of grounds) {
           const rawGround = map.get(groundToken);
@@ -334,6 +353,46 @@ describe('the console is readable in both themes', () => {
         [...failures].sort(),
         [],
         `\nunder threshold in ${theme}:\n${[...failures].sort().join('\n')}\n`,
+      );
+    });
+  }
+
+  for (const [theme, map] of [
+    ['light', LIGHT],
+    ['dark', DARK],
+  ]) {
+    test(`the edge of a control can be seen — ${theme}`, () => {
+      /*
+       * WCAG 1.4.11: visual information required to identify a user interface
+       * component needs 3:1 against what is adjacent. The boundary of a text
+       * field is exactly that, and nothing here was checking it — this file
+       * measured inks and had no opinion about edges at all.
+       *
+       * `--input` was #dde3ea, the same value as the separator token, which is
+       * 1.29:1 on a white card. Every input in the console had an edge nobody
+       * could see.
+       *
+       * `--border` is deliberately not held to this. It draws panel edges and
+       * table hairlines — decoration between things, not the boundary of a
+       * control — and holding a hairline to 3:1 would make every table in the
+       * console look like a spreadsheet.
+       */
+      for (const ground of ['--card', '--background', '--popover']) {
+        const r = ratio(map.get('--input'), map.get(ground));
+        assert.ok(
+          r >= 3,
+          `--input is ${r.toFixed(2)}:1 on ${ground} in ${theme}; a control boundary needs 3:1`,
+        );
+      }
+    });
+
+    test(`and the focus ring is louder than the resting edge — ${theme}`, () => {
+      // Focus has to be visible as a change, not merely visible. A ring that
+      // reads the same as the border it replaces is a ring nobody notices.
+      assert.ok(
+        ratio(map.get('--ring'), map.get('--card')) >
+          ratio(map.get('--input'), map.get('--card')),
+        `the focus ring is no more visible than the resting border in ${theme}`,
       );
     });
   }

@@ -112,7 +112,13 @@ export function SignIn() {
               aria-labelledby="tab-admin"
               className="flex flex-col gap-4"
             >
-              <Eyebrow>Admin / Operator</Eyebrow>
+              {/*
+                No eyebrow. The selected tab directly above already reads
+                "Admin / Operator" in a filled blue button — repeating it in
+                small caps underneath is the same words twice in two
+                centimetres, and the second one carries no information the
+                first did not.
+              */}
               <Heading
                 title={
                   mode === "login"
@@ -247,14 +253,16 @@ function PracticeSide({
             title="Apply to join MedPin"
             detail="Your application is reviewed before the practice is created. Nothing is set up until somebody at MedPin has read it."
           />
-          <PracticeSignup onDone={onSubmitted} />
-          <button
-            type="button"
-            onClick={() => onView("entry")}
-            className="text-muted-foreground hover:text-foreground w-fit text-caption underline underline-offset-4"
-          >
-            Back
-          </button>
+          {/*
+            One way back, and it is the form's own.
+            
+            There used to be a second link under the card. The form already has
+            Back in its action row, so step one showed two controls with one
+            label three centimetres apart — and the outer one silently
+            discarded a part-filled application, which is not what somebody
+            pressing "Back" on step one expects to happen.
+          */}
+          <PracticeSignup onDone={onSubmitted} onLeave={() => onView("entry")} />
         </>
       ) : view === "status" ? (
         <>
@@ -266,7 +274,6 @@ function PracticeSide({
         </>
       ) : (
         <>
-          <Eyebrow>Practice</Eyebrow>
           <Heading
             title="Practices sign in on the app"
             detail="There is no practice login on this domain. The console is for MedPin operators; a clinic's own people work in the MedPin app."
