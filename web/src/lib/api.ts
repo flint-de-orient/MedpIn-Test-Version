@@ -141,10 +141,26 @@ export async function api<T>(path: string, opts: Options = {}): Promise<T> {
     );
   }
 
-  // A 404 across this whole namespace means ADMIN_JWT_SECRET is unset on the
-  // server: the console is switched off rather than broken. Saying so saves an
-  // hour looking for a bug that is a missing environment variable.
-  if (res.status === 404 && !path.includes("/practices/") && !path.includes("/admins/")) {
+  /*
+   * A 404 on an admin route means the console is switched off, not broken.
+   *
+   * `requireAdmin` answers 404 rather than 401 when `ADMIN_JWT_SECRET` is
+   * unset, so the whole namespace disappears. Saying so saves an hour spent
+   * looking for a bug that is a missing environment variable.
+   *
+   * ---- Why this is now scoped to /admin ---------------------------------
+   *
+   * It used to fire on any 404 this client saw, which was true while every
+   * route it called was an admin one. Public application routes broke that:
+   * a practice pressing "Send the code" against a server that has not been
+   * redeployed yet got "The admin API is switched off (ADMIN_JWT_SECRET is not
+   * set)" — a sentence about a secret that has nothing to do with the route
+   * they called, on a page no admin is looking at. It sent the one person
+   * debugging it to the wrong file.
+   *
+   * A 404 anywhere else now falls through and says what the server said.
+   */
+  if (res.status === 404 && path.startsWith("/admin")) {
     throw new ApiError(
       "The admin API is switched off on this server (ADMIN_JWT_SECRET is not set).",
       404,

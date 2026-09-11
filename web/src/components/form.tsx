@@ -22,17 +22,27 @@ export function Select({
   onChange,
   children,
   placeholder,
+  disabled = false,
 }: {
   value: string;
   onChange: (v: string) => void;
   children: React.ReactNode;
   /** Shown as a disabled first option when nothing is chosen. */
   placeholder?: string;
+  /**
+   * For a picker with nothing to pick.
+   *
+   * A select whose list failed to load still opens, onto a single line that is
+   * the placeholder — a control that looks available and cannot help. Saying
+   * so is better than letting somebody click it twice.
+   */
+  disabled?: boolean;
 }) {
   return (
     <div className="relative">
       <select
         value={value}
+        disabled={disabled}
         onChange={(e) => onChange(e.target.value)}
         className={cn(
           textInput,

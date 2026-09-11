@@ -83,22 +83,57 @@ export function PracticeSignup({
    * ends up offering a type the enum has never heard of — and the submission
    * would then be refused by the validator for a value this screen suggested.
    */
-  const [types, setTypes] = useState<{ key: string; label: string }[]>([]);
+  const [types, setTypes] = useState<{ key: string; label: string }[] | null>(null);
   useEffect(() => {
     api<{ types: { key: string; label: string }[] }>("/applications/options", {
       anonymous: true,
     })
-      .then((out) => setTypes(out.types))
+      .then((out) => setTypes(out.types ?? []))
       .catch(() => {
-        /* The type is optional; the form still submits without it. */
+        /*
+         * `[]`, not silence.
+         *
+         * This swallowed the failure and left `types` empty, so the picker
+         * rendered with one option reading "Select a type (optional)" and
+         * nothing to select — a control that looks available, opens, and has
+         * nothing in it. That is what an operator sees when the console is
+         * newer than the API it is talking to and this route is not deployed
+         * yet, which is exactly when it happened.
+         *
+         * The field is optional, so the form still submits. It just says why
+         * it cannot offer the list instead of pretending there is not one.
+         */
+        setTypes([]);
       });
   }, []);
 
-  useEffect(() => setError(null), [step]);
+  /*
+   * The complaint clears when the thing complained about changes.
+   *
+   * This only watched `step`, so pressing Continue with half an email address
+   * typed left "That does not look like an email address." on screen while the
+   * rest of it was typed — the form telling somebody their valid email is
+   * invalid, in red, as they look at it. An error that outlives its cause is
+   * worse than no error: the next one is not believed either.
+   */
+  useEffect(() => {
+    setError(null);
+  }, [step, practiceName, contactName, contactEmail, phone, registrationNo, doctorName]);
 
   const e164 = useMemo(() => toE164(phone), [phone]);
 
-  const STEPS = ["Practice", "Contact", "Verify", "Registration", "Review"];
+  /*
+   * Four steps. "Verify" used to be a fifth, on its own.
+   *
+   * It held one sentence and a button: type a number on step two, press
+   * Continue, then press "Send the code" on step three. A step whose entire
+   * content is a button that could have been on the step before it is a step
+   * somebody counts and resents.
+   *
+   * The code arrives on the phone in the hand holding it, so the natural place
+   * to prove the number is directly under the field where it was typed.
+   */
+  const STEPS = ["Practice", "Contact", "Registration", "Review"];
 
   /* ------------------------------------------------------------- validation */
 
@@ -112,9 +147,10 @@ export function PracticeSignup({
       if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(contactEmail.trim()))
         return "That does not look like an email address.";
       if (!e164) return "Enter a ten-digit mobile number.";
+      // The proof, on the step that asked for the number.
+      if (!phoneToken) return "Verify the mobile number to continue.";
       return null;
     }
-    if (step === 2 && !phoneToken) return "Verify the number to continue.";
     return null;
   }
 
@@ -239,8 +275,16 @@ export function PracticeSignup({
                   autoFocus
                 />
               </Field>
-              <Field label="Practice type" hint="optional">
+              <Field
+                label="Practice type"
+                hint={types && types.length === 0 ? "unavailable just now" : "optional"}
+              >
                 <Select
+                  // Disabled while empty. A picker that opens onto one line
+                  // reading "Select a type (optional)" is a control that looks
+                  // available and is not, which is worse than one that says it
+                  // cannot help — and the field is optional either way.
+                  disabled={types !== null && types.length === 0}
                   value={practiceType}
                   onChange={(v) => setPracticeType(v as PracticeType | "")}
                   // "Not saying yet" is how an operator talks to another
@@ -248,7 +292,7 @@ export function PracticeSignup({
                   // registration, and the field is genuinely optional.
                   placeholder="Select a type (optional)"
                 >
-                  {types.map((t) => (
+                  {(types ?? []).map((t) => (
                     <option key={t.key} value={t.key}>
                       {t.label}
                     </option>
@@ -350,11 +394,16 @@ export function PracticeSignup({
                 No password to choose. Once the practice is approved, whoever
                 holds this number signs in on the MedPin app.
               </p>
-            </>
-          ) : null}
 
-          {step === 2 ? (
-            <div className="flex flex-col gap-4">
+              {/*
+                Proving the number, under the field that asked for it.
+
+                This was a step of its own holding one sentence and a button.
+                The code arrives on the phone already in somebody's hand, so
+                the place to answer it is here — and the step indicator loses a
+                number nobody wanted to count.
+              */}
+              <div className="border-border mt-1 flex flex-col gap-3 border-t pt-4">
               <p className="text-body">
                 We will text a code to{" "}
                 <span className="font-mono font-medium">{e164 ?? phone}</span>.
@@ -405,10 +454,11 @@ export function PracticeSignup({
                   Number verified.
                 </p>
               ) : null}
-            </div>
+              </div>
+            </>
           ) : null}
 
-          {step === 3 ? (
+          {step === 2 ? (
             <>
               <Field label="Practice registration number" hint="optional">
                 <input
@@ -451,13 +501,13 @@ export function PracticeSignup({
             </>
           ) : null}
 
-          {step === 4 ? (
+          {step === 3 ? (
             <dl className="divide-border border-border divide-y rounded-md border">
               <Summary label="Practice" value={practiceName} />
               <Summary
                 label="Type"
                 value={
-                  types.find((t) => t.key === practiceType)?.label ?? "not said"
+                  (types ?? []).find((t) => t.key === practiceType)?.label ?? "not said"
                 }
               />
               <Summary label="Specialty" value={specialty || "not said"} />
@@ -501,7 +551,7 @@ export function PracticeSignup({
             Back
           </button>
 
-          {step === 4 ? (
+          {step === 3 ? (
             <button
               type="button"
               onClick={() => void submit()}
@@ -510,7 +560,7 @@ export function PracticeSignup({
             >
               {busy ? "Submitting…" : "Submit registration"}
             </button>
-          ) : step === 2 ? null : (
+          ) : (
             <button
               type="button"
               onClick={next}

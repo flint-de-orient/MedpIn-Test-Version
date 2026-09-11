@@ -655,14 +655,10 @@ function ForgotForm({
   }
 
   return (
+    // No title. The panel writes one above every form it renders, and this
+    // carried its own — so the reset view said "Reset your password" twice with
+    // two different explanations under it, exactly as the sign-in view did.
     <form onSubmit={submit} noValidate className="flex flex-col gap-4">
-      <div>
-        <h1 className="text-heading font-semibold tracking-tight">Reset your password</h1>
-        <p className="text-muted-foreground mt-1 text-caption leading-relaxed">
-          We will email a link to the address on your account.
-        </p>
-      </div>
-
       <div>
         <Label htmlFor="f-email">Email</Label>
         <input
@@ -769,9 +765,10 @@ function ResetForm({
 
   return (
     <form onSubmit={submit} noValidate className="flex flex-col gap-4">
+      {/* Same again: the panel's heading is the only one. What stays is the
+          line that changes with the route the operator arrived by. */}
       <div>
-        <h1 className="text-heading font-semibold tracking-tight">Set a new password</h1>
-        <p className="text-muted-foreground mt-1 text-caption leading-relaxed">
+        <p className="text-muted-foreground text-caption leading-relaxed">
           {prefill
             ? "The link filled this in. Choose a password, then confirm with your passkey or authenticator code."
             : "Paste the token from the email, or one minted on the server with scripts/resetAdmin.js."}

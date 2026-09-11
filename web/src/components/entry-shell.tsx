@@ -126,7 +126,22 @@ function BrandPanel() {
         aria-hidden
         width={928}
         height={506}
-        className="border-border/60 mt-12 w-full rounded-lg border"
+        /*
+          No frame.
+
+          It had a rounded border, which read as a card sitting on the panel
+          rather than artwork belonging to it. Keying the background out
+          instead was tried and abandoned: the illustration's background is a
+          near-white gradient and the doctor's coat and the man's shirt are
+          near-white too and touch it, so a flood fill ran straight into them
+          and removed most of both. A mangled illustration is worse than a
+          visible edge.
+
+          What is left is a 9-step tonal difference between the file's own
+          background and the panel, which at this size reads as the artwork
+          having a soft ground rather than as a box.
+        */
+        className="mt-10 w-[85%] self-center"
       />
     </aside>
   );
