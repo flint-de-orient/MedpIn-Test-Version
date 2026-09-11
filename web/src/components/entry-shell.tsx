@@ -1,6 +1,6 @@
 "use client";
 
-import { Logo, Wordmark } from "@/components/icons";
+import { Wordmark } from "@/components/icons";
 import { cn } from "@/lib/utils";
 
 /**
@@ -53,24 +53,28 @@ function BrandPanel() {
       // render at all, and on large ones it repeats nothing the form needs.
       aria-label="About MedPin"
       /*
-        Stays put while the form scrolls.
-        
-        The registration is five steps and the tallest of them runs well past a
-        laptop viewport. Without this the panel stretched to match it, which
-        pushed the illustration hundreds of pixels below the fold and left a
-        column of empty tint beside the fields — the brand argument visible
-        only to somebody who had already decided to scroll past it.
-        
-        `max-h-dvh` with its own scroll, so a short viewport can still reach the
-        bottom of the panel rather than clipping it.
+        Sticky, and nothing else.
+
+        This had `max-h-dvh` and `overflow-y-auto` so a short viewport could
+        reach the bottom of the panel. What it actually produced was a second
+        scrollbar down the middle of the page, next to the window's own, with
+        the illustration cut off behind it.
+
+        No inner scroll now and no cap: the panel is as tall as its contents and
+        the page scrolls once, like a page. `justify-start` rather than
+        `justify-between` because the form beside it can be five steps tall —
+        spreading to fill that pushed the illustration hundreds of pixels down
+        for no reason, which is the problem the cap was added to solve.
       */
-      className="bg-accent/60 border-border hidden shrink-0 flex-col justify-between border-r px-10 py-12 lg:sticky lg:top-0 lg:flex lg:max-h-dvh lg:w-[42%] lg:max-w-[34rem] lg:overflow-y-auto"
+      className="bg-accent/60 border-border hidden shrink-0 flex-col justify-center border-r px-10 py-12 lg:sticky lg:top-0 lg:flex lg:h-dvh lg:w-[42%] lg:max-w-[34rem]"
     >
       <div>
-        <div className="flex items-center gap-3">
-          <Logo className="size-9" />
-          <Wordmark className="h-7 w-auto" />
-        </div>
+        {/*
+          `Wordmark` is the full lockup — emblem and all — which its own
+          comment in icons.tsx says. Setting a `Logo` beside it drew the mark
+          twice, side by side, at the top of the page.
+        */}
+        <Wordmark className="h-8 w-auto" />
         <p className="text-muted-foreground mt-2 text-caption tracking-[0.04em]">
           Healthcare Operations Platform
         </p>
@@ -78,13 +82,10 @@ function BrandPanel() {
         <h1 className="text-foreground mt-10 max-w-[18ch] text-[1.75rem] leading-[1.2] font-semibold tracking-tight">
           Smarter operations for better healthcare
         </h1>
-        <p className="text-muted-foreground mt-4 max-w-[44ch] text-body leading-relaxed">
-          MedPin helps healthcare practices and the operators who support them
-          run the day: registration, consultations, prescriptions and the plan
-          behind them.
-        </p>
-
-        <ul className="mt-9 flex flex-col gap-6">
+        {/* No paragraph between the headline and the points. It restated them
+            in prose, and three specific claims say more than a sentence
+            summarising the three. */}
+        <ul className="mt-8 flex flex-col gap-5">
           {POINTS.map((p) => (
             <li key={p.title} className="flex gap-3.5">
               <span className="text-primary mt-0.5 shrink-0">{p.icon}</span>

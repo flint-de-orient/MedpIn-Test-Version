@@ -5,7 +5,7 @@ import { api, ApiError } from "@/lib/api";
 import { useSession } from "@/lib/session";
 import type { LoginResult } from "@/lib/types";
 import { cn } from "@/lib/utils";
-import { IconEye, IconEyeOff, Spinner, Logo, Wordmark } from "@/components/icons";
+import { IconEye, IconEyeOff, Spinner, Wordmark } from "@/components/icons";
 import { AudienceTabs, EntryShell } from "@/components/entry-shell";
 import { PracticeSignup } from "@/components/practice-signup";
 import { ApplicationStatusView } from "@/components/application-status";
@@ -97,10 +97,17 @@ export function SignIn() {
     <EntryShell>
       <div className="flex flex-col gap-5">
         {/* The mark, for the phone where the brand panel does not render. */}
-        <div className="flex items-center gap-2.5 lg:hidden">
-          <Logo className="size-7" />
-          <Wordmark className="h-6 w-auto" />
-        </div>
+        {/*
+          The full lockup, once — `Wordmark` already contains the emblem.
+
+          `self-start` is load-bearing. This is a direct child of a column
+          flex container, so the default `align-items: stretch` pulls it to the
+          full width of the cross axis; with `h-7` pinning the height, a 700x256
+          lockup became a 350x28 smear running off the side of a phone. It was
+          correct in the brand panel only because there it sits inside a
+          wrapper div and was never a flex item itself.
+        */}
+        <Wordmark className="h-7 w-auto self-start lg:hidden" />
 
         <AudienceTabs value={who} onChange={setWho} />
 
@@ -175,10 +182,16 @@ export function SignIn() {
           )}
         </div>
 
-        <p className="text-muted-foreground text-center text-micro leading-relaxed">
-          This console holds practices, plans and counts. It does not hold
-          patient records.
-        </p>
+        {/*
+          Nothing here. This said "This console holds practices, plans and
+          counts. It does not hold patient records" directly under a panel
+          whose third point already reads "No patient records here — this
+          console holds practices, plans and counts". The same sentence twice
+          on one screen, forty centimetres apart.
+
+          It still runs along the bottom of every screen inside the console,
+          which is where somebody who has signed in can read it.
+        */}
       </div>
     </EntryShell>
   );
@@ -513,17 +526,10 @@ function LoginForm({ onForgot }: { onForgot: () => void }) {
   }
 
   return (
+    // No title here. The panel that renders this form already writes one above
+    // it, and for a while the screen said "Sign in" twice in four centimetres
+    // with two different one-line descriptions under it.
     <form onSubmit={submit} noValidate className="flex flex-col gap-4">
-      <div>
-        <h1 className="text-display font-semibold tracking-tight">Sign in</h1>
-        {/* Was two clauses of what this console does and does not hold — true,
-            and not what somebody signing in needs. The full sentence still runs
-            along the bottom of every screen inside. */}
-        <p className="text-muted-foreground mt-1 text-body">
-          The MedPin operator console.
-        </p>
-      </div>
-
       <div>
         <Label htmlFor="email">Email</Label>
         <input
