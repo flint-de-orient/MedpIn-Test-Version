@@ -263,3 +263,11 @@ export const Wordmark = ({ className }: Props) => (
     height={256}
   />
 );
+
+/** An application waiting on a decision — an inbox tray, not a building. */
+export const IconSignup = ({ className }: Props) => (
+  <svg {...base} className={className}>
+    <path d="M3 13h5l1.5 2.5h5L16 13h5" />
+    <path d="M3 13 5.5 5.5A1.5 1.5 0 0 1 7 4.5h10a1.5 1.5 0 0 1 1.5 1L21 13v4.5a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 17.5V13Z" />
+  </svg>
+);

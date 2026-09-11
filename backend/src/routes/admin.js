@@ -4,6 +4,7 @@ import { z } from 'zod';
 
 import { requireAdmin } from '../middleware/requireAdmin.js';
 import adminBillingRoutes from './adminBilling.js';
+import adminApplicationRoutes from './adminApplications.js';
 import { validate, q } from '../middleware/validate.js';
 import { asyncHandler, unauthorized, notFound, badRequest } from '../middleware/errors.js';
 import { PlatformAdmin } from '../models/PlatformAdmin.js';
@@ -47,6 +48,7 @@ import {
 } from '../services/adminReset.js';
 import { mailConfigured } from '../services/mailer.js';
 import { joinByPhone, membersOf } from '../services/memberships.js';
+import { provisionPractice } from '../services/provisionPractice.js';
 import { requestOtp, verifyOtp, signPhoneToken, phoneFromToken } from '../services/otp.js';
 import { toE164 } from '../utils/phone.js';
 import { ROLES } from '../models/User.js';
@@ -456,6 +458,16 @@ router.use(requireAdmin);
  * added to that file later.
  */
 router.use('/billing', adminBillingRoutes);
+
+/*
+ * The self-registration queue, nested for exactly the same reason.
+ *
+ * These routes approve a practice into existence. A sibling mount in
+ * routes/index.js would not inherit `requireAdmin`, and the one surface on
+ * this platform that turns a web form into a tenant would answer anybody who
+ * typed the URL.
+ */
+router.use('/', adminApplicationRoutes);
 
 router.get(
   '/me',
@@ -1060,78 +1072,24 @@ router.post(
       );
     }
 
-    /**
-     * Is this one already here?
+    /*
+     * One sequence, two callers.
      *
-     * ---- Two strengths of answer, and only one of them refuses ----------
+     * This used to be written out here: the licence-clash check, the practice
+     * row, the head doctor, the letterhead fallbacks and the compensating
+     * delete when the head cannot be attached. Approving a self-registration
+     * has to produce exactly the same thing, and a second copy of nine steps
+     * is how one path ends up without a head doctor.
      *
-     * A registration number is a claim about a specific licence, and two
-     * practices holding the same one is either a duplicate or a mistake. That
-     * is refused.
-     *
-     * A name is not. "City Clinic" is a real name in every city in the
-     * country, and refusing the second one would be this console deciding that
-     * a customer may not exist because somebody earlier chose the same two
-     * words. There is no delete on this screen, so a false refusal here is
-     * cheap and a false acceptance is a row somebody has to live with — but
-     * the reverse is also true, and it is not the console's place to
-     * adjudicate names. It warns and creates.
+     * See [services/provisionPractice.js] for why each step is where it is.
      */
-    if (brand.registrationNo) {
-      const clash = await Practice.findOne({ registrationNo: brand.registrationNo })
-        .select('name')
-        .lean();
-      if (clash) {
-        throw badRequest(
-          `Registration number ${brand.registrationNo} already belongs to ${clash.name}.`,
-        );
-      }
-    }
-
-    const practice = await Practice.create({
-      ...brand,
-      status: PRACTICE_STATUS.ONBOARDING,
-      verification: VERIFICATION.UNVERIFIED,
+    const { practice, head } = await provisionPractice({
+      brand,
+      headDoctorName,
+      headDoctorPhone,
+      headDoctorQualifications,
+      headDoctorRegistrationNo,
     });
-
-    /**
-     * The head, immediately.
-     *
-     * Not a second call the operator might not make. A practice that exists for
-     * even one request with nobody in it is a practice somebody can navigate to
-     * and find empty, and the failure mode of "I will add the doctor next" is
-     * that nobody does.
-     *
-     * If this throws — the number belongs to a patient, say — the practice row
-     * is removed rather than left behind. Mongo has no transaction here without
-     * a replica set, so the compensation is explicit and the audit records
-     * either a practice with a head or nothing at all.
-     */
-    let head;
-    try {
-      head = await joinByPhone({
-        phone: headDoctorPhone,
-        name: headDoctorName,
-        practice: practice._id,
-        role: ROLES.DOCTOR,
-        isOwner: true,
-        qualifications: headDoctorQualifications,
-        registrationNo: headDoctorRegistrationNo,
-      });
-    } catch (err) {
-      await Practice.deleteOne({ _id: practice._id });
-      throw err;
-    }
-
-    // The doctor's own number is the practice's letterhead unless one was
-    // typed. A solo practice has exactly one, and asking twice is how the two
-    // drift apart.
-    if (!practice.registrationNo && headDoctorRegistrationNo) {
-      practice.registrationNo = headDoctorRegistrationNo;
-    }
-    if (!practice.doctorDisplayName) practice.doctorDisplayName = headDoctorName;
-    practice.headDoctor = head.user._id;
-    await practice.save();
 
     await AdminAuditLog.record({
       admin: req.admin,

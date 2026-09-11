@@ -160,9 +160,20 @@ describe('destructive actions must say why', () => {
   });
 
   test('a new practice arrives unverified', () => {
-    // Creating a practice is not vouching for it.
-    assert.match(route, /verification: VERIFICATION\.UNVERIFIED/);
-    assert.match(route, /status: PRACTICE_STATUS\.ONBOARDING/);
+    /*
+     * Creating a practice is not vouching for it.
+     *
+     * Read from the provisioning service, not the route. Approving a
+     * self-registration has to produce exactly the same practice an operator
+     * creates by hand, so the sequence moved into one place and both callers
+     * use it — this assertion followed the rule rather than the file.
+     */
+    const provision = readFileSync(
+      new URL('../src/services/provisionPractice.js', import.meta.url),
+      'utf8',
+    );
+    assert.match(provision, /verification: VERIFICATION\.UNVERIFIED/);
+    assert.match(provision, /status: PRACTICE_STATUS\.ONBOARDING/);
   });
 
   test('reads are logged too', () => {

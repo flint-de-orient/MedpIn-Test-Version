@@ -22,6 +22,7 @@ import {
   IconMoon,
   IconOverview,
   IconPractice,
+  IconSignup,
   IconSearch,
   IconSun,
   Logo,
@@ -44,6 +45,9 @@ const SECTIONS: { heading: string; items: Item[] }[] = [
     items: [
       { href: "/", label: "Overview", Icon: IconOverview },
       { href: "/practices/", label: "Practices", Icon: IconPractice },
+      // Next to Practices because that is what it produces: approving one of
+      // these creates a practice, down the same path the register uses.
+      { href: "/signups/", label: "Self signup", Icon: IconSignup },
       { href: "/billing/", label: "Billing", Icon: IconBilling },
       { href: "/analytics/", label: "Analytics", Icon: IconAnalytics },
       { href: "/audit/", label: "Audit", Icon: IconAudit },

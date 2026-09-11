@@ -384,3 +384,57 @@ export type CapabilityState = {
   /** What a member still needs before they can use it, even where the practice has it. */
   needsPermission: string | null;
 };
+
+/**
+ * A practice asking to exist.
+ *
+ * Not a Practice. A Practice is a tenant — capability resolution, billing and
+ * enrolment scoping all point at one — so nothing a web form produces may be
+ * one. Approving an application is the moment a tenant is created, down the
+ * same path an operator uses by hand.
+ */
+export type ApplicationStatus =
+  | "submitted"
+  | "under_review"
+  | "more_info"
+  | "approved"
+  | "rejected";
+
+export type ApplicationRow = {
+  id: string;
+  reference: string;
+  status: ApplicationStatus;
+  practiceName: string;
+  practiceType: PracticeType | null;
+  specialty: string | null;
+  city: string | null;
+  state: string | null;
+  contactName: string;
+  contactEmail: string;
+  contactPhone: string;
+  /** The operator who opened it. Advisory — it does not stop anybody deciding. */
+  reviewer: string | null;
+  submittedOn: string;
+  /** What it became, once approved. Null until then. */
+  practice: string | null;
+};
+
+export type ApplicationDetail = ApplicationRow & {
+  addressLine: string | null;
+  postalCode: string | null;
+  phoneVerifiedAt: string;
+  registrationNo: string | null;
+  doctorName: string | null;
+  doctorRegistrationNo: string | null;
+  notes: string | null;
+  history: { action: string; by: string | null; note: string | null; at: string }[];
+};
+
+/** What each state means, said once, where the operator and the applicant both read it. */
+export const APPLICATION_LABELS: Record<ApplicationStatus, string> = {
+  submitted: "Pending review",
+  under_review: "Under review",
+  more_info: "More information required",
+  approved: "Approved",
+  rejected: "Rejected",
+};

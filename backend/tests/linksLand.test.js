@@ -72,6 +72,10 @@ const ACCEPTS = {
     months: ['6', '12', '24'],
   },
   '/admins/': {},
+  /// An application id, so it cannot be checked here beyond its name. The
+  /// queue and one application live at the same route, exactly as the
+  /// practice register and one practice do.
+  '/signups/': { id: null },
   /// An id, so it cannot be checked here beyond its name. The trail scopes to
   /// one practice, which is how the practice view answers "what have we done
   /// to them" without keeping a second copy of the log.

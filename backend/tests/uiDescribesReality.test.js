@@ -27,6 +27,20 @@ import path from 'node:path';
  */
 const WEB = fileURLToPath(new URL('../../web/src/', import.meta.url));
 
+/**
+ * Comments blanked, line numbers kept.
+ *
+ * Three assertions in this repository have now failed on the prose written to
+ * document the rule they enforce — a layout scanner reading the comment that
+ * explains why `min-h-full` is wrong, a contrast scanner reading the one about
+ * `opacity-90`, and the tenant check below reading a docblock that names
+ * `provisionPractice` to say it is not called there. Anything scanning for code
+ * strips comments first.
+ */
+function withoutComments(body) {
+  return body.replace(/\/\*[\s\S]*?\*\/|\/\/[^\n]*/g, (m) => m.replace(/[^\n]/g, ' '));
+}
+
 function sourceUnder(dir) {
   let out = '';
   for (const name of readdirSync(dir)) {
@@ -353,10 +367,65 @@ describe('the entry screen is right about how a practice signs in', () => {
     );
   });
 
-  test('and says registration is not open rather than collecting for nowhere', () => {
-    // There is no application record, no review queue and no provisioning.
-    // A five-step form that ends in a POST to a route that does not exist is
-    // the thing the brief calls fabricating an integration.
-    assert.match(entry, /Self-registration is not open yet/);
+  test('and the registration it offers has somewhere to post to', () => {
+    /*
+     * This assertion used to say the opposite.
+     *
+     * The panel said "self-registration is not open yet", which was true: there
+     * was no application record, no review queue and no provisioning, so a
+     * five-step form would have ended in a POST to a route that did not exist.
+     *
+     * All three exist now, so the claim had to change — and this test failing
+     * on the day the copy did is the whole point of the file. What it pins now
+     * is that the button leads somewhere real.
+     */
+    assert.ok(
+      !/Self-registration is not open yet/.test(entry),
+      'the panel still says registration is closed',
+    );
+    assert.match(entry, /Register your practice/);
+
+    const routes = readFileSync(
+      new URL('../src/routes/applications.js', import.meta.url),
+      'utf8',
+    );
+    assert.match(routes, /router\.post\(\s*'\/'/, 'nothing accepts an application');
+  });
+
+  test('and approving one is what creates the practice, not the form', () => {
+    // The line the whole surface is drawn around. A Practice is a tenant, and
+    // the public route must not be able to make one.
+    /*
+     * Comments stripped before the scan.
+     *
+     * The first version matched the docblock in that very file explaining that
+     * provisioning happens elsewhere — the third assertion in this repository
+     * to fail on the prose written to document the rule it enforces. A scanner
+     * reading for code has no business reading comments.
+     */
+    const publicRoutes = withoutComments(
+      readFileSync(new URL('../src/routes/applications.js', import.meta.url), 'utf8'),
+    );
+    assert.ok(
+      !/Practice\.create|provisionPractice/.test(publicRoutes),
+      'the public application route can create a tenant',
+    );
+
+    const review = readFileSync(
+      new URL('../src/routes/adminApplications.js', import.meta.url),
+      'utf8',
+    );
+    assert.match(review, /provisionPractice\(/);
+  });
+
+  test('and the form does not collect a password for a login that does not exist', () => {
+    // A practice has no email identity anywhere in this product. Collecting a
+    // password would be a credential with nothing to unlock.
+    const signup = readFileSync(
+      new URL('../../web/src/components/practice-signup.tsx', import.meta.url),
+      'utf8',
+    );
+    assert.ok(!/type="password"/.test(signup), 'the signup form collects a password');
+    assert.match(signup, /No password to choose/);
   });
 });

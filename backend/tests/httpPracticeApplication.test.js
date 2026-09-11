@@ -1,0 +1,440 @@
+import { test, describe, before, after, beforeEach } from 'node:test';
+import assert from 'node:assert/strict';
+
+import { boot, shutdown, wipe } from './helpers/httpHarness.js';
+import { makePractice } from './helpers/factories.js';
+import { PlatformAdmin } from '../src/models/PlatformAdmin.js';
+import { AdminAuditLog } from '../src/models/AdminAuditLog.js';
+import { Practice, PRACTICE_STATUS, VERIFICATION } from '../src/models/Practice.js';
+import { Membership } from '../src/models/Membership.js';
+import { PracticeApplication, APPLICATION_STATUS } from '../src/models/PracticeApplication.js';
+import { signPhoneToken } from '../src/services/otp.js';
+import { env } from '../src/config/env.js';
+
+/**
+ * A practice asking to exist, and an operator deciding.
+ *
+ * ---- The line this whole surface is drawn around ------------------------
+ *
+ * A Practice is a tenant. Capability resolution, billing, enrolment scoping
+ * and the audit trail all point at one, so a web form that created a Practice
+ * would make anybody who filled it in a tenant on this platform.
+ *
+ * An application therefore creates nothing. It is a row that grants nothing,
+ * and the first moment a tenant exists is when an operator approves it — down
+ * the same code path they use to create one by hand.
+ */
+
+const ADMIN_SECRET = 'an_admin_secret_for_the_application_tests';
+const PHONE = '+919812345601';
+
+let origin;
+let realAdminSecret;
+let realLimit;
+let token;
+
+async function call(method, path, body, opts = {}) {
+  const res = await fetch(origin + path, {
+    method,
+    headers: {
+      ...(opts.anonymous ? {} : { Authorization: `Bearer ${token}` }),
+      ...(body === undefined ? {} : { 'Content-Type': 'application/json' }),
+    },
+    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+  });
+  const text = await res.text();
+  let parsed = null;
+  try {
+    parsed = text ? JSON.parse(text) : null;
+  } catch {
+    parsed = text;
+  }
+  return { status: res.status, body: parsed };
+}
+
+/** What a completed form posts: details, plus proof of the number. */
+const form = (over = {}) => ({
+  practiceName: 'Meridian Heart Centre',
+  practiceType: 'specialty_centre',
+  specialty: 'cardiology',
+  addressLine: '14 Park Street',
+  city: 'Kolkata',
+  state: 'West Bengal',
+  postalCode: '700016',
+  contactName: 'Dr Priya Nair',
+  contactEmail: 'priya@meridian.example',
+  phoneToken: signPhoneToken(PHONE),
+  registrationNo: 'WB-99001',
+  doctorName: 'Dr Priya Nair',
+  doctorRegistrationNo: 'WBMC-4471',
+  ...over,
+});
+
+/**
+ * The ceiling the two suites below raise.
+ *
+ * They set it to a thousand so twenty applications can come from one address,
+ * and a limiter switched off for a suite is a limiter nobody has watched work.
+ * This one lowers it instead.
+ *
+ * First in the file on purpose. `express-rate-limit` keeps its counter in the
+ * process, not the database, so `wipe()` does not touch it — a suite that ran
+ * after the others would start with their twenty requests already counted and
+ * refuse its own first one.
+ */
+describe('a public write has a ceiling', () => {
+  before(async () => {
+    origin = await boot();
+    realLimit = env.APPLICATION_RATE_LIMIT;
+    env.APPLICATION_RATE_LIMIT = 2;
+  });
+
+  after(async () => {
+    env.APPLICATION_RATE_LIMIT = realLimit;
+    await shutdown();
+  });
+
+  beforeEach(wipe);
+
+  test('and refuses past it, without writing', async () => {
+    // Distinct numbers, so the one-open-application rule is not what refuses.
+    const post = (n) =>
+      call(
+        'POST',
+        '/applications',
+        form({
+          practiceName: `Clinic ${n}`,
+          phoneToken: signPhoneToken(`+91981234560${n}`),
+          registrationNo: `WB-${n}0000`,
+        }),
+        { anonymous: true },
+      );
+
+    assert.equal((await post(1)).status, 201);
+    assert.equal((await post(2)).status, 201);
+
+    const third = await post(3);
+    assert.equal(third.status, 429, 'the limiter let a third through');
+    assert.equal(third.body.error.code, 'RATE_LIMITED');
+
+    // Refused before the handler, so nothing was written.
+    assert.equal(await PracticeApplication.countDocuments({}), 2);
+  });
+});
+
+describe('a practice applies', () => {
+  before(async () => {
+    origin = await boot();
+    realAdminSecret = env.ADMIN_JWT_SECRET;
+    env.ADMIN_JWT_SECRET = ADMIN_SECRET;
+
+    /*
+     * The submit limiter is six an hour per address, and this whole file is
+     * one address. Raised rather than switched off: the middleware still runs
+     * on every request, and the last test in the file lowers it to prove it
+     * refuses.
+     */
+    realLimit = env.APPLICATION_RATE_LIMIT;
+    env.APPLICATION_RATE_LIMIT = 1000;
+  });
+
+  after(async () => {
+    env.ADMIN_JWT_SECRET = realAdminSecret;
+    env.APPLICATION_RATE_LIMIT = realLimit;
+    await shutdown();
+  });
+
+  beforeEach(async () => {
+    await wipe();
+    const admin = await PlatformAdmin.create({
+      email: 'ops@example.com',
+      name: 'Ops',
+      passwordHash: 'x',
+      isActive: true,
+    });
+    const { signAdminToken } = await import('../src/services/adminTokens.js');
+    token = signAdminToken(admin);
+  });
+
+  test('and nothing becomes a tenant', async () => {
+    // The claim the whole surface rests on. An application is a row that
+    // grants nothing: no practice, nobody in one, no membership anywhere.
+    const res = await call('POST', '/applications', form(), { anonymous: true });
+    assert.equal(res.status, 201);
+
+    assert.equal(await Practice.countDocuments({}), 0, 'a web form created a tenant');
+    assert.equal(await Membership.countDocuments({}), 0, 'a web form created a membership');
+  });
+
+  test('the applicant gets a reference and nothing else to guess with', async () => {
+    const res = await call('POST', '/applications', form(), { anonymous: true });
+
+    assert.match(res.body.application.status, /submitted/);
+    // Long and random. A sequential id would let anybody read a stranger's
+    // contact details and licence number by counting upwards.
+    assert.ok(res.body.application.reference.length >= 10);
+    assert.equal(res.body.application.id, undefined, 'the row id reached the applicant');
+  });
+
+  test('the number stored is the one that was proved', async () => {
+    /*
+     * The submission carries a token, not a phone field. Taking both and
+     * trusting them to agree is how somebody verifies one number and submits
+     * another — the same mistake the practice wizard guards against.
+     */
+    await call(
+      'POST',
+      '/applications',
+      { ...form(), contactPhone: '+919800000000' },
+      { anonymous: true },
+    );
+
+    const row = await PracticeApplication.findOne({}).lean();
+    assert.equal(row.contactPhone, PHONE);
+  });
+
+  test('and an unproved number is refused outright', async () => {
+    const res = await call(
+      'POST',
+      '/applications',
+      { ...form(), phoneToken: 'not-a-token' },
+      { anonymous: true },
+    );
+    assert.equal(res.status, 400);
+    assert.equal(await PracticeApplication.countDocuments({}), 0);
+  });
+
+  test('pressing submit twice does not make two queues of one clinic', async () => {
+    await call('POST', '/applications', form(), { anonymous: true });
+    const again = await call('POST', '/applications', form(), { anonymous: true });
+
+    assert.equal(again.status, 400);
+    assert.equal(await PracticeApplication.countDocuments({}), 1);
+  });
+
+  test('but a decided application does not bar a second attempt', async () => {
+    // A rejection is not a ban. A practice turned down for missing papers
+    // should be able to come back with them.
+    await call('POST', '/applications', form(), { anonymous: true });
+    await PracticeApplication.updateOne({}, { $set: { status: APPLICATION_STATUS.REJECTED } });
+
+    const again = await call('POST', '/applications', form(), { anonymous: true });
+    assert.equal(again.status, 201);
+  });
+
+  test('the applicant can read their own status without an account', async () => {
+    const made = await call('POST', '/applications', form(), { anonymous: true });
+    const ref = made.body.application.reference;
+
+    const res = await call('GET', `/applications/${ref}`, undefined, { anonymous: true });
+    assert.equal(res.status, 200);
+    assert.equal(res.body.application.practiceName, 'Meridian Heart Centre');
+  });
+
+  test('and a wrong reference says nothing at all', async () => {
+    const res = await call('GET', '/applications/aaaaaaaaaaaa', undefined, { anonymous: true });
+    assert.equal(res.status, 404);
+  });
+});
+
+describe('an operator decides', () => {
+  before(async () => {
+    origin = await boot();
+    realAdminSecret = env.ADMIN_JWT_SECRET;
+    env.ADMIN_JWT_SECRET = ADMIN_SECRET;
+
+    /*
+     * The submit limiter is six an hour per address, and this whole file is
+     * one address. Raised rather than switched off: the middleware still runs
+     * on every request, and the last test in the file lowers it to prove it
+     * refuses.
+     */
+    realLimit = env.APPLICATION_RATE_LIMIT;
+    env.APPLICATION_RATE_LIMIT = 1000;
+  });
+
+  after(async () => {
+    env.ADMIN_JWT_SECRET = realAdminSecret;
+    env.APPLICATION_RATE_LIMIT = realLimit;
+    await shutdown();
+  });
+
+  beforeEach(async () => {
+    await wipe();
+    const admin = await PlatformAdmin.create({
+      email: 'ops@example.com',
+      name: 'Ops',
+      passwordHash: 'x',
+      isActive: true,
+    });
+    const { signAdminToken } = await import('../src/services/adminTokens.js');
+    token = signAdminToken(admin);
+  });
+
+  async function submitted(over = {}) {
+    const res = await call('POST', '/applications', form(over), { anonymous: true });
+    const row = await PracticeApplication.findOne({ reference: res.body.application.reference });
+    return row;
+  }
+
+  test('the queue is closed to anybody without an operator session', async () => {
+    // The one surface on this platform that turns a web form into a tenant.
+    await submitted();
+    const res = await call('GET', '/admin/applications', undefined, { anonymous: true });
+    assert.equal(res.status, 401);
+  });
+
+  test('and approving is closed to them too', async () => {
+    const a = await submitted();
+    const res = await call(
+      'POST',
+      `/admin/applications/${a._id}/approve`,
+      { note: 'Looks fine' },
+      { anonymous: true },
+    );
+    assert.equal(res.status, 401);
+    assert.equal(await Practice.countDocuments({}), 0);
+  });
+
+  test('every decision needs a reason', async () => {
+    // Including approval. "Approved" with nothing beside it is a decision
+    // nobody can review, and the applicant reads the note on the other two.
+    const a = await submitted();
+    for (const action of ['approve', 'reject', 'request-info']) {
+      const res = await call('POST', `/admin/applications/${a._id}/${action}`, {});
+      assert.equal(res.status, 400, `${action} was allowed with no reason`);
+    }
+  });
+
+  test('approving creates the practice, with somebody in it', async () => {
+    /*
+     * Down the same path an operator uses by hand. The alternative is an
+     * "approved" application somebody then has to turn into a practice, which
+     * is the same shape as "I will add the doctor next" — a second step that
+     * does not reliably happen.
+     */
+    const a = await submitted();
+    const res = await call('POST', `/admin/applications/${a._id}/approve`, {
+      note: 'Council register checked.',
+    });
+    assert.equal(res.status, 200);
+
+    const practice = await Practice.findOne({ name: 'Meridian Heart Centre' }).lean();
+    assert.ok(practice, 'approval did not produce a practice');
+    assert.equal(practice.status, PRACTICE_STATUS.ONBOARDING);
+    assert.equal(practice.verification, VERIFICATION.UNVERIFIED, 'approval vouched for the papers');
+
+    // And the head doctor, immediately — a practice with nobody in it is one
+    // somebody can navigate to and find empty.
+    const owner = await Membership.findOne({ practice: practice._id, isOwner: true }).lean();
+    assert.ok(owner, 'the practice was created with nobody in it');
+  });
+
+  test('the head doctor is the number the applicant proved', async () => {
+    // It has been theirs since before the application existed. Taking a fresh
+    // number at approval would accept an unverified one where it matters most.
+    const a = await submitted();
+    await call('POST', `/admin/applications/${a._id}/approve`, { note: 'Checked.' });
+
+    const practice = await Practice.findOne({}).lean();
+    const owner = await Membership.findOne({ practice: practice._id, isOwner: true })
+      .populate('user', 'phone')
+      .lean();
+    assert.equal(owner.user.phone, PHONE);
+  });
+
+  test('and the application points at what it became', async () => {
+    const a = await submitted();
+    await call('POST', `/admin/applications/${a._id}/approve`, { note: 'Checked.' });
+
+    const after = await PracticeApplication.findById(a._id).lean();
+    assert.equal(after.status, APPLICATION_STATUS.APPROVED);
+    assert.ok(after.practice, 'the application does not say what practice it produced');
+  });
+
+  test('a decided application cannot be decided again', async () => {
+    // Approving twice would create a second practice for one clinic.
+    const a = await submitted();
+    await call('POST', `/admin/applications/${a._id}/approve`, { note: 'Checked.' });
+
+    const again = await call('POST', `/admin/applications/${a._id}/approve`, { note: 'Again.' });
+    assert.equal(again.status, 400);
+    assert.equal(await Practice.countDocuments({}), 1);
+  });
+
+  test('a duplicate licence is refused, and leaves nothing behind', async () => {
+    /*
+     * The compensation in provisionPractice, reached from this side. The
+     * practice row is created before the head doctor can be attached, so a
+     * failure part-way must not leave a tenant with nobody in it.
+     */
+    await makePractice('Existing Clinic', { registrationNo: 'WB-99001' });
+    const a = await submitted();
+
+    const res = await call('POST', `/admin/applications/${a._id}/approve`, { note: 'Checked.' });
+    assert.equal(res.status, 400);
+    assert.match(res.body.error.message, /already belongs to/);
+
+    assert.equal(await Practice.countDocuments({}), 1, 'a half-made practice was left behind');
+    const after = await PracticeApplication.findById(a._id).lean();
+    assert.equal(after.status, APPLICATION_STATUS.SUBMITTED, 'the application moved on a failure');
+  });
+
+  test('asking for more information sends it back with the question', async () => {
+    const a = await submitted();
+    const res = await call('POST', `/admin/applications/${a._id}/request-info`, {
+      note: 'Send the establishment licence for the Park Street address.',
+    });
+    assert.equal(res.status, 200);
+
+    // The note is the only thing that reaches the applicant, and it is the
+    // whole point of this action.
+    const seen = await call('GET', `/applications/${a.reference}`, undefined, { anonymous: true });
+    assert.equal(seen.body.application.status, APPLICATION_STATUS.MORE_INFO);
+    assert.match(seen.body.application.latestNote, /establishment licence/);
+  });
+
+  test('a rejection reaches them too, with its reason', async () => {
+    const a = await submitted();
+    await call('POST', `/admin/applications/${a._id}/reject`, {
+      note: 'The registration number belongs to a different organisation.',
+    });
+
+    const seen = await call('GET', `/applications/${a.reference}`, undefined, { anonymous: true });
+    assert.equal(seen.body.application.status, APPLICATION_STATUS.REJECTED);
+    assert.match(seen.body.application.latestNote, /different organisation/);
+  });
+
+  test('and the applicant is never shown who decided', async () => {
+    // The trail is the platform's. What the applicant needs is the question or
+    // the reason, not the name of the operator who asked it.
+    const a = await submitted();
+    await call('POST', `/admin/applications/${a._id}/reject`, { note: 'No.' });
+
+    const seen = await call('GET', `/applications/${a.reference}`, undefined, { anonymous: true });
+    assert.equal(JSON.stringify(seen.body).includes('ops@example.com'), false);
+  });
+
+  test('every decision is in the platform log', async () => {
+    const a = await submitted();
+    await call('POST', `/admin/applications/${a._id}/approve`, { note: 'Council checked.' });
+
+    const entry = await AdminAuditLog.findOne({ action: 'admin.application.approve' }).lean();
+    assert.ok(entry, 'an approval was not recorded');
+    assert.match(entry.reason, /Council checked/);
+    // Both ends: the trail reads from the application and from the practice.
+    assert.ok(entry.practice, 'the approval does not name the practice it created');
+  });
+
+  test('the counts describe the queue, not the current filter', async () => {
+    await submitted();
+    await PracticeApplication.updateOne({}, { $set: { status: APPLICATION_STATUS.REJECTED } });
+    await submitted({ practiceName: 'Second Clinic' });
+
+    const res = await call('GET', '/admin/applications?open=true');
+    assert.equal(res.body.items.length, 1, 'a decided application is in the open queue');
+    assert.equal(res.body.counts.all, 2);
+    assert.equal(res.body.counts.open, 1);
+    assert.equal(res.body.counts.rejected, 1);
+  });
+});

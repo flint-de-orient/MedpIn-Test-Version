@@ -210,6 +210,17 @@ const schema = z.object({
   // number and purpose.
   OTP_RESEND_COOLDOWN_SECONDS: z.coerce.number().min(15).max(300).default(45),
 
+  /**
+   * How many practice applications one address may file an hour.
+   *
+   * Six is more than any real applicant needs and few enough that the queue
+   * stays readable — an operator reviewing these is the scarce resource. It is
+   * configurable because it is a judgement about a queue somebody has to work,
+   * and read per request so the limit can be proved rather than switched off
+   * for the suite.
+   */
+  APPLICATION_RATE_LIMIT: z.coerce.number().min(1).max(1000).default(6),
+
   // Clinic wall-clock timezone. All appointment slot times are computed in this
   // zone, so the schedule is correct no matter what timezone the server runs in
   // (a VPS is often UTC). India is a single zone.

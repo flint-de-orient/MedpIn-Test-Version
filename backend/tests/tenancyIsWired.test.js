@@ -85,8 +85,18 @@ describe('a practice cannot be created without somebody in it', () => {
   });
 
   test('a failure removes the practice rather than leaving an orphan', () => {
-    // No transaction without a replica set, so the compensation is explicit.
-    assert.match(admin, /await Practice\.deleteOne\(\{ _id: practice\._id \}\);/);
+    /*
+     * No transaction without a replica set, so the compensation is explicit.
+     *
+     * In the provisioning service now. Approving a self-registration creates a
+     * practice down the same path, so a half-made tenant has two ways to
+     * happen and needed one place to be cleaned up from.
+     */
+    const provision = readFileSync(
+      new URL('../src/services/provisionPractice.js', import.meta.url),
+      'utf8',
+    );
+    assert.match(provision, /await Practice\.deleteOne\(\{ _id: practice\._id \}\);/);
   });
 
   test('a doctor opening their own becomes its owner', () => {

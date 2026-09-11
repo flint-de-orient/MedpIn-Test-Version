@@ -87,8 +87,14 @@ describe('a practice is not created twice', () => {
     // about a specific licence and two practices holding one is a mistake.
     const at = routes.indexOf("router.post(\n  '/practices'");
     const body = routes.slice(at, routes.indexOf('Practice.create', at));
-    assert.match(body, /Practice\.findOne\(\{ registrationNo: brand\.registrationNo \}\)/);
-    assert.match(body, /already belongs to/);
+    // In the provisioning service now, because approving a self-registration
+    // must refuse a duplicate licence for the same reason and in the same way.
+    const provision = readFileSync(
+      new URL('../src/services/provisionPractice.js', import.meta.url),
+      'utf8',
+    );
+    assert.match(provision, /Practice\.findOne\(\{ registrationNo: brand\.registrationNo \}\)/);
+    assert.match(provision, /already belongs to/);
   });
 
   test('a shared name is not', () => {

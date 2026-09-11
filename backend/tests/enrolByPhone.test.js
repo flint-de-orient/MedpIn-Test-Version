@@ -77,7 +77,10 @@ describe('consent is asked when a practice reaches, not when it starts', () => {
     // otherwise burn a registration the patient was part-way through.
     assert.deepEqual(
       [...OtpChallenge.schema.path('purpose').enumValues].sort(),
-      ['enrol', 'login', 'register'],
+      // `practice` joined them when self-registration landed: somebody applying
+      // to open a clinic proves their number the same way, and a shared purpose
+      // would let an enrolment code burn an application half-filled in.
+      ['enrol', 'login', 'practice', 'register'],
     );
   });
 });

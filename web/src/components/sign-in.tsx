@@ -7,6 +7,8 @@ import type { LoginResult } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { IconEye, IconEyeOff, Spinner, Logo, Wordmark } from "@/components/icons";
 import { AudienceTabs, EntryShell } from "@/components/entry-shell";
+import { PracticeSignup } from "@/components/practice-signup";
+import { ApplicationStatusView } from "@/components/application-status";
 import { signInWithPasskey, type PublicKeyCredentialRequestOptionsJSON } from "@/lib/passkey";
 
 /**
@@ -29,6 +31,20 @@ export function SignIn() {
    * is one page, and a tab is not a place somebody links to.
    */
   const [who, setWho] = useState<"admin" | "practice">("admin");
+
+  /*
+   * What the practice side is showing.
+   *
+   * `entry` is the explanation and the two buttons; `register` is the form;
+   * `status` looks one up by reference. Held here rather than in the URL
+   * because a half-filled registration is not a place anybody should be able
+   * to link somebody else into.
+   */
+  const [practiceView, setPracticeView] = useState<"entry" | "register" | "status">("entry");
+
+  /// Set once, when a registration comes back. The reference is the only thing
+  /// the applicant leaves with.
+  const [submitted, setSubmitted] = useState<string | null>(null);
 
   /**
    * A reset link opens straight into the form that spends it.
@@ -141,7 +157,15 @@ export function SignIn() {
               )}
             </div>
           ) : (
-            <PracticePanel />
+            <PracticeSide
+              view={practiceView}
+              onView={setPracticeView}
+              submitted={submitted}
+              onSubmitted={(ref) => {
+                setSubmitted(ref);
+                setPracticeView("status");
+              }}
+            />
           )}
         </div>
 
@@ -182,30 +206,33 @@ function Heading({ title, detail }: { title: string; detail: string }) {
 /**
  * The practice side of the door.
  *
- * ---- What is actually here ----------------------------------------------
+ * ---- What is here, and what is deliberately not -------------------------
  *
- * Nothing, yet, and saying so is the whole job of this panel.
+ * Registration, and a way to check on one. Not a login.
  *
  * A practice does not sign into this console. Clinicians and front-desk staff
  * use the MedPin app, and the app identifies them by phone number — a code to
  * that number, or a password on the accounts that have one. There is no
- * email-and-password login for a practice anywhere in the product, on this
- * domain or any other, so drawing one here would be a form that cannot
- * succeed on the screen where somebody has least patience for that.
+ * email-and-password login for a practice anywhere in the product, so a form
+ * here would post to nothing on the screen where somebody has least patience
+ * for that.
  *
- * The first version of this panel said there was no password at all. There is
- * one: `doctor_password_login_screen.dart`, against `/auth/login`. Getting
- * that wrong would have sent a doctor looking for a code they never set up.
- *
- * Self-registration has no backend either: there is no application record, no
- * review queue and no provisioning. A practice is created by a MedPin operator
- * in this console, which is why the way to get one is to ask.
- *
- * So this panel routes people to the two things that exist — the app, and a
- * conversation — and the registration flow is drawn when there is something
- * behind it to submit to.
+ * An earlier draft of this panel said a practice signs in "with a phone number
+ * and a code — there is no password to remember". There is one:
+ * `doctor_password_login_screen.dart`, against `/auth/login`. Getting that
+ * wrong would have sent a doctor looking for a code they never arranged.
  */
-function PracticePanel() {
+function PracticeSide({
+  view,
+  onView,
+  submitted,
+  onSubmitted,
+}: {
+  view: "entry" | "register" | "status";
+  onView: (v: "entry" | "register" | "status") => void;
+  submitted: string | null;
+  onSubmitted: (reference: string) => void;
+}) {
   return (
     <div
       role="tabpanel"
@@ -213,37 +240,72 @@ function PracticePanel() {
       aria-labelledby="tab-practice"
       className="flex flex-col gap-4"
     >
-      <Eyebrow>Practice</Eyebrow>
-      <Heading
-        title="Practices sign in on the app"
-        detail="There is no practice login on this domain. The console is for MedPin operators; a clinic's own people work in the MedPin app."
-      />
+      {view === "register" ? (
+        <>
+          <Eyebrow>Register your practice</Eyebrow>
+          <Heading
+            title="Apply to join MedPin"
+            detail="Your application is reviewed before the practice is created. Nothing is set up until somebody at MedPin has read it."
+          />
+          <PracticeSignup onDone={onSubmitted} />
+          <button
+            type="button"
+            onClick={() => onView("entry")}
+            className="text-muted-foreground hover:text-foreground w-fit text-caption underline underline-offset-4"
+          >
+            Back
+          </button>
+        </>
+      ) : view === "status" ? (
+        <>
+          <Eyebrow>Your application</Eyebrow>
+          <ApplicationStatusView
+            initialReference={submitted}
+            onBack={() => onView("entry")}
+          />
+        </>
+      ) : (
+        <>
+          <Eyebrow>Practice</Eyebrow>
+          <Heading
+            title="Practices sign in on the app"
+            detail="There is no practice login on this domain. The console is for MedPin operators; a clinic's own people work in the MedPin app."
+          />
 
-      <div className="border-border bg-secondary/40 flex flex-col gap-2 rounded-md border px-4 py-3.5">
-        <p className="text-title font-medium">Already using MedPin</p>
-        <p className="text-muted-foreground text-caption leading-relaxed">
-          Open the MedPin app and sign in with the phone number your practice
-          registered — by a code sent to that number, or by a password where
-          the account has one. Either way it is the phone that identifies you,
-          not an email address.
-        </p>
-      </div>
+          <div className="border-border bg-secondary/40 flex flex-col gap-2 rounded-md border px-4 py-3.5">
+            <p className="text-title font-medium">Already using MedPin</p>
+            <p className="text-muted-foreground text-caption leading-relaxed">
+              Open the MedPin app and sign in with the phone number your practice
+              registered — by a code sent to that number, or by a password where
+              the account has one. Either way it is the phone that identifies you,
+              not an email address.
+            </p>
+          </div>
 
-      <div className="border-border flex flex-col gap-2 rounded-md border px-4 py-3.5">
-        <p className="text-title font-medium">Registering a new practice</p>
-        <p className="text-muted-foreground text-caption leading-relaxed">
-          Self-registration is not open yet. A MedPin operator creates a
-          practice, verifies its registration number and invites the first
-          doctor — so the way in today is to ask us to set one up.
-        </p>
-        <a
-          href="mailto:hello@flintdeorient.in?subject=Registering%20a%20practice%20with%20MedPin"
-          className="border-border hover:bg-secondary focus-visible:ring-ring mt-1 inline-flex w-fit items-center gap-2 rounded-md border px-3 py-2 text-body font-medium transition-colors duration-150 focus-visible:ring-2 focus-visible:outline-none"
-        >
-          Ask about registering
-          <span aria-hidden>→</span>
-        </a>
-      </div>
+          <button
+            type="button"
+            onClick={() => onView("register")}
+            className="border-border hover:bg-secondary focus-visible:ring-ring flex w-full items-center justify-center gap-2 rounded-md border px-4 py-3 text-body font-medium transition-colors duration-150 focus-visible:ring-2 focus-visible:outline-none"
+          >
+            Register your practice
+            <span aria-hidden>→</span>
+          </button>
+          <p className="text-muted-foreground -mt-2 text-center text-micro leading-relaxed">
+            Your application is reviewed before the practice is created.
+          </p>
+
+          <p className="text-muted-foreground border-border border-t pt-4 text-caption leading-relaxed">
+            Already applied?{" "}
+            <button
+              type="button"
+              onClick={() => onView("status")}
+              className="text-primary underline underline-offset-4"
+            >
+              Check your application
+            </button>
+          </p>
+        </>
+      )}
     </div>
   );
 }

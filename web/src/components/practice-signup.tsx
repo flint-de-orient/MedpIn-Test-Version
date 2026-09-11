@@ -1,0 +1,590 @@
+"use client";
+
+import { useEffect, useMemo, useState } from "react";
+
+import { api, ApiError } from "@/lib/api";
+import type { PracticeType } from "@/lib/types";
+import { Field, Select, textInput } from "@/components/form";
+import { cn } from "@/lib/utils";
+
+/**
+ * A practice applying to exist.
+ *
+ * ---- What this produces, and what it deliberately does not --------------
+ *
+ * An application. Not a practice, not an account, not a session. A Practice is
+ * a tenant on this platform — capability resolution, billing and enrolment
+ * scoping all point at one — so nothing a public form does may create one. An
+ * operator reads the application and approves it, and that is the moment a
+ * tenant exists.
+ *
+ * The applicant leaves with a reference and no account, which is why the
+ * reference is long and random: it is the only thing that identifies the
+ * application to them, and a short one would let anybody read a stranger's
+ * contact details and licence number by counting.
+ *
+ * ---- Why the phone is proved in the middle, not at the end --------------
+ *
+ * The code is the expensive step — an SMS, a wait, a number typed in — and it
+ * is the one that can fail for reasons the applicant cannot fix by editing a
+ * field. Putting it after the practice details means somebody who cannot
+ * receive the code has still not typed a licence number; putting it last would
+ * mean they filled in five screens first.
+ *
+ * There is no document upload anywhere in this flow. The platform has no
+ * scanning, quarantine or retention story for files from people without
+ * accounts, and a working-looking upload that stores nothing is worse than
+ * none. An operator asks for papers in a note.
+ */
+export function PracticeSignup({ onDone }: { onDone: (reference: string) => void }) {
+  const [step, setStep] = useState(0);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  // ---- what the form holds ------------------------------------------------
+  const [practiceName, setPracticeName] = useState("");
+  const [practiceType, setPracticeType] = useState<PracticeType | "">("");
+  const [specialty, setSpecialty] = useState("");
+  const [addressLine, setAddressLine] = useState("");
+  const [city, setCity] = useState("");
+  const [stateName, setStateName] = useState("");
+  const [postalCode, setPostalCode] = useState("");
+
+  const [contactName, setContactName] = useState("");
+  const [contactEmail, setContactEmail] = useState("");
+  const [phone, setPhone] = useState("");
+
+  const [code, setCode] = useState("");
+  const [sent, setSent] = useState(false);
+  const [phoneToken, setPhoneToken] = useState<string | null>(null);
+
+  const [registrationNo, setRegistrationNo] = useState("");
+  const [doctorName, setDoctorName] = useState("");
+  const [doctorRegistrationNo, setDoctorRegistrationNo] = useState("");
+  const [notes, setNotes] = useState("");
+
+  /*
+   * The types the server actually has.
+   *
+   * Fetched rather than listed here. A copy in the client is how a public form
+   * ends up offering a type the enum has never heard of — and the submission
+   * would then be refused by the validator for a value this screen suggested.
+   */
+  const [types, setTypes] = useState<{ key: string; label: string }[]>([]);
+  useEffect(() => {
+    api<{ types: { key: string; label: string }[] }>("/applications/options", {
+      anonymous: true,
+    })
+      .then((out) => setTypes(out.types))
+      .catch(() => {
+        /* The type is optional; the form still submits without it. */
+      });
+  }, []);
+
+  useEffect(() => setError(null), [step]);
+
+  const e164 = useMemo(() => toE164(phone), [phone]);
+
+  const STEPS = ["Practice", "Contact", "Verify", "Registration", "Review"];
+
+  /* ------------------------------------------------------------- validation */
+
+  function invalid(): string | null {
+    if (step === 0) {
+      if (practiceName.trim().length < 2) return "The practice needs a name.";
+      return null;
+    }
+    if (step === 1) {
+      if (contactName.trim().length < 2) return "Who should we contact?";
+      if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(contactEmail.trim()))
+        return "That does not look like an email address.";
+      if (!e164) return "Enter a ten-digit mobile number.";
+      return null;
+    }
+    if (step === 2 && !phoneToken) return "Verify the number to continue.";
+    return null;
+  }
+
+  function next() {
+    const problem = invalid();
+    if (problem) {
+      setError(problem);
+      return;
+    }
+    setStep((s) => Math.min(s + 1, STEPS.length - 1));
+  }
+
+  /* ----------------------------------------------------------- verification */
+
+  async function sendCode() {
+    setBusy(true);
+    setError(null);
+    try {
+      await api("/auth/otp/request", {
+        method: "POST",
+        anonymous: true,
+        // Its own purpose. A code for an enrolment arriving mid-application
+        // would otherwise burn one the applicant was part-way through.
+        body: { phone: e164, purpose: "practice" },
+      });
+      setSent(true);
+    } catch (ex) {
+      setError((ex as ApiError).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function checkCode(value: string) {
+    setBusy(true);
+    setError(null);
+    try {
+      const out = await api<{ phoneToken: string }>("/auth/otp/verify", {
+        method: "POST",
+        anonymous: true,
+        body: { phone: e164, purpose: "practice", code: value },
+      });
+      setPhoneToken(out.phoneToken);
+      setStep(3);
+    } catch (ex) {
+      setError((ex as ApiError).message);
+      setCode("");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  /* ---------------------------------------------------------------- submit */
+
+  async function submit() {
+    if (!phoneToken) {
+      setError("Verify the number to continue.");
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      const out = await api<{ application: { reference: string } }>("/applications", {
+        method: "POST",
+        anonymous: true,
+        body: {
+          practiceName: practiceName.trim(),
+          practiceType: practiceType || undefined,
+          specialty: specialty.trim(),
+          addressLine: addressLine.trim(),
+          city: city.trim(),
+          state: stateName.trim(),
+          postalCode: postalCode.trim(),
+          contactName: contactName.trim(),
+          contactEmail: contactEmail.trim(),
+          // The proof, not the number. The server reads the phone out of this
+          // and ignores anything else claiming to be one.
+          phoneToken,
+          registrationNo: registrationNo.trim(),
+          doctorName: doctorName.trim(),
+          doctorRegistrationNo: doctorRegistrationNo.trim(),
+          notes: notes.trim(),
+        },
+      });
+      onDone(out.application.reference);
+    } catch (ex) {
+      setError((ex as ApiError).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  /* ------------------------------------------------------------------ view */
+
+  return (
+    <div className="flex flex-col gap-5">
+      <Progress steps={STEPS} at={step} />
+
+      <div className="border-border bg-card rounded-md border p-6 sm:p-7">
+        <h2 className="text-heading font-semibold tracking-tight">{STEPS[step]}</h2>
+        <p className="text-muted-foreground mt-1.5 text-caption leading-relaxed">
+          {
+            [
+              "What the practice is called, and what kind of thing it is.",
+              "Who we contact, and the number we verify.",
+              "Answer the code so we know the number is yours.",
+              "What a reviewer checks against a register. All optional — a missing number means we will ask.",
+              "Check it over. Nothing is created until MedPin reviews this.",
+            ][step]
+          }
+        </p>
+
+        <div className="mt-5 flex flex-col gap-4">
+          {step === 0 ? (
+            <>
+              <Field label="Practice name">
+                <input
+                  className={textInput}
+                  value={practiceName}
+                  onChange={(e) => setPracticeName(e.target.value)}
+                  maxLength={160}
+                  autoFocus
+                />
+              </Field>
+              <Field label="Practice type" hint="optional">
+                <Select
+                  value={practiceType}
+                  onChange={(v) => setPracticeType(v as PracticeType | "")}
+                  placeholder="Not saying yet"
+                >
+                  {types.map((t) => (
+                    <option key={t.key} value={t.key}>
+                      {t.label}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+              <Field label="Primary specialty" hint="optional">
+                <input
+                  className={textInput}
+                  value={specialty}
+                  onChange={(e) => setSpecialty(e.target.value)}
+                  maxLength={80}
+                />
+              </Field>
+              <Field label="Address" hint="optional">
+                <input
+                  className={textInput}
+                  value={addressLine}
+                  onChange={(e) => setAddressLine(e.target.value)}
+                  maxLength={200}
+                />
+              </Field>
+              <div className="grid gap-4 sm:grid-cols-3">
+                <Field label="City" hint="optional">
+                  <input
+                    className={textInput}
+                    value={city}
+                    onChange={(e) => setCity(e.target.value)}
+                    maxLength={80}
+                  />
+                </Field>
+                <Field label="State" hint="optional">
+                  <input
+                    className={textInput}
+                    value={stateName}
+                    onChange={(e) => setStateName(e.target.value)}
+                    maxLength={80}
+                  />
+                </Field>
+                <Field label="PIN" hint="optional">
+                  <input
+                    className={`${textInput} tnum font-mono`}
+                    value={postalCode}
+                    onChange={(e) => setPostalCode(e.target.value.replace(/\D/g, ""))}
+                    maxLength={6}
+                    inputMode="numeric"
+                  />
+                </Field>
+              </div>
+            </>
+          ) : null}
+
+          {step === 1 ? (
+            <>
+              <Field label="Your name">
+                <input
+                  className={textInput}
+                  value={contactName}
+                  onChange={(e) => setContactName(e.target.value)}
+                  maxLength={120}
+                  autoFocus
+                />
+              </Field>
+              <Field label="Email">
+                <input
+                  className={textInput}
+                  type="email"
+                  value={contactEmail}
+                  onChange={(e) => setContactEmail(e.target.value)}
+                  maxLength={160}
+                />
+              </Field>
+              <Field
+                label="Mobile number"
+                hint="we text a code to this, and it becomes the sign-in for the practice"
+              >
+                <input
+                  className={`${textInput} tnum font-mono`}
+                  value={phone}
+                  onChange={(e) => {
+                    setPhone(e.target.value);
+                    // Editing the number invalidates the proof. Keeping a token
+                    // for a number the form no longer shows is how somebody
+                    // verifies one and submits another.
+                    setPhoneToken(null);
+                    setSent(false);
+                  }}
+                  inputMode="tel"
+                  maxLength={16}
+                  placeholder="+91"
+                />
+              </Field>
+              {/*
+                No password. A practice does not sign into this domain at all —
+                the app identifies a clinician by phone — and collecting one
+                here would be a credential with nothing to unlock.
+              */}
+              <p className="text-muted-foreground text-micro leading-relaxed">
+                No password to choose. Once the practice is approved, whoever
+                holds this number signs in on the MedPin app.
+              </p>
+            </>
+          ) : null}
+
+          {step === 2 ? (
+            <div className="flex flex-col gap-4">
+              <p className="text-body">
+                We will text a code to{" "}
+                <span className="font-mono font-medium">{e164 ?? phone}</span>.
+              </p>
+
+              {!sent ? (
+                <button
+                  type="button"
+                  onClick={() => void sendCode()}
+                  disabled={busy || !e164}
+                  className="bg-primary text-primary-foreground w-fit rounded-md px-4 py-2.5 text-body font-medium transition-opacity disabled:opacity-55"
+                >
+                  {busy ? "Sending…" : "Send the code"}
+                </button>
+              ) : (
+                <>
+                  <Field label="The code we texted">
+                    <input
+                      className={`${textInput} tnum w-40 text-center font-mono tracking-[0.4em]`}
+                      value={code}
+                      onChange={(e) => {
+                        const v = e.target.value.replace(/\D/g, "").slice(0, 6);
+                        setCode(v);
+                        // Submits itself on the last digit, so a filled code
+                        // does not wait for a button somebody has to find.
+                        if (v.length === 6) void checkCode(v);
+                      }}
+                      inputMode="numeric"
+                      autoComplete="one-time-code"
+                      maxLength={6}
+                      disabled={busy}
+                      autoFocus
+                    />
+                  </Field>
+                  <button
+                    type="button"
+                    onClick={() => void sendCode()}
+                    disabled={busy}
+                    className="text-primary w-fit text-caption underline underline-offset-4 disabled:opacity-55"
+                  >
+                    Send another
+                  </button>
+                </>
+              )}
+
+              {phoneToken ? (
+                <p className="text-ok-ink border-l-ok bg-ok-tint rounded-sm border-l-2 px-3 py-2 text-caption">
+                  Number verified.
+                </p>
+              ) : null}
+            </div>
+          ) : null}
+
+          {step === 3 ? (
+            <>
+              <Field label="Practice registration number" hint="optional">
+                <input
+                  className={`${textInput} font-mono`}
+                  value={registrationNo}
+                  onChange={(e) => setRegistrationNo(e.target.value)}
+                  maxLength={60}
+                  autoFocus
+                />
+              </Field>
+              <Field label="Primary doctor" hint="optional">
+                <input
+                  className={textInput}
+                  value={doctorName}
+                  onChange={(e) => setDoctorName(e.target.value)}
+                  maxLength={120}
+                />
+              </Field>
+              <Field label="Their council registration" hint="optional">
+                <input
+                  className={`${textInput} font-mono`}
+                  value={doctorRegistrationNo}
+                  onChange={(e) => setDoctorRegistrationNo(e.target.value)}
+                  maxLength={60}
+                />
+              </Field>
+              <Field label="Anything else" hint="optional">
+                <textarea
+                  className={`${textInput} resize-y`}
+                  rows={3}
+                  maxLength={2000}
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                />
+              </Field>
+              <p className="text-muted-foreground text-micro leading-relaxed">
+                No documents to upload. If MedPin needs papers, they will ask
+                for them by name once somebody has read this.
+              </p>
+            </>
+          ) : null}
+
+          {step === 4 ? (
+            <dl className="divide-border border-border divide-y rounded-md border">
+              <Summary label="Practice" value={practiceName} />
+              <Summary
+                label="Type"
+                value={
+                  types.find((t) => t.key === practiceType)?.label ?? "not said"
+                }
+              />
+              <Summary label="Specialty" value={specialty || "not said"} />
+              <Summary
+                label="Where"
+                value={
+                  [addressLine, city, stateName, postalCode].filter(Boolean).join(", ") ||
+                  "not given"
+                }
+              />
+              <Summary label="Contact" value={contactName} />
+              <Summary label="Email" value={contactEmail} mono />
+              <Summary label="Mobile" value={`${e164 ?? phone} · verified`} mono />
+              <Summary label="Practice registration" value={registrationNo || "none given"} mono />
+              <Summary label="Primary doctor" value={doctorName || "not named"} />
+              <Summary
+                label="Council registration"
+                value={doctorRegistrationNo || "none given"}
+                mono
+              />
+            </dl>
+          ) : null}
+
+          {error ? (
+            <p
+              role="alert"
+              className="text-stopped-ink border-l-stopped bg-stopped-tint rounded-sm border-l-2 px-3 py-2 text-caption leading-relaxed"
+            >
+              {error}
+            </p>
+          ) : null}
+        </div>
+
+        <div className="border-border mt-6 flex items-center justify-between gap-3 border-t pt-5">
+          <button
+            type="button"
+            onClick={() => setStep((s) => Math.max(0, s - 1))}
+            disabled={step === 0 || busy}
+            className="border-border hover:bg-secondary shrink-0 rounded-md border px-4 py-2 text-body font-medium transition-colors disabled:opacity-40"
+          >
+            Back
+          </button>
+
+          {step === 4 ? (
+            <button
+              type="button"
+              onClick={() => void submit()}
+              disabled={busy}
+              className="bg-primary text-primary-foreground shrink-0 rounded-md px-4 py-2 text-body font-medium transition-opacity disabled:opacity-55"
+            >
+              {busy ? "Submitting…" : "Submit registration"}
+            </button>
+          ) : step === 2 ? null : (
+            <button
+              type="button"
+              onClick={next}
+              disabled={busy}
+              className="bg-primary text-primary-foreground shrink-0 rounded-md px-4 py-2 text-body font-medium transition-opacity disabled:opacity-55"
+            >
+              Continue
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Where you are in a five-step form.
+ *
+ * Numbered rather than a bar: a progress bar says how far, and what somebody
+ * filling this in wants to know is what is left. The current step is named
+ * above the fields as well, because a row of dots is not a label.
+ */
+function Progress({ steps, at }: { steps: string[]; at: number }) {
+  return (
+    <ol className="flex flex-wrap items-center gap-x-2 gap-y-1" aria-label="Progress">
+      {steps.map((label, i) => (
+        <li key={label} className="flex items-center gap-2">
+          <span
+            aria-current={i === at ? "step" : undefined}
+            className={cn(
+              "flex items-center gap-1.5 text-micro font-medium",
+              i === at
+                ? "text-primary"
+                : i < at
+                  ? "text-muted-foreground"
+                  : "text-muted-foreground",
+            )}
+          >
+            <span
+              className={cn(
+                "tnum flex size-5 items-center justify-center rounded-full border text-micro",
+                i === at
+                  ? "border-primary bg-primary text-primary-foreground"
+                  : i < at
+                    ? "border-primary text-primary"
+                    : "border-border",
+              )}
+            >
+              {i + 1}
+            </span>
+            {label}
+          </span>
+          {i < steps.length - 1 ? (
+            <span aria-hidden className="text-muted-foreground">
+              ·
+            </span>
+          ) : null}
+        </li>
+      ))}
+    </ol>
+  );
+}
+
+function Summary({
+  label,
+  value,
+  mono,
+}: {
+  label: string;
+  value: string;
+  mono?: boolean;
+}) {
+  return (
+    <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 px-4 py-2.5">
+      <dt className="text-muted-foreground text-caption">{label}</dt>
+      <dd className={cn("min-w-0 text-right text-body", mono && "font-mono")}>{value}</dd>
+    </div>
+  );
+}
+
+/**
+ * Ten digits, or a number already in E.164.
+ *
+ * The server normalises too and is the authority; this exists so the screen can
+ * show what will be texted before anything is sent.
+ */
+function toE164(raw: string): string | null {
+  const digits = raw.replace(/\D/g, "");
+  if (/^\+91\d{10}$/.test(raw.trim())) return raw.trim();
+  if (digits.length === 10) return `+91${digits}`;
+  if (digits.length === 12 && digits.startsWith("91")) return `+${digits}`;
+  return null;
+}

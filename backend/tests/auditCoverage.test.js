@@ -36,6 +36,16 @@ const LOGGERS = /audit\(|AuditLog\.create\(|AdminAuditLog\.record\(/;
  */
 const EXEMPT = new Map([
   [
+    'applications.js /',
+    'A practice asking to exist, submitted by somebody with no account — that ' +
+      'being the point of it. Neither log can hold it: AdminAuditLog records ' +
+      'what an operator did and there is no operator, and the clinical log ' +
+      'needs a User as its actor and there is no user. The application row is ' +
+      'its own record — it carries the submission in `history` and the address ' +
+      'it came from — and every decision taken on it afterwards is audited ' +
+      'properly, because by then there is an operator to name.',
+  ],
+  [
     'chat.js /patients/:patientId/presence',
     'A typing indicator. It writes nothing, is sent every few seconds, and an ' +
       'audit row per keystroke would bury the entries that matter.',
@@ -181,7 +191,15 @@ describe('the clinical log and the platform log stay apart', () => {
    * quietly grant itself the right to write platform audit entries: putting a
    * file on this list is a deliberate act with a test diff attached.
    */
-  const PLATFORM = new Set(['admin.js', 'adminBilling.js']);
+  /*
+   * The admin surface, by file.
+   *
+   * Every one of these is nested inside admin.js behind `requireAdmin` — the
+   * assertion at the foot of this describe() is what keeps that true, and it
+   * is why extending this list is safe rather than a way of quietly widening
+   * what counts as "the platform".
+   */
+  const PLATFORM = new Set(['admin.js', 'adminBilling.js', 'adminApplications.js']);
 
   test('the admin namespace writes only to its own', () => {
     // Sharing AuditLog would mean a practice-scoped viewer has to remember to

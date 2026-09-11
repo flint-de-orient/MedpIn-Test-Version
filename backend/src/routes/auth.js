@@ -147,7 +147,16 @@ const otpLimiter = rateLimit({
   message: { error: { code: 'RATE_LIMITED', message: 'Too many code requests. Please try again in a few minutes.' } },
 });
 
-const otpPurpose = z.enum(['register', 'login']);
+/**
+ * What a code is for.
+ *
+ * `practice` is the odd one out: it neither requires an existing account nor
+ * refuses one. A doctor opening a second practice already has a MedPin login
+ * and `register` would turn them away; somebody entirely new has none and
+ * `login` would. Proving the number is the whole job — who owns it is decided
+ * later, by an operator reading the application.
+ */
+const otpPurpose = z.enum(['register', 'login', 'practice']);
 
 /**
  * Text a one-time passcode.
@@ -221,6 +230,19 @@ router.post(
           reason: 'ALREADY_REGISTERED',
         });
       }
+      return res.json({ phoneToken: signPhoneToken(phone) });
+    }
+
+    /*
+     * A practice application ends the same way, and for the same reason: the
+     * form still has to be filled in.
+     *
+     * No account check in either direction. The number may already belong to a
+     * doctor — one person can run two practices — and it may belong to nobody
+     * at all. What this proves is that whoever is filling in the form can
+     * answer that number, which is the only thing it is asked to prove.
+     */
+    if (purpose === 'practice') {
       return res.json({ phoneToken: signPhoneToken(phone) });
     }
 

@@ -5,6 +5,7 @@ import { isProd } from '../config/env.js';
 import { logger } from '../config/logger.js';
 
 import authRoutes from './auth.js';
+import applicationRoutes from './applications.js';
 import chatRoutes from './chat.js';
 import trackingRoutes from './tracking.js';
 import medicationRoutes from './medications.js';
@@ -81,6 +82,12 @@ router.get('/health', async (req, res) => {
 router.use('/brand', brandRoutes);
 router.use('/app', appVersionRoutes);
 router.use('/auth', authRoutes);
+/*
+ * Unauthenticated, like `/auth` above it and for the same reason: nobody
+ * filling in a practice application has an account yet. Everything it does to
+ * protect itself is something other than a session — see the file.
+ */
+router.use('/applications', applicationRoutes);
 router.use('/chat', chatRoutes);
 router.use('/appointments', appointmentRoutes);
 router.use('/clinics', clinicRoutes);
