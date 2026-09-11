@@ -35,7 +35,6 @@ if [[ -z "$SERVER" ]]; then
   exit 1
 fi
 
-API_ORIGIN="${API_ORIGIN:-https://clinq.flintdeorient.in}"
 WEB_ROOT="${WEB_ROOT:-/var/www/medpin-admin}"
 # Apache reads conf-enabled only for server-wide config; this one is Included
 # by the vhost so it applies to this site alone. See DEPLOY.md.
@@ -43,10 +42,10 @@ CSP_PATH="${CSP_PATH:-/etc/apache2/conf-available/medpin-admin-csp.conf}"
 
 cd "$(dirname "$0")"
 
-echo "==> Building against ${API_ORIGIN}"
+echo "==> Building"
 npm ci
 npm run build
-API_ORIGIN="$API_ORIGIN" node scripts/csp.mjs --apache
+node scripts/csp.mjs --apache
 
 test -s out/csp.conf || { echo "csp.conf is empty — refusing to ship" >&2; exit 1; }
 test -f out/index.html || { echo "no index.html — refusing to ship" >&2; exit 1; }
@@ -68,6 +67,21 @@ ssh "$SERVER" 'set -e
   fi
   apache2ctl -M 2>/dev/null | grep -q headers_module || {
     echo "mod_headers is not enabled. Run: a2enmod headers && systemctl reload apache2" >&2
+    exit 1
+  }
+  # The API is served from this host so the session cookie stays first-party.
+  # Without the proxy the console loads perfectly and every request it makes is
+  # answered by Apache with its own 404 page — which reads as a broken console,
+  # or as a missing route, or as an unset ADMIN_JWT_SECRET, depending on which
+  # error the client happened to map it to. It reads as anything except what it
+  # is, which is why this is checked rather than assumed.
+  apache2ctl -M 2>/dev/null | grep -q proxy_http_module || {
+    echo "mod_proxy_http is not enabled. Run: a2enmod proxy proxy_http && systemctl reload apache2" >&2
+    exit 1
+  }
+  grep -rqs "ProxyPass[[:space:]]*/api/v1/" /etc/apache2/sites-enabled/ || {
+    echo "No vhost proxies /api/v1/ to the backend." >&2
+    echo "The console will load and every request it makes will 404. See admin/DEPLOY.md." >&2
     exit 1
   }'
 

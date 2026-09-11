@@ -66,6 +66,27 @@ const ACTIONS = [
   /a2enmod[^\n]*nginx/,
 ];
 
+/**
+ * And config somebody would paste, which is an instruction without a verb.
+ *
+ * This test banned nginx *commands*, and the console's deployment doc carried a
+ * whole `server { }` block underneath for months. Nobody runs a config block,
+ * so no ACTION matched — but a block in a file headed "serve the files" gets
+ * copied to /etc/nginx, where it is never read. The page then works with no CSP
+ * and no proxy, and the absence of both looks like nothing at all.
+ *
+ * That block also had no `/api/` proxy in it, so following it produced a
+ * console whose every request was answered by the web server's own 404 page.
+ *
+ * `server_name` and `location` cannot appear in an Apache file, so a line with
+ * either is nginx config whatever the fence around it claims.
+ */
+const NGINX_CONFIG = [
+  /^\s*server_name\s+\S+;/,
+  /^\s*location\s+[^{]*\{/,
+  /proxy_pass\s+http/,
+];
+
 describe('deployment instructions target the server we actually have', () => {
   const files = deploymentFiles();
 
@@ -88,7 +109,7 @@ describe('deployment instructions target the server we actually have', () => {
         if (t.startsWith('#') || t.startsWith('>') || t.startsWith('//') || t.startsWith('*')) {
           return;
         }
-        for (const rx of ACTIONS) {
+        for (const rx of [...ACTIONS, ...NGINX_CONFIG]) {
           if (rx.test(line)) offenders.push(`${rel}:${i + 1}  ${t.slice(0, 70)}`);
         }
       });

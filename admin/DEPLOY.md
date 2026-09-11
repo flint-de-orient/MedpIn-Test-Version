@@ -68,58 +68,94 @@ shell history and in `ps` output on a shared box.
 rsync -av admin/ root@<server>:/var/www/medpin-admin/
 ```
 
-nginx, on its own subdomain — not a path on the API host. A separate signing key
-stops a clinic token authenticating here; a separate **origin** stops a script on
-either page reaching the other with the browser's credentials. Half that wall is
-not a wall.
+Apache, on its own subdomain, reverse-proxying the API from the console's own
+host. A separate signing key stops a clinic token authenticating here; serving
+both halves from one origin is what lets the session cookie stay
+`SameSite=Strict`, which is a CSRF defence rather than a mitigation of one.
 
-```nginx
-server {
-    listen 443 ssl http2;
-    server_name admin.medpin.in;
+> This block used to be an nginx `server { }`, and it had no `/api/` proxy in
+> it. Two faults, one symptom. The box serves with Apache and nginx is stopped
+> there, so the file was never read; and even read, it would have served the
+> console with nothing behind `/api/v1/`, which is what "Practice type shows
+> empty" was — every fetch answered by the web server's own 404 page.
+>
+> The CSP below also used to name `connect-src https://clinq.flintdeorient.in`,
+> left over from an older cross-origin arrangement. A strict cookie set by that
+> host is never sent from a page on this one, so that arrangement cannot
+> authenticate at all. `'self'` is the version that matches the cookie.
 
-    ssl_certificate     /etc/letsencrypt/live/admin.medpin.in/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/admin.medpin.in/privkey.pem;
+Written to `/etc/apache2/sites-available/admin.medpin.in.conf`:
 
-    root /var/www/medpin-admin;
-    index index.html;
+```apache
+<VirtualHost *:443>
+    ServerName admin.medpin.in
 
-    # No inline script or style is used, so both can be forbidden outright —
-    # which is what makes a CSP worth having rather than a header that passes a
-    # scanner. `connect-src` names the API explicitly: a script that got onto
-    # this page could not exfiltrate to anywhere else.
-    add_header Content-Security-Policy "default-src 'none'; script-src 'self'; style-src 'self' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; connect-src https://clinq.flintdeorient.in; img-src 'self' data:; form-action 'none'; frame-ancestors 'none'; base-uri 'none'" always;
+    SSLEngine on
+    SSLCertificateFile    /etc/letsencrypt/live/admin.medpin.in/fullchain.pem
+    SSLCertificateKeyFile /etc/letsencrypt/live/admin.medpin.in/privkey.pem
 
-    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
-    add_header X-Content-Type-Options nosniff always;
-    add_header Referrer-Policy no-referrer always;
+    DocumentRoot /var/www/medpin-admin
 
-    # There is no build step, so no filename carries a content hash and nothing
-    # tells a browser that app.js changed. `no-cache` still allows a cached copy,
-    # it just requires revalidating it first — which costs one 304 and removes an
-    # entire class of bug: a stale script calling an endpoint that has moved
-    # fails as "Failed to fetch", which looks like the API is down.
+    # The API, from this host, so the session cookie is first-party.
     #
-    # Server level on purpose. An `add_header` inside `location /` would replace
-    # every directive above rather than adding to them, and the CSP would quietly
-    # stop being sent.
-    add_header Cache-Control "no-cache" always;
-    # Nothing here needs a camera, a microphone or a location.
-    add_header Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=()" always;
+    # Longest match first: Apache matches ProxyPass in file order, and a
+    # ProxyPass for "/" written above this one would swallow the API too.
+    ProxyPreserveHost On
+    ProxyPass        /api/v1/ http://127.0.0.1:4000/api/v1/
+    ProxyPassReverse /api/v1/ http://127.0.0.1:4000/api/v1/
 
-    location / {
-        try_files $uri $uri/ =404;
-    }
-}
+    # Everything else is the static export. `FallbackResource` is wrong here:
+    # this is a static export with real files per route, and a fallback would
+    # answer a mistyped asset path with index.html instead of a 404.
+    <Directory /var/www/medpin-admin>
+        Require all granted
+        AllowOverride None
+        Options -Indexes
+    </Directory>
 
-server {
-    listen 80;
-    server_name admin.medpin.in;
-    return 301 https://$host$request_uri;
-}
+    # No inline script or style is used, so both can be forbidden outright,
+    # which is what makes a CSP worth having rather than a header that passes a
+    # scanner. `connect-src 'self'` because the API is proxied from this host.
+    Header always set Content-Security-Policy "default-src 'none'; script-src 'self'; style-src 'self' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; connect-src 'self'; img-src 'self' data:; form-action 'none'; frame-ancestors 'none'; base-uri 'none'"
+
+    Header always set Strict-Transport-Security "max-age=31536000; includeSubDomains"
+    Header always set X-Content-Type-Options nosniff
+    Header always set Referrer-Policy no-referrer
+    Header always set Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=()"
+
+    # The export hashes its asset filenames but not index.html, so the document
+    # must revalidate or a stale one keeps calling an endpoint that has moved —
+    # which fails as "Failed to fetch" and reads as the API being down.
+    <FilesMatch "\.(html)$">
+        Header always set Cache-Control "no-cache"
+    </FilesMatch>
+</VirtualHost>
+
+<VirtualHost *:80>
+    ServerName admin.medpin.in
+    Redirect permanent / https://admin.medpin.in/
+</VirtualHost>
 ```
 
-Certificate: `certbot --nginx -d admin.medpin.in`.
+Enable it, and the two modules the proxy needs:
+
+```bash
+a2enmod proxy proxy_http headers ssl
+a2ensite admin.medpin.in
+apache2ctl configtest && systemctl reload apache2
+```
+
+Certificate: `certbot --apache -d admin.medpin.in`.
+
+Check the proxy before anything else — it is the piece whose absence looks like
+a broken console rather than a missing route:
+
+```bash
+curl -s https://admin.medpin.in/api/v1/health
+# {"status":"ok","db":"connected",...}
+```
+
+An HTML 404 there is Apache answering, which means the proxy is not in place.
 
 ## 4. Turn on the second factor
 

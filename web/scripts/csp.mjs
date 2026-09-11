@@ -28,7 +28,21 @@ import { readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
 const OUT = path.join(process.cwd(), "out");
-const API = process.env.API_ORIGIN ?? "https://clinq.flintdeorient.in";
+/*
+ * `'self'`, because the API is proxied from this host.
+ *
+ * This named `https://clinq.flintdeorient.in` and the console called
+ * `/api/v1` — so the policy allowed an origin nothing asked for, and the
+ * requests that were actually made went to a path the web server had nothing
+ * behind. Every fetch came back as Apache's own 404 page.
+ *
+ * A cross-origin arrangement cannot work here anyway: the session cookie is
+ * `SameSite=Strict`, so a cookie set by the API host is never sent from a page
+ * on the console host. See adminSession.js — that strictness is the CSRF
+ * defence rather than a mitigation of one, and it is worth more than the
+ * convenience of skipping a proxy.
+ */
+const CONNECT = "'self'";
 
 /** Every .html this build produced. */
 function pages(dir) {
@@ -76,7 +90,7 @@ const csp = [
   `script-src 'self' ${external.join(" ")}`,
   "style-src 'self'",
   "font-src 'self'",
-  `connect-src ${API}`,
+  `connect-src ${CONNECT}`,
   "img-src 'self' data:",
   "form-action 'none'",
   "frame-ancestors 'none'",
