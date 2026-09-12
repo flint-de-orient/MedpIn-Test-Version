@@ -13,6 +13,7 @@ import { requireAuth } from '../middleware/auth.js';
 import { validate } from '../middleware/validate.js';
 import { asyncHandler, badRequest, notFound, forbidden } from '../middleware/errors.js';
 import { audit } from '../middleware/audit.js';
+import { practicePatients } from '../middleware/practiceScope.js';
 import { MediaAsset } from '../models/MediaAsset.js';
 import { ChatMessage } from '../models/ChatMessage.js';
 import { User, ROLES } from '../models/User.js';
@@ -144,9 +145,26 @@ router.post(
   asyncHandler(async (req, res) => {
     if (!req.file) throw badRequest('No file was uploaded');
 
-    // Clinicians may upload on a patient's behalf; patients only for themselves.
+    /*
+     * Clinicians may upload on a patient's behalf; patients only for
+     * themselves — and "a patient" means one of this practice's.
+     *
+     * The id came straight from the request body with nothing checking it, so
+     * a clinician could file a document into any patient's record on the
+     * platform. Worse than the read equivalents: it puts content *into*
+     * somebody else's record, where it appears on that patient's own screen as
+     * something their clinic sent them.
+     */
     let owner = req.user._id;
-    if (req.body.patientId && req.user.role !== ROLES.PATIENT) owner = req.body.patientId;
+    if (req.body.patientId && req.user.role !== ROLES.PATIENT) {
+      const scope = await practicePatients(req, '_id');
+      // `{}` is the permissive answer — a deployment the enrolment backfill has
+      // not reached. Same rule as everywhere else.
+      const theirs =
+        !scope._id || scope._id.$in.some((id) => String(id) === String(req.body.patientId));
+      if (!theirs) throw notFound('Patient not found');
+      owner = req.body.patientId;
+    }
 
     const root = await uploadRoot();
     const isDocument = DOCUMENT_MIME.has(req.file.mimetype);
@@ -364,8 +382,41 @@ router.delete(
   asyncHandler(async (req, res) => {
     const asset = await MediaAsset.findById(req.params.id);
     if (!asset) throw notFound('File not found');
-    if (asset.owner.toString() !== req.user._id.toString() && req.user.role === ROLES.PATIENT) {
-      throw forbidden('You do not have access to this file');
+
+    /*
+     * Whose file this is, and the sentence that stopped being true.
+     *
+     * This read `owner !== me && role === PATIENT`, which says "a patient may
+     * only touch their own; anybody else may touch anything". Correct while
+     * there was one clinic — "a clinician may act on any patient" was a true
+     * statement about this product — and false the moment a second practice
+     * existed. A doctor at any practice could soft-delete any lab report on
+     * the platform by id, and the record it belonged to would simply lose the
+     * scan.
+     *
+     * Own files stay own files: a clinician's avatar and signature are theirs
+     * and are not owned by any patient, so the ownership test has to come
+     * first or a doctor loses the ability to replace their own signature.
+     */
+    const isOwn = asset.owner.toString() === req.user._id.toString();
+
+    if (!isOwn) {
+      if (req.user.role === ROLES.PATIENT) {
+        throw forbidden('You do not have access to this file');
+      }
+
+      const scope = await practicePatients(req, 'owner');
+      // `{}` is the permissive answer — no practice, or a deployment the
+      // enrolment backfill has not reached. Same rule as everywhere else:
+      // absence is not evidence, and narrowing begins once both sides are
+      // known.
+      const theirs =
+        !scope.owner || scope.owner.$in.some((id) => String(id) === String(asset.owner));
+      if (!theirs) {
+        // `notFound`, not `forbidden`. Confirming that an id exists is itself
+        // an answer about another practice's data.
+        throw notFound('File not found');
+      }
     }
     // Soft delete only — the bytes stay for the medical record.
     asset.deletedAt = new Date();

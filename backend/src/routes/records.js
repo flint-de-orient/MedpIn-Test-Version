@@ -6,6 +6,7 @@ import { requirePermission } from '../middleware/authorise.js';
 import { validate } from '../middleware/validate.js';
 import { asyncHandler, badRequest, notFound, forbidden } from '../middleware/errors.js';
 import { audit } from '../middleware/audit.js';
+import { practicePatients } from '../middleware/practiceScope.js';
 import { PERMISSIONS } from '../models/Membership.js';
 import { Prescription } from '../models/Prescription.js';
 import { RECORD_STATE } from '../models/plugins/clinicalRecord.js';
@@ -112,7 +113,36 @@ router.post(
   }),
   audit('update', 'Patient'),
   asyncHandler(async (req, res) => {
-    const patient = await Patient.findById(req.params.id);
+    /*
+     * Scoped to this practice's own patients, which it was not.
+     *
+     * The worst of the three cross-practice writes the authorisation sweep
+     * found, because of what detaching decides: which phone number signs in as
+     * this person from now on. `Patient.findById` with no filter meant a
+     * clinician at any practice could point somebody else's patient at a
+     * number of their choosing — and the patient would find themselves unable
+     * to sign in, with a stranger's handset holding their record.
+     *
+     * `practicePatients` yields `{}` for a practice the enrolment backfill has
+     * not reached, so this is no stricter than before for those deployments.
+     */
+    /*
+     * `$and`, not a spread, and the difference is not stylistic.
+     *
+     * `{ _id: req.params.id, ...practicePatients(req, '_id') }` looks right and
+     * is worse than no scoping at all: both keys are `_id`, so the spread
+     * silently replaces the requested id with `{ $in: [own patients] }`. The
+     * route then finds *a different patient* — one of the caller's own — and
+     * detaches them. A guard that operates on the wrong record is a bug the
+     * guard introduced.
+     *
+     * Caught by the cross-tenant test, which expected a 404 and got a 403 from
+     * a check further down the handler that could only have been reached with
+     * somebody else's row in hand.
+     */
+    const patient = await Patient.findOne({
+      $and: [{ _id: req.params.id }, await practicePatients(req, '_id')],
+    });
     if (!patient) throw notFound('Patient not found');
 
     if (patient.detachedAt) {

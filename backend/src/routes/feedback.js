@@ -3,7 +3,7 @@ import { z } from 'zod';
 
 import { requireAuth, requireClinician } from '../middleware/auth.js';
 import { validate, q } from '../middleware/validate.js';
-import { asyncHandler, badRequest } from '../middleware/errors.js';
+import { asyncHandler, badRequest, notFound } from '../middleware/errors.js';
 import { audit } from '../middleware/audit.js';
 import { Feedback } from '../models/Feedback.js';
 import { ROLES } from '../models/User.js';
@@ -116,7 +116,35 @@ router.post(
   requireClinician,
   audit('update', 'Feedback'),
   asyncHandler(async (req, res) => {
-    await Feedback.findByIdAndUpdate(req.params.id, {
+    /*
+     * This practice's feedback, which the read above already knew and this did
+     * not.
+     *
+     * The GET one route up carries a comment explaining exactly why an
+     * unscoped query here is bad — "every patient's words on the platform,
+     * with their name, phone and photograph attached". The fix was applied
+     * where somebody was looking and not to its neighbour, so a clinician at
+     * any practice could mark anybody's feedback reviewed and take it off the
+     * list of the clinic it was actually about.
+     *
+     * `$and` rather than a spread, though here a spread would work: this
+     * filter keys on `_id` and the scope keys on `patient`, so they do not
+     * collide. In records.js both halves key on `_id` and the spread silently
+     * replaced the requested id with the caller's own patient list — the guard
+     * then found somebody else's row and acted on it.
+     *
+     * Written this way because the safety of a spread depends on two key names
+     * staying different, which is not a property anybody checks when adding a
+     * field. `$and` does not depend on it.
+     */
+    const scoped = await Feedback.findOne({
+      $and: [{ _id: req.params.id }, await practicePatients(req, 'patient')],
+    })
+      .select('_id')
+      .lean();
+    if (!scoped) throw notFound('Feedback not found');
+
+    await Feedback.findByIdAndUpdate(scoped._id, {
       reviewedAt: new Date(),
       reviewedBy: req.user._id,
     });

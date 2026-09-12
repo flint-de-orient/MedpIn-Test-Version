@@ -7,6 +7,7 @@ import { asyncHandler, notFound, badRequest } from '../middleware/errors.js';
 import { ROLES } from '../models/User.js';
 import { dieticianFacingPatient } from '../services/dieticianIdentity.js';
 import { audit } from '../middleware/audit.js';
+import { practicePatients } from '../middleware/practiceScope.js';
 import { handlePatientMessage, streamPatientMessage } from '../services/ai/assistant.js';
 import { ChatSession } from '../models/ChatSession.js';
 import { ChatMessage } from '../models/ChatMessage.js';
@@ -1129,7 +1130,30 @@ function isOwnMessage(message, user) {
  */
 async function findVisibleMessage(req) {
   const filter = { _id: req.params.id };
-  if (req.user.role === ROLES.PATIENT) filter.patient = req.user._id;
+
+  if (req.user.role === ROLES.PATIENT) {
+    filter.patient = req.user._id;
+  } else {
+    /*
+     * A clinician sees their own practice's threads, not every thread.
+     *
+     * This narrowed the filter for patients and left the bare id for everybody
+     * else — which read as "a clinician may open any message", true of a
+     * single-clinic product and false since practices arrived. Pin, hide and
+     * unhide all come through here with no second check, so a doctor at any
+     * practice could moderate a conversation between a patient and a clinic
+     * they have never heard of.
+     *
+     * Edit and delete-for-everyone were never exposed: both add `isOwnMessage`
+     * afterwards, which happens to exclude other people's threads as a side
+     * effect of excluding other people's messages.
+     *
+     * `practicePatients` returns `{}` when the practice is unknown, which
+     * leaves this exactly as permissive as it was for a deployment the
+     * backfill has not reached.
+     */
+    Object.assign(filter, await practicePatients(req, 'patient'));
+  }
 
   const message = await ChatMessage.findOne(filter);
   if (!message) throw notFound('Message not found');
