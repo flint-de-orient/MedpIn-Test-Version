@@ -178,14 +178,26 @@ export const QUICK_ACTIONS = Object.freeze({
  */
 const GENERAL = {
   /*
-   * The order the existing dashboard already argues for, in its own comments:
-   * who needs a doctor, then the day, then what is queued, then the alerts
-   * already raised, then what the practice has been doing.
+   * The order the existing dashboard already draws, component for component.
    *
-   * A doctor does not open this to learn they have seven patients — so the
-   * clinical work is above the operational summary, and context is last.
+   * Not a redesign. This default is what Dr. Dey's clinic opens onto every
+   * morning, and the deploy that moves the arrangement to the server must not
+   * be the deploy that rearranges his screen — so the list is the old
+   * hardcoded one transcribed, in its own order, including the snapshot chart
+   * at the top.
+   *
+   * ANALYTICS_SUMMARY was missing from the first draft of this, which would
+   * have taken the chart off the home screen of the one practice using the
+   * product. It was wrapped in `if (analytics != null)` before, which is the
+   * same thing the capability gate does now: a practice without the plan does
+   * not see it, and one with the plan does.
+   *
+   * The reasoning the old comments carried still holds and lives here now:
+   * clinical work above operational summary, context last. A doctor does not
+   * open this to learn they have seven patients.
    */
   widgets: [
+    'ANALYTICS_SUMMARY',
     'TRIAGE_QUEUE',
     'TODAYS_CLINIC',
     'ACTION_QUEUE',

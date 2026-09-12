@@ -216,6 +216,32 @@ describe('two departments, two different applications', () => {
   });
 });
 
+describe('the clinic that exists today keeps the screen it has', () => {
+  test('the general default is the old hardcoded list, in its order', () => {
+    /*
+     * The assertion that makes this migration safe rather than a redesign.
+     *
+     * Dr. Dey's practice predates practice types and plans, so it holds every
+     * capability and its doctor holds the head preset — which means it takes
+     * the general default unchanged. This is what he opens onto, and the
+     * deploy that moves the arrangement to the server must not be the deploy
+     * that rearranges it.
+     *
+     * ANALYTICS_SUMMARY was missing from the first draft and the chart would
+     * have quietly left his home screen.
+     */
+    assert.deepEqual(forHead(null).widgets, [
+      'ANALYTICS_SUMMARY',
+      'TRIAGE_QUEUE',
+      'TODAYS_CLINIC',
+      'ACTION_QUEUE',
+      'NUTRITION_REVIEWS',
+      'OPEN_ALERTS',
+      'LIVE_ACTIVITY',
+    ]);
+  });
+});
+
 describe('what the plan pays for disappears when it stops paying', () => {
   test('no analytics, no analytics panel', () => {
     const without = new Set([...everything].filter((c) => c !== C.ADVANCED_ANALYTICS));
@@ -366,6 +392,7 @@ describe('the resolver accepts what its callers actually hold', () => {
      */
     const ui = resolveUi({ capabilities: undefined, permissions: undefined });
     assert.deepEqual(ui.widgets, [
+      'ANALYTICS_SUMMARY',
       'TRIAGE_QUEUE',
       'TODAYS_CLINIC',
       'ACTION_QUEUE',

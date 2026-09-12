@@ -32,6 +32,22 @@ class ClinicianDashboardScreen extends ConsumerStatefulWidget {
       _ClinicianDashboardScreenState();
 }
 
+/// The panels that have something to draw, with one gap between each pair.
+///
+/// Nulls dropped before the spacing is worked out, so a panel still waiting on
+/// its data takes its gap with it rather than leaving a hole where it will be.
+/// And no gap after the last one: it would sit on top of the list's own bottom
+/// padding and end the screen in 72px of nothing.
+List<Widget> _spaced(List<Widget?> panels) {
+  final present = panels.whereType<Widget>().toList(growable: false);
+  return [
+    for (var i = 0; i < present.length; i++) ...[
+      present[i],
+      if (i != present.length - 1) const SizedBox(height: T.s6),
+    ],
+  ];
+}
+
 class _ClinicianDashboardScreenState
     extends ConsumerState<ClinicianDashboardScreen>
     with WidgetsBindingObserver {
@@ -195,19 +211,23 @@ class _ClinicianDashboardScreenState
                               const SizedBox(height: T.s6),
                             ],
 
-                            for (final id in widgets)
-                              // A builder that returns null is a panel with
-                              // nothing to say yet — skipped, and the gap
-                              // skipped with it, so a half-loaded dashboard
-                              // has no holes in it.
-                              ...(() {
-                                final built = dashboardWidgets[id]?.call(data);
-                                if (built == null) return const <Widget>[];
-                                return <Widget>[
-                                  built,
-                                  const SizedBox(height: T.s6),
-                                ];
-                              })(),
+                            /*
+                             * Built first, then spaced — rather than emitting
+                             * a gap after each panel as it goes.
+                             *
+                             * Two reasons, and both of them are the kind of
+                             * thing that only shows up on a device. A builder
+                             * that returns null is a panel with nothing to say
+                             * yet, and its gap has to go with it or a
+                             * half-loaded dashboard has holes in it. And a gap
+                             * after the *last* panel lands on top of the
+                             * list's own bottom padding, which is 48 — so the
+                             * screen would end in 72px of nothing.
+                             */
+                            ..._spaced([
+                              for (final id in widgets)
+                                dashboardWidgets[id]?.call(data),
+                            ]),
                           ],
                         ),
                       ),
