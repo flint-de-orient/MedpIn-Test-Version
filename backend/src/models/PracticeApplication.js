@@ -149,6 +149,28 @@ const practiceApplicationSchema = new mongoose.Schema(
     // ---- what a reviewer checks -------------------------------------------
     registrationNo: { type: String, trim: true, maxlength: 60, default: null },
     doctorName: { type: String, trim: true, maxlength: 120, default: null },
+
+    /**
+     * Which specialties this practice says it runs.
+     *
+     * Keys from the shared [Department] catalogue, never free text — a
+     * department typed by an applicant is a spelling the platform has never
+     * seen, and on approval it would become a real row nobody reviewed.
+     *
+     * Empty for a clinic, and not because the applicant declined: a clinic
+     * cannot have departments on any plan, so the form never asks. See the
+     * note on /options for why that question comes from the capability table
+     * rather than a list kept beside the form.
+     */
+    departments: { type: [String], default: [] },
+
+    /**
+     * Which of them the named doctor runs, when there is more than one.
+     *
+     * Null on a single-department practice and on a clinic, where the question
+     * has one answer and asking it is a field somebody has to read.
+     */
+    doctorDepartment: { type: String, trim: true, maxlength: 80, default: null },
     doctorRegistrationNo: { type: String, trim: true, maxlength: 60, default: null },
     notes: { type: String, trim: true, maxlength: 2000, default: null },
 
@@ -193,6 +215,7 @@ practiceApplicationSchema.methods.toApplicant = function toApplicant() {
     contactEmail: this.contactEmail,
     // Whether it answered, never the token that would prove it.
     contactEmailVerified: Boolean(this.contactEmailVerifiedAt),
+    departments: this.departments ?? [],
     contactPhone: this.contactPhone,
     submittedOn: this.createdAt,
     /**

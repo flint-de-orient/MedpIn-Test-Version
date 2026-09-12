@@ -2,6 +2,8 @@ import { Practice, PRACTICE_STATUS, VERIFICATION } from '../models/Practice.js';
 import { ROLES } from '../models/User.js';
 import { joinByPhone } from './memberships.js';
 import { badRequest } from '../middleware/errors.js';
+import { Department } from '../models/Department.js';
+import { logger } from '../config/logger.js';
 
 /**
  * A practice, with somebody in it, in one call.
@@ -32,6 +34,15 @@ export async function provisionPractice({
   headDoctorPhone,
   headDoctorQualifications = null,
   headDoctorRegistrationNo = null,
+  /**
+   * Shared-catalogue keys the practice says it runs.
+   *
+   * Copied from the shared rows rather than referenced, because a practice
+   * renaming its own Cardiology must not rename everybody's — see
+   * Department.js on why the two scopes live in one table. An empty list is the
+   * ordinary case: a clinic has no departments and never will.
+   */
+  departments = [],
 }) {
   /*
    * Is this licence already here?
@@ -84,6 +95,41 @@ export async function provisionPractice({
   if (!practice.doctorDisplayName) practice.doctorDisplayName = headDoctorName;
   practice.headDoctor = head.user._id;
   await practice.save();
+
+  /*
+   * The departments, after the practice exists and the head is in it.
+   *
+   * Last on purpose. A department belongs to a practice, so it cannot be
+   * written first; and if it fails the practice is still a practice with a
+   * doctor in it, which is a recoverable state an operator can finish by hand.
+   * Reversing that — departments written, head doctor failing — would leave
+   * rows pointing at a practice the compensation above then deletes.
+   *
+   * `insertMany` with `ordered: false` so one duplicate key does not abandon
+   * the rest: a practice asking for a department it somehow already has is not
+   * a reason to drop the other five.
+   */
+  if (departments.length) {
+    const shared = await Department.find({ practice: null, key: { $in: departments } })
+      .select('key names')
+      .lean();
+
+    if (shared.length) {
+      await Department.insertMany(
+        shared.map((d) => ({
+          practice: practice._id,
+          key: d.key,
+          names: d.names,
+          isActive: true,
+        })),
+        { ordered: false },
+      ).catch((err) => {
+        // Never fatal to the provisioning. The practice and its head doctor are
+        // written and correct; a missing department is a row an operator adds.
+        logger.error({ err, practice: practice._id }, 'could not seed departments');
+      });
+    }
+  }
 
   return { practice, head };
 }

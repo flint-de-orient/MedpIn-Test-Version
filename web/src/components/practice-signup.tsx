@@ -83,12 +83,28 @@ export function PracticeSignup({
    * ends up offering a type the enum has never heard of — and the submission
    * would then be refused by the validator for a value this screen suggested.
    */
-  const [types, setTypes] = useState<{ key: string; label: string }[] | null>(null);
+  type TypeOption = { key: string; label: string; hasDepartments?: boolean };
+  const [types, setTypes] = useState<TypeOption[] | null>(null);
+
+  /**
+   * The shared specialty catalogue, which is also the department list.
+   *
+   * Offered rather than typed. A department an applicant invents becomes a real
+   * row on approval, and "Cardiolgy" on a letterhead is the kind of thing
+   * nobody notices until it is printed.
+   */
+  const [catalogue, setCatalogue] = useState<{ key: string; label: string }[]>([]);
+  const [departments, setDepartments] = useState<string[]>([]);
+  const [doctorDepartment, setDoctorDepartment] = useState("");
   useEffect(() => {
-    api<{ types: { key: string; label: string }[] }>("/applications/options", {
-      anonymous: true,
-    })
-      .then((out) => setTypes(out.types ?? []))
+    api<{
+      types: TypeOption[];
+      departments: { key: string; label: string }[];
+    }>("/applications/options", { anonymous: true })
+      .then((out) => {
+        setTypes(out.types ?? []);
+        setCatalogue(out.departments ?? []);
+      })
       .catch(() => {
         /*
          * `[]`, not silence.
@@ -121,6 +137,31 @@ export function PracticeSignup({
   }, [step, practiceName, contactName, contactEmail, phone, registrationNo, doctorName]);
 
   const e164 = useMemo(() => toE164(phone), [phone]);
+
+  /*
+   * Whether this kind of practice has departments at all.
+   *
+   * The server says so, per type, from the table that actually grants the
+   * capability — a clinic never has one on any plan, and that is what a solo
+   * practice is. Working it out here would be a second copy of a rule that
+   * lives in capabilities.js, disagreeing the first time either moved.
+   *
+   * Unknown while the options are loading, and unknown means do not ask: a
+   * field that appears a second after the step does is worse than one that
+   * appears with it.
+   */
+  const asksDepartments = Boolean(
+    practiceType && types?.find((t) => t.key === practiceType)?.hasDepartments,
+  );
+
+  // Changing to a type that has none clears what was chosen, so a polyclinic
+  // edited down to a clinic does not submit departments it no longer has.
+  useEffect(() => {
+    if (!asksDepartments) {
+      setDepartments([]);
+      setDoctorDepartment("");
+    }
+  }, [asksDepartments]);
 
   /*
    * Four steps. "Verify" used to be a fifth, on its own.
@@ -260,6 +301,8 @@ export function PracticeSignup({
           phoneToken,
           registrationNo: registrationNo.trim(),
           doctorName: doctorName.trim(),
+          departments,
+          doctorDepartment: doctorDepartment || undefined,
           doctorRegistrationNo: doctorRegistrationNo.trim(),
           notes: notes.trim(),
         },
@@ -523,6 +566,79 @@ export function PracticeSignup({
                   maxLength={60}
                 />
               </Field>
+
+              {/*
+                Only for a kind of practice that has departments.
+
+                A solo clinic is one list of patients and one doctor; asking it
+                which departments it runs is a question with no answer, and a
+                field with no answer is one somebody stops to think about. The
+                server decides which types those are, from the table that
+                grants the capability — see the note on `asksDepartments`.
+              */}
+              {asksDepartments ? (
+                <>
+                  <Field
+                    label="Departments"
+                    hint={
+                      catalogue.length
+                        ? "optional — what this practice runs"
+                        : "unavailable just now"
+                    }
+                  >
+                    <div className="border-input flex flex-col gap-1.5 rounded-sm border px-3 py-2.5">
+                      {catalogue.length === 0 ? (
+                        <p className="text-muted-foreground text-caption">
+                          We could not load the list. You can tell us below
+                          instead.
+                        </p>
+                      ) : (
+                        catalogue.map((d) => (
+                          <label key={d.key} className="flex items-center gap-2.5 text-body">
+                            <input
+                              type="checkbox"
+                              className="accent-primary size-4"
+                              checked={departments.includes(d.key)}
+                              onChange={(e) =>
+                                setDepartments((cur) =>
+                                  e.target.checked
+                                    ? [...cur, d.key]
+                                    : cur.filter((k) => k !== d.key),
+                                )
+                              }
+                            />
+                            {d.label}
+                          </label>
+                        ))
+                      )}
+                    </div>
+                  </Field>
+
+                  {/*
+                    And which of them the named doctor runs — but only once
+                    there is a choice to make. With one department the answer
+                    is the department, and with none there is nothing to pick
+                    from.
+                  */}
+                  {departments.length > 1 ? (
+                    <Field label="Which does that doctor run?" hint="optional">
+                      <Select
+                        value={doctorDepartment}
+                        onChange={setDoctorDepartment}
+                        placeholder="Not saying"
+                      >
+                        {catalogue
+                          .filter((d) => departments.includes(d.key))
+                          .map((d) => (
+                            <option key={d.key} value={d.key}>
+                              {d.label}
+                            </option>
+                          ))}
+                      </Select>
+                    </Field>
+                  ) : null}
+                </>
+              ) : null}
               <Field label="Anything else" hint="optional">
                 <textarea
                   className={`${textInput} resize-y`}
@@ -549,6 +665,21 @@ export function PracticeSignup({
                 }
               />
               <Summary label="Specialty" value={specialty || "not said"} />
+              {/* Only where it was asked. A row reading "Departments — none"
+                  on a clinic is an answer to a question nobody put. */}
+              {asksDepartments ? (
+                <Summary
+                  label="Departments"
+                  value={
+                    departments.length
+                      ? catalogue
+                          .filter((d) => departments.includes(d.key))
+                          .map((d) => d.label)
+                          .join(", ")
+                      : "none said"
+                  }
+                />
+              ) : null}
               <Summary
                 label="Where"
                 value={

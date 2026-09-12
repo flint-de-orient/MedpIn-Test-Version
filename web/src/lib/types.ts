@@ -413,6 +413,9 @@ export type ApplicationRow = {
   contactEmail: string;
   /** Whether that address has been shown to reach somebody. */
   contactEmailVerified: boolean;
+  /** Shared-catalogue keys this practice says it runs. Empty for a clinic. */
+  departments?: string[];
+  doctorDepartment?: string | null;
   contactPhone: string;
   /** The operator who opened it. Advisory — it does not stop anybody deciding. */
   reviewer: string | null;

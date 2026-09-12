@@ -26,6 +26,8 @@ const applicantPhone = z
   .transform(toE164)
   .pipe(z.string().regex(/^\+?[1-9]\d{7,14}$/, 'Enter a valid phone number'));
 import { PRACTICE_TYPE, PRACTICE_TYPE_ORDER } from '../models/Practice.js';
+import { Department } from '../models/Department.js';
+import { BY_TYPE, CAPABILITIES } from '../services/capabilities.js';
 import {
   PracticeApplication,
   APPLICATION_STATUS,
@@ -111,6 +113,41 @@ router.get(
   '/options',
   statusLimiter,
   asyncHandler(async (_req, res) => {
+    /*
+     * Which kinds of practice have departments, answered from the table that
+     * decides it rather than from a copy.
+     *
+     * `BY_TYPE` in capabilities.js is what actually grants DEPARTMENT, and a
+     * clinic never has one on any plan — that is what a solo practice is. A
+     * list of "types with departments" written into this route, or worse into
+     * the form, would be a second opinion that disagrees the first time
+     * somebody edits the real one.
+     *
+     * The plan is not consulted. An applicant has no plan yet, and this only
+     * decides whether the form is worth showing them: an operator approving a
+     * polyclinic onto Essential will find DEPARTMENT withheld later, which is
+     * a sale rather than a mistake in the application.
+     */
+    const departmental = new Set(
+      Object.entries(BY_TYPE)
+        .filter(([, caps]) => caps.includes(CAPABILITIES.DEPARTMENT))
+        .map(([type]) => type),
+    );
+
+    /*
+     * The shared departments, which are also the specialties.
+     *
+     * `practice: null` rows are the standard list every practice sees — see
+     * Department.js on why "Cardiologist" is not kept a hundred times. It is
+     * the same vocabulary the console's own create wizard offers, from the
+     * same query, so an application cannot name a specialty the console has
+     * never heard of.
+     */
+    const shared = await Department.find({ practice: null, isActive: true })
+      .select('key names')
+      .sort({ key: 1 })
+      .lean();
+
     res.json({
       types: PRACTICE_TYPE_ORDER.map((key) => ({
         key,
@@ -118,7 +155,9 @@ router.get(
           .split('_')
           .map((w) => w[0].toUpperCase() + w.slice(1))
           .join(' '),
+        hasDepartments: departmental.has(key),
       })),
+      departments: shared.map((d) => ({ key: d.key, label: d.names?.en ?? d.key })),
     });
   }),
 );
@@ -301,12 +340,41 @@ router.post(
       registrationNo: optionalText(60),
       doctorName: optionalText(120),
       doctorRegistrationNo: optionalText(60),
+
+      // Keys, checked against the shared catalogue below. A cap because this is
+      // an unauthenticated route and an unbounded array is a way to write a lot
+      // of somebody else's disk.
+      departments: z.array(z.string().trim().min(1).max(80)).max(24).optional(),
+      doctorDepartment: optionalText(80),
       notes: optionalText(2000),
     }),
   }),
   asyncHandler(async (req, res) => {
     const b = req.body;
     const phone = phoneFromToken(b.phoneToken);
+
+    /*
+     * Departments, kept only where they are real and only where they apply.
+     *
+     * Two filters, and each refuses something different. The catalogue check
+     * drops a key the platform has never defined — an applicant cannot invent a
+     * specialty that becomes a row on approval. The type check drops the lot
+     * when the practice is a kind that has none: a clinic that posted a
+     * department list, by hand or because the form was stale, is a clinic, and
+     * the capability table is what says so.
+     */
+    const asked = [...new Set(b.departments ?? [])];
+    const departmental = BY_TYPE[b.practiceType]?.includes(CAPABILITIES.DEPARTMENT) ?? false;
+
+    const known = asked.length
+      ? (
+          await Department.find({ practice: null, isActive: true, key: { $in: asked } })
+            .select('key')
+            .lean()
+        ).map((d) => d.key)
+      : [];
+
+    const departments = departmental ? known : [];
 
     /*
      * One open application per number.
@@ -348,6 +416,8 @@ router.post(
       registrationNo: blank(b.registrationNo),
       doctorName: blank(b.doctorName),
       doctorRegistrationNo: blank(b.doctorRegistrationNo),
+      departments,
+      doctorDepartment: departments.includes(b.doctorDepartment) ? b.doctorDepartment : null,
       notes: blank(b.notes),
 
       history: [{ action: 'submitted', note: null }],

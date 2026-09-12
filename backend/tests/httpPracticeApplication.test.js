@@ -10,6 +10,7 @@ import { Membership } from '../src/models/Membership.js';
 import { PracticeApplication, APPLICATION_STATUS } from '../src/models/PracticeApplication.js';
 import { signPhoneToken } from '../src/services/otp.js';
 import { createHash } from 'node:crypto';
+import { Department } from '../src/models/Department.js';
 import { OtpChallenge } from '../src/models/OtpChallenge.js';
 import { User, ROLES } from '../src/models/User.js';
 import { env } from '../src/config/env.js';
@@ -793,5 +794,183 @@ describe('the applicant confirms the address the decision goes to', () => {
 
     const after = await call('GET', '/admin/applications');
     assert.equal(after.body.items[0].contactEmailVerified, true);
+  });
+});
+
+/**
+ * Departments, and the practice types that can have them.
+ *
+ * ---- Where the answer comes from ----------------------------------------
+ *
+ * `BY_TYPE` in capabilities.js is what actually grants DEPARTMENT, and a clinic
+ * never has one on any plan — that is what a solo practice is. So the form asks
+ * about departments only for the types that can hold them, and it learns which
+ * those are from the same table rather than from a list kept beside the form.
+ *
+ * The plan is deliberately not consulted. An applicant has no plan yet; an
+ * operator approving a polyclinic onto Essential will find DEPARTMENT withheld
+ * later, which is a sale rather than a fault in the application.
+ */
+describe('a practice says which specialties it runs, when it can have any', () => {
+  before(async () => {
+    origin = await boot();
+    realAdminSecret = env.ADMIN_JWT_SECRET;
+    env.ADMIN_JWT_SECRET = ADMIN_SECRET;
+    realLimit = env.APPLICATION_RATE_LIMIT;
+    env.APPLICATION_RATE_LIMIT = 500;
+  });
+  after(async () => {
+    env.ADMIN_JWT_SECRET = realAdminSecret;
+    env.APPLICATION_RATE_LIMIT = realLimit;
+    await shutdown();
+  });
+
+  beforeEach(async () => {
+    await wipe();
+    // The shared catalogue: `practice: null` rows every practice sees.
+    await Department.create([
+      { practice: null, key: 'cardiology', names: { en: 'Cardiology' }, isActive: true },
+      { practice: null, key: 'nephrology', names: { en: 'Nephrology' }, isActive: true },
+    ]);
+    const admin = await PlatformAdmin.create({
+      email: 'ops@example.com',
+      name: 'Ops',
+      passwordHash: 'x',
+      isActive: true,
+    });
+    const { signAdminToken } = await import('../src/services/adminTokens.js');
+    token = signAdminToken(admin);
+  });
+
+  test('the options say which types have departments, from the capability table', async () => {
+    const res = await call('GET', '/applications/options', undefined, { anonymous: true });
+    const by = Object.fromEntries(res.body.types.map((t) => [t.key, t.hasDepartments]));
+
+    assert.equal(by.clinic, false, 'a clinic was offered departments');
+    assert.equal(by.polyclinic, true);
+    assert.equal(by.hospital, true);
+    assert.equal(by.specialty_centre, true);
+  });
+
+  test('and offer the shared catalogue rather than free text', async () => {
+    const res = await call('GET', '/applications/options', undefined, { anonymous: true });
+    assert.deepEqual(res.body.departments.map((d) => d.key).sort(), ['cardiology', 'nephrology']);
+  });
+
+  test('a polyclinic keeps what it asked for', async () => {
+    const res = await call(
+      'POST',
+      '/applications',
+      form({
+        practiceType: 'polyclinic',
+        departments: ['cardiology', 'nephrology'],
+        doctorDepartment: 'cardiology',
+      }),
+      { anonymous: true },
+    );
+    assert.equal(res.status, 201);
+
+    const saved = await PracticeApplication.findOne({
+      reference: res.body.application.reference,
+    }).lean();
+    assert.deepEqual([...saved.departments].sort(), ['cardiology', 'nephrology']);
+    assert.equal(saved.doctorDepartment, 'cardiology');
+  });
+
+  test('a clinic keeps none, whatever it posts', async () => {
+    /*
+     * The form never asks a clinic, so this only arrives by hand or from a
+     * stale page. Dropped rather than refused: the application is fine and the
+     * answer is simply not one a clinic has.
+     */
+    const res = await call(
+      'POST',
+      '/applications',
+      form({ practiceType: 'clinic', departments: ['cardiology'], doctorDepartment: 'cardiology' }),
+      { anonymous: true },
+    );
+    assert.equal(res.status, 201);
+
+    const saved = await PracticeApplication.findOne({
+      reference: res.body.application.reference,
+    }).lean();
+    assert.deepEqual(saved.departments, []);
+    assert.equal(saved.doctorDepartment, null);
+  });
+
+  test('and a specialty the platform has never defined is dropped', async () => {
+    // On approval these become real rows. An applicant cannot invent one.
+    const res = await call(
+      'POST',
+      '/applications',
+      form({ practiceType: 'polyclinic', departments: ['cardiology', 'astrology'] }),
+      { anonymous: true },
+    );
+    const saved = await PracticeApplication.findOne({
+      reference: res.body.application.reference,
+    }).lean();
+    assert.deepEqual(saved.departments, ['cardiology']);
+  });
+
+  test('the doctor is only assigned a department the practice actually runs', async () => {
+    const res = await call(
+      'POST',
+      '/applications',
+      form({
+        practiceType: 'polyclinic',
+        departments: ['cardiology'],
+        doctorDepartment: 'nephrology',
+      }),
+      { anonymous: true },
+    );
+    const saved = await PracticeApplication.findOne({
+      reference: res.body.application.reference,
+    }).lean();
+    assert.equal(saved.doctorDepartment, null);
+  });
+
+  test('approving creates them, owned by the new practice', async () => {
+    /*
+     * Copied, not referenced. A practice renaming its own Cardiology must not
+     * rename everybody's — which is why the shared rows and a practice's own
+     * live in one table separated by `practice`.
+     */
+    const submitted = await call(
+      'POST',
+      '/applications',
+      form({ practiceType: 'polyclinic', departments: ['cardiology', 'nephrology'] }),
+      { anonymous: true },
+    );
+    const app = await PracticeApplication.findOne({
+      reference: submitted.body.application.reference,
+    });
+
+    const res = await call('POST', `/admin/applications/${app._id}/approve`, {
+      note: 'Registration checked against the council register.',
+    });
+    assert.equal(res.status, 200);
+
+    const after = await PracticeApplication.findById(app._id).lean();
+    const theirs = await Department.find({ practice: after.practice }).select('key').lean();
+    assert.deepEqual(theirs.map((d) => d.key).sort(), ['cardiology', 'nephrology']);
+
+    // And the shared rows are untouched — still owned by nobody.
+    assert.equal(await Department.countDocuments({ practice: null }), 2);
+  });
+
+  test('and a clinic is approved with none', async () => {
+    const submitted = await call('POST', '/applications', form({ practiceType: 'clinic' }), {
+      anonymous: true,
+    });
+    const app = await PracticeApplication.findOne({
+      reference: submitted.body.application.reference,
+    });
+
+    await call('POST', `/admin/applications/${app._id}/approve`, {
+      note: 'Solo practice, registration verified.',
+    });
+
+    const after = await PracticeApplication.findById(app._id).lean();
+    assert.equal(await Department.countDocuments({ practice: after.practice }), 0);
   });
 });

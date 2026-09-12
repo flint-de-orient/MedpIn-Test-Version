@@ -264,6 +264,9 @@ router.post(
       headDoctorName,
       headDoctorPhone: a.contactPhone,
       headDoctorRegistrationNo: a.doctorRegistrationNo ?? null,
+      // What they said they run. Already filtered to the shared catalogue and
+      // to types that can have them, on the way in.
+      departments: a.departments ?? [],
     });
 
     a.status = APPLICATION_STATUS.APPROVED;
@@ -330,6 +333,10 @@ function full(a) {
     contactName: a.contactName,
     contactEmail: a.contactEmail,
     contactEmailVerified: Boolean(a.contactEmailVerifiedAt),
+    // What they say they run, and which of it the named doctor does. Empty on
+    // a clinic, which cannot have departments on any plan.
+    departments: a.departments ?? [],
+    doctorDepartment: a.doctorDepartment ?? null,
     contactPhone: a.contactPhone,
     phoneVerifiedAt: a.phoneVerifiedAt,
 

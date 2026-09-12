@@ -398,6 +398,18 @@ function Detail({ id }: { id: string }) {
                 — it is a reason to ring the number instead of writing into the
                 dark.
               */}
+              {/* What they say they run. Absent on a clinic, which cannot have
+                  departments on any plan — so no row rather than an empty one. */}
+              {a.departments?.length ? (
+                <Row
+                  label="Departments"
+                  value={
+                    a.doctorDepartment
+                      ? `${a.departments.join(", ")} · doctor runs ${a.doctorDepartment}`
+                      : a.departments.join(", ")
+                  }
+                />
+              ) : null}
               <Row
                 label="Email"
                 value={
