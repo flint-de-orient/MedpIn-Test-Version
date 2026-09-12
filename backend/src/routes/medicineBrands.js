@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { MedicineBrand, brandSlug } from '../models/MedicineBrand.js';
 import { asyncHandler } from '../middleware/errors.js';
 import { validate } from '../middleware/validate.js';
-import { requireAuth, requireClinician } from '../middleware/auth.js';
+import { requireAuth, requireClinician, requireRole, MEDICINE_DICTIONARY } from '../middleware/auth.js';
 import { audit } from '../middleware/audit.js';
 
 const router = Router();
@@ -100,6 +100,9 @@ router.get(
  */
 router.put(
   '/',
+  // Not every clinician: see MEDICINE_DICTIONARY. This route was guarded
+  // by requireClinician alone, which used to mean doctor-or-desk.
+  requireRole(...MEDICINE_DICTIONARY),
   validate({
     body: z.object({
       name: z.string().min(1).max(160),

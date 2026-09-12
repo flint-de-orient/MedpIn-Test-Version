@@ -89,6 +89,51 @@ export const DIRECT_PATIENT_ACCESS = Object.freeze([
 ]);
 
 /**
+ * Who may set up the practice itself — its locations and its letterhead.
+ *
+ * ---- Why this exists, and why it is not MANAGE_STAFF --------------------
+ *
+ * A handful of routes were guarded by `requireClinician` alone, which used to
+ * mean "doctor or desk" and now means "works here". Widening that guard
+ * without this would have handed a lab technician the ability to delete a
+ * clinic location.
+ *
+ * The obvious fix is `requirePermission(MANAGE_STAFF)`, and it is wrong: the
+ * front desk does not hold it, and the front desk is who sets up the first
+ * clinic — the Profile screen offers exactly that when a practice has no
+ * location yet. Gating on the permission would break the first-run path for a
+ * practice whose receptionist does the setup, which is most of them.
+ *
+ * So this restores the surface these routes already had and adds the one role
+ * whose job it plainly is. Whether the desk *should* keep it is a real
+ * product question and a separate change; it is not one to make by accident
+ * while adding roles.
+ */
+export const PRACTICE_SETUP = Object.freeze([
+  ROLES.DOCTOR,
+  ROLES.STAFF,
+  ROLES.PRACTICE_MANAGER,
+]);
+
+/**
+ * Who may edit the shared medicine dictionary.
+ *
+ * The names and strengths that autocomplete on every prescription in the
+ * practice. Same reasoning as above: this was doctor-or-desk, and a lab
+ * technician editing the list a doctor prescribes from is not a thing the
+ * widening should have quietly allowed.
+ *
+ * A doctor's assistant is added because typing up the dictionary is precisely
+ * the kind of work they do. A practice manager is not: they administer the
+ * practice and do not touch clinical reference data.
+ */
+export const MEDICINE_DICTIONARY = Object.freeze([
+  ROLES.DOCTOR,
+  ROLES.STAFF,
+  ROLES.DOCTOR_ASSISTANT,
+]);
+
+/**
  * The doctor alone — for anything that is a clinical decision.
  *
  * `requireClinician` admits STAFF, which is right for registration, the

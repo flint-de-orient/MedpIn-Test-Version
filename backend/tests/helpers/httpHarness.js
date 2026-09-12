@@ -109,6 +109,10 @@ export function as(token) {
     get: (path) => call('GET', path),
     post: (path, body) => call('POST', path, body),
     patch: (path, body) => call('PATCH', path, body),
+    // Four routes use PUT and this helper had no verb for them, so nothing in
+    // the suite had ever sent one. A harness that cannot express a request is
+    // a set of routes nobody tests.
+    put: (path, body) => call('PUT', path, body),
     del: (path) => call('DELETE', path),
   };
 }

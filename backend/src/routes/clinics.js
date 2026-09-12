@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { requireAuth, requireClinician } from '../middleware/auth.js';
+import { requireAuth, requireClinician, requireRole, PRACTICE_SETUP } from '../middleware/auth.js';
 import { validate, q } from '../middleware/validate.js';
 import { asyncHandler, notFound, badRequest, conflict } from '../middleware/errors.js';
 import { audit } from '../middleware/audit.js';
@@ -130,7 +130,7 @@ router.get(
 
 router.post(
   '/',
-  requireClinician,
+  requireRole(...PRACTICE_SETUP),
   validate({ body: clinicBody }),
   audit('create', 'Clinic'),
   asyncHandler(async (req, res) => {
@@ -224,7 +224,7 @@ router.post(
 
 router.patch(
   '/:id',
-  requireClinician,
+  requireRole(...PRACTICE_SETUP),
   validate({ body: clinicBody.partial() }),
   audit('update', 'Clinic'),
   asyncHandler(async (req, res) => {
@@ -246,7 +246,7 @@ router.patch(
  */
 router.delete(
   '/:id',
-  requireClinician,
+  requireRole(...PRACTICE_SETUP),
   audit('update', 'Clinic'),
   asyncHandler(async (req, res) => {
     const clinic = await Clinic.findByIdAndUpdate(req.params.id, { isActive: false }, { new: true });

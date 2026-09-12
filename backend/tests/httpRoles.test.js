@@ -271,3 +271,70 @@ describe('a practice can actually hire these people', () => {
     );
   });
 });
+
+describe('widening requireClinician did not widen anything else', () => {
+  /*
+   * The risk in this change, tested rather than asserted.
+   *
+   * `requireClinician` meant "doctor or desk" and now means "works here",
+   * which is what it always claimed. A handful of routes were relying on the
+   * old, narrower meaning without saying so — and a widening that quietly
+   * hands a lab technician the ability to delete a clinic location is a worse
+   * bug than the one it fixed.
+   */
+  before(async () => {
+    origin = await boot();
+  });
+  after(shutdown);
+  beforeEach(async () => {
+    await wipe();
+    await setUp();
+  });
+
+  test('a lab technician cannot create a clinic location', async () => {
+    const tech = await makeMember(practice, {
+      name: 'Sujata Roy',
+      role: ROLES.LAB_TECHNICIAN,
+      department: laboratory._id,
+    });
+
+    const res = await as(tech.token).post('/clinics', { name: 'Somewhere New' });
+    assert.equal(res.status, 403);
+  });
+
+  test('and cannot edit the medicine dictionary a doctor prescribes from', async () => {
+    const tech = await makeMember(practice, {
+      name: 'Sujata Roy',
+      role: ROLES.LAB_TECHNICIAN,
+      department: laboratory._id,
+    });
+
+    const res = await as(tech.token).put('/medicine-brands', { brands: [] });
+    assert.equal(res.status, 403);
+  });
+
+  test('but the front desk keeps the setup it already did', async () => {
+    /*
+     * The reason these are role lists rather than `requirePermission`.
+     *
+     * The desk does not hold MANAGE_STAFF and the desk is who sets up the
+     * first clinic — the Profile screen offers exactly that when a practice
+     * has no location yet. Gating on the permission would have read as
+     * tightening and been a first-run outage for most practices.
+     */
+    const desk = await makeMember(practice, { name: 'Sujata Roy', role: ROLES.STAFF });
+
+    const res = await as(desk.token).post('/clinics', { name: 'Salt Lake' });
+    assert.notEqual(res.status, 403, 'the front desk lost its own setup path');
+  });
+
+  test('and a practice manager gains it, which is their job', async () => {
+    const manager = await makeMember(practice, {
+      name: 'Priya Nair',
+      role: ROLES.PRACTICE_MANAGER,
+    });
+
+    const res = await as(manager.token).post('/clinics', { name: 'Behala' });
+    assert.notEqual(res.status, 403);
+  });
+});
