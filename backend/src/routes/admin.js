@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { readiness } from '../config/readiness.js';
 import rateLimit from 'express-rate-limit';
 import { z } from 'zod';
 
@@ -1963,6 +1964,37 @@ router.get(
     ]);
 
     const items = [];
+
+    /*
+     * A deployment that cannot do what it claims, first.
+     *
+     * This began as its own route, `/admin/readiness`, and adminPanel.test.js
+     * refused it: "a route documented as a curl command is a feature the
+     * operator does not have." It was right. A configuration problem is a
+     * thing waiting on a person, which is what this endpoint is for — and an
+     * operator should not have to know to go and look.
+     *
+     * Above the practice work deliberately. A misconfigured payment webhook
+     * accepts forged callbacks; a practice awaiting verification waits. One of
+     * those can carry on being true for a week.
+     *
+     * `degraded` only. `off` is a development machine or a feature this
+     * deployment does not use, and a bell that is always ringing is one nobody
+     * hears.
+     */
+    for (const check of readiness().filter((c) => c.state === 'degraded')) {
+      items.push({
+        kind: 'configuration',
+        severity: 'stopped',
+        title: check.because,
+        detail: check.affects,
+        // Nowhere to click: this is fixed in a `.env` on the server, not in
+        // the console. An href that went somewhere unhelpful would be worse
+        // than one that goes nowhere.
+        href: '',
+        count: 1,
+      });
+    }
 
     if (pendingVerification) {
       items.push({

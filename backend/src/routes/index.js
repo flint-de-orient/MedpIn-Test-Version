@@ -3,6 +3,7 @@ import mongoose from 'mongoose';
 
 import { isProd } from '../config/env.js';
 import { logger } from '../config/logger.js';
+import { readinessSummary } from '../config/readiness.js';
 
 import authRoutes from './auth.js';
 import applicationRoutes from './applications.js';
@@ -69,6 +70,20 @@ router.get('/health', async (req, res) => {
   res.status(healthy ? 200 : 503).json({
     status: healthy ? 'ok' : 'degraded',
     db,
+    /*
+     * Whether this deployment is configured to do what it claims.
+     *
+     * Counts only, never reasons — a deploy script needs to know something is
+     * wrong without authenticating, and "payments: no webhook secret" tells a
+     * reader exactly which forged request to send. The detail is behind the
+     * admin guard at /admin/readiness.
+     *
+     * Deliberately not part of `status`: a missing SMTP host is not a reason
+     * to fail a load balancer's health probe and take the clinic offline.
+     * Liveness and readiness are different questions and this answers both,
+     * separately.
+     */
+    ...readinessSummary(),
     ...(detail ? { detail } : {}),
     uptime: Math.round(process.uptime()),
     version: '1.0.0',

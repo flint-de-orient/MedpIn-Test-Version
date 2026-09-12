@@ -3,6 +3,7 @@ import { connectDb, disconnectDb } from './config/db.js';
 import { assertClinicContactConfigured } from './services/clinicContact.js';
 import { env } from './config/env.js';
 import { logger } from './config/logger.js';
+import { readiness } from './config/readiness.js';
 import { startMedicationReminderCron } from './services/medicationReminderCron.js';
 import { startPatientReminderCron } from './services/patientReminderCron.js';
 import { startScheduler } from './services/scheduler.js';
@@ -15,6 +16,25 @@ async function main() {
   assertClinicContactConfigured();
 
   await connectDb();
+
+  /*
+   * What this deployment can actually do, said out loud at boot.
+   *
+   * Not fatal. A development machine has no SMTP, no Firebase key and no
+   * Razorpay account, and refusing to start without them would be a server
+   * nobody could run locally — see readiness.js on why the answer is to stop
+   * being quiet rather than to fail.
+   *
+   * `degraded` is warned about individually because it is the state that looks
+   * like working: a Razorpay key with no webhook secret accepts every forged
+   * callback, and the server that does it boots perfectly.
+   */
+  const config = readiness();
+  for (const check of config.filter((c) => c.state === 'degraded')) {
+    logger.warn({ check: check.key, because: check.because }, `misconfigured: ${check.affects}`);
+  }
+  const off = config.filter((c) => c.state === 'off').map((c) => c.key);
+  if (off.length) logger.info({ off }, 'features switched off by configuration');
 
   const app = createApp();
   const server = app.listen(env.PORT, () => {

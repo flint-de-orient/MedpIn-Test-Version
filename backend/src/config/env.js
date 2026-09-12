@@ -11,6 +11,24 @@ const schema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   PORT: z.coerce.number().default(4000),
 
+  /*
+   * Which deployment this is, as distinct from how Node is running.
+   *
+   * `NODE_ENV` answers "withhold error detail, arm the scheduler, set Secure
+   * cookies", and staging wants all of that — a staging box in development
+   * mode rehearses a different application from the one being released. So it
+   * runs NODE_ENV=production, and then nothing in the process knows it is not
+   * the real thing.
+   *
+   * That matters for one reason above all others: a staging deployment holding
+   * production's MSG91 and Firebase credentials can text and push real
+   * patients. Both channels already log instead of sending when their
+   * credentials are absent, so the safe configuration is simply to omit them —
+   * and this is what lets `readiness()` check that the omission actually
+   * happened, rather than trusting that somebody remembered.
+   */
+  DEPLOY_ENV: z.enum(['production', 'staging', 'development']).default('development'),
+
   MONGODB_URI: z.string().min(1, 'MONGODB_URI is required'),
 
   JWT_ACCESS_SECRET: z.string().min(16, 'JWT_ACCESS_SECRET must be >= 16 chars'),

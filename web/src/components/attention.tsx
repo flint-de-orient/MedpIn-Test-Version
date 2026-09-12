@@ -117,13 +117,18 @@ export function AttentionBell() {
             </div>
           ) : (
             <ul className="divide-border max-h-[24rem] divide-y overflow-y-auto">
-              {items.map((it, i) => (
-                <li key={`${it.kind}-${i}`}>
-                  <Link
-                    href={it.href}
-                    onClick={() => setOpen(false)}
-                    className="hover:bg-secondary/60 flex gap-2.5 px-4 py-3 transition-colors"
-                  >
+              {items.map((it, i) => {
+                /*
+                 * Some of these have nowhere to go.
+                 *
+                 * A misconfigured deployment is fixed in a `.env` on the
+                 * server, not in this console — so the row carries the reason
+                 * and nothing to click. Rendered as a link with an empty href
+                 * it would look exactly like the actionable rows above it and
+                 * do nothing when pressed, which is the worst of both.
+                 */
+                const body = (
+                  <>
                     <IconAlert
                       className={cn(
                         "mt-0.5 size-4 shrink-0",
@@ -138,9 +143,25 @@ export function AttentionBell() {
                         {it.detail}
                       </span>
                     </span>
-                  </Link>
-                </li>
-              ))}
+                  </>
+                );
+
+                return (
+                  <li key={`${it.kind}-${i}`}>
+                    {it.href ? (
+                      <Link
+                        href={it.href}
+                        onClick={() => setOpen(false)}
+                        className="hover:bg-secondary/60 flex gap-2.5 px-4 py-3 transition-colors"
+                      >
+                        {body}
+                      </Link>
+                    ) : (
+                      <div className="flex gap-2.5 px-4 py-3">{body}</div>
+                    )}
+                  </li>
+                );
+              })}
             </ul>
           )}
         </div>
