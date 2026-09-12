@@ -9,6 +9,7 @@ import { Practice, PRACTICE_STATUS, VERIFICATION } from '../src/models/Practice.
 import { Membership } from '../src/models/Membership.js';
 import { PracticeApplication, APPLICATION_STATUS } from '../src/models/PracticeApplication.js';
 import { signPhoneToken } from '../src/services/otp.js';
+import { createHash } from 'node:crypto';
 import { OtpChallenge } from '../src/models/OtpChallenge.js';
 import { User, ROLES } from '../src/models/User.js';
 import { env } from '../src/config/env.js';
@@ -589,5 +590,208 @@ describe('the number is proved inside the application namespace', () => {
       { anonymous: true },
     );
     assert.equal(res.status, 401);
+  });
+});
+
+/**
+ * The address the decision has to reach.
+ *
+ * ---- Why this is confirmed after submitting, not before -----------------
+ *
+ * The phone is proved first because it becomes the sign-in for the practice.
+ * The email is different: it is where the answer goes, and the answer is days
+ * away. Sending somebody out of a part-filled form to fetch a code from an
+ * inbox is friction paid at the worst moment for a check that matters later.
+ *
+ * So one email goes out on submission carrying the reference and the
+ * confirmation together. It has to be sent anyway — the reference is otherwise
+ * shown once, on a screen people close — and the operator gains the signal
+ * worth having: an unconfirmed address means a decision that will not arrive.
+ */
+/**
+ * A token this test knows, planted on the row.
+ *
+ * The real one is minted inside `sendConfirmation` and only its SHA-256 is
+ * kept, which is the point — so a test cannot read one back and must supply
+ * its own. What is being checked here is the verification path: the hash
+ * comparison, the expiry, the single use. That submission mints a token at all
+ * is asserted separately, against the field rather than its value.
+ */
+async function tokenFor(application) {
+  const token = 'a-known-token-for-this-test-only';
+  await PracticeApplication.updateOne(
+    { _id: application._id },
+    {
+      $set: {
+        emailTokenHash: createHash('sha256').update(token).digest('hex'),
+        emailTokenExpiresAt: new Date(Date.now() + 60_000),
+      },
+    },
+  );
+  return token;
+}
+
+describe('the applicant confirms the address the decision goes to', () => {
+  before(async () => {
+    origin = await boot();
+    realAdminSecret = env.ADMIN_JWT_SECRET;
+    env.ADMIN_JWT_SECRET = ADMIN_SECRET;
+    realLimit = env.APPLICATION_RATE_LIMIT;
+    env.APPLICATION_RATE_LIMIT = 500;
+  });
+  after(async () => {
+    env.ADMIN_JWT_SECRET = realAdminSecret;
+    env.APPLICATION_RATE_LIMIT = realLimit;
+    await shutdown();
+  });
+
+  // The last test here reads the operator's queue, which needs one.
+  beforeEach(async () => {
+    await wipe();
+    const admin = await PlatformAdmin.create({
+      email: 'ops@example.com',
+      name: 'Ops',
+      passwordHash: 'x',
+      isActive: true,
+    });
+    const { signAdminToken } = await import('../src/services/adminTokens.js');
+    token = signAdminToken(admin);
+  });
+
+  async function apply() {
+    const res = await call('POST', '/applications', form(), { anonymous: true });
+    assert.equal(res.status, 201);
+    return PracticeApplication.findOne({ reference: res.body.application.reference }).select(
+      '+emailTokenHash',
+    );
+  }
+
+  test('submitting mints a token and leaves the address unconfirmed', async () => {
+    const app = await apply();
+    assert.ok(app.emailTokenHash, 'no confirmation token was minted');
+    assert.ok(app.emailTokenExpiresAt > new Date(), 'the token is already expired');
+    assert.equal(app.contactEmailVerifiedAt, null);
+  });
+
+  test('and the raw token is never stored or returned', async () => {
+    // A leaked collection must hold nothing replayable, and the status page
+    // hands out references — it must not also hand out the proof.
+    const res = await call('POST', '/applications', form(), { anonymous: true });
+    assert.ok(!JSON.stringify(res.body).includes('emailToken'), 'a token reached the applicant');
+
+    const app = await PracticeApplication.findOne({
+      reference: res.body.application.reference,
+    }).lean();
+    assert.equal(app.emailTokenHash, undefined, 'the hash is selected by default');
+  });
+
+  test('the right token confirms it, once', async () => {
+    const app = await apply();
+    const token = await tokenFor(app);
+
+    const first = await call(
+      'POST',
+      `/applications/${app.reference}/confirm-email`,
+      { token },
+      { anonymous: true },
+    );
+    assert.equal(first.status, 200);
+    assert.equal(first.body.confirmed, true);
+
+    const after = await PracticeApplication.findById(app._id).select('+emailTokenHash').lean();
+    assert.ok(after.contactEmailVerifiedAt, 'the address was not marked confirmed');
+    // Spent: the link in the inbox stops working, which is what one-time means.
+    assert.equal(after.emailTokenHash, null);
+  });
+
+  test('and clicking it twice is not an error', async () => {
+    // Mail clients prefetch links. Somebody who used the link correctly should
+    // not be told off for it.
+    const app = await apply();
+    const token = await tokenFor(app);
+    const url = `/applications/${app.reference}/confirm-email`;
+
+    await call('POST', url, { token }, { anonymous: true });
+    const again = await call('POST', url, { token }, { anonymous: true });
+    assert.equal(again.status, 200);
+    assert.equal(again.body.alreadyConfirmed, true);
+  });
+
+  test('a reference alone confirms nothing', async () => {
+    /*
+     * The whole safety argument. The status page hands references out, so if
+     * knowing one were enough to confirm an address, an unconfirmed address
+     * would mean nothing at all.
+     */
+    const app = await apply();
+    const res = await call(
+      'POST',
+      `/applications/${app.reference}/confirm-email`,
+      { token: 'not-the-token-at-all' },
+      { anonymous: true },
+    );
+    assert.equal(res.status, 400);
+
+    const after = await PracticeApplication.findById(app._id).lean();
+    assert.equal(after.contactEmailVerifiedAt, null);
+  });
+
+  test('and an expired token is refused', async () => {
+    const app = await apply();
+    const token = await tokenFor(app);
+    await PracticeApplication.updateOne(
+      { _id: app._id },
+      { $set: { emailTokenExpiresAt: new Date(Date.now() - 1000) } },
+    );
+
+    const res = await call(
+      'POST',
+      `/applications/${app.reference}/confirm-email`,
+      { token },
+      { anonymous: true },
+    );
+    assert.equal(res.status, 400);
+  });
+
+  test('a resend goes to the address on file, not one supplied', async () => {
+    /*
+     * A route that accepted an address would let anybody holding a reference
+     * redirect the decision to themselves — and the reference is printed on a
+     * confirmation screen.
+     */
+    const app = await apply();
+    const before = (
+      await PracticeApplication.findById(app._id).select('+emailTokenHash').lean()
+    ).emailTokenHash;
+
+    const res = await call(
+      'POST',
+      `/applications/${app.reference}/resend-email`,
+      { email: 'attacker@example.com' },
+      { anonymous: true },
+    );
+    assert.equal(res.status, 200);
+
+    const after = await PracticeApplication.findById(app._id).select('+emailTokenHash').lean();
+    assert.notEqual(after.emailTokenHash, before, 'a resend did not mint a fresh token');
+    assert.equal(after.contactEmail, form().contactEmail, 'the address on file changed');
+  });
+
+  test('the operator sees whether the address answered', async () => {
+    // The signal worth having: an unconfirmed address means a decision that
+    // will not arrive, and they can chase the phone number instead.
+    const app = await apply();
+    const list = await call('GET', '/admin/applications');
+    assert.equal(list.body.items[0].contactEmailVerified, false);
+
+    await call(
+      'POST',
+      `/applications/${app.reference}/confirm-email`,
+      { token: await tokenFor(app) },
+      { anonymous: true },
+    );
+
+    const after = await call('GET', '/admin/applications');
+    assert.equal(after.body.items[0].contactEmailVerified, true);
   });
 });

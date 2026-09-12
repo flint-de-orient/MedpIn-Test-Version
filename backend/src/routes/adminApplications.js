@@ -86,6 +86,8 @@ router.get(
         state: r.state,
         contactName: r.contactName,
         contactEmail: r.contactEmail,
+        // Whether the decision this review produces will actually arrive.
+        contactEmailVerified: Boolean(r.contactEmailVerifiedAt),
         contactPhone: r.contactPhone,
         reviewer: r.reviewerEmail,
         submittedOn: r.createdAt,
@@ -327,6 +329,7 @@ function full(a) {
 
     contactName: a.contactName,
     contactEmail: a.contactEmail,
+    contactEmailVerified: Boolean(a.contactEmailVerifiedAt),
     contactPhone: a.contactPhone,
     phoneVerifiedAt: a.phoneVerifiedAt,
 

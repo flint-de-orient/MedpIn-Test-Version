@@ -31,6 +31,8 @@ import {
   APPLICATION_STATUS,
 } from '../models/PracticeApplication.js';
 import { logger } from '../config/logger.js';
+import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
+import { sendMail } from '../services/mailer.js';
 import { env } from '../config/env.js';
 
 /**
@@ -142,6 +144,67 @@ router.get(
  * arriving mid-application would otherwise burn the one being waited on — one
  * live code per number per purpose is the rule that makes that safe.
  */
+/**
+ * The one email an application sends, doing two jobs.
+ *
+ * It carries the reference — which is otherwise shown once, on a screen the
+ * applicant closes — and a link that confirms the address reached somebody.
+ * Both have to happen and neither justifies a message of its own.
+ *
+ * ---- Never fatal --------------------------------------------------------
+ *
+ * A send that throws must not fail the submission. The application is already
+ * written and it is the thing that matters; an SMTP timeout is not a reason to
+ * tell somebody their registration did not go through, and the operator can
+ * see the address is unconfirmed and chase the phone number instead.
+ *
+ * With no SMTP configured `sendMail` writes the message to the log rather than
+ * pretending, so a deployment without mail still shows the reference on screen
+ * and the link is recoverable by whoever reads the logs.
+ */
+async function sendConfirmation(application) {
+  // The raw token is never stored. What is kept is a SHA-256 of it, the way a
+  // password reset is, so a leaked collection holds nothing replayable.
+  const token = randomBytes(24).toString('base64url');
+  application.emailTokenHash = createHash('sha256').update(token).digest('hex');
+  application.emailTokenExpiresAt = new Date(Date.now() + EMAIL_TOKEN_TTL_MS);
+  await application.save();
+
+  const base = env.ADMIN_CONSOLE_URL?.replace(/\/+$/, '');
+  // Configured, never derived from the request: a link built from a forged
+  // Host header points at somebody else's server and looks exactly right.
+  const link = base
+    ? `${base}/?application=${application.reference}&confirm=${token}`
+    : null;
+
+  try {
+    await sendMail({
+      to: application.contactEmail,
+      subject: `Your MedPin application ${application.reference}`,
+      text: [
+        `Thank you — we have your registration for ${application.practiceName}.`,
+        '',
+        `Your reference is ${application.reference}. Keep it: it is how you check`,
+        'what is happening with the application.',
+        '',
+        ...(link
+          ? ['Please confirm this address so our decision reaches you:', link, '']
+          : []),
+        'Nothing is created until somebody at MedPin has reviewed this. We will',
+        'write to you either way.',
+      ].join('\n'),
+    });
+  } catch (err) {
+    // Logged, not raised. See the note above.
+    logger.error(
+      { err, reference: application.reference },
+      'could not send the application confirmation',
+    );
+  }
+}
+
+const EMAIL_TOKEN_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+
 const verifyLimiter = rateLimit({
   windowMs: 60 * 60 * 1000,
   limit: () => env.APPLICATION_RATE_LIMIT * 4,
@@ -296,6 +359,11 @@ router.post(
       'practice application submitted',
     );
 
+    // Awaited so the row carries its token before the response goes out, and
+    // so a status page opened immediately knows an email is on its way. The
+    // send itself cannot throw — see sendConfirmation.
+    await sendConfirmation(application);
+
     res.status(201).json({ application: application.toApplicant() });
   }),
 );
@@ -311,6 +379,103 @@ router.post(
  * A wrong reference is a 404 and says nothing else. "No application with that
  * reference" and "that application is not yours" are the same sentence here.
  */
+/**
+ * The applicant clicking the link in that email.
+ *
+ * Public, because the whole point is that it works from an inbox with no
+ * account behind it. What makes it safe is the token: unguessable, hashed at
+ * rest, spent once, and dead after a week. Knowing a reference is not enough —
+ * the status page hands references out and must not be able to confirm one.
+ *
+ * Idempotent. Somebody who clicks twice, or whose mail client prefetches the
+ * link, gets the same answer as the first click rather than an error about a
+ * token they used correctly.
+ */
+router.post(
+  '/:reference/confirm-email',
+  statusLimiter,
+  validate({
+    params: z.object({ reference: z.string().trim().min(6).max(40) }),
+    body: z.object({ token: z.string().trim().min(10).max(200) }),
+  }),
+  asyncHandler(async (req, res) => {
+    const application = await PracticeApplication.findOne({
+      // Not uppercased. The reference is base64url and mixed case is
+      // significant — folding it finds nothing, which the first version of
+      // this route did and reported as an invalid link.
+      reference: req.params.reference,
+    }).select('+emailTokenHash');
+
+    // One answer for every failure. Telling a caller that the reference exists
+    // but the token is wrong is telling them which references are worth
+    // guessing at.
+    const refuse = () => badRequest('That confirmation link is not valid, or it has expired.');
+    if (!application) throw refuse();
+
+    if (application.contactEmailVerifiedAt) {
+      return res.json({ confirmed: true, alreadyConfirmed: true });
+    }
+
+    if (!application.emailTokenHash || !application.emailTokenExpiresAt) throw refuse();
+    if (application.emailTokenExpiresAt.getTime() < Date.now()) throw refuse();
+
+    const supplied = createHash('sha256').update(req.body.token).digest('hex');
+    // Constant-time, so the comparison does not leak the prefix it matched on.
+    const ok =
+      supplied.length === application.emailTokenHash.length &&
+      timingSafeEqual(Buffer.from(supplied), Buffer.from(application.emailTokenHash));
+    if (!ok) throw refuse();
+
+    application.contactEmailVerifiedAt = new Date();
+    // Spent. The link in the inbox stops working, which is what one-time means.
+    application.emailTokenHash = null;
+    application.emailTokenExpiresAt = null;
+    /*
+     * Recorded on the row, which is this application's own log.
+     *
+     * Neither audit collection can hold it: AdminAuditLog records what an
+     * operator did and there is no operator, and the clinical log needs a User
+     * as its actor and an applicant has no account. `history` is where the
+     * applicant's own actions go — `submitted` is already there — and an
+     * operator reading the application sees when the address answered.
+     */
+    application.history.push({ action: 'email_confirmed' });
+    await application.save();
+
+    res.json({ confirmed: true });
+  }),
+);
+
+/**
+ * Send it again, to the address already on the application.
+ *
+ * Never to an address supplied here. A route that took one would let anybody
+ * holding a reference redirect the decision to themselves — and the reference
+ * is printed on a confirmation screen.
+ */
+router.post(
+  '/:reference/resend-email',
+  verifyLimiter,
+  validate({ params: z.object({ reference: z.string().trim().min(6).max(40) }) }),
+  asyncHandler(async (req, res) => {
+    const application = await PracticeApplication.findOne({
+      // Not uppercased. The reference is base64url and mixed case is
+      // significant — folding it finds nothing, which the first version of
+      // this route did and reported as an invalid link.
+      reference: req.params.reference,
+    });
+    if (!application) throw notFound('No application with that reference.');
+
+    if (application.contactEmailVerifiedAt) {
+      return res.json({ sent: false, alreadyConfirmed: true });
+    }
+
+    application.history.push({ action: 'email_resent' });
+    await sendConfirmation(application);
+    res.json({ sent: true });
+  }),
+);
+
 router.get(
   '/:reference',
   statusLimiter,

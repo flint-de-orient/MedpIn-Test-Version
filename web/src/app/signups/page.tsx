@@ -392,7 +392,21 @@ function Detail({ id }: { id: string }) {
           <Panel title="Primary contact" description="Who would run it.">
             <dl className="divide-border divide-y">
               <Row label="Name" value={a.contactName} />
-              <Row label="Email" value={a.contactEmail} mono />
+              {/*
+                Whether the decision this review produces will actually arrive.
+                An unconfirmed address is not a reason to refuse an application
+                — it is a reason to ring the number instead of writing into the
+                dark.
+              */}
+              <Row
+                label="Email"
+                value={
+                  a.contactEmailVerified
+                    ? a.contactEmail
+                    : `${a.contactEmail} — not confirmed`
+                }
+                mono
+              />
               <Row label="Phone" value={a.contactPhone} mono />
               <Row
                 label="Number proved"

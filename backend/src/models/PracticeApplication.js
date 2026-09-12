@@ -102,6 +102,41 @@ const practiceApplicationSchema = new mongoose.Schema(
     contactEmail: { type: String, required: true, trim: true, lowercase: true, maxlength: 160 },
 
     /**
+     * Whether that address has been shown to reach somebody.
+     *
+     * ---- Why it is confirmed after submitting, not before -------------------
+     *
+     * The phone is proved first because it becomes the sign-in for the practice
+     * — nothing is created until it is. The email is different: it is where the
+     * decision goes, and the decision is days away. Making an applicant leave a
+     * part-filled form to fetch a code from an inbox is friction paid at the
+     * worst moment for a check that matters later.
+     *
+     * So one email goes out on submission carrying both the reference and the
+     * confirmation. It has to be sent anyway — the reference is otherwise shown
+     * once on a screen somebody closes — and asking it to do a second job costs
+     * nothing.
+     *
+     * Null is not a failure. An operator reviewing an application sees whether
+     * the address answered, which is exactly the signal worth having: an
+     * unconfirmed address means a decision that will not arrive, and they can
+     * chase the phone number instead of writing into the dark.
+     */
+    contactEmailVerifiedAt: { type: Date, default: null },
+
+    /**
+     * The link's secret, hashed.
+     *
+     * Stored the way a password reset is, for the same reason: a leaked
+     * collection must not contain anything that can be replayed. It is also
+     * never returned by `toApplicant()` — the applicant has the token in their
+     * inbox already, and the status page must not hand it to anybody who knows
+     * a reference.
+     */
+    emailTokenHash: { type: String, default: null, select: false },
+    emailTokenExpiresAt: { type: Date, default: null },
+
+    /**
      * Proved before the application is written, never after.
      *
      * The applicant answers a code sent to this number, and the submission
@@ -156,6 +191,8 @@ practiceApplicationSchema.methods.toApplicant = function toApplicant() {
     practiceName: this.practiceName,
     contactName: this.contactName,
     contactEmail: this.contactEmail,
+    // Whether it answered, never the token that would prove it.
+    contactEmailVerified: Boolean(this.contactEmailVerifiedAt),
     contactPhone: this.contactPhone,
     submittedOn: this.createdAt,
     /**

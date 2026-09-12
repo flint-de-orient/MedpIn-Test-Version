@@ -60,9 +60,34 @@ export function SignIn() {
 
   const [verified, setVerified] = useState<"ok" | "failed" | null>(null);
 
+  /** The secret from a confirmation link, held only long enough to spend it. */
+  const [confirmToken, setConfirmToken] = useState<string | null>(null);
+
   useEffect(() => {
     const q = new URLSearchParams(window.location.search);
     const clean = () => window.history.replaceState({}, "", window.location.pathname);
+
+    /*
+     * Arriving from the confirmation email.
+     *
+     * `?application=<ref>&confirm=<token>` opens the status view with both, and
+     * the address bar is cleaned immediately — a one-time token should not sit
+     * in browser history or travel with a URL somebody pastes into a chat.
+     *
+     * Checked before the operator links below because this is the one that
+     * belongs to a practice rather than an operator, and the two never both
+     * appear.
+     */
+    const application = q.get("application");
+    const confirm = q.get("confirm");
+    if (application) {
+      setSubmitted(application);
+      setConfirmToken(confirm);
+      setWho("practice");
+      setPracticeView("status");
+      clean();
+      return;
+    }
 
     const reset = q.get("reset");
     if (reset) {
@@ -174,6 +199,7 @@ export function SignIn() {
               view={practiceView}
               onView={setPracticeView}
               submitted={submitted}
+              confirmToken={confirmToken}
               onSubmitted={(ref) => {
                 setSubmitted(ref);
                 setPracticeView("status");
@@ -245,11 +271,14 @@ function PracticeSide({
   view,
   onView,
   submitted,
+  confirmToken,
   onSubmitted,
 }: {
   view: "entry" | "register" | "status";
   onView: (v: "entry" | "register" | "status") => void;
   submitted: string | null;
+  /** The secret from a confirmation link, spent once by the status view. */
+  confirmToken: string | null;
   onSubmitted: (reference: string) => void;
 }) {
   return (
@@ -282,6 +311,7 @@ function PracticeSide({
           <Eyebrow>Your application</Eyebrow>
           <ApplicationStatusView
             initialReference={submitted}
+            confirmToken={confirmToken}
             onBack={() => onView("entry")}
           />
         </>

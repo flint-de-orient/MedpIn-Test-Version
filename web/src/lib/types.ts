@@ -411,6 +411,8 @@ export type ApplicationRow = {
   state: string | null;
   contactName: string;
   contactEmail: string;
+  /** Whether that address has been shown to reach somebody. */
+  contactEmailVerified: boolean;
   contactPhone: string;
   /** The operator who opened it. Advisory — it does not stop anybody deciding. */
   reviewer: string | null;

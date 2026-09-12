@@ -28,6 +28,19 @@ const ROUTES = fileURLToPath(new URL('../src/routes/', import.meta.url));
 const LOGGERS = /audit\(|AuditLog\.create\(|AdminAuditLog\.record\(/;
 
 /**
+ * Comments blanked, line numbers kept.
+ *
+ * Every scanner in this repository has now been caught reading its own
+ * documentation: a layout rule failed on the comment explaining the rule, a
+ * contrast rule on the same, and the audit split on a note saying why neither
+ * log applies. A file that explains itself is the point of this codebase, so
+ * the scanners have to read code.
+ */
+function withoutComments(body) {
+  return body.replace(/\/\*[\s\S]*?\*\/|\/\/[^\n]*/g, (m) => m.replace(/[^\n]/g, ' '));
+}
+
+/**
  * Routes that deliberately write nothing, and why.
  *
  * Every entry needs a reason. A list that accumulates paths without them
@@ -35,6 +48,20 @@ const LOGGERS = /audit\(|AuditLog\.create\(|AdminAuditLog\.record\(/;
  * and then the test is worse than not having one.
  */
 const EXEMPT = new Map([
+  [
+    'applications.js /:reference/confirm-email',
+    'The applicant clicking the link in their own email. No operator, and no ' +
+      'account — but unlike the OTP pair this one changes the application, so ' +
+      'it is recorded where the change lives: `history` on the row, beside ' +
+      '`submitted`. An operator reading the application sees when the address ' +
+      'answered.',
+  ],
+  [
+    'applications.js /:reference/resend-email',
+    'The same, for a chase. It writes `email_resent` to the same history, so ' +
+      'an operator looking at an unconfirmed address can tell whether anybody ' +
+      'has already tried.',
+  ],
   [
     'applications.js /verify/send',
     'Pre-identity, like auth.js /otp/request and for the same reason: an ' +
@@ -190,11 +217,20 @@ describe('every mutating route is audited', () => {
      * OTP pair is exempt, and it is a property of the flow rather than a
      * preference about it.
      *
-     * If it needs raising again, read the new entries before doing it: two
-     * arriving together for one stated reason is different from two arriving
-     * separately because writing an audit line was awkward.
+     * Then 16 to 18 for the email confirmation pair. All four belong to the
+     * one public flow and none of them has an actor either log can name — an
+     * applicant has no account, which is the point of the surface. The two
+     * that change something write to the application's own `history` instead,
+     * so nothing here is unrecorded; it is recorded somewhere these two
+     * collections cannot reach.
+     *
+     * If it needs raising again, read the new entries before doing it. Four
+     * arriving together for one stated reason is different from four arriving
+     * separately because writing an audit line was awkward — and a fifth from
+     * a different flow is the thing this number exists to make somebody
+     * notice.
      */
-    assert.ok(EXEMPT.size <= 16, `${EXEMPT.size} exemptions — is auditing being avoided?`);
+    assert.ok(EXEMPT.size <= 18, `${EXEMPT.size} exemptions — is auditing being avoided?`);
   });
 
   test('every exempt route still exists', () => {
@@ -243,9 +279,21 @@ describe('the clinical log and the platform log stay apart', () => {
   });
 
   test('no clinical route writes into the admin log', () => {
+    /*
+     * A call, not a mention, and not in a comment.
+     *
+     * This asked whether the file contained the string `AdminAuditLog`
+     * anywhere, and failed on a comment explaining why neither audit
+     * collection could hold an applicant's own action — prose written to
+     * document the rule, breaking the rule. The sibling assertion above
+     * already matches a call; this one now does too.
+     */
     for (const file of readdirSync(ROUTES).filter((f) => f.endsWith('.js') && !PLATFORM.has(f))) {
-      const src = readFileSync(path.join(ROUTES, file), 'utf8');
-      assert.ok(!src.includes('AdminAuditLog'), `${file} writes into the platform audit log`);
+      const src = withoutComments(readFileSync(path.join(ROUTES, file), 'utf8'));
+      assert.ok(
+        !/\bAdminAuditLog\s*\.\s*(record|create)\s*\(/.test(src),
+        `${file} writes into the platform audit log`,
+      );
     }
   });
 
