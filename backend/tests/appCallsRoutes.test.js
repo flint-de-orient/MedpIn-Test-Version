@@ -6,6 +6,7 @@ import path from 'node:path';
 
 import { CAPABILITIES } from '../src/services/capabilities.js';
 import { PERMISSIONS } from '../src/models/Membership.js';
+import { WIDGETS, QUICK_ACTIONS } from '../src/services/uiConfig.js';
 
 /**
  * The gap that let six finished routes sit unreachable for weeks.
@@ -30,6 +31,25 @@ import { PERMISSIONS } from '../src/models/Membership.js';
  * has never heard of, `has()` returns false, and the feature is quietly off
  * everywhere — which looks exactly like a decision somebody made on purpose.
  */
+/**
+ * One route handler, whole — from its path string to the next route.
+ *
+ * These assertions used to slice a fixed number of bytes: `auth.slice(at, at +
+ * 1800)`. That is a window that stops covering what it checks the moment the
+ * handler grows, and the failure is the quiet kind — the assertion is still
+ * there, still running, and now reading the wrong part of the file. Two of
+ * them went out of range at once when `/me/capabilities` gained a paragraph.
+ *
+ * A handler ends where the next one begins, which the file itself knows.
+ */
+function handlerFor(src, quotedPath) {
+  const at = src.indexOf(quotedPath);
+  assert.ok(at > 0, `${quotedPath} moved or was renamed`);
+  const rest = src.slice(at);
+  const end = rest.search(/\nrouter\.(get|post|patch|put|delete|use)\(/);
+  return end === -1 ? rest : rest.slice(0, end);
+}
+
 const MOBILE = fileURLToPath(new URL('../../mobile/lib/', import.meta.url));
 
 function dartUnder(dir) {
@@ -183,9 +203,7 @@ describe('the Nutrition tab has two reasons to exist', () => {
     // the practice employs. It rides in the capabilities response because the
     // navigation needs it and that is the request the navigation already makes;
     // a second round trip would show the bar rearranging after the first frame.
-    const at = auth.indexOf("'/me/capabilities'");
-    assert.ok(at > 0, 'the capabilities endpoint moved');
-    const body = auth.slice(at, at + 1800);
+    const body = handlerFor(auth, "'/me/capabilities'");
     assert.match(body, /role: ROLES\.DIETICIAN/);
     assert.match(body, /hasDietician,/);
   });
@@ -194,8 +212,7 @@ describe('the Nutrition tab has two reasons to exist', () => {
     // A User with role DIETICIAN and no membership belongs to nobody. Counting
     // those would light the tab for every practice on the platform the moment
     // one existed anywhere — the same shape as every other leak in this repo.
-    const at = auth.indexOf("'/me/capabilities'");
-    const body = auth.slice(at, at + 1800);
+    const body = handlerFor(auth, "'/me/capabilities'");
     assert.match(body, /Membership\.countDocuments\(\{[\s\S]{0,160}practice: ctx\.practice\._id/);
   });
 
@@ -214,8 +231,7 @@ describe('the app can tell what this person may do', () => {
     // server has always behaved correctly — this field did not. It sent the
     // raw `[]`, and a client checking a permission against it would find that
     // nobody holds any, because almost nobody has a customised grant.
-    const at = auth.indexOf("'/me/capabilities'");
-    const body = auth.slice(at, at + 2600);
+    const body = handlerFor(auth, "'/me/capabilities'");
     assert.match(body, /ctx\.membership\.permissions\?\.length[\s\S]{0,200}presetFor\(/);
     assert.match(body, /usingPreset: !ctx\.membership\.permissions\?\.length/);
   });
@@ -253,5 +269,114 @@ describe('the app can tell what this person may do', () => {
     // doctor normally does not. The routes have required it since they were
     // scoped, so the screen was offering a button it knew would be refused.
     assert.match(app, /can\(Perm\.manageDepartment\)/);
+  });
+});
+
+/**
+ * The dashboard registry exists twice, and the two have to be one list.
+ *
+ * ---- Why this is the most fragile contract in the codebase ---------------
+ *
+ * A component name lives in `services/uiConfig.js` and again in
+ * `dashboard_registry.dart`, and both ends are written to drop what they do
+ * not recognise — deliberately, so an operator's typo and an app a release
+ * behind both fail quietly in one panel rather than loudly on the whole
+ * screen.
+ *
+ * That tolerance is what makes drift invisible. A name added to the server and
+ * not to the app is a component an operator can select, sees accepted, sees
+ * saved — and which never appears on anybody's phone. From the console it
+ * looks exactly like a configuration that took effect.
+ *
+ * The same shape as the `Cap` and `Perm` mirrors above, and the same shape as
+ * the notification-id contract: two languages, one vocabulary, no compiler
+ * between them.
+ */
+describe('the app can draw every component the server may send', () => {
+  const registry = readFileSync(
+    fileURLToPath(
+      new URL(
+        '../../mobile/lib/features/clinician/presentation/widgets/dashboard_registry.dart',
+        import.meta.url,
+      ),
+    ),
+    'utf8',
+  );
+
+  /** The keys of one Dart map literal, by the name it is declared under. */
+  function keysOf(declaration) {
+    const at = registry.indexOf(declaration);
+    assert.ok(at > 0, `${declaration} is gone or renamed`);
+    const block = registry.slice(at, registry.indexOf('\n};', at));
+    return [...block.matchAll(/^ {2}'([A-Z][A-Z0-9_]*)':/gm)].map((m) => m[1]);
+  }
+
+  test('every widget the server can send has a builder', () => {
+    const inDart = new Set(keysOf('final Map<String, WidgetBuilderFn> dashboardWidgets = {'));
+    const missing = Object.keys(WIDGETS).filter((id) => !inDart.has(id));
+
+    assert.deepEqual(
+      missing,
+      [],
+      `\n\nThe server may send these and the app would drop them:\n\n  ${missing.join(
+        '\n  ',
+      )}\n\nAdd them to dashboard_registry.dart, or remove them from WIDGETS in\nuiConfig.js. A component in one and not the other is one an operator can\nselect and nobody ever sees.\n`,
+    );
+  });
+
+  test('and the app has no builder for a component the server cannot send', () => {
+    // The other direction, which is the less dangerous half and still worth
+    // catching: dead code that looks like a feature, and a name somebody will
+    // eventually try to configure.
+    const inDart = keysOf('final Map<String, WidgetBuilderFn> dashboardWidgets = {');
+    const orphans = inDart.filter((id) => !WIDGETS[id]);
+    assert.deepEqual(orphans, [], `the app builds ${orphans.join(', ')}, which the server never sends`);
+  });
+
+  test('every action the server can send has somewhere to go', () => {
+    const inDart = new Set(keysOf('final Map<String, ActionSpec> dashboardActions = {'));
+    const missing = Object.keys(QUICK_ACTIONS).filter((id) => !inDart.has(id));
+    assert.deepEqual(missing, [], `the app has no destination for ${missing.join(', ')}`);
+  });
+
+  test('and no action goes nowhere', () => {
+    /*
+     * A button with no route is worse than an absent one, because somebody
+     * presses it in front of a patient. Checked against the router rather than
+     * against a list here — a route that is registered is one the app can
+     * actually open.
+     */
+    const router = readFileSync(
+      fileURLToPath(new URL('../../mobile/lib/core/router/app_router.dart', import.meta.url)),
+      'utf8',
+    );
+    const at = registry.indexOf('final Map<String, ActionSpec> dashboardActions = {');
+    const block = registry.slice(at, registry.indexOf('\n};', at));
+
+    for (const [, id, route] of block.matchAll(
+      /'([A-Z][A-Z0-9_]*)': \(\s*label:[^)]*?route: '([^']+)'/gs,
+    )) {
+      /*
+       * The whole path, declared as `path: '/clinician/…'`.
+       *
+       * This first accepted the last segment as a fallback, on the theory that
+       * the router might nest paths — it does not, every route is declared
+       * whole. Which made the fallback a hole rather than a convenience:
+       * `/clinician/patients/add` would have passed on the word `patients`
+       * appearing somewhere in the file, and that route does not exist. The
+       * real one is `/clinician/patients/new`.
+       */
+      assert.ok(
+        router.includes(`path: '${route}'`),
+        `${id} opens ${route}, which the router does not declare`,
+      );
+    }
+  });
+
+  test('the app reads the arrangement the server sent', () => {
+    // The wiring itself. Everything above could be in step while the screen
+    // still draws a list written in Dart.
+    assert.match(app, /caps\.ui\?\.widgets/);
+    assert.match(app, /dashboardWidgets\[id\]\?\.call\(data\)/);
   });
 });

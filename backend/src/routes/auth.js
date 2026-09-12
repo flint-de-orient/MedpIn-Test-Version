@@ -21,7 +21,9 @@ import { recomputeSchedule } from '../services/medicationSchedule.js';
 import { toE164 } from '../utils/phone.js';
 import { resolveDoctor } from '../services/doctorContext.js';
 import { capabilityContext } from '../middleware/requireCapability.js';
-import { describeCapabilities } from '../services/capabilities.js';
+import { describeCapabilities, effectiveCapabilities } from '../services/capabilities.js';
+import { Department } from '../models/Department.js';
+import { resolveUi } from '../services/uiConfig.js';
 
 const router = Router();
 
@@ -502,9 +504,85 @@ router.get(
         })) > 0
       : false;
 
+    /**
+     * The grant, resolved once.
+     *
+     * Read twice below — sent to the client, and used to decide which
+     * components it may draw — and a second derivation would be a second
+     * answer to the same question. An empty stored array means the role's
+     * preset applies; see the note on the `permissions` field.
+     *
+     * Null — not `[]` — when there is no membership at all. That is a caller
+     * the backfill has not reached, and an empty array would read as "holds
+     * nothing" and hand a working doctor a blank home screen on the deploy
+     * that added the field. `effectiveCapabilities` reads a null membership as
+     * "do not narrow" and so does `resolveUi`; the two have to agree or one of
+     * them hides what the other permits.
+     */
+    const granted = ctx.membership
+      ? ctx.membership.permissions?.length
+        ? ctx.membership.permissions
+        : presetFor({
+            role: ctx.membership.role,
+            isOwner: Boolean(ctx.membership.isOwner),
+          })
+      : null;
+
+    /**
+     * Which part of the practice this person works in, if it has parts.
+     *
+     * Loaded here rather than in `capabilityContext`, which is cached on the
+     * request and reached by every capability-guarded route in the app. One
+     * more query on all of them, to answer a question only this response asks,
+     * is a cost paid everywhere for a benefit collected once.
+     *
+     * Null is the ordinary case and not a failure: a solo clinic has no
+     * departments, and a member of a polyclinic may not have been assigned to
+     * one yet. Both get the general clinical dashboard.
+     */
+    const department = ctx.membership?.department
+      ? await Department.findById(ctx.membership.department).lean()
+      : null;
+
     res.json({
       ...describeCapabilities(ctx),
       hasDietician,
+      /**
+       * What this person's home screen is made of.
+       *
+       * Identifiers, in order — never layout, never data. The app owns how a
+       * component looks and what it fetches; the server owns whether it is
+       * there at all. See [services/uiConfig.js] for why that line is where it
+       * is, and the note at the top of this route for why none of it is a
+       * security boundary.
+       *
+       * It rides on this response rather than a route of its own because this
+       * is the request the navigation already makes. A second round trip to
+       * decide what to draw is the same defect the comment above describes: a
+       * screen that renders once and then rearranges itself.
+       *
+       * ---- Null for a patient, which is not the same as empty ----------
+       *
+       * A patient has no membership, and everywhere else in this codebase a
+       * missing membership means "unknown, do not narrow" — the rule that
+       * keeps a doctor the backfill has not reached from losing their screen.
+       * Applied here unqualified it would compose a clinician's dashboard and
+       * send it to somebody who is not a clinician: harmless, because the
+       * routes behind it refuse them, and wrong, because the answer to "what
+       * is on your clinician home screen" for a patient is that there isn't
+       * one.
+       *
+       * A patient is knowably not a member rather than possibly-not-yet-one,
+       * and that is the distinction the role carries.
+       */
+      ui:
+        req.user.role === ROLES.PATIENT
+          ? null
+          : resolveUi({
+              department,
+              capabilities: effectiveCapabilities(ctx),
+              permissions: granted,
+            }),
       // Null for a caller the backfill has not reached, and for every patient.
       // The client should read it as "no practice context", not as "no access".
       membership: ctx.membership
@@ -525,13 +603,27 @@ router.get(
              * reason: two readings of "empty" is how a screen comes to hide
              * every button from the person who owns the practice.
              */
-            permissions: ctx.membership.permissions?.length
-              ? ctx.membership.permissions
-              : presetFor({
-                  role: ctx.membership.role,
-                  isOwner: Boolean(ctx.membership.isOwner),
-                }),
+            permissions: granted,
             usingPreset: !ctx.membership.permissions?.length,
+            /**
+             * Which department, by key rather than by id.
+             *
+             * The client needs it to label the screen — "Cardiology" above a
+             * cardiology dashboard — and a key is a thing the app can reason
+             * about where an ObjectId is a thing it can only echo back.
+             */
+            department: department
+              ? {
+                  key: department.key,
+                  // The caller's language, falling back to English and then to
+                  // the key — the same ladder as `Department.nameIn`, which
+                  // cannot be called here because this row was read `.lean()`.
+                  name:
+                    department.names?.[req.user.language] ||
+                    department.names?.en ||
+                    department.key,
+                }
+              : null,
           }
         : null,
     });

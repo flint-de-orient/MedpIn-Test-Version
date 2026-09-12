@@ -58,6 +58,7 @@ import {
 import { enrollmentGate } from '../middleware/authorise.js';
 import { requireCapability } from '../middleware/requireCapability.js';
 import { CAPABILITIES } from '../services/capabilities.js';
+import { LabReport } from '../models/LabReport.js';
 
 const router = Router();
 router.use(requireAuth, requireClinician);
@@ -461,6 +462,115 @@ router.get(
     const data = await clinicAnalytics({ days, scope, userScope });
     analyticsCache = { key, at: now, data };
     res.json({ ...data, cached: false });
+  }),
+);
+
+/**
+ * What came back from the lab, across the practice.
+ *
+ * ---- Why this route exists ----------------------------------------------
+ *
+ * Lab reports were readable one patient at a time and nowhere else, which is
+ * fine for a diabetes clinic where the doctor opens a record and looks. It is
+ * not a screen a laboratory or a pathology department can work from: the
+ * question there is "what came back abnormal", and answering it meant opening
+ * every patient in turn.
+ *
+ * ---- And what it deliberately is not ------------------------------------
+ *
+ * Not a sample queue. There is no sample model in this platform, no ordering
+ * workflow and no bench states, so "12 pending, 4 processing" would be four
+ * numbers with nothing behind them — see the note at the top of uiConfig.js on
+ * why a widget with no data is worse than an absent one.
+ *
+ * `reviewedBy` is on the model and nothing writes it, so "awaiting review" is
+ * not offered either: every report would count as pending forever, which is a
+ * staleness indicator that cannot detect staleness.
+ *
+ * What is here is what LabReport actually holds — the flags on its values, and
+ * when the sample was taken.
+ */
+router.get(
+  '/labs/overview',
+  /*
+   * Reading a result out, which the plan table separates from ordering one: a
+   * diagnostic centre reports labs and does not prescribe, and that is a fact
+   * about the organisation rather than about the money.
+   */
+  requireCapability(CAPABILITIES.LAB_RESULT),
+  audit('read', 'LabReport'),
+  asyncHandler(async (req, res) => {
+    const scope = await practicePatients(req, 'patient');
+    const days = Math.min(180, Math.max(1, Number(req.query.days) || 30));
+    const since = dayjs().subtract(days, 'day').toDate();
+
+    const [recent, flagged] = await Promise.all([
+      LabReport.find(scope)
+        .sort({ testedOn: -1 })
+        .limit(20)
+        .populate('patient', 'name')
+        .select('title labName testedOn values patient')
+        .lean(),
+      /*
+       * Counted over a window rather than over everything.
+       *
+       * A total since the practice opened only ever grows and says nothing
+       * about now — the same failure as a chart axis that cannot reach zero.
+       * The window is what makes it readable as "this is what the bench is
+       * seeing", and it is sent back so the screen can say which window.
+       */
+      LabReport.aggregate([
+        { $match: { ...scope, testedOn: { $gte: since } } },
+        { $unwind: '$values' },
+        { $group: { _id: '$values.flag', count: { $sum: 1 } } },
+      ]),
+    ]);
+
+    /** A report's worst flag, which is what makes it worth surfacing. */
+    const worst = (report) => {
+      const flags = (report.values ?? []).map((v) => v.flag);
+      if (flags.includes('critical')) return 'critical';
+      if (flags.includes('high') || flags.includes('low')) return 'abnormal';
+      return 'normal';
+    };
+
+    const shaped = recent.map((r) => ({
+      id: String(r._id),
+      title: r.title,
+      labName: r.labName ?? null,
+      testedOn: r.testedOn,
+      patient: r.patient ? { id: String(r.patient._id), name: r.patient.name } : null,
+      worstFlag: worst(r),
+      /// Only the values that say something. A panel of forty normal results
+      /// is a list nobody reads, with the abnormal one in the middle of it.
+      abnormal: (r.values ?? [])
+        .filter((v) => v.flag && v.flag !== 'normal')
+        .map((v) => ({
+          label: v.label ?? v.code ?? null,
+          value: v.value ?? null,
+          textValue: v.textValue ?? null,
+          unit: v.unit ?? null,
+          flag: v.flag,
+        })),
+    }));
+
+    const by = Object.fromEntries(flagged.map((f) => [f._id ?? 'unflagged', f.count]));
+
+    res.json({
+      days,
+      critical: shaped.filter((r) => r.worstFlag === 'critical'),
+      recent: shaped,
+      flags: {
+        critical: by.critical ?? 0,
+        high: by.high ?? 0,
+        low: by.low ?? 0,
+        normal: by.normal ?? 0,
+        /// Values a report carried with no flag on them at all. Counted
+        /// separately rather than folded into `normal`: an unflagged value has
+        /// not been judged, and calling it normal is the app deciding it was.
+        unflagged: by.unflagged ?? 0,
+      },
+    });
   }),
 );
 

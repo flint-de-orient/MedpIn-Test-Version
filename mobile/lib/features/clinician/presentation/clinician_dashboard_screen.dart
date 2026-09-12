@@ -5,8 +5,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
-import '../../../core/theme/app_colors.dart';
-import '../../../core/theme/app_spacing.dart';
 import '../../auth/presentation/auth_controller.dart';
 import '../../../shared/widgets/user_avatar.dart';
 import '../domain/clinician_models.dart';
@@ -14,10 +12,10 @@ import 'clinician_providers.dart';
 import 'widgets/panel_ui.dart';
 import 'widgets/clinician_notification_sheet.dart';
 import '../../../core/theme/tokens.dart';
-import 'widgets/dashboard_sections.dart';
 import 'widgets/triage_queue.dart';
 import '../../../shared/widgets/clinic_brand.dart';
-import 'widgets/todays_clinic.dart';
+import 'widgets/dashboard_registry.dart';
+import '../../../core/capabilities/capabilities.dart';
 
 /// The doctor's home: the clinic at a glance — headline counts, what is on
 /// today, the alerts that need attention, the live triage queue, and the
@@ -76,6 +74,10 @@ class _ClinicianDashboardScreenState
     ref.invalidate(clinicAnalyticsProvider(_days));
     ref.invalidate(attentionPatientsProvider);
     ref.invalidate(alertsProvider(_alertsQuery));
+    // Only meaningful when a lab panel is on screen; invalidating a provider
+    // nobody is watching does nothing, which is cheaper than deciding here
+    // whether it is.
+    ref.invalidate(labOverviewProvider(_days));
   }
 
   @override
@@ -91,6 +93,51 @@ class _ClinicianDashboardScreenState
     final alerts =
         ref.watch(alertsProvider(_alertsQuery)).valueOrNull?.items ?? const [];
     final loading = overview == null && ref.watch(overviewProvider).isLoading;
+
+    /*
+     * What this person's home screen is made of, as the server works it out.
+     *
+     * `Capabilities.unknown` while the answer is in flight, and its `ui` is
+     * null — so the fallback below is the general clinical set rather than an
+     * empty screen. That is the same rule the rest of this file follows and
+     * the same one the server follows: unknown does not narrow.
+     *
+     * The fallback is deliberately short. A long one here would be a second
+     * copy of `uiConfig.js`'s default, drifting from it, and the screen it
+     * produces would be the one somebody sees for the half-second before the
+     * real answer lands — so it holds what every practice has and nothing that
+     * depends on a plan.
+     */
+    final caps = ref.watch(capabilitySetProvider);
+    final widgets =
+        caps.ui?.widgets ??
+        const ['TRIAGE_QUEUE', 'TODAYS_CLINIC', 'OPEN_ALERTS'];
+    final actions = caps.ui?.quickActions ?? const <String>[];
+
+    /*
+     * Fetched only when something on this screen will draw it.
+     *
+     * Most practices show no lab panel, and a request on every refresh for
+     * something nobody is looking at is a query per doctor per twenty seconds
+     * for nothing. `watch` inside the condition is safe here because the
+     * condition itself comes from a watched provider: when the dashboard
+     * changes shape, this rebuilds and the subscription follows it.
+     */
+    final wantsLabs = needsLabOverview(widgets);
+    final labs = wantsLabs ? ref.watch(labOverviewProvider(_days)) : null;
+
+    final data = DashboardData(
+      overview: overview,
+      analytics: analytics,
+      attention: attention,
+      alerts: alerts,
+      labs: labs == null
+          ? null
+          : (value: labs.valueOrNull, loading: labs.isLoading),
+      updatedAt: _lastRefreshed,
+      days: _days,
+      onDaysChanged: (d) => setState(() => _days = d),
+    );
 
     return Scaffold(
       // Transparent so the shell's ground runs unbroken behind this
@@ -126,128 +173,41 @@ class _ClinicianDashboardScreenState
                             T.s12,
                           ),
                           children: [
-                            // Ordered by what the doctor opens the app to find
-                            // out. The clinic's own numbers are read once and
-                            // then ignored, so they sit at the top as context —
-                            // everything below them is work, clinical first and
-                            // operational second.
-                            //
-                            // The previous order put four metric cards, an alert
-                            // strip and a monitoring strip above the patients,
-                            // which answered "how is the clinic doing" before
-                            // "who needs me now". A doctor does not open this to
-                            // learn they have seven patients.
-                            if (analytics != null) ...[
-                              ClinicSnapshot(
-                                analytics: analytics,
-                                days: _days,
-                                onDaysChanged: (d) => setState(() => _days = d),
-                              ),
+                            /*
+                             * Composed from what the server says, not from a
+                             * list written here.
+                             *
+                             * The order and the selection used to live in this
+                             * file, argued for in comments that are now in
+                             * `uiConfig.js` beside the default they describe —
+                             * because the argument is about what a clinician
+                             * needs to see first, and that answer is different
+                             * for a cardiology caseload and a laboratory
+                             * bench. Hard-coding one of them here meant every
+                             * other department got a diabetes clinic's screen.
+                             *
+                             * What has not changed is that this app decides
+                             * how each panel looks and what it fetches. The
+                             * server sends identifiers and nothing else.
+                             */
+                            if (actions.isNotEmpty) ...[
+                              QuickActionBar(actions: actions),
                               const SizedBox(height: T.s6),
                             ],
 
-                            // 1. Clinical: who needs a doctor.
-                            TriageQueue(
-                              patients: attention,
-                              updatedAt: _lastRefreshed,
-                            ),
-
-                            // 2. The day itself.
-                            //
-                            // Under the triage queue, because a patient in
-                            // trouble outranks a diary — and above the
-                            // operational cards, because a doctor who does not
-                            // know who is coming at 11 cannot plan anything
-                            // below this line either. It was on no screen at
-                            // all: the desk filled his day and he found out by
-                            // navigating to Appointments, which is a thing you
-                            // do when you already suspect you have some.
-                            const SizedBox(height: T.s6),
-                            const TodaysClinic(),
-
-                            // 3 and 4. What is queued up, and the nutrition
-                            // reviews. Side by side on a tablet, stacked on a
-                            // phone: the design pairs them across one row, and
-                            // a 2x2 tile grid next to a list of patients does
-                            // not survive 360dp of width.
-                            //
-                            // The nutrition card is shown whenever the overview
-                            // loaded, empty list or not: it says "Nothing due
-                            // for review" on its own, and the isNotEmpty guard
-                            // that used to be here meant that line could never
-                            // be read.
-                            if (overview != null) ...[
-                              const SizedBox(height: T.s6),
-                              LayoutBuilder(
-                                builder: (context, c) {
-                                  final queue =
-                                      analytics == null
-                                          ? null
-                                          : ActionQueue(
-                                            overview: overview,
-                                            analytics: analytics,
-                                          );
-                                  final nutrition = NutritionReviewQueue(
-                                    reviews: overview.nutritionReviews,
-                                  );
-                                  if (c.maxWidth >= 620 && queue != null) {
-                                    return IntrinsicHeight(
-                                      child: Row(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.stretch,
-                                        children: [
-                                          Expanded(child: queue),
-                                          const SizedBox(width: T.s4),
-                                          Expanded(child: nutrition),
-                                        ],
-                                      ),
-                                    );
-                                  }
-                                  return Column(
-                                    children: [
-                                      if (queue != null) ...[
-                                        queue,
-                                        const SizedBox(height: T.s6),
-                                      ],
-                                      nutrition,
-                                    ],
-                                  );
-                                },
-                              ),
-                            ],
-
-                            // 4. Alerts that have already been raised, last:
-                            // they are a record of what the queue above has
-                            // already surfaced.
-                            //
-                            // Rendered whether or not there are any. It has an
-                            // "all clear" state built into it, and the
-                            // `alerts.isNotEmpty` guard that used to be here
-                            // meant that state could never appear — the
-                            // section simply vanished, which reads as a screen
-                            // that failed to finish rather than as a clinic
-                            // with nothing outstanding.
-                            const SizedBox(height: T.s6),
-                            _TriageQueue(alerts: alerts),
-
-                            // 5. What the clinic has been doing. Context rather
-                            // than work, so it sits under everything that needs
-                            // doing and never competes with the triage queue.
-                            Builder(
-                              builder: (context) {
-                                final events = LiveActivity.from(
-                                  patients: attention,
-                                  reviews:
-                                      overview?.nutritionReviews ?? const [],
-                                );
-                                if (events.isEmpty)
-                                  return const SizedBox.shrink();
-                                return Padding(
-                                  padding: const EdgeInsets.only(top: T.s6),
-                                  child: LiveActivity(events: events),
-                                );
-                              },
-                            ),
+                            for (final id in widgets)
+                              // A builder that returns null is a panel with
+                              // nothing to say yet — skipped, and the gap
+                              // skipped with it, so a half-loaded dashboard
+                              // has no holes in it.
+                              ...(() {
+                                final built = dashboardWidgets[id]?.call(data);
+                                if (built == null) return const <Widget>[];
+                                return <Widget>[
+                                  built,
+                                  const SizedBox(height: T.s6),
+                                ];
+                              })(),
                           ],
                         ),
                       ),
@@ -388,258 +348,4 @@ class _DashboardHeader extends ConsumerWidget {
   }
 }
 
-// ---- Live triage queue ----------------------------------------------------
 
-class _TriageQueue extends StatelessWidget {
-  const _TriageQueue({required this.alerts});
-
-  final List<ClinicalAlert> alerts;
-
-  static const _severityOrder = ['emergency', 'urgent', 'warning', 'info'];
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    // Worst first, then newest within a severity — "sorted by urgency" has to
-    // actually be true, since the doctor reads the top row and acts.
-    final sorted = [...alerts]..sort((a, b) {
-      final bySeverity = _severityOrder
-          .indexOf(a.severity)
-          .compareTo(_severityOrder.indexOf(b.severity));
-      if (bySeverity != 0) return bySeverity;
-      return (b.createdAt ?? DateTime(0)).compareTo(a.createdAt ?? DateTime(0));
-    });
-    final shown = sorted.take(3).toList();
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        // Named for what it holds. This sat under "Live Triage Queue"
-        // directly below a section titled "Live Triage" — two headings a word
-        // apart, over different data from different endpoints. Asked where
-        // the sections after Live Triage had gone, nobody could answer,
-        // because the answer depended on which of the two you were looking at.
-        const Text(
-          'Raised Alerts',
-          style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
-        ),
-        const SizedBox(height: AppSpacing.sm),
-        if (shown.isEmpty)
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(AppSpacing.lg),
-            decoration: BoxDecoration(
-              color: scheme.surfaceContainerLowest,
-              borderRadius: BorderRadius.circular(AppSpacing.cardRadius),
-              border: Border.all(
-                color: scheme.outlineVariant.withValues(alpha: 0.7),
-              ),
-            ),
-            child: Row(
-              children: [
-                Icon(
-                  Icons.check_circle_rounded,
-                  color: AppColors.accentOn(context),
-                  size: 26,
-                ),
-                const SizedBox(width: AppSpacing.md),
-                Expanded(
-                  child: Text(
-                    'No open alerts. Nothing is waiting on triage.',
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: scheme.onSurfaceVariant,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          )
-        else
-          for (final a in shown) _TriageCard(alert: a),
-        if (alerts.length > shown.length)
-          SizedBox(
-            width: double.infinity,
-            child: Material(
-              color: AppColors.infoBgOn(context),
-              borderRadius: BorderRadius.circular(AppSpacing.cardRadius),
-              child: InkWell(
-                borderRadius: BorderRadius.circular(AppSpacing.cardRadius),
-                onTap: () => context.push('/clinician/alerts'),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                  child: Center(
-                    child: Text(
-                      'View all triage (${alerts.length})',
-                      style: const TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ),
-      ],
-    );
-  }
-}
-
-class _TriageCard extends StatelessWidget {
-  const _TriageCard({required this.alert});
-
-  final ClinicalAlert alert;
-
-  static Color _sevColor(String severity) => switch (severity) {
-    'emergency' => AppColors.danger,
-    'urgent' => const Color(0xFFEA580C),
-    'warning' => AppColors.warning,
-    _ => const Color(0xFF9CA3AF),
-  };
-
-  static String _sevLabel(String severity) => switch (severity) {
-    'emergency' => 'Critical',
-    'urgent' => 'Urgent',
-    'warning' => 'Elevated',
-    _ => 'Routine',
-  };
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    final sev = AppColors.toneOn(context, _sevColor(alert.severity));
-    final quote =
-        (alert.detail?.trim().isNotEmpty ?? false)
-            ? alert.detail!.trim()
-            : null;
-    final canOpen = alert.patientId != null;
-
-    return Container(
-      margin: const EdgeInsets.only(bottom: AppSpacing.sm),
-      decoration: BoxDecoration(
-        color: scheme.surfaceContainerLowest,
-        borderRadius: BorderRadius.circular(AppSpacing.cardRadius),
-        border: Border.all(color: scheme.outlineVariant.withValues(alpha: 0.7)),
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: IntrinsicHeight(
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Container(width: 4, color: sev),
-            Expanded(
-              child: Padding(
-                padding: const EdgeInsets.all(AppSpacing.md),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        UserAvatar(
-                          name: alert.patientName ?? '?',
-                          avatarUrl: null,
-                          accent: sev,
-                          size: 40,
-                        ),
-                        const SizedBox(width: AppSpacing.sm),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                alert.patientName ?? 'Unknown patient',
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.w700,
-                                ),
-                              ),
-                              const SizedBox(height: 0),
-                              Text(
-                                '${_sevLabel(alert.severity)} · ${alert.title}',
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w700,
-                                  color: sev,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        if (alert.createdAt != null) ...[
-                          const SizedBox(width: 8),
-                          Text(
-                            DateFormat('h:mm a').format(alert.createdAt!),
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: scheme.onSurfaceVariant,
-                            ),
-                          ),
-                        ],
-                      ],
-                    ),
-                    if (quote != null) ...[
-                      const SizedBox(height: AppSpacing.md),
-                      Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.all(AppSpacing.md),
-                        decoration: BoxDecoration(
-                          color: scheme.surfaceContainerHigh,
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: Text(
-                          quote,
-                          maxLines: 3,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            fontSize: 14,
-                            height: 1.35,
-                            fontStyle: FontStyle.italic,
-                            color: scheme.onSurface,
-                          ),
-                        ),
-                      ),
-                    ],
-                    const SizedBox(height: AppSpacing.md),
-                    SizedBox(
-                      width: double.infinity,
-                      child: FilledButton(
-                        onPressed:
-                            canOpen
-                                ? () => context.push(
-                                  '/clinician/patients/${alert.patientId}/thread',
-                                  extra: alert.patientName,
-                                )
-                                : null,
-                        style: FilledButton.styleFrom(
-                          backgroundColor: AppColors.primary,
-                          foregroundColor: Colors.white,
-                          minimumSize: const Size.fromHeight(46),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(20),
-                          ),
-                        ),
-                        child: const Text(
-                          'Review Case',
-                          style: TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}

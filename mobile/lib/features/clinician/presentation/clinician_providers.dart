@@ -9,6 +9,7 @@ import '../domain/department.dart';
 import '../domain/patient_registration.dart';
 import '../domain/team_member.dart';
 import '../domain/clinician_models.dart';
+import '../domain/lab_overview.dart';
 import '../domain/knowledge_chunk.dart';
 import '../domain/patient_summary.dart';
 import '../../../shared/widgets/notification_list_sheet.dart';
@@ -46,6 +47,16 @@ final clinicAnalyticsProvider = FutureProvider.autoDispose
     .family<ClinicAnalytics, int>((ref, days) {
       return ref.watch(clinicianRepositoryProvider).analytics(days: days);
     });
+
+/// What came back from the lab, across the practice.
+///
+/// Keyed by the window in days for the same reason [clinicAnalyticsProvider]
+/// is: a range control over a fixed month of data is a label, not a query.
+final labOverviewProvider = FutureProvider.autoDispose.family<LabOverview, int>(
+  (ref, days) {
+    return ref.watch(clinicianRepositoryProvider).labOverview(days: days);
+  },
+);
 
 /// The Patients tab: counts, the action queue, and the latest meals logged.
 final worklistProvider = FutureProvider.autoDispose<DoctorWorklist>((ref) {

@@ -36,11 +36,21 @@ function seededDepartments() {
 describe('the specialties that ship with the platform', () => {
   const seeded = seededDepartments();
 
-  test('all nine are there', () => {
-    // The eight the clinic asked for, plus diabetology — which is what Dr. Dey
-    // actually practises and was not on the list, because his clinic predates
-    // the idea of departments.
-    assert.equal(seeded.length, 9, `found ${seeded.map((d) => d.key).join(', ')}`);
+  test('all eighteen are there', () => {
+    /*
+     * The eight the clinic asked for, plus diabetology — which is what Dr. Dey
+     * actually practises and was not on the list, because his clinic predates
+     * the idea of departments.
+     *
+     * Then nine more, because the platform was offering practices a department
+     * list that could not describe most of them: a polyclinic registering
+     * itself could not say it ran a laboratory, and a diagnostic centre could
+     * not name radiology or pathology at all. A practice type that exists and
+     * cannot be described is a signup that ends in a support conversation.
+     *
+     * Named individually rather than counted alone, so that a department
+     * disappearing from the seed fails here and says which one.
+     */
     for (const key of [
       'general_physician',
       'gynaecology',
@@ -51,9 +61,42 @@ describe('the specialties that ship with the platform', () => {
       'cardiology',
       'physical_medicine',
       'diabetology',
+      'neurology',
+      'ophthalmology',
+      'ent',
+      'oncology',
+      'urology',
+      'radiology',
+      'pathology',
+      'laboratory',
+      'nutrition',
     ]) {
       assert.ok(seeded.some((d) => d.key === key), `missing ${key}`);
     }
+
+    // And nothing else, so that adding one is a deliberate act with a test
+    // diff attached rather than something that happens in passing.
+    assert.equal(seeded.length, 18, `found ${seeded.map((d) => d.key).join(', ')}`);
+  });
+
+  test('only the one with a clinician behind it has an assistant', () => {
+    /*
+     * The same rule as triage rules, for the same reason.
+     *
+     * `assistantScope` is a clinical safety document: it says what an AI may
+     * discuss with a patient and what it must refuse. Diabetology has one
+     * because a diabetologist's practice is what the original prompt was
+     * written from and reviewed against. Writing seventeen more from general
+     * knowledge would be inventing clinical remits nobody has checked, which
+     * is the mistake that let a diabetes scope answer for dermatology.
+     *
+     * A department with no scope gets no assistant — Department.js — so the
+     * silence is safe. If this count ever rises, the question to ask is who
+     * wrote the new scope and which clinician read it.
+     */
+    const block = seedSource.slice(seedSource.indexOf('const DEPARTMENTS = ['));
+    const scopes = [...block.matchAll(/assistantScope:\s*\{/g)];
+    assert.equal(scopes.length, 1, `${scopes.length} departments ship with an assistant scope`);
   });
 
   test('no key appears twice', () => {

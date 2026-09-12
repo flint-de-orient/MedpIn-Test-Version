@@ -1,5 +1,7 @@
 import mongoose from 'mongoose';
 
+import { composeFor } from '../services/uiConfig.js';
+
 /**
  * A medical specialty a doctor practises in.
  *
@@ -102,6 +104,40 @@ const departmentSchema = new mongoose.Schema(
       refuses: { type: [String], default: [] },
     },
 
+    /**
+     * Which dashboard components this department's clinicians see, and in
+     * which order.
+     *
+     * ---- Identifiers, never descriptions -------------------------------
+     *
+     * `['HEART_RATE', 'ECG']`, and nothing else. No sizes, no colours, no
+     * labels, no data — those are the app's, and a server that sent them would
+     * be a server that could put anything on a clinician's screen. What travels
+     * is a name from [services/uiConfig.js], and both the server and the app
+     * drop one they do not recognise.
+     *
+     * That is what lets a new department be composed rather than built: an
+     * operator picks from components that already exist and ships a cardiology
+     * dashboard without a release. Only a genuinely new visualisation needs
+     * Flutter work.
+     *
+     * ---- Empty means the default, not a blank screen -------------------
+     *
+     * The same reading as `permissions` on a Membership, and for the same
+     * reason: every row that exists today has none of these, and a literal
+     * reading would give the clinic seeing patients this morning a home screen
+     * with nothing on it. Empty falls back to the department's default in
+     * uiConfig.js, and to the general clinical set for a department that has
+     * no default either.
+     *
+     * A department cannot therefore be configured to show *nothing*. That is
+     * an acceptable thing to be unable to express.
+     */
+    widgets: { type: [String], default: [] },
+
+    /// The actions its clinicians are offered, under exactly the same rules.
+    quickActions: { type: [String], default: [] },
+
     /// Red-flag rule ids that apply to this department's patients.
     ///
     /// Deliberately empty on a new row, and it stays empty until a clinician in
@@ -155,6 +191,20 @@ departmentSchema.methods.toPublic = function toPublic(language = 'en') {
     names: { en: this.names?.en, bn: this.names?.bn ?? null, hi: this.names?.hi ?? null },
     isShared: this.practice == null,
     homeCards: this.homeCards ?? [],
+    /**
+     * The resolved dashboard, and whether anybody chose it.
+     *
+     * Both, because the stored value is `[]` on every row that exists and `[]`
+     * means "the default applies" rather than "nothing". Sending the raw array
+     * is the mistake `/me/capabilities` made with `permissions` — a console
+     * reading it would show every department as configured to display nothing,
+     * and an operator would then "fix" it by configuring what was already
+     * happening.
+     *
+     * So: what will actually be drawn, and a flag saying whether it came from
+     * this row or from the platform's default for this specialty.
+     */
+    ...composeFor(this),
     // Whether this department can answer a patient at all. The screen reads it
     // to say "no assistant in this thread" rather than showing a composer that
     // silently does nothing.

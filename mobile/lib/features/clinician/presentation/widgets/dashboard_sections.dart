@@ -5,6 +5,8 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import '../../../../core/theme/tokens.dart';
+import '../../../../core/theme/app_colors.dart';
+import '../../../../core/theme/app_spacing.dart';
 import '../../../../shared/widgets/user_avatar.dart';
 import '../../domain/clinician_models.dart';
 import '../../../../shared/widgets/authed_image.dart';
@@ -1109,5 +1111,273 @@ class _EventTile extends StatelessWidget {
     if (d.inHours < 24) return '${d.inHours}h ago';
     if (d.inDays < 7) return '${d.inDays}d ago';
     return DateFormat('d MMM').format(at);
+  }
+}
+
+/// The alerts that have already been raised, worst first.
+///
+/// ---- Not the same thing as the triage queue -----------------------------
+///
+/// This was called `_TriageQueue` and lived in the dashboard screen, beside a
+/// public `TriageQueue` that shows something else entirely: that one ranks
+/// *patients* who need a doctor, this one lists *alerts* the system has
+/// raised. Two widgets, one name, one file apart — and the registry could not
+/// name either of them without ambiguity.
+///
+/// Rendered whether or not there are any. It has an all-clear state built into
+/// it, and the `alerts.isNotEmpty` guard that used to wrap it meant that state
+/// could never appear: the section simply vanished, which reads as a screen
+/// that failed to finish rather than as a clinic with nothing outstanding.
+class AlertDigest extends StatelessWidget {
+  const AlertDigest({super.key, required this.alerts});
+
+  final List<ClinicalAlert> alerts;
+
+  static const _severityOrder = ['emergency', 'urgent', 'warning', 'info'];
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    // Worst first, then newest within a severity — "sorted by urgency" has to
+    // actually be true, since the doctor reads the top row and acts.
+    final sorted = [...alerts]..sort((a, b) {
+      final bySeverity = _severityOrder
+          .indexOf(a.severity)
+          .compareTo(_severityOrder.indexOf(b.severity));
+      if (bySeverity != 0) return bySeverity;
+      return (b.createdAt ?? DateTime(0)).compareTo(a.createdAt ?? DateTime(0));
+    });
+    final shown = sorted.take(3).toList();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Named for what it holds. This sat under "Live Triage Queue"
+        // directly below a section titled "Live Triage" — two headings a word
+        // apart, over different data from different endpoints. Asked where
+        // the sections after Live Triage had gone, nobody could answer,
+        // because the answer depended on which of the two you were looking at.
+        const Text(
+          'Raised Alerts',
+          style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
+        ),
+        const SizedBox(height: AppSpacing.sm),
+        if (shown.isEmpty)
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(AppSpacing.lg),
+            decoration: BoxDecoration(
+              color: scheme.surfaceContainerLowest,
+              borderRadius: BorderRadius.circular(AppSpacing.cardRadius),
+              border: Border.all(
+                color: scheme.outlineVariant.withValues(alpha: 0.7),
+              ),
+            ),
+            child: Row(
+              children: [
+                Icon(
+                  Icons.check_circle_rounded,
+                  color: AppColors.accentOn(context),
+                  size: 26,
+                ),
+                const SizedBox(width: AppSpacing.md),
+                Expanded(
+                  child: Text(
+                    'No open alerts. Nothing is waiting on triage.',
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: scheme.onSurfaceVariant,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          )
+        else
+          for (final a in shown) _TriageCard(alert: a),
+        if (alerts.length > shown.length)
+          SizedBox(
+            width: double.infinity,
+            child: Material(
+              color: AppColors.infoBgOn(context),
+              borderRadius: BorderRadius.circular(AppSpacing.cardRadius),
+              child: InkWell(
+                borderRadius: BorderRadius.circular(AppSpacing.cardRadius),
+                onTap: () => context.push('/clinician/alerts'),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  child: Center(
+                    child: Text(
+                      'View all triage (${alerts.length})',
+                      style: const TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+class _TriageCard extends StatelessWidget {
+  const _TriageCard({required this.alert});
+
+  final ClinicalAlert alert;
+
+  static Color _sevColor(String severity) => switch (severity) {
+    'emergency' => AppColors.danger,
+    'urgent' => const Color(0xFFEA580C),
+    'warning' => AppColors.warning,
+    _ => const Color(0xFF9CA3AF),
+  };
+
+  static String _sevLabel(String severity) => switch (severity) {
+    'emergency' => 'Critical',
+    'urgent' => 'Urgent',
+    'warning' => 'Elevated',
+    _ => 'Routine',
+  };
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final sev = AppColors.toneOn(context, _sevColor(alert.severity));
+    final quote =
+        (alert.detail?.trim().isNotEmpty ?? false)
+            ? alert.detail!.trim()
+            : null;
+    final canOpen = alert.patientId != null;
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: AppSpacing.sm),
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerLowest,
+        borderRadius: BorderRadius.circular(AppSpacing.cardRadius),
+        border: Border.all(color: scheme.outlineVariant.withValues(alpha: 0.7)),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: IntrinsicHeight(
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Container(width: 4, color: sev),
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.all(AppSpacing.md),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        UserAvatar(
+                          name: alert.patientName ?? '?',
+                          avatarUrl: null,
+                          accent: sev,
+                          size: 40,
+                        ),
+                        const SizedBox(width: AppSpacing.sm),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                alert.patientName ?? 'Unknown patient',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                              const SizedBox(height: 0),
+                              Text(
+                                '${_sevLabel(alert.severity)} · ${alert.title}',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w700,
+                                  color: sev,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        if (alert.createdAt != null) ...[
+                          const SizedBox(width: 8),
+                          Text(
+                            DateFormat('h:mm a').format(alert.createdAt!),
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: scheme.onSurfaceVariant,
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                    if (quote != null) ...[
+                      const SizedBox(height: AppSpacing.md),
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(AppSpacing.md),
+                        decoration: BoxDecoration(
+                          color: scheme.surfaceContainerHigh,
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Text(
+                          quote,
+                          maxLines: 3,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 14,
+                            height: 1.35,
+                            fontStyle: FontStyle.italic,
+                            color: scheme.onSurface,
+                          ),
+                        ),
+                      ),
+                    ],
+                    const SizedBox(height: AppSpacing.md),
+                    SizedBox(
+                      width: double.infinity,
+                      child: FilledButton(
+                        onPressed:
+                            canOpen
+                                ? () => context.push(
+                                  '/clinician/patients/${alert.patientId}/thread',
+                                  extra: alert.patientName,
+                                )
+                                : null,
+                        style: FilledButton.styleFrom(
+                          backgroundColor: AppColors.primary,
+                          foregroundColor: Colors.white,
+                          minimumSize: const Size.fromHeight(46),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                        ),
+                        child: const Text(
+                          'Review Case',
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }

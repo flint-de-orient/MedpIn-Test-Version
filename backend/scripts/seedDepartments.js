@@ -123,7 +123,76 @@ const DEPARTMENTS = [
     sortIndex: 90,
     homeCards: [],
   },
+  /*
+   * The nine the platform was missing.
+   *
+   * No `assistantScope` on any of them, and that is deliberate rather than
+   * unfinished. A department with no scope gets no assistant — see
+   * Department.js — and a scope is a clinical safety document: it says what an
+   * AI may discuss with a patient and what it must refuse. Writing nine of
+   * those from general knowledge would be inventing clinical remits no
+   * clinician has reviewed, which is the same mistake as letting the diabetes
+   * scope answer for cardiology.
+   *
+   * So the departments exist, can be assigned, and carry their own dashboards.
+   * Their assistants stay silent until somebody qualified writes the remit.
+   */
+  {
+    key: 'neurology',
+    names: { en: 'Neurology', bn: 'নিউরোলজি', hi: 'न्यूरोलॉजी' },
+    sortIndex: 100,
+    homeCards: [],
+  },
+  {
+    key: 'ophthalmology',
+    names: { en: 'Ophthalmology', bn: 'চক্ষুবিদ্যা', hi: 'नेत्र विज्ञान' },
+    sortIndex: 110,
+    homeCards: [],
+  },
+  {
+    key: 'ent',
+    names: { en: 'ENT', bn: 'নাক কান গলা', hi: 'नाक कान गला' },
+    sortIndex: 120,
+    homeCards: [],
+  },
+  {
+    key: 'oncology',
+    names: { en: 'Oncology', bn: 'অনকোলজি', hi: 'ऑन्कोलॉजी' },
+    sortIndex: 130,
+    homeCards: [],
+  },
+  {
+    key: 'urology',
+    names: { en: 'Urology', bn: 'ইউরোলজি', hi: 'यूरोलॉजी' },
+    sortIndex: 140,
+    homeCards: [],
+  },
+  {
+    key: 'radiology',
+    names: { en: 'Radiology', bn: 'রেডিওলজি', hi: 'रेडियोलॉजी' },
+    sortIndex: 150,
+    homeCards: [],
+  },
+  {
+    key: 'pathology',
+    names: { en: 'Pathology', bn: 'প্যাথলজি', hi: 'पैथोलॉजी' },
+    sortIndex: 160,
+    homeCards: [],
+  },
+  {
+    key: 'laboratory',
+    names: { en: 'Laboratory', bn: 'ল্যাবরেটরি', hi: 'प्रयोगशाला' },
+    sortIndex: 170,
+    homeCards: [],
+  },
+  {
+    key: 'nutrition',
+    names: { en: 'Nutrition & Dietetics', bn: 'পুষ্টি ও ডায়েটেটিক্স', hi: 'पोषण एवं आहार विज्ञान' },
+    sortIndex: 180,
+    homeCards: [],
+  },
 ];
+
 
 async function main() {
   await mongoose.connect(env.MONGODB_URI);

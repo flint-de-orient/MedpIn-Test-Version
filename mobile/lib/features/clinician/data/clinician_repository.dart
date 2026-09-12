@@ -11,6 +11,7 @@ import '../domain/chat_review.dart';
 import '../domain/department.dart';
 import '../domain/team_member.dart';
 import '../domain/clinician_models.dart';
+import '../domain/lab_overview.dart';
 import '../domain/knowledge_chunk.dart';
 import '../domain/patient_summary.dart';
 import '../../../shared/widgets/notification_list_sheet.dart';
@@ -80,6 +81,16 @@ class ClinicianRepository {
   Future<ClinicAnalytics> analytics({int days = 30}) async {
     final json = await _client.getJson('/doctor/analytics?days=$days');
     return ClinicAnalytics.fromJson(json);
+  }
+
+  /// What came back from the lab, across the practice.
+  ///
+  /// A bench screen, not a record screen: lab reports were readable one
+  /// patient at a time, which answers "what did Anita's panel say" and not
+  /// "what came back abnormal".
+  Future<LabOverview> labOverview({int days = 30}) async {
+    final json = await _client.getJson('/doctor/labs/overview?days=$days');
+    return LabOverview.fromJson(json);
   }
 
   Future<DoctorWorklist> worklist() async {

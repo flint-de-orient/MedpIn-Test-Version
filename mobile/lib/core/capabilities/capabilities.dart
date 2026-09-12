@@ -33,6 +33,8 @@ class Capabilities {
     required this.resolved,
     this.hasDietician = false,
     this.permissions = const <String>{},
+    this.ui,
+    this.department,
   });
 
   /// What kind of organisation. Null for a practice nobody has classified,
@@ -71,6 +73,16 @@ class Capabilities {
   /// available" and has to be, or an empty set would read as a locked-down
   /// account. Every check below leans on this.
   final bool resolved;
+
+  /// Which components this person's home screen is made of, and in what order.
+  ///
+  /// Null before an answer arrives, and null for a patient — who has no
+  /// clinician home screen rather than an empty one. See [DashboardConfig].
+  final DashboardConfig? ui;
+
+  /// Which part of the practice they work in. Null for a solo clinic, and for
+  /// anybody nobody has assigned — both ordinary, neither a failure.
+  final DepartmentRef? department;
 
   /// The permissive default, used before the first response arrives.
   ///
@@ -133,20 +145,84 @@ class Capabilities {
       permissions: ((membership?['permissions'] as List?) ?? const [])
           .map((e) => e.toString())
           .toSet(),
+      ui: DashboardConfig.fromJson(json['ui'] as Map<String, dynamic>?),
+      department: DepartmentRef.fromJson(
+        membership?['department'] as Map<String, dynamic>?,
+      ),
     );
   }
 }
 
-/// The capability names the app checks. Mirrors `services/capabilities.js`.
+/// A department, named.
 ///
-/// Written out rather than used as bare strings so a typo is a compile error
-/// instead of a feature that is quietly always off — which is the failure mode
-/// that is hardest to notice, because a hidden button looks like a decision.
+/// The key is what code reasons about and the name is what a reader sees —
+/// already resolved to this account's language by the server, because the
+/// fallback ladder (their language, then English, then the key) is one rule
+/// and belongs in one place.
+class DepartmentRef {
+  const DepartmentRef({required this.key, required this.name});
+
+  final String key;
+  final String name;
+
+  static DepartmentRef? fromJson(Map<String, dynamic>? json) {
+    if (json == null) return null;
+    final key = json['key'] as String?;
+    if (key == null) return null;
+    return DepartmentRef(key: key, name: json['name'] as String? ?? key);
+  }
+}
+
+/// What this person's home screen is made of.
+///
+/// ---- Identifiers, and the app decides everything else ------------------
+///
+/// The server sends names from `services/uiConfig.js` — never layout, never
+/// styling, never data. How a component looks, what it fetches and how it
+/// behaves are this app's business; whether it is on the screen at all is the
+/// server's. A response that carried the other half would be a backend able to
+/// draw anything it liked on a clinician's phone.
+///
+/// Which also means an unknown name is dropped here, not rendered as an error.
+/// The server drops what it does not recognise and so does the registry — an
+/// app a version behind meets a component that did not exist when it shipped,
+/// and the right response is a slightly shorter dashboard rather than a red
+/// screen in front of a patient.
+class DashboardConfig {
+  const DashboardConfig({
+    required this.widgets,
+    required this.quickActions,
+    this.department,
+  });
+
+  final List<String> widgets;
+  final List<String> quickActions;
+
+  /// The department key this arrangement came from, or null for the general
+  /// clinical set.
+  final String? department;
+
+  static DashboardConfig? fromJson(Map<String, dynamic>? json) {
+    if (json == null) return null;
+    return DashboardConfig(
+      widgets: ((json['widgets'] as List?) ?? const [])
+          .map((e) => e.toString())
+          .toList(growable: false),
+      quickActions: ((json['quickActions'] as List?) ?? const [])
+          .map((e) => e.toString())
+          .toList(growable: false),
+      department: json['department'] as String?,
+    );
+  }
+}
+
 /// What a person may do, as opposed to what the product offers.
 ///
-/// Mirrors `PERMISSIONS` in models/Membership.js. Written out for the same
-/// reason [Cap] is: a drifted name resolves to a string the server never sends,
-/// `can()` returns false, and the button is quietly gone for everybody.
+/// Mirrors `PERMISSIONS` in models/Membership.js. Written out rather than used
+/// as bare strings so a typo is a compile error instead of a feature that is
+/// quietly always off — a drifted name resolves to a string the server never
+/// sends, `can()` returns false, and the button is gone for everybody, which
+/// looks exactly like a decision somebody made on purpose.
 abstract final class Perm {
   static const viewPatient = 'VIEW_PATIENT';
   static const editRecord = 'EDIT_RECORD';
@@ -157,6 +233,11 @@ abstract final class Perm {
   static const shareRecords = 'SHARE_RECORDS';
 }
 
+/// The capability names the app checks. Mirrors `services/capabilities.js`.
+///
+/// Written out for the same reason [Perm] is, and it is the same failure: a
+/// drifted name is a capability the server never sends, and the feature is
+/// quietly off everywhere.
 abstract final class Cap {
   static const prescription = 'PRESCRIPTION';
   static const labOrder = 'LAB_ORDER';
