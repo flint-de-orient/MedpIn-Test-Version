@@ -53,18 +53,18 @@ function BrandPanel() {
       // render at all, and on large ones it repeats nothing the form needs.
       aria-label="About MedPin"
       /*
-        Sticky, and nothing else.
+        One viewport tall, stuck to the top, and no scroll of its own.
 
-        This had `max-h-dvh` and `overflow-y-auto` so a short viewport could
-        reach the bottom of the panel. What it actually produced was a second
-        scrollbar down the middle of the page, next to the window's own, with
-        the illustration cut off behind it.
+        It had `max-h-dvh` with `overflow-y-auto` so a short viewport could
+        reach the bottom of the panel. That produced a second scrollbar down
+        the middle of the page, beside the window's own, with the illustration
+        cut off behind it.
 
-        No inner scroll now and no cap: the panel is as tall as its contents and
-        the page scrolls once, like a page. `justify-start` rather than
-        `justify-between` because the form beside it can be five steps tall —
-        spreading to fill that pushed the illustration hundreds of pixels down
-        for no reason, which is the problem the cap was added to solve.
+        `h-dvh` and nothing else now: the panel is exactly the viewport, its
+        contents are centred in it, and the page scrolls once. The form beside
+        it can be four steps tall and the panel no longer stretches to match —
+        which is what pushed the illustration hundreds of pixels below the fold
+        before the cap was added.
       */
       className="bg-accent/60 border-border hidden shrink-0 flex-col justify-center border-r px-10 py-12 lg:sticky lg:top-0 lg:flex lg:h-dvh lg:w-[42%] lg:max-w-[34rem]"
     >
@@ -103,20 +103,25 @@ function BrandPanel() {
       </div>
 
       {/*
-        The illustration, framed rather than bled.
+        The illustration, unframed.
 
-        Its own background is a near-white, which on the pale panel in light is
-        very nearly seamless and on the dark panel would be a bright rectangle
-        with a hard edge. A rounded frame and a hairline make that a deliberate
-        image in both themes instead of an accident in one.
+        It had a rounded border and a hairline, which read as a card sitting on
+        the panel rather than artwork belonging to it.
 
-        `width`/`height` are the real pixel dimensions of the file so the
-        browser reserves the box before it loads — without them the panel
-        reflows when the image arrives, which on a sign-in screen moves the
-        form somebody is already reaching for.
+        Keying its background out instead was tried and abandoned. The file's
+        background is a near-white gradient, and the doctor's coat and the
+        man's shirt are near-white too and touch it — so a flood fill ran
+        straight into both and removed most of them. What is left is a nine-step
+        tonal difference between the file's ground and the panel, which at 85%
+        width reads as the artwork having a soft ground rather than as a box.
+
+        `width`/`height` are the file's real dimensions so the browser reserves
+        the space before it loads. Without them the panel reflows when the image
+        arrives, which on a sign-in screen moves the form somebody is already
+        reaching for.
 
         Not `next/image`: this console is a static export, and the loader adds
-        configuration for a single decorative asset that is already 26KB.
+        configuration for one decorative asset that is already 26KB.
       */}
       <img
         src="/entry-illustration.webp"
@@ -126,21 +131,6 @@ function BrandPanel() {
         aria-hidden
         width={928}
         height={506}
-        /*
-          No frame.
-
-          It had a rounded border, which read as a card sitting on the panel
-          rather than artwork belonging to it. Keying the background out
-          instead was tried and abandoned: the illustration's background is a
-          near-white gradient and the doctor's coat and the man's shirt are
-          near-white too and touch it, so a flood fill ran straight into them
-          and removed most of both. A mangled illustration is worse than a
-          visible edge.
-
-          What is left is a 9-step tonal difference between the file's own
-          background and the panel, which at this size reads as the artwork
-          having a soft ground rather than as a box.
-        */
         className="mt-10 w-[85%] self-center"
       />
     </aside>
