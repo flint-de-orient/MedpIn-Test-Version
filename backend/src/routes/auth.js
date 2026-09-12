@@ -580,6 +580,12 @@ router.get(
           ? null
           : resolveUi({
               department,
+              // The membership's role, not the account's. One person can be a
+              // doctor at their own clinic and an assistant at somebody
+              // else's, and the screen they open is a fact about the practice
+              // they are in — which is the whole reason the role lives on the
+              // membership row.
+              role: ctx.membership?.role ?? req.user.role,
               capabilities: effectiveCapabilities(ctx),
               permissions: granted,
             }),

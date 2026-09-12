@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../features/appointments/domain/clinic.dart';
 import '../../features/clinician/domain/knowledge_chunk.dart';
 import '../../features/auth/presentation/auth_controller.dart';
+import 'area.dart';
 import '../../features/auth/presentation/login_screen.dart';
 import '../../features/auth/presentation/doctor_password_login_screen.dart';
 import '../../features/auth/presentation/register_screen.dart';
@@ -78,14 +79,20 @@ class _RouterRefreshNotifier extends ChangeNotifier {
 /// screen is on top from outside the widget tree (a push message handler).
 final GlobalKey<NavigatorState> rootNavigatorKey = GlobalKey<NavigatorState>();
 
-/// The doctor, and only the doctor.
+/// Which area this person belongs in, or null for a patient.
 ///
-/// Staff used to be counted here and landed in his panel: Live Triage on their
-/// Home, and his letterhead, professional details and signature on their
-/// Profile. None of that is a receptionist's, and two of them are his identity.
-bool _isDoctor(AuthState s) => s.user?.role == 'doctor';
-bool _isStaff(AuthState s) => s.user?.role == 'staff';
-bool _isDietician(AuthState s) => s.user?.role == 'dietician';
+/// This was three functions — `_isDoctor`, `_isStaff`, `_isDietician` — asked
+/// in sequence, with the patient app as what happened when none of them
+/// matched. That is fine while every role is named and silently wrong the
+/// moment one is not: a lab technician would have signed in and landed on the
+/// patient's Assistant tab.
+///
+/// The table in [areaForRole] names every role the server defines, and
+/// `roles.test.js` fails if one is missing from it. A role that is genuinely
+/// absent resolves to null here, which sends them to the patient app as
+/// before — but now that is the answer for patients rather than the answer for
+/// everybody the code forgot.
+String? _areaOf(AuthState s) => areaForRole[s.user?.role ?? ''];
 
 String? _redirect(Ref ref, GoRouterState state) {
   final authState = ref.read(authControllerProvider);
@@ -100,9 +107,10 @@ String? _redirect(Ref ref, GoRouterState state) {
   // Landing tabs after login. The patient app now opens on the Assistant and
   // the clinician app on Patients (the former Home/Dashboard tabs were removed).
   const home = '/home';
+  // The clinician area's tab, named here because it is also the last resort
+  // for an area whose home nobody declared. The other three live in
+  // [homeForArea], beside the table that decides which area somebody is in.
   const clinicianHome = '/clinician/dashboard';
-  const staffHome = '/staff/today';
-  const dieticianHome = '/dietician/dashboard';
 
   // Everything under /login counts, not just /login itself. The doctor's
   // password screen is /login/password, and an exact-match check bounced an
@@ -123,20 +131,23 @@ String? _redirect(Ref ref, GoRouterState state) {
     return isAuthRoute ? null : login;
   }
 
-  // Authenticated. Four areas, one per role, and each kept out of the others'
-  // tree. Staff have their own now rather than borrowing the doctor's.
+  /*
+   * Authenticated. Each area is kept out of the others' tree.
+   *
+   * One lookup rather than a chain of role tests, so that somebody whose role
+   * the app has not been taught about cannot arrive here by falling off the
+   * end of it. The four landing tabs above are still named for readability;
+   * [homeForArea] is what actually decides, and it lives beside the table that
+   * decides the area.
+   */
   final inClinicianArea = loc.startsWith('/clinician');
-  final inStaffArea = loc.startsWith('/staff');
   final inDieticianArea = loc.startsWith('/dietician');
-  if (_isDoctor(authState)) {
-    return inClinicianArea ? null : clinicianHome;
+
+  final area = _areaOf(authState);
+  if (area != null) {
+    return loc.startsWith(area) ? null : (homeForArea[area] ?? clinicianHome);
   }
-  if (_isStaff(authState)) {
-    return inStaffArea ? null : staffHome;
-  }
-  if (_isDietician(authState)) {
-    return inDieticianArea ? null : dieticianHome;
-  }
+
   // A patient must never linger in a clinician or dietician area.
   if (inClinicianArea || inDieticianArea) return home;
   if (loc == splash || loc == language || isAuthRoute) return home;

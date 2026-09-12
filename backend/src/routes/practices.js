@@ -7,7 +7,7 @@ import { asyncHandler, notFound } from '../middleware/errors.js';
 import { audit } from '../middleware/audit.js';
 import { Practice, PRACTICE_STATUS, VERIFICATION } from '../models/Practice.js';
 import { Clinic } from '../models/Clinic.js';
-import { User, ROLES } from '../models/User.js';
+import { User, ROLES, CLINICIAN_ROLES } from '../models/User.js';
 import { Membership, PERMISSIONS } from '../models/Membership.js';
 import { requirePermission } from '../middleware/authorise.js';
 import { forgetClinicIdentity } from '../services/clinicIdentity.js';
@@ -101,7 +101,10 @@ async function membershipsExist() {
 /** The pre-membership answer: every active clinician on the deployment. */
 async function countsFromRoles() {
   const rows = await User.aggregate([
-    { $match: { role: { $in: [ROLES.DOCTOR, ROLES.STAFF, ROLES.DIETICIAN] }, isActive: true } },
+    // Everybody who works here, from the one list. Written out as three, this
+    // undercounted a practice the moment it hired anybody else — and the count
+    // is what the plan's staff cap is checked against.
+    { $match: { role: { $in: [...CLINICIAN_ROLES] }, isActive: true } },
     { $group: { _id: '$role', count: { $sum: 1 } } },
   ]);
   return countsFrom(rows) ?? { doctors: 0, staff: 0, dieticians: 0 };
@@ -273,7 +276,7 @@ router.post(
         .transform(toE164)
         .pipe(z.string().regex(/^\+?[1-9]\d{7,14}$/, 'Enter a valid phone number')),
       phoneToken: z.string().min(20),
-      role: z.enum([ROLES.DOCTOR, ROLES.STAFF, ROLES.DIETICIAN]),
+      role: z.enum([...CLINICIAN_ROLES]),
       /// Another owner. A practice with two heads survives one of them leaving,
       /// which the single-owner case deliberately cannot.
       isOwner: z.boolean().optional(),

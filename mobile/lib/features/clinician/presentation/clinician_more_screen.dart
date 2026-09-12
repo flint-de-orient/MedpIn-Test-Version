@@ -6,6 +6,7 @@ import 'package:image_picker/image_picker.dart';
 import '../../../core/config/app_config.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/capabilities/capabilities.dart';
+import '../../../core/router/area.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/update/app_update_section.dart';
@@ -353,7 +354,10 @@ class _ClinicianMoreScreenState extends ConsumerState<ClinicianMoreScreen> {
     final user = ref.watch(authControllerProvider).user;
     final currentLocale = ref.watch(localeControllerProvider);
     final lockEnabled = ref.watch(appLockProvider).enabled;
-    final roleLabel = user?.role == 'doctor' ? 'Doctor' : 'Clinic staff';
+    // Their actual job. This said "Doctor" or "Clinic staff", which was true
+    // while there were two kinds of clinician and tells a laboratory
+    // technician the wrong thing about themselves now.
+    final roleLabel = roleLabels[user?.role ?? ''] ?? 'Clinic staff';
     final clinicPhone =
         ref.watch(clinicPhoneProvider).valueOrNull ??
         AppConfig.clinicPhoneNumber;

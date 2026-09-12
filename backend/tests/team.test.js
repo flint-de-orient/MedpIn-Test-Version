@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
 import { PRESETS, PERMISSIONS } from '../src/models/Membership.js';
-import { ROLES } from '../src/models/User.js';
+import { ROLES, CLINICIAN_ROLES } from '../src/models/User.js';
 
 /**
  * Who works here, in one place — and the three things that were missing.
@@ -71,9 +71,24 @@ describe('one route hires everybody', () => {
     assert.match(index, /router\.use\('\/team', teamRoutes\)/);
   });
 
-  test('all three roles, and never a patient', () => {
-    assert.match(src, /const HIREABLE = \[ROLES\.DOCTOR, ROLES\.STAFF, ROLES\.DIETICIAN\]/);
+  test('every role a practice employs, and never a patient', () => {
+    /*
+     * Asserted against the list rather than against its spelling.
+     *
+     * This pinned `[ROLES.DOCTOR, ROLES.STAFF, ROLES.DIETICIAN]` as a literal
+     * and so did the route — two copies of a list, in step only because the
+     * test held the wrong one still. Four roles were later added to the
+     * platform and neither copy moved, so the laboratory roles existed, held
+     * the right permissions, had their own dashboard, and could not be given
+     * to anybody.
+     *
+     * What matters is that the route hires everyone who works at a practice
+     * and nobody who does not, which is what CLINICIAN_ROLES means.
+     */
+    assert.match(src, /const HIREABLE = \[\.\.\.CLINICIAN_ROLES\]/);
     assert.match(src, /role: z\.enum\(HIREABLE\)/);
+    assert.ok(CLINICIAN_ROLES.includes(ROLES.LAB_TECHNICIAN), 'the bench cannot be hired');
+    assert.ok(!CLINICIAN_ROLES.includes(ROLES.PATIENT));
     assert.ok(!src.includes('ROLES.PATIENT'), 'the hiring route can create a patient');
   });
 

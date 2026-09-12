@@ -208,6 +208,39 @@ const ROLE_EXCLUDES = Object.freeze({
   // investigations, and MANAGE_STAFF on a practice manager must not start
   // meaning it.
   [ROLES.STAFF]: [C.PRESCRIPTION, C.LAB_ORDER],
+
+  /*
+   * Assists on the record and does not sign.
+   *
+   * The line between assisting and practising, and the one exclusion that
+   * defines this role — the permission grant is the desk's, so without this
+   * an assistant with PRESCRIBE granted by hand would be able to sign.
+   */
+  [ROLES.DOCTOR_ASSISTANT]: [C.PRESCRIPTION],
+
+  /*
+   * The laboratory roles, and the reason they had to exist.
+   *
+   * Filed as `staff` they lost LAB_ORDER — deliberately, because a
+   * receptionist must not order clinical investigations — and the result was
+   * a bench that could read a critical result and could not begin the work
+   * that produced it. Neither of these excludes LAB_ORDER or LAB_RESULT;
+   * both exclude PRESCRIPTION, because reporting a result is not treating
+   * anybody.
+   */
+  [ROLES.LAB_MANAGER]: [C.PRESCRIPTION],
+  [ROLES.LAB_TECHNICIAN]: [C.PRESCRIPTION],
+
+  /*
+   * Administers the practice and touches no clinical work at all.
+   *
+   * The longest list here, and the only one that is a statement about the job
+   * rather than about seniority. A practice manager rosters people, runs
+   * departments and handles billing; they do not prescribe, order a test or
+   * read a result — and MANAGE_STAFF, which they need, must never start to
+   * mean any of those.
+   */
+  [ROLES.PRACTICE_MANAGER]: [C.PRESCRIPTION, C.LAB_ORDER, C.LAB_RESULT, C.AI_ASSISTANT],
 });
 
 /** A capability list for a key, or `null` meaning "unknown, do not narrow". */

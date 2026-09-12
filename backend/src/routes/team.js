@@ -12,7 +12,7 @@ import { billingBlocks } from '../services/billing/lapse.js';
 import { noticeUsage } from '../services/billing/usageNotice.js';
 import { Department } from '../models/Department.js';
 import { Clinic } from '../models/Clinic.js';
-import { User, ROLES } from '../models/User.js';
+import { User, ROLES, CLINICIAN_ROLES } from '../models/User.js';
 import { practiceOf } from '../middleware/practiceScope.js';
 import { joinPractice, membersOf } from '../services/memberships.js';
 import { phoneFromToken } from '../services/otp.js';
@@ -53,8 +53,16 @@ import { phoneFromToken } from '../services/otp.js';
 const router = Router();
 router.use(requireAuth, requireClinician);
 
-/** The roles a practice can hire. Patients are enrolled, not employed. */
-const HIREABLE = [ROLES.DOCTOR, ROLES.STAFF, ROLES.DIETICIAN];
+/**
+ * The roles a practice can hire. Patients are enrolled, not employed.
+ *
+ * From CLINICIAN_ROLES rather than written out again. This was its own list of
+ * three, and four roles were added to the platform without it — so the
+ * laboratory roles existed, held the right permissions, had their own
+ * dashboard, and could not be given to anybody. A role nobody can be hired
+ * into is a role that does not exist.
+ */
+const HIREABLE = [...CLINICIAN_ROLES];
 
 /**
  * Everyone at this practice, with every dimension the screens need.

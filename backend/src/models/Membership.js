@@ -83,16 +83,106 @@ export const PRESETS = Object.freeze({
   // The desk registers people, books them and takes their weight. It does not
   // prescribe, and it does not read the audit log of who looked at whom.
   desk: [P.VIEW_PATIENT, P.EDIT_RECORD],
+
+  /*
+   * Works on the record beside a doctor and does not sign.
+   *
+   * The same grant as the desk, and that is not an accident of laziness: the
+   * difference between an assistant and a receptionist is what they are asked
+   * to do, not what the record will let them do. Where the two genuinely
+   * differ is the capability exclusions — see ROLE_EXCLUDES — and the screen
+   * they open onto.
+   */
+  assistant: [P.VIEW_PATIENT, P.EDIT_RECORD],
+
+  /*
+   * Runs the laboratory: the work, the results, and the people.
+   *
+   * MANAGE_STAFF because somebody has to roster the bench, and VIEW_AUDIT
+   * because a result that changed after it was reported is the thing a lab
+   * manager is answerable for. No PRESCRIBE: reporting a result is not
+   * treating anybody.
+   */
+  labManager: [
+    P.VIEW_PATIENT,
+    P.EDIT_RECORD,
+    P.MANAGE_STAFF,
+    P.VIEW_AUDIT,
+    P.SHARE_RECORDS,
+  ],
+
+  /// At the bench. Reads the patient the sample belongs to and records what
+  /// came back. Nothing else.
+  labTech: [P.VIEW_PATIENT, P.EDIT_RECORD],
+
+  /*
+   * Administers the practice and reads no clinical record.
+   *
+   * The only preset here without VIEW_PATIENT, and the reason this role is
+   * worth having: somebody who manages rotas, departments and billing has no
+   * business in a consultation note, and until now the only way to employ one
+   * was to file them as `staff` and hand them every patient in the building.
+   */
+  manager: [P.MANAGE_STAFF, P.MANAGE_DEPARTMENT, P.VIEW_AUDIT],
+});
+
+/**
+ * The preset each role starts from.
+ *
+ * ---- Written out, and the absence of a fallthrough is the point ---------
+ *
+ * This was `if (doctor) clinician; else desk`, which meant every role the
+ * platform did not know about silently became the front desk. That is how
+ * `staff` came to carry four different jobs, and it is why a role added
+ * without a line here would arrive holding the receptionist's grant rather
+ * than an obviously wrong one somebody would notice.
+ *
+ * A role missing from this table now throws. Loudly, at startup, in a test —
+ * rather than quietly, in production, as a permission somebody did not expect
+ * to have. See roles.test.js.
+ */
+const PRESET_FOR_ROLE = Object.freeze({
+  doctor: PRESETS.clinician,
+  staff: PRESETS.desk,
+  // A dietician edits plans and reads the patients assigned to them; the
+  // assignment check lives in /dietician and is not replaced by this.
+  dietician: PRESETS.desk,
+  doctor_assistant: PRESETS.assistant,
+  lab_manager: PRESETS.labManager,
+  lab_technician: PRESETS.labTech,
+  practice_manager: PRESETS.manager,
 });
 
 /** The preset a role starts from. Owners are heads whatever their role says. */
 export function presetFor({ role, isOwner = false }) {
   if (isOwner) return [...PRESETS.head];
-  if (role === 'doctor') return [...PRESETS.clinician];
-  // A dietician edits plans and reads the patients assigned to them; the
-  // assignment check lives in /dietician and is not replaced by this.
-  return [...PRESETS.desk];
+
+  const preset = PRESET_FOR_ROLE[role];
+  if (!preset) {
+    /*
+     * Deliberately fatal rather than defaulting.
+     *
+     * Everywhere else in this codebase an unknown value permits — a practice
+     * with no type keeps every capability, a member with no grant keeps the
+     * preset. That rule is about *data that predates a field*, and it is the
+     * right rule there because the alternative is an outage on deploy.
+     *
+     * This is not that. A role reaching here is one the code does not define,
+     * which means somebody added a name in one place and not the other. There
+     * is no safe guess: permissive hands out access nobody intended, and
+     * restrictive locks somebody out of their own job. Throwing is the only
+     * answer that gets it fixed rather than absorbed.
+     */
+    throw new Error(
+      `No permission preset for role "${role}". Add one to PRESET_FOR_ROLE in ` +
+        'models/Membership.js — a role without a preset would silently inherit ' +
+        "somebody else's permissions.",
+    );
+  }
+  return [...preset];
 }
+
+export { PRESET_FOR_ROLE };
 
 const membershipSchema = new mongoose.Schema(
   {

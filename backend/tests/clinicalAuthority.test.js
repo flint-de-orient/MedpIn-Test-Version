@@ -1,5 +1,7 @@
 import test, { describe } from 'node:test';
 import assert from 'node:assert/strict';
+
+import { ROLES, CLINICIAN_ROLES } from '../src/models/User.js';
 import { readFileSync } from 'node:fs';
 
 /**
@@ -46,8 +48,25 @@ describe('clinical authority', () => {
   test('requireDoctor really does exclude staff', () => {
     const src = read('../src/middleware/auth.js');
     assert.match(src, /export const requireDoctor = requireRole\(ROLES\.DOCTOR\)/);
-    // And the broader guard still admits both, because the desk needs it.
-    assert.match(src, /requireClinician = requireRole\(ROLES\.DOCTOR, ROLES\.STAFF\)/);
+
+    /*
+     * And the broader guard still admits the desk, because the desk needs it.
+     *
+     * Checked against the list rather than against the expression. This
+     * pinned `requireRole(ROLES.DOCTOR, ROLES.STAFF)` as a literal, which was
+     * both the claim and the bug: that guard is on forty routes and means
+     * "works at a practice", so written as two names it refused the dietician
+     * it already had and would have refused every role added since. A lab
+     * technician would have signed in and then been told by the whole
+     * application that they needed a different role.
+     *
+     * The claim worth protecting is that the desk is admitted and a patient
+     * is not.
+     */
+    assert.match(src, /requireClinician = requireRole\(\.\.\.CLINICIAN_ROLES\)/);
+    assert.ok(CLINICIAN_ROLES.includes(ROLES.STAFF), 'the desk lost its own routes');
+    assert.ok(CLINICIAN_ROLES.includes(ROLES.DOCTOR));
+    assert.ok(!CLINICIAN_ROLES.includes(ROLES.PATIENT), 'a patient is admitted as staff');
   });
 
   test('the desk keeps the work that is theirs', () => {

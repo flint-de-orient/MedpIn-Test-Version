@@ -1,5 +1,5 @@
 import { verifyAccessToken } from '../services/tokens.js';
-import { User, ROLES } from '../models/User.js';
+import { User, ROLES, CLINICIAN_ROLES } from '../models/User.js';
 import { unauthorized, forbidden, asyncHandler } from './errors.js';
 import { assertSamePractice } from './practiceScope.js';
 import { enrollmentGate } from './authorise.js';
@@ -30,8 +30,63 @@ export const requireRole =
     next();
   };
 
-export const requireClinician = requireRole(ROLES.DOCTOR, ROLES.STAFF);
+/**
+ * Anybody who works at a practice, as opposed to a patient.
+ *
+ * ---- What this was, and why that was wrong ------------------------------
+ *
+ * `requireRole(DOCTOR, STAFF)` — which did not even admit a dietician, and
+ * would have refused every role added since from the forty routes it guards.
+ * A lab technician would have signed in successfully and then been told "this
+ * action requires a different role" by the entire application.
+ *
+ * It is not an authorisation decision in its own right. It means "is a member
+ * of staff here", and what somebody may then *do* is decided by the permission
+ * and capability guards on the individual route. Written as the full list so
+ * that adding a role cannot silently exclude it — `CLINICIAN_ROLES` is the one
+ * place that list lives.
+ *
+ * ---- And this is why the narrower guards matter -------------------------
+ *
+ * Widening this widens nothing on its own, but only because the routes behind
+ * it check further. `resolvePatientScope` below decides who may open a record
+ * that is not their own, and it is an allow-list rather than a negation for
+ * exactly this reason: "not a patient" is not the same question as "may read
+ * this patient".
+ */
+export const requireClinician = requireRole(...CLINICIAN_ROLES);
 export const requireDietician = requireRole(ROLES.DIETICIAN);
+
+/**
+ * The roles that may open a patient record directly, by id.
+ *
+ * ---- An allow-list, and every absence is deliberate ---------------------
+ *
+ * This was `role !== DOCTOR && role !== STAFF → forbidden`, written that way
+ * after treating "not a patient" as "clinician" turned out to hand every
+ * dietician blanket access to every clinical record. The list is the fix, and
+ * it only works while somebody keeps deciding what goes in it.
+ *
+ * **In**, because attaching work to a person's record is the job:
+ *   doctor, staff, doctor's assistant — they work the record itself
+ *   lab manager, lab technician — a result belongs to a patient, and there is
+ *     nowhere else to put it
+ *
+ * **Out**, and each for its own reason:
+ *   dietician — reaches their assigned patients through /dietician/*, which
+ *     enforces the assignment. Blanket access here would be the hole again.
+ *   practice manager — rosters, departments and billing. Their preset
+ *     withholds VIEW_PATIENT, and this is the guard that makes that mean
+ *     something rather than merely hiding a tab.
+ *   patient — handled above; their own record and their household's.
+ */
+export const DIRECT_PATIENT_ACCESS = Object.freeze([
+  ROLES.DOCTOR,
+  ROLES.STAFF,
+  ROLES.DOCTOR_ASSISTANT,
+  ROLES.LAB_MANAGER,
+  ROLES.LAB_TECHNICIAN,
+]);
 
 /**
  * The doctor alone — for anything that is a clinical decision.
@@ -89,11 +144,19 @@ export const resolvePatientScope = asyncHandler(async (req, res, next) => {
     throw forbidden('You can only access your own health record');
   }
 
-  // Clinician path — DOCTOR or STAFF only. A dietician reaches their assigned
-  // patients through /dietician/* (which enforces the assignment); they must
-  // never get blanket access to every patient's clinical record here. Treating
-  // "not a patient" as "clinician" was the hole the dietician role opened.
-  if (req.user.role !== ROLES.DOCTOR && req.user.role !== ROLES.STAFF) {
+  /*
+   * Clinician path, against an allow-list — see DIRECT_PATIENT_ACCESS above
+   * for who is on it and why each absence is deliberate.
+   *
+   * It was two inequalities, which was the same list written as a negation.
+   * The difference matters now that roles are added regularly: a negation
+   * admits everything it has not been taught to refuse, and the one it lets
+   * through is the one nobody thought about. Treating "not a patient" as
+   * "clinician" was exactly that hole, and it is how a dietician came to have
+   * blanket access to every clinical record.
+   */
+  if (!DIRECT_PATIENT_ACCESS.includes(req.user.role)) {
+    recordDenial(req, { reason: 'role_has_no_patient_access', patientId: requested });
     throw forbidden('You do not have access to this patient');
   }
   if (!requested || requested === 'me') {

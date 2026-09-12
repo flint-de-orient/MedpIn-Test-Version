@@ -13,12 +13,73 @@ export function byLoginPhone(phone) {
   return { $or: [{ phone }, { altPhones: phone }] };
 }
 
+/**
+ * What somebody is, in the one vocabulary the whole platform uses.
+ *
+ * ---- Why four was not enough --------------------------------------------
+ *
+ * The first four described one diabetes clinic: a doctor, a receptionist, a
+ * dietician, and the patients. Every other kind of person a practice employs
+ * had to be filed as `staff`, and `staff` is not a neutral label — it carries
+ * the front desk's permissions and the front desk's exclusions. A lab
+ * technician filed that way could read a result that came back critical and
+ * could not order the test that produced it, because ROLE_EXCLUDES strips
+ * LAB_ORDER from the desk. Correct for a receptionist. Wrong for the bench.
+ *
+ * ---- Head doctor is a flag, not a role ----------------------------------
+ *
+ * `Membership.isOwner`, and it stays that way. An owner is a doctor who also
+ * administers; making it a role would force every clinical check to ask "is
+ * this a doctor OR an owner", and the day somebody forgets the second half is
+ * the day an owner cannot prescribe.
+ *
+ * ---- Adding one is four edits, and a test enforces all four -------------
+ *
+ * A role needs a permission preset, a capability exclusion list, a landing
+ * area in the app, and a dashboard. Miss any one and it falls through to a
+ * default that was written for somebody else — which is how `staff` came to
+ * mean "everybody who is not a doctor". See roles.test.js.
+ */
 export const ROLES = Object.freeze({
   PATIENT: 'patient',
   DOCTOR: 'doctor',
   STAFF: 'staff',
   DIETICIAN: 'dietician',
+
+  /// Works alongside a doctor on the record: vitals, notes, follow-ups.
+  /// Never prescribes — that is the line between assisting and practising.
+  DOCTOR_ASSISTANT: 'doctor_assistant',
+
+  /// Runs the laboratory. Orders, reports, and the people who do the work.
+  LAB_MANAGER: 'lab_manager',
+
+  /// At the bench. Enters and reports results; does not order the test and
+  /// does not manage anybody.
+  LAB_TECHNICIAN: 'lab_technician',
+
+  /// Administers the practice — people, departments, billing — and reads no
+  /// clinical record. The one role here that is deliberately not clinical.
+  PRACTICE_MANAGER: 'practice_manager',
 });
+
+/**
+ * The roles that belong to a practice rather than to a patient.
+ *
+ * Written as a list rather than as `!== PATIENT`, because the question "is
+ * this person staff here" is asked in enough places that the negation drifts:
+ * one caller writes `role !== 'patient'` and the next writes
+ * `['doctor','staff'].includes(role)`, and the second one silently stops
+ * being true the day a role is added.
+ */
+export const CLINICIAN_ROLES = Object.freeze([
+  ROLES.DOCTOR,
+  ROLES.STAFF,
+  ROLES.DIETICIAN,
+  ROLES.DOCTOR_ASSISTANT,
+  ROLES.LAB_MANAGER,
+  ROLES.LAB_TECHNICIAN,
+  ROLES.PRACTICE_MANAGER,
+]);
 
 export const LANGUAGES = Object.freeze(['en', 'bn', 'hi']);
 

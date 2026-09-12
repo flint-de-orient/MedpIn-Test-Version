@@ -220,6 +220,57 @@ const BENCH = Object.freeze({
   quickActions: ['VIEW_LAB_REPORTS', 'EXPORT_REPORT'],
 });
 
+/**
+ * What a role opens onto, whatever department it is in.
+ *
+ * ---- Why a role needs its own answer at all ----------------------------
+ *
+ * Because a department says *where* somebody works and a role says *what they
+ * do*, and the two disagree often enough to matter. A lab technician in a
+ * cardiology department is at a bench, not in a clinic; a practice manager in
+ * any department is in neither.
+ *
+ * ---- Only the roles whose answer differs -------------------------------
+ *
+ * A doctor is not here, and that is the point: a doctor's screen is the
+ * department's screen, which is the whole argument for departments having
+ * one. A role listed here is one whose work is the same wherever it is done.
+ */
+const ROLE_DEFAULTS = Object.freeze({
+  /*
+   * The bench, wherever the bench is.
+   *
+   * Both lab roles read the same panels, because both need to see what came
+   * back. They differ in what they may *do*, and that turned out to need
+   * saying rather than being left to the filters — an earlier version gave
+   * both of them BENCH and a comment claiming the manager would see the team
+   * action. They would not have: filtering removes what somebody may not
+   * reach, and it cannot add what the list never offered.
+   *
+   * So the manager's list names it, and the filter still decides whether it
+   * survives — a lab manager whose grant has been customised down loses the
+   * action, which is the filter doing its job on a list that offered it.
+   */
+  lab_manager: {
+    widgets: BENCH.widgets,
+    quickActions: [...BENCH.quickActions, 'MANAGE_TEAM'],
+  },
+  lab_technician: BENCH,
+
+  /*
+   * Administers, and reads no clinical record.
+   *
+   * Every patient-facing panel needs VIEW_PATIENT, which this preset
+   * deliberately withholds — so composing the general set for a practice
+   * manager would produce an empty screen after filtering. An empty screen is
+   * not an answer; this is what their job actually looks like.
+   */
+  practice_manager: {
+    widgets: ['ANALYTICS_SUMMARY'],
+    quickActions: ['MANAGE_TEAM', 'MANAGE_DEPARTMENTS', 'EXPORT_REPORT'],
+  },
+});
+
 export const DEPARTMENT_DEFAULTS = Object.freeze({
   /*
    * Cardiology, within what the platform actually holds.
@@ -284,15 +335,57 @@ export const DEPARTMENT_DEFAULTS = Object.freeze({
  * shows every department as configured-to-show-nothing, and an operator then
  * "fixes" what was already correct.
  */
-export function composeFor(department) {
-  const fallback = DEPARTMENT_DEFAULTS[department?.key] ?? GENERAL;
-  const widgets = department?.widgets?.length ? department.widgets : null;
-  const quickActions = department?.quickActions?.length ? department.quickActions : null;
+export function composeFor(department, role = null) {
+  /*
+   * ---- Precedence, in four tiers -------------------------------------
+   *
+   *   1. what an operator configured on this department
+   *   2. the platform's default for this role
+   *   3. the platform's default for this department
+   *   4. the general clinical set
+   *
+   * Two rules produce that order, and both are worth stating because the
+   * alternatives are each defensible until you try them:
+   *
+   * **Explicit beats default.** A practice that has composed its cardiology
+   * screen has said something; a platform default has only guessed. So tier 1
+   * sits above the role default even for a lab technician in cardiology —
+   * whoever configured that department did it knowing who works there.
+   *
+   * **Role beats department, among defaults.** A department says where
+   * somebody works and a role says what they do, and where neither has been
+   * configured the job is the better guess. A lab technician in cardiology is
+   * at a bench; a practice manager is in neither place.
+   *
+   * ---- What is deliberately not here ---------------------------------
+   *
+   * Per-role configuration on a department — "cardiology, but different for
+   * assistants". It belongs in this hierarchy and it is not built, because a
+   * role × department matrix with no screen to edit it is schema nobody can
+   * reach. The four tiers below cover it: a role whose work differs gets a
+   * default, and a department that needs something specific gets configured.
+   */
+  const configured = {
+    widgets: department?.widgets?.length ? department.widgets : null,
+    quickActions: department?.quickActions?.length ? department.quickActions : null,
+  };
+  const fallback =
+    ROLE_DEFAULTS[role] ?? DEPARTMENT_DEFAULTS[department?.key] ?? GENERAL;
 
   return {
-    widgets: widgets ?? fallback.widgets,
-    quickActions: quickActions ?? fallback.quickActions,
-    usingDefault: !widgets && !quickActions,
+    widgets: configured.widgets ?? fallback.widgets,
+    quickActions: configured.quickActions ?? fallback.quickActions,
+    /// Whether anybody here chose this, as opposed to the platform.
+    usingDefault: !configured.widgets && !configured.quickActions,
+    /// Which tier answered, so the console can say so rather than leaving an
+    /// operator to work out why two people in one department differ.
+    source: configured.widgets || configured.quickActions
+      ? 'department'
+      : ROLE_DEFAULTS[role]
+        ? 'role'
+        : DEPARTMENT_DEFAULTS[department?.key]
+          ? 'departmentDefault'
+          : 'general',
   };
 }
 
@@ -329,19 +422,20 @@ function asSet(value) {
  * capabilities.js and the membership's grant — because both are enforced on
  * every route and a second derivation here would be a second answer.
  *
- * A configured department overrides the default. An unknown identifier is
- * dropped rather than passed on: an operator who configures a widget this
- * server has never heard of gets a dashboard without it, not an app that
- * cannot render its own home screen.
+ * Precedence is composeFor's, and it is written out there: what an operator
+ * configured, then the role's default, then the department's, then the general
+ * set. An unknown identifier is dropped rather than passed on — an operator
+ * who configures a widget this server has never heard of gets a dashboard
+ * without it, not an app that cannot render its own home screen.
  *
  * Either set may be null, meaning "unknown, do not narrow". An empty set is a
  * different answer and means exactly what it says — see [allowed].
  */
-export function resolveUi({ department = null, capabilities, permissions }) {
+export function resolveUi({ department = null, role = null, capabilities, permissions }) {
   const caps = asSet(capabilities);
   const perms = asSet(permissions);
 
-  const composed = composeFor(department);
+  const composed = composeFor(department, role);
 
   const widgets = composed.widgets
     .filter((id) => WIDGETS[id])
@@ -353,7 +447,12 @@ export function resolveUi({ department = null, capabilities, permissions }) {
 
   return {
     department: department?.key ?? null,
+    role,
     widgets,
     quickActions,
+    /// Which tier of the hierarchy answered. Sent so a person looking at two
+    /// colleagues with different screens can find out why without reading
+    /// this file.
+    source: composed.source,
   };
 }

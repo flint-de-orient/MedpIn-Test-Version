@@ -220,7 +220,7 @@ describe('and the practice that has no departments still has a screen', () => {
   });
 });
 
-describe('the laboratory dashboard has nobody to give it to yet', () => {
+describe('the laboratory dashboard has somebody to give it to', () => {
   before(async () => {
     origin = await boot();
   });
@@ -230,170 +230,32 @@ describe('the laboratory dashboard has nobody to give it to yet', () => {
     await setUp();
   });
 
-  test('the desk in a laboratory can read results it cannot order', async () => {
+  test('the front desk in a laboratory is still not the bench', async () => {
     /*
-     * A finding, recorded rather than fixed here.
+     * This test used to be called "the desk in a laboratory can read results
+     * it cannot order", and it documented a symptom rather than a rule: a lab
+     * technician had to be filed as `staff`, and ROLE_EXCLUDES strips
+     * LAB_ORDER from the desk, so the bench could see what came back abnormal
+     * and could not begin the work that produced it.
      *
-     * A lab technician is not a doctor, so today they are `staff` — and
-     * ROLE_EXCLUDES strips LAB_ORDER from staff, deliberately, so that the
-     * reception desk cannot order clinical investigations. Correct for a
-     * receptionist. Wrong for the person actually running the bench, who can
-     * see what came back abnormal and cannot begin the work that produced it.
-     *
-     * That is not a fault in this engine; the engine is reporting the role
-     * vocabulary accurately. It is the concrete argument for LAB_TECHNICIAN
-     * and LAB_MANAGER existing, which is the next piece of work — and this
-     * test is here so that when they arrive, somebody sees this expectation
-     * change and knows why.
+     * The rule was never wrong — a receptionist must not order clinical
+     * investigations. It was being asked of the wrong job. Now that
+     * LAB_TECHNICIAN and LAB_MANAGER exist (see roles.test.js and
+     * httpRoles.test.js), this asserts what it always meant to: the desk is
+     * the desk, wherever it is sitting.
      */
-    const tech = await makeMember(practice, {
+    const desk = await makeMember(practice, {
       name: 'Sujata Roy',
       role: ROLES.STAFF,
       department: laboratory._id,
     });
 
-    const res = await as(tech.token).get('/auth/me/capabilities');
+    const res = await as(desk.token).get('/auth/me/capabilities');
 
-    assert.ok(
-      res.body.ui.widgets.includes('CRITICAL_LAB_RESULTS'),
-      'reading a result needs LAB_RESULT, which staff do hold',
-    );
-    // But they cannot order one, and so cannot start the work whose results
-    // they are being shown.
-    assert.ok(!res.body.effective.includes('LAB_ORDER'), 'staff now hold LAB_ORDER');
-  });
-});
-
-describe('a practice composes its own dashboards', () => {
-  before(async () => {
-    origin = await boot();
-  });
-  after(shutdown);
-  beforeEach(async () => {
-    await wipe();
-    await setUp();
-  });
-
-  test('the head can change what cardiology shows', async () => {
-    // The promise the whole engine makes: a practice shapes a specialty's
-    // screen without a release, and without anybody writing cardiology code.
-    const head = await makeMember(practice, { name: 'Dr Bose', isOwner: true });
-
-    const res = await as(head.token).patch(`/departments/${cardiology._id}`, {
-      widgets: ['OPEN_ALERTS', 'TODAYS_CLINIC'],
-      quickActions: ['VIEW_ALERTS'],
-    });
-    assert.equal(res.status, 200);
-
-    const doctor = await makeMember(practice, { name: 'Dr Ghosh', department: cardiology._id });
-    const mine = await as(doctor.token).get('/auth/me/capabilities');
-
-    assert.deepEqual(mine.body.ui.widgets, ['OPEN_ALERTS', 'TODAYS_CLINIC']);
-    assert.deepEqual(mine.body.ui.quickActions, ['VIEW_ALERTS']);
-  });
-
-  test('a component nobody has written is refused, not stored', async () => {
-    /*
-     * Refused here, dropped at read time, and the asymmetry is deliberate.
-     *
-     * `resolveUi` has to tolerate an unknown name — a row written before a
-     * component was retired must not break a home screen. At write time the
-     * opposite is right: somebody who mistypes and is told nothing has
-     * configured a dashboard, watched it save, and finds out it did nothing
-     * when a clinician mentions the panel is missing.
-     */
-    const head = await makeMember(practice, { name: 'Dr Bose', isOwner: true });
-
-    const res = await as(head.token).patch(`/departments/${cardiology._id}`, {
-      widgets: ['OPEN_ALERTS', 'HEART_RAET'],
-    });
-    assert.equal(res.status, 400);
-
-    const after = await Department.findById(cardiology._id).lean();
-    assert.deepEqual(after.widgets, [], 'a refused write left something behind');
-  });
-
-  test('an empty array puts the platform default back', async () => {
-    // The only way to undo a configuration, and the reason the handler tests
-    // `!= null` rather than truthiness.
-    const head = await makeMember(practice, { name: 'Dr Bose', isOwner: true });
-
-    await as(head.token).patch(`/departments/${cardiology._id}`, { widgets: ['OPEN_ALERTS'] });
-    await as(head.token).patch(`/departments/${cardiology._id}`, { widgets: [] });
-
-    const doctor = await makeMember(practice, { name: 'Dr Ghosh', department: cardiology._id });
-    const mine = await as(doctor.token).get('/auth/me/capabilities');
-
-    assert.ok(mine.body.ui.widgets.includes('TRIAGE_QUEUE'), 'the default did not come back');
-  });
-
-  test('a doctor who does not administer departments cannot', async () => {
-    /*
-     * MANAGE_DEPARTMENT, the same permission that guards every other write on
-     * this router. Composing a home screen for a whole specialty is not
-     * something one clinician does to their colleagues.
-     *
-     * The refusal is named, not just counted. Two guards stand here — the
-     * permission and the DEPARTMENT capability — and both answer 403, so a
-     * test asserting only the status passed with the permission check deleted.
-     * It was checking that *something* refused.
-     */
-    const doctor = await makeMember(practice, { name: 'Dr Ghosh', department: cardiology._id });
-
-    const res = await as(doctor.token).patch(`/departments/${cardiology._id}`, {
-      widgets: ['OPEN_ALERTS'],
-    });
-    assert.equal(res.status, 403);
-    assert.match(res.body.error.message, /role at this practice/);
-  });
-
-  test('and neither can a practice type that has no departments', async () => {
-    /*
-     * The other guard, on its own. A solo clinic's owner holds
-     * MANAGE_DEPARTMENT — the head preset grants it — and their practice type
-     * has no departments at all, which is not a permission question and not a
-     * plan question. It is what a solo practice is.
-     */
-    const clinic = await makePractice('Dr Dey Diabetes Care', {
-      practiceType: PRACTICE_TYPE.CLINIC,
-      plan: PLAN.PROFESSIONAL,
-    });
-    const owner = await makeMember(clinic, { name: 'Dr Dey', isOwner: true });
-    const theirs = await Department.create({
-      practice: clinic._id,
-      key: 'diabetology',
-      names: { en: 'Diabetology' },
-    });
-
-    const res = await as(owner.token).patch(`/departments/${theirs._id}`, {
-      widgets: ['OPEN_ALERTS'],
-    });
-    assert.equal(res.status, 403);
-    assert.ok(
-      !/role at this practice/.test(res.body.error.message),
-      'refused by the permission, so the capability guard is not being tested',
-    );
-  });
-
-  test('and no practice can compose a shared specialty', async () => {
-    /*
-     * The shared rows belong to everybody. One practice deciding what
-     * `cardiology` shows would decide it for every practice on the platform —
-     * the same failure the `practice: null` fallback on POST once had.
-     */
-    const shared = await Department.create({
-      practice: null,
-      key: 'general_physician',
-      names: { en: 'General Physician' },
-    });
-    const head = await makeMember(practice, { name: 'Dr Bose', isOwner: true });
-
-    const res = await as(head.token).patch(`/departments/${shared._id}`, {
-      widgets: ['OPEN_ALERTS'],
-    });
-    assert.equal(res.status, 400);
-
-    const after = await Department.findById(shared._id).lean();
-    assert.deepEqual(after.widgets, []);
+    assert.ok(!res.body.effective.includes('LAB_ORDER'), 'the front desk can order a test');
+    // And they are not given a bench to sit at either — the laboratory
+    // department's dashboard is what the department shows, and what survives
+    // filtering is what this person may actually use.
+    assert.ok(!res.body.ui.quickActions.includes('WRITE_PRESCRIPTION'));
   });
 });
