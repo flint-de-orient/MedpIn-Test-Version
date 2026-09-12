@@ -1109,6 +1109,21 @@ class AppLocalizationsHi extends AppLocalizations {
       'आपका सेशन समाप्त हो गया है। कृपया फिर से लॉग इन करें।';
 
   @override
+  String get errorAccessDeniedTitle => 'आपको पहुँच नहीं है';
+
+  @override
+  String get errorNotFoundTitle => 'नहीं मिला';
+
+  @override
+  String get errorOfflineTitle => 'कनेक्शन नहीं है';
+
+  @override
+  String get errorRateLimitedTitle => 'बहुत अधिक अनुरोध';
+
+  @override
+  String get errorSignedOutTitle => 'साइन आउट हो गए';
+
+  @override
   String get errorForbidden => 'आपको यह करने की अनुमति नहीं है।';
 
   @override

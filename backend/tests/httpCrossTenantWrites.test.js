@@ -226,8 +226,48 @@ describe('a clinician cannot move another practice’s patient onto a new login'
 
     assert.equal(res.status, 404, 'a doctor at another practice detached this patient');
     const after = await Patient.findById(theirs._id).lean();
-    assert.equal(after.detachedAt, null, 'the patient was detached');
+    assert.ok(!after.detachedAt, 'the patient was detached');
     assert.equal(String(after.login), String(b.patient.user._id), 'their login was changed');
+  });
+
+  test('and the caller’s own patient is not detached in their place', async () => {
+    /*
+     * The regression test for the bug the fix introduced, which was worse than
+     * the one it fixed.
+     *
+     *     { _id: req.params.id, ...(await practicePatients(req, '_id')) }
+     *
+     * Both halves key on `_id`, so the spread does not narrow the query — it
+     * *replaces* the requested id with `{ $in: [the caller's own patients] }`.
+     * The route then finds a different patient, one of the caller's own, and
+     * detaches them: a request naming practice B's patient silently changed
+     * practice A's patient's login.
+     *
+     * The test above could not see it. It asserted that B was unharmed and
+     * that the status was 404 — and the status was a 403 from a check much
+     * further down the handler, which only fires with a row already in hand.
+     * Asserting on the *other* patient is what makes the substitution visible.
+     *
+     * `$and` is not stylistic here. It is the difference between narrowing a
+     * query and rewriting it.
+     */
+    const newLogin = await makePatient({ name: 'Their Own Phone' });
+    const mineBefore = await Patient.findById(a.patient.patient._id).lean();
+
+    await as(a.doctor.token).post(`/records/patients/${b.patient.patient._id}/detach`, {
+      phone: newLogin.user.phone,
+    });
+
+    const mineAfter = await Patient.findById(a.patient.patient._id).lean();
+    assert.ok(
+      !mineAfter.detachedAt,
+      'the caller’s own patient was detached by a request naming somebody else',
+    );
+    assert.equal(
+      String(mineAfter.login),
+      String(mineBefore.login),
+      'the caller’s own patient’s login was changed',
+    );
   });
 });
 

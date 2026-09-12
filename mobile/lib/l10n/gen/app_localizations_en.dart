@@ -1109,6 +1109,21 @@ class AppLocalizationsEn extends AppLocalizations {
       'Your session has expired. Please log in again.';
 
   @override
+  String get errorAccessDeniedTitle => 'You do not have access';
+
+  @override
+  String get errorNotFoundTitle => 'Not found';
+
+  @override
+  String get errorOfflineTitle => 'No connection';
+
+  @override
+  String get errorRateLimitedTitle => 'Too many requests';
+
+  @override
+  String get errorSignedOutTitle => 'Signed out';
+
+  @override
   String get errorForbidden => 'You don\'t have permission to do that.';
 
   @override

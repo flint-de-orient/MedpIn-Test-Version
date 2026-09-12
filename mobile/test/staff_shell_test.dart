@@ -18,30 +18,56 @@ import 'package:flutter_test/flutter_test.dart';
 void main() {
   final router = File('lib/core/router/app_router.dart').readAsStringSync();
 
+  final area = File('lib/core/router/area.dart').readAsStringSync();
+
   test('staff are routed to their own area, not the doctor\'s', () {
+    /*
+     * Asserted against the table rather than the expression.
+     *
+     * This pinned `if (_isStaff(authState)) {` and `const staffHome =
+     * '/staff/today';` as literals, and the shape they pinned was itself the
+     * bug: the router asked isDoctor, then isStaff, then isDietician, and fell
+     * off the end into the patient app. A role the chain did not name — a lab
+     * technician, say — signed in successfully and landed on the patient's
+     * Assistant tab.
+     *
+     * It is one lookup now, and the claim worth protecting is unchanged: staff
+     * go to their own tree and that tree has a landing screen.
+     */
     expect(
-      router.contains("const staffHome = '/staff/today';"),
+      area.contains("'staff': '/staff',"),
+      isTrue,
+      reason: 'staff need an area of their own',
+    );
+    expect(
+      area.contains("'/staff': '/staff/today',"),
       isTrue,
       reason: 'staff need a landing route of their own',
     );
     expect(
-      router.contains('if (_isStaff(authState)) {'),
+      router.contains('areaForRole'),
       isTrue,
-      reason: 'the redirect must branch on staff separately',
+      reason: 'the redirect must decide the area from the table',
     );
   });
 
   test('the doctor check no longer counts staff as a doctor', () {
     // The old helper was `role == 'doctor' || role == 'staff'`, and that single
-    // `||` is what put a receptionist on the clinical Home.
+    // `||` is what put a receptionist on the clinical Home. The helpers are a
+    // map now, so the claim is that the two roles point at different areas —
+    // which is exactly what the `||` destroyed.
     expect(
-      router.contains(
-        "bool _isDoctor(AuthState s) => s.user?.role == 'doctor';",
-      ),
+      area.contains("'doctor': '/clinician',"),
       isTrue,
+      reason: 'the doctor must land in the clinician area',
     );
     expect(
-      router.contains("_isClinician"),
+      area.contains("'staff': '/staff',"),
+      isTrue,
+      reason: 'the desk must not land in the doctor’s area',
+    );
+    expect(
+      router.contains('_isClinician'),
       isFalse,
       reason: 'the merged doctor-or-staff check must be gone entirely',
     );

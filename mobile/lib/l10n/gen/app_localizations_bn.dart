@@ -1103,6 +1103,21 @@ class AppLocalizationsBn extends AppLocalizations {
       'আপনার সেশনের মেয়াদ শেষ হয়ে গেছে। আবার লগ ইন করুন।';
 
   @override
+  String get errorAccessDeniedTitle => 'আপনার অনুমতি নেই';
+
+  @override
+  String get errorNotFoundTitle => 'পাওয়া যায়নি';
+
+  @override
+  String get errorOfflineTitle => 'সংযোগ নেই';
+
+  @override
+  String get errorRateLimitedTitle => 'অনেক বেশি অনুরোধ';
+
+  @override
+  String get errorSignedOutTitle => 'সাইন আউট হয়েছে';
+
+  @override
   String get errorForbidden => 'এই কাজ করার অনুমতি আপনার নেই।';
 
   @override

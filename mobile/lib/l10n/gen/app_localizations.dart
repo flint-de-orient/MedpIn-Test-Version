@@ -2200,6 +2200,36 @@ abstract class AppLocalizations {
   /// **'Your session has expired. Please log in again.'**
   String get errorUnauthorized;
 
+  /// No description provided for @errorAccessDeniedTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'You do not have access'**
+  String get errorAccessDeniedTitle;
+
+  /// No description provided for @errorNotFoundTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Not found'**
+  String get errorNotFoundTitle;
+
+  /// No description provided for @errorOfflineTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'No connection'**
+  String get errorOfflineTitle;
+
+  /// No description provided for @errorRateLimitedTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Too many requests'**
+  String get errorRateLimitedTitle;
+
+  /// No description provided for @errorSignedOutTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Signed out'**
+  String get errorSignedOutTitle;
+
   /// No description provided for @errorForbidden.
   ///
   /// In en, this message translates to:

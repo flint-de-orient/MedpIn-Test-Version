@@ -1,7 +1,7 @@
 import { ZodError } from 'zod';
 import mongoose from 'mongoose';
 import { logger } from '../config/logger.js';
-import { isProd } from '../config/env.js';
+import { env } from '../config/env.js';
 
 export class AppError extends Error {
   constructor(status, code, message, details) {
@@ -67,8 +67,16 @@ export function errorHandler(err, req, res, next) {
 
   if (status >= 500) {
     logger.error({ err, path: req.originalUrl, method: req.method }, 'unhandled error');
-    // Never leak internal details to a patient's device in production.
-    if (isProd) message = 'Something went wrong. Please try again.';
+    /*
+     * Never leak internal details to a patient's device in production.
+     *
+     * Read from `env` at call time rather than from the `isProd` const, which
+     * is computed once at import and therefore cannot be exercised by a test
+     * running as NODE_ENV=test. A mutation run deleted this line and every
+     * test stayed green — the sanitisation that keeps a connection string off
+     * a patient's screen was unguarded.
+     */
+    if (env.NODE_ENV === 'production') message = 'Something went wrong. Please try again.';
   } else {
     logger.debug({ code, path: req.originalUrl }, message);
   }
