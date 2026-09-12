@@ -13,6 +13,7 @@ import { requirePermission, membershipOf } from '../middleware/authorise.js';
 import { practiceOf, practiceMembers } from '../middleware/practiceScope.js';
 import { requireCapability } from '../middleware/requireCapability.js';
 import { CAPABILITIES } from '../services/capabilities.js';
+import { WIDGETS, QUICK_ACTIONS } from '../services/uiConfig.js';
 
 /**
  * Specialties, and which doctors practise in them.
@@ -47,6 +48,18 @@ import { CAPABILITIES } from '../services/capabilities.js';
  * neither.
  */
 const router = Router();
+
+/**
+ * A component name, checked against the registry rather than against a regex.
+ *
+ * `z.string()` would accept `HEART_RAET` and store it, and the dashboard would
+ * come back one panel short with nothing anywhere saying why. The set of legal
+ * values is a real, short, known list — so the schema is that list, and the
+ * error names what it did not recognise.
+ */
+const widgetId = z.enum(Object.keys(WIDGETS));
+const actionId = z.enum(Object.keys(QUICK_ACTIONS));
+
 router.use(requireAuth, requireClinician);
 
 /**
@@ -231,6 +244,30 @@ router.patch(
       homeCards: z.array(z.string().max(40)).max(12).optional(),
       sortIndex: z.number().int().min(0).max(9999).optional(),
       isActive: z.boolean().optional(),
+
+      /*
+       * What this department's clinicians see on their home screen.
+       *
+       * ---- Refused here, not dropped later -----------------------------
+       *
+       * `resolveUi` already drops an identifier it does not recognise, which
+       * is the right behaviour at read time: an app a release behind, or a row
+       * written before a component was retired, must not break a home screen.
+       *
+       * At write time the opposite is right. Somebody who mistypes a component
+       * name and is told nothing has configured a dashboard, seen it saved,
+       * and will find out it did nothing when a clinician mentions it — the
+       * same shape as every other silent failure in this codebase. So the
+       * write is refused and says which name it did not know.
+       *
+       * An empty array is allowed, and means "use the platform's default for
+       * this specialty" rather than "show nothing" — the reading composeFor
+       * applies and the one every existing row is in. A department cannot be
+       * configured to show nothing at all, which is an acceptable thing to be
+       * unable to express.
+       */
+      widgets: z.array(widgetId).max(20).optional(),
+      quickActions: z.array(actionId).max(12).optional(),
     }),
   }),
   audit('update', 'Department'),
@@ -250,11 +287,24 @@ router.patch(
       throw notFound('Department not found');
     }
 
-    const { names, homeCards, sortIndex, isActive } = req.body;
+    const { names, homeCards, sortIndex, isActive, widgets, quickActions } = req.body;
     if (names) dept.names = { ...dept.names.toObject?.() ?? dept.names, ...names };
     if (homeCards) dept.homeCards = homeCards;
     if (sortIndex != null) dept.sortIndex = sortIndex;
     if (isActive != null) dept.isActive = isActive;
+    /*
+     * `[]` is a real instruction: it means "go back to the platform's default
+     * for this specialty", and it is the only way to undo a configuration once
+     * one has been made.
+     *
+     * `!= null` rather than a truthiness test, though the two behave the same
+     * on an array — an empty array is truthy in JavaScript, and a comment here
+     * claiming otherwise was wrong. What this actually distinguishes is
+     * "absent from the body" from "sent empty", which is the distinction that
+     * matters and the one `!= null` states plainly.
+     */
+    if (widgets != null) dept.widgets = widgets;
+    if (quickActions != null) dept.quickActions = quickActions;
 
     await dept.save();
     res.json({ department: dept.toPublic(req.user.language ?? 'en') });

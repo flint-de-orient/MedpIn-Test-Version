@@ -380,3 +380,54 @@ describe('the app can draw every component the server may send', () => {
     assert.match(app, /dashboardWidgets\[id\]\?\.call\(data\)/);
   });
 });
+
+describe('a department says what its dashboard is', () => {
+  /*
+   * The pattern this codebase keeps finding: a field recorded and never shown.
+   *
+   * `widgets` on a department is a thing a practice can now change, and until
+   * it appears somewhere a practice that changed one six months ago has no way
+   * to tell. `practice` on an audit entry, `ip` and `userAgent` beside it,
+   * `consentRequired` from registration, `hasSecondFactor` — all the same
+   * shape, all found the same way.
+   */
+  const domain = readFileSync(
+    fileURLToPath(
+      new URL('../../mobile/lib/features/clinician/domain/department.dart', import.meta.url),
+    ),
+    'utf8',
+  );
+  const screen = readFileSync(
+    fileURLToPath(
+      new URL(
+        '../../mobile/lib/features/clinician/presentation/departments_screen.dart',
+        import.meta.url,
+      ),
+    ),
+    'utf8',
+  );
+
+  test('the app parses what the server sends about it', () => {
+    assert.match(domain, /widgets: \(\(json\['widgets'\] as List\?\)/);
+    assert.match(domain, /usingDefault: json\['usingDefault'\] != false/);
+  });
+
+  test('and a reader can see it without opening a database', () => {
+    // Parsed and unused is the same as not parsed, and looks like it works.
+    assert.match(screen, /d\.usingDefault/);
+    assert.match(screen, /d\.widgets\.length/);
+  });
+
+  test('the two readings of empty are kept apart', () => {
+    /*
+     * `[]` on the row means "the platform's default applies", not "show
+     * nothing" — so the server sends the resolved list and a flag, and the app
+     * must not re-derive the flag from the list being empty. It never is: the
+     * resolved list always has something in it.
+     */
+    assert.ok(
+      !/usingDefault:\s*\w+\.widgets\.isEmpty/.test(domain),
+      'the app infers usingDefault from an empty list, which it never sees',
+    );
+  });
+});

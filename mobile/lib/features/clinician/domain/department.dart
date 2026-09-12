@@ -22,6 +22,9 @@ class Department {
     this.homeCards = const [],
     this.hasAssistant = false,
     this.sortIndex = 0,
+    this.widgets = const [],
+    this.quickActions = const [],
+    this.usingDefault = true,
   });
 
   final String id;
@@ -53,6 +56,23 @@ class Department {
   /// Display order, set by whoever runs the practice.
   final int sortIndex;
 
+  /// What this department's clinicians see on their home screen, resolved.
+  ///
+  /// The resolved list, not the stored one. Every row in the database has an
+  /// empty `widgets` array and empty means "the platform's default for this
+  /// specialty applies" — so the raw value would show every department as
+  /// configured to display nothing, and somebody would then "fix" what was
+  /// already correct. The same mistake `/me/capabilities` made with
+  /// `permissions`, which is why the server sends both this and the flag.
+  final List<String> widgets;
+  final List<String> quickActions;
+
+  /// Whether that arrangement is the platform's or this practice's.
+  ///
+  /// The distinction the resolved list alone cannot carry, and the one that
+  /// tells somebody whether they are looking at a decision anybody here made.
+  final bool usingDefault;
+
   factory Department.fromJson(Map<String, dynamic> json) {
     return Department(
       id: json['id']?.toString() ?? '',
@@ -70,6 +90,15 @@ class Department {
       homeCards: ((json['homeCards'] as List?) ?? const [])
           .map((e) => e.toString())
           .toList(),
+      widgets: ((json['widgets'] as List?) ?? const [])
+          .map((e) => e.toString())
+          .toList(),
+      quickActions: ((json['quickActions'] as List?) ?? const [])
+          .map((e) => e.toString())
+          .toList(),
+      // Absent means the platform's, which is what an older server that does
+      // not send the field is describing.
+      usingDefault: json['usingDefault'] != false,
     );
   }
 }

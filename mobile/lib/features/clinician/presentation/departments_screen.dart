@@ -229,6 +229,26 @@ class _Row extends StatelessWidget {
                       _Tag(label: 'Retired', tone: T.inkMuted),
                     if (!d.hasAssistant)
                       _Tag(label: 'No assistant', tone: T.inkMuted),
+                    /*
+                     * What its clinicians open onto.
+                     *
+                     * Said in words rather than left implicit. A department's
+                     * dashboard is now a thing that can differ from the
+                     * platform's — and a practice that has customised one has
+                     * no other way to tell, which is how a setting somebody
+                     * changed six months ago becomes a mystery.
+                     *
+                     * The panel count rather than the panel names: the names
+                     * are a list of eight identifiers and this is a row in a
+                     * list, not a settings page.
+                     */
+                    if (d.widgets.isNotEmpty)
+                      _Tag(
+                        label: d.usingDefault
+                            ? '${d.widgets.length}-panel dashboard'
+                            : 'Custom dashboard · ${d.widgets.length} panels',
+                        tone: d.usingDefault ? T.inkMuted : T.primary,
+                      ),
                     // Only on rows this practice owns.
                     //
                     // The key is what the assistant scope and the seed data
