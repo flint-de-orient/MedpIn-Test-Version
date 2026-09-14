@@ -7,6 +7,7 @@ import { env } from '../../config/env.js';
 import { clinicIdentity } from '../clinicIdentity.js';
 import { logger } from '../../config/logger.js';
 import { languagePrimer } from './prompts.js';
+import { countAiCall } from './allowance.js';
 
 const HISTORY_TURNS = 6;
 
@@ -118,7 +119,7 @@ function formatPlan(plan) {
 
 /** Generates the assistant's turn, or null when generation failed and the
  * dietician should answer instead. */
-export async function nutritionReply({ patientId, sessionId, text, language = 'en' }) {
+export async function nutritionReply({ patientId, sessionId, text, language = 'en', practiceId = null }) {
   const [plan, notes, history, chunks, context] = await Promise.all([
     lastGivenPlan(patientId),
     ChatMessage.find({ patient: patientId, role: 'dietician', content: { $nin: [null, ''] } })
@@ -172,6 +173,11 @@ export async function nutritionReply({ patientId, sessionId, text, language = 'e
       temperature: 0.1,
       maxOutputTokens: 300,
     });
+    // Metered after the call: a request that failed on the provider's side
+    // cost the practice nothing. `countAiCall` records the tokens and the
+    // per-kind count without touching the reply allowance — see
+    // allowance.js on why starting to would be an outage, not a price.
+    countAiCall(practiceId, 'nutrition', result?.usage);
     return result?.text?.trim() || null;
   } catch (err) {
     if (!(err instanceof AiUnavailableError)) {

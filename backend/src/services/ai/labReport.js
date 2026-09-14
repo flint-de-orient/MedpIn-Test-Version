@@ -12,6 +12,8 @@ import { recomputePatientRisk } from '../analytics.js';
 import { env } from '../../config/env.js';
 import { clinicIdentity } from '../clinicIdentity.js';
 import { logger } from '../../config/logger.js';
+import { countAiCall } from './allowance.js';
+import { practiceOfPatient } from '../../middleware/practiceScope.js';
 
 /**
  * Reading a lab report and filing what is on it.
@@ -82,7 +84,7 @@ async function assetBuffer(asset) {
  * Reads [assetId] and returns the transcribed values, or null when the file
  * cannot be read at all.
  */
-export async function extractLabValues(assetId) {
+export async function extractLabValues(assetId, practiceId = null) {
   const asset = await MediaAsset.findById(assetId).lean();
   if (!asset) return null;
   if (!READABLE.has(asset.mimeType)) {
@@ -96,6 +98,10 @@ export async function extractLabValues(assetId) {
     images: [{ mimeType: asset.mimeType, base64: buffer.toString('base64') }],
     responseSchema: LAB_SCHEMA,
   });
+
+  // Metered after the call: a failed request cost the practice nothing.
+  // Tokens and a per-kind count, never the reply allowance — see allowance.js.
+  countAiCall(practiceId, 'labReport', result?.usage);
 
   const parsed = result?.json ?? safeParse(result?.text);
   if (!parsed) return { status: 'failed', summary: 'Could not read this report.' };
@@ -142,7 +148,16 @@ export async function analyseLabResult(labResultId) {
   if (!doc || !doc.photo) return;
 
   try {
-    const extracted = await extractLabValues(doc.photo);
+    /*
+     * The practice the result belongs to, resolved from the patient on the
+     * row rather than threaded in.
+     *
+     * This path is fired and forgotten from the route — `analyseLabResult(id)
+     * .catch(() => {})` — so there is no request in scope to carry a practice.
+     * Resolving it here is what stops a whole class of AI spend being
+     * invisible: every lab photo a patient uploads goes through this.
+     */
+    const extracted = await extractLabValues(doc.photo, await practiceOfPatient(doc.patient));
     if (!extracted) {
       doc.set('analysis.status', 'failed');
       await doc.save();

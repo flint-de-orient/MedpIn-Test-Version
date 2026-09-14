@@ -24,6 +24,7 @@ import { PERMISSIONS } from '../models/Membership.js';
 import { requirePermission, recordWindow } from '../middleware/authorise.js';
 import { requireCapability } from '../middleware/requireCapability.js';
 import { CAPABILITIES } from '../services/capabilities.js';
+import { practiceOfPatient } from '../middleware/practiceScope.js';
 
 const router = Router({ mergeParams: true });
 router.use(requireAuth, resolvePatientScope);
@@ -311,7 +312,10 @@ router.post(
 
     let parsed;
     try {
-      parsed = await extractPrescription({ images });
+      parsed = await extractPrescription({
+        images,
+        practiceId: await practiceOfPatient(req.patientId),
+      });
     } catch (err) {
       if (err instanceof AiUnavailableError) {
         return res.status(503).json({

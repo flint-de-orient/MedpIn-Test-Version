@@ -107,26 +107,80 @@ export async function mayAssistantReply(patientId) {
  * provider's side has cost the practice nothing and must not count against
  * them. Fire-and-forget — a counter that fails should not lose the reply.
  */
-export function countReply(practiceId) {
-  if (!practiceId) return;
+export function countReply(practiceId, usage) {
+  return meter(practiceId, { replies: 1, 'calls.assistant': 1 }, usage, 'an assistant reply');
+}
+
+/**
+ * Count a call the allowance does not govern.
+ *
+ * ---- Why these are counted at all ---------------------------------------
+ *
+ * The nutrition assistant, the foot and eye readers, prescription and lab
+ * extraction and voice transcription all call Gemini, and none of them reached
+ * `countReply`. They cost real money and appeared in no counter — so the
+ * recorded spend was not the spend, and nobody could say by how much.
+ *
+ * ---- And why they do not decrement the allowance ------------------------
+ *
+ * Because starting to would change what every existing practice is allowed, on
+ * the deploy that shipped it. A clinic whose assistant stops answering at
+ * eleven in the morning because five other kinds of call now count against the
+ * same thousand has had an outage, not a pricing change.
+ *
+ * They are recorded per kind instead, so the decision to meter them can be
+ * made on a month of real figures rather than on a guess.
+ */
+export function countAiCall(practiceId, kind, usage) {
+  if (!kind) return Promise.resolve();
+  return meter(practiceId, { [`calls.${kind}`]: 1 }, usage, `an AI call (${kind})`);
+}
+
+/**
+ * One upsert, for both.
+ *
+ * ---- `.exec()` on purpose, and it is not decoration --------------------
+ *
+ * A mongoose query is a lazy thenable: `updateOne(...)` builds one and runs
+ * nothing until something awaits it, calls `.then()`, or calls `.exec()`.
+ * Without the trailing `.catch()` this line executed no query at all — the
+ * counter worked only as a side effect of its own error handler, so tidying
+ * that away would have stopped the counting silently rather than loudly.
+ *
+ * Fire-and-forget either way: a counter that fails must not lose the reply it
+ * was counting.
+ */
+function meter(practiceId, counters, usage, what) {
+  if (!practiceId) return Promise.resolve();
+
   /*
-   * `.exec()` on purpose, and it is not decoration.
+   * Tokens are added only when the provider reported them.
    *
-   * A mongoose query is a lazy thenable: `updateOne(...)` builds one and runs
-   * nothing until something awaits it, calls `.then()`, or calls `.exec()`.
-   * Without the trailing `.catch()` this line executed no query at all — the
-   * counter worked only as a side effect of its own error handler, so tidying
-   * that away would have stopped the counting silently rather than loudly.
-   *
-   * Made explicit so the execution does not depend on the handler.
+   * `usageMetadata` is absent on a cached or blocked response, and `$inc` by
+   * `undefined` makes Mongo reject the whole update — which would lose the
+   * call count as well. A missing figure is worth nothing; losing the row is
+   * worth less.
    */
-  AiUsage.updateOne(
+  const inc = { ...counters };
+  if (Number.isFinite(usage?.promptTokens)) inc.promptTokens = usage.promptTokens;
+  if (Number.isFinite(usage?.responseTokens)) inc.responseTokens = usage.responseTokens;
+
+  /*
+    * The promise is returned, and every caller ignores it.
+    *
+    * Fire-and-forget is the behaviour that matters: a counter that fails must
+    * not lose the reply it was counting, and no route awaits this. But a
+    * promise nobody can await is a write a test can only sleep on, and a test
+    * that sleeps is one that fails on a slow machine and gets a longer sleep
+    * instead of a fix.
+    */
+  return AiUsage.updateOne(
     { practice: practiceId, period: currentPeriod() },
-    { $inc: { replies: 1 } },
+    { $inc: inc },
     { upsert: true },
   )
     .exec()
-    .catch((err) => logger.warn({ err }, 'could not count an assistant reply'));
+    .catch((err) => logger.warn({ err }, `could not count ${what}`));
 }
 
 /** Both halves of a refusal: the counter, and the line somebody can read. */

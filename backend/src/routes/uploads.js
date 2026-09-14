@@ -13,7 +13,7 @@ import { requireAuth } from '../middleware/auth.js';
 import { validate } from '../middleware/validate.js';
 import { asyncHandler, badRequest, notFound, forbidden } from '../middleware/errors.js';
 import { audit } from '../middleware/audit.js';
-import { practicePatients } from '../middleware/practiceScope.js';
+import { practicePatients, practiceOfPatient } from '../middleware/practiceScope.js';
 import { MediaAsset } from '../models/MediaAsset.js';
 import { ChatMessage } from '../models/ChatMessage.js';
 import { User, ROLES } from '../models/User.js';
@@ -263,7 +263,16 @@ router.post(
     // engine reads text, so a spoken "chest pain" has to be text before the
     // message is assessed.
     let transcript = null;
-    if (isAudio) transcript = await transcribeVoiceNote(buffer, mimeType);
+    /*
+     * The owner's practice, not the uploader's.
+     *
+     * A clinician uploading on a patient's behalf is spending that patient's
+     * practice's quota, and `owner` is already resolved above to exactly that
+     * person — see the scoping check that decides whether they may name them.
+     */
+    if (isAudio) {
+      transcript = await transcribeVoiceNote(buffer, mimeType, await practiceOfPatient(owner));
+    }
 
     await fs.writeFile(fullPath, buffer);
 

@@ -17,6 +17,7 @@ import { PatientProfile } from '../models/PatientProfile.js';
 import { AiUnavailableError } from '../services/ai/gemini.js';
 import { MedicineBrand, brandSlug } from '../models/MedicineBrand.js';
 import { notifyPatientOfMedicineChange } from '../services/notifications.js';
+import { practiceOfPatient } from '../middleware/practiceScope.js';
 
 const router = Router({ mergeParams: true });
 router.use(requireAuth, resolvePatientScope);
@@ -113,6 +114,7 @@ router.post(
     try {
       parsed = await extractPrescription({
         images: [{ mimeType: req.file.mimetype, base64: req.file.buffer.toString('base64') }],
+        practiceId: await practiceOfPatient(req.patientId),
       });
     } catch (err) {
       if (err instanceof AiUnavailableError) {

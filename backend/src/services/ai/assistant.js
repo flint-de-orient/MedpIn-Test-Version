@@ -390,7 +390,10 @@ ${forceLanguageInstruction(language)}`,
   // Counted against the month's allowance now the model has actually answered.
   // Before this point a failed request has cost the practice nothing, and
   // charging them for it would spend a limit on an outage.
-  countReply(await practiceOfPatient(patientId));
+  // The token figures ride along. The allowance still compares replies; what
+  // the practice actually costs is tokens, and that number was stored per
+  // message and aggregated nowhere anybody could read it.
+  countReply(await practiceOfPatient(patientId), usage);
 
   const assistantMessage = await ChatMessage.create({
     session: session._id,
@@ -629,6 +632,9 @@ export async function* streamPatientMessage({ patientId, sessionId, text, langua
 
   let replyText = '';
   let isFallback = false;
+  // What the streamed call cost, reported once the stream drains. Empty if the
+  // provider did not say — see the note on `onUsage` in gemini.js.
+  let usage = {};
   try {
     for await (const piece of generateStream({
       system,
@@ -636,6 +642,9 @@ export async function* streamPatientMessage({ patientId, sessionId, text, langua
       model: images.length ? env.GEMINI_VISION_MODEL : undefined,
       temperature: triage.urgency === 'emergency' ? 0.1 : 0.3,
       maxOutputTokens: 600,
+      onUsage: (u) => {
+        usage = u;
+      },
     })) {
       replyText += piece;
       yield { type: 'token', data: piece };
@@ -675,7 +684,10 @@ ${forceLanguageInstruction(language)}`,
   // Counted against the month's allowance now the model has actually answered.
   // Before this point a failed request has cost the practice nothing, and
   // charging them for it would spend a limit on an outage.
-  countReply(await practiceOfPatient(patientId));
+  // The token figures ride along. The allowance still compares replies; what
+  // the practice actually costs is tokens, and that number was stored per
+  // message and aggregated nowhere anybody could read it.
+  countReply(await practiceOfPatient(patientId), usage);
 
   const assistantMessage = await ChatMessage.create({
     session: session._id,

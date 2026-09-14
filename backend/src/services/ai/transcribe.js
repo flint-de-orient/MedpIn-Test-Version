@@ -7,6 +7,7 @@ import ffmpegPath from 'ffmpeg-static';
 import { generate } from './gemini.js';
 import { env } from '../../config/env.js';
 import { logger } from '../../config/logger.js';
+import { countAiCall } from './allowance.js';
 
 /**
  * Turns a patient's voice note into text the rest of the pipeline can use.
@@ -138,7 +139,7 @@ export async function transcodeToMp3(buffer) {
  * @param {string} mimeType the recording's content type
  * @returns {Promise<string|null>} spoken words, or null when nothing usable
  */
-export async function transcribeVoiceNote(buffer, mimeType) {
+export async function transcribeVoiceNote(buffer, mimeType, practiceId = null) {
   try {
     let audioBuffer = buffer;
     let audioMime = mimeType;
@@ -171,6 +172,11 @@ export async function transcribeVoiceNote(buffer, mimeType) {
       // Transcription is not a creative task; drift here invents symptoms.
       temperature: 0,
     });
+    // Metered after the call: a request that failed on the provider's side
+    // cost the practice nothing. `countAiCall` records the tokens and the
+    // per-kind count without touching the reply allowance — see
+    // allowance.js on why starting to would be an outage, not a price.
+    countAiCall(practiceId, 'transcribe', result?.usage);
 
     const text = (result?.text ?? '').trim();
     if (!text || text === '[unclear]') return null;

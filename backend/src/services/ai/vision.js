@@ -3,6 +3,7 @@ import { retrieve, formatContext } from './rag.js';
 import { env } from '../../config/env.js';
 import { clinicIdentity } from '../clinicIdentity.js';
 import { logger } from '../../config/logger.js';
+import { countAiCall } from './allowance.js';
 
 const LANGUAGE_NAME = { en: 'English', bn: 'Bengali (বাংলা)', hi: 'Hindi (हिन्दी)' };
 
@@ -28,7 +29,7 @@ const FOOT_SCHEMA = {
   required: ['riskLevel', 'observations', 'recommendations', 'confidence'],
 };
 
-export async function assessFootImages({ images, symptoms, language = 'en', patientContext }) {
+export async function assessFootImages({ images, symptoms, language = 'en', patientContext, practiceId = null }) {
   if (!images?.length) return null;
 
   const grounding = await retrieve('diabetic foot ulcer assessment wound infection signs care', {
@@ -75,6 +76,9 @@ Return your assessment as JSON.`;
 
   try {
     const result = await generateFromImage({ system, prompt, images, responseSchema: FOOT_SCHEMA });
+    // Metered after the call: a failed request cost the practice nothing.
+    // Tokens and a per-kind count, never the reply allowance — see allowance.js.
+    countAiCall(practiceId, 'vision', result?.usage);
     const json = result.json;
     if (!json) throw new AiUnavailableError(new Error('unparseable foot assessment'));
 
@@ -116,7 +120,7 @@ const EYE_SCHEMA = {
   required: ['summary', 'whatItMeans', 'recommendedActions', 'referralUrgency'],
 };
 
-export async function explainEyeReport({ reportText, images, reportedGrade, language = 'en', patientContext }) {
+export async function explainEyeReport({ reportText, images, reportedGrade, language = 'en', patientContext, practiceId = null }) {
   const grounding = await retrieve('diabetic retinopathy grading what it means follow up screening', {
     categories: ['eye_care'],
     language: 'en',
@@ -158,6 +162,10 @@ Return JSON.`;
           responseSchema: EYE_SCHEMA,
           temperature: 0.2,
         });
+
+    // Metered after the call: a failed request cost the practice nothing.
+    // Tokens and a per-kind count, never the reply allowance — see allowance.js.
+    countAiCall(practiceId, 'vision', result?.usage);
 
     const json = result.json;
     if (!json) return null;
@@ -260,7 +268,7 @@ const PRESCRIPTION_SCHEMA = {
   required: ['readable', 'items'],
 };
 
-export async function extractPrescription({ images }) {
+export async function extractPrescription({ images, practiceId = null }) {
   if (!images?.length) return null;
 
   // Deliberately does NOT say whose prescription this is.
@@ -292,6 +300,9 @@ Strict rules:
   const prompt = 'Extract every medicine from this prescription photograph as JSON. If it cannot be read, set readable=false and return no items.';
 
   const result = await generateFromImage({ system, prompt, images, responseSchema: PRESCRIPTION_SCHEMA });
+  // Metered after the call: a failed request cost the practice nothing.
+  // Tokens and a per-kind count, never the reply allowance — see allowance.js.
+  countAiCall(practiceId, 'prescription', result?.usage);
   const json = result?.json;
   if (!json) return { readable: false, items: [] };
   return {

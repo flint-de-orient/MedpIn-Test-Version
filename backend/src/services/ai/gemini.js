@@ -228,12 +228,31 @@ export async function embed(text, { taskType = 'RETRIEVAL_DOCUMENT', title } = {
  * Safety is unchanged: the caller runs triage and raises any alert BEFORE
  * calling this, so escalation never waits on the stream.
  */
+/**
+ * The streaming sibling of `generate`, and what it costs.
+ *
+ * ---- `onUsage`, and why it is a callback -------------------------------
+ *
+ * A generator that yields strings cannot also return a number, and this is the
+ * highest-volume path in the product — every patient message the app sends.
+ * It reported nothing at all, so the recorded token spend was missing its
+ * largest single contributor and nobody could see the shape of the gap.
+ *
+ * The SDK exposes the aggregate response only once the stream is finished,
+ * which is why this is a callback rather than a return value.
+ *
+ * Written here rather than beside the parameter: a doc comment inside a
+ * destructured parameter list merges with the binding after it as far as
+ * `noMissingHelpers.test.js` is concerned, and `onUsage` then reads as a
+ * function nothing defines.
+ */
 export async function* generateStream({
   system,
   contents,
   model = env.GEMINI_CHAT_MODEL,
   temperature = 0.3,
   maxOutputTokens = 600,
+  onUsage,
 }) {
   const generationConfig = MODELS_REJECTING_THINKING.has(model)
     ? { temperature, maxOutputTokens: Math.max(maxOutputTokens, 2400) }
@@ -275,6 +294,25 @@ export async function* generateStream({
     }
   } catch (err) {
     throw new AiUnavailableError(err);
+  }
+
+  /*
+   * Reported after the text, and never allowed to fail the call.
+   *
+   * The reply has already reached the patient by this point. A provider that
+   * omits `usageMetadata`, or an aggregate response that rejects, is a figure
+   * nobody gets — not a message nobody gets.
+   */
+  if (onUsage) {
+    try {
+      const final = await result.response;
+      onUsage({
+        promptTokens: final?.usageMetadata?.promptTokenCount,
+        responseTokens: final?.usageMetadata?.candidatesTokenCount,
+      });
+    } catch (err) {
+      logger.warn({ err: err?.message, model }, 'stream finished without reporting usage');
+    }
   }
 }
 

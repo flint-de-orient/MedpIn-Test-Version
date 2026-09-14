@@ -124,8 +124,32 @@ describe('a reply is counted only once it exists', () => {
   });
 
   test('and a failed counter does not lose the reply', () => {
-    assert.match(allowance, /export function countReply\(practiceId\)/);
+    /*
+     * The claim is that the counter swallows its own failure, not that it has
+     * one parameter.
+     *
+     * This pinned `export function countReply(practiceId)` as a literal and
+     * broke when the function gained the token figures — which is the change
+     * that made the meter measure what Google actually bills for. A signature
+     * is not the behaviour; the `.catch` is.
+     */
+    assert.match(allowance, /export function countReply\(/);
     assert.match(allowance, /\.catch\(\(err\) => logger\.warn/);
+  });
+
+  test('and it counts what the call cost, not only that there was one', () => {
+    /*
+     * The allowance compares `replies` against a plan limit, and a reply is
+     * not a unit of anything: a conversation carrying a clinical record and
+     * several knowledge chunks can cost several thousand prompt tokens where a
+     * one-line answer costs a few hundred. Both decremented the allowance by
+     * one, so a practice could spend its thousand replies at 4,400 tokens each
+     * or at 800 and nothing could tell the two apart.
+     *
+     * See aiTokenMetering.test.js for the behaviour; this is the wiring.
+     */
+    assert.match(allowance, /promptTokens/);
+    assert.match(allowance, /responseTokens/);
   });
 });
 

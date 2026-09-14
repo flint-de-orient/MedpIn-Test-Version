@@ -40,6 +40,65 @@ const aiUsageSchema = new mongoose.Schema(
     /// different answers — the first is a busy week, the second is the wrong
     /// plan.
     refused: { type: Number, default: 0 },
+
+    /**
+     * What the model actually processed, which is what Google bills for.
+     *
+     * ---- Why counting replies is not counting cost --------------------
+     *
+     * The allowance compares `replies` against a plan limit — 1,000 on
+     * Essential, 5,000 on Professional — and a reply is not a unit of
+     * anything. A long conversation carrying a patient's clinical record and
+     * several retrieved knowledge chunks can cost several thousand prompt
+     * tokens; a one-line answer costs a few hundred. Both decrement the
+     * allowance by one.
+     *
+     * So a practice on Essential can spend its thousand replies at 4,400
+     * prompt tokens each — 4.4 million tokens — or at 800, and nothing in the
+     * product could tell the two apart. The meter measured the wrong thing.
+     *
+     * ---- Recorded, and deliberately not yet enforced -------------------
+     *
+     * These count. They are not compared against a limit, because switching
+     * the allowance from replies to tokens would change what every existing
+     * practice is allowed on the deploy that shipped it — and a clinic whose
+     * assistant stops answering mid-morning because the unit changed
+     * underneath them is an outage, not a pricing decision.
+     *
+     * What this buys is the number to make that decision with. Enforcement is
+     * a separate, deliberate change, on a month of real figures.
+     */
+    promptTokens: { type: Number, default: 0 },
+    responseTokens: { type: Number, default: 0 },
+
+    /**
+     * Calls per kind of AI work, including the ones the allowance ignores.
+     *
+     * ---- The blind spot this makes visible -----------------------------
+     *
+     * `countReply` was called from the patient assistant and nowhere else.
+     * The nutrition assistant, the foot and eye readers, prescription and lab
+     * extraction, and voice transcription all call Gemini and none of them
+     * reached the meter — so they cost real money and appeared in no counter
+     * at all, not even as calls.
+     *
+     * Written out as named fields rather than a free-form map, for the same
+     * reason the role table is: a new AI path has to be added here
+     * deliberately, with a test diff attached. `aiCallsAreMetered.test.js`
+     * fails when a Gemini call site exists that no field accounts for.
+     *
+     * Only `assistant` feeds the allowance. The rest are recorded so that the
+     * question "what are we actually spending" has an answer, and so that a
+     * later decision to meter them is made on evidence.
+     */
+    calls: {
+      assistant: { type: Number, default: 0 },
+      nutrition: { type: Number, default: 0 },
+      vision: { type: Number, default: 0 },
+      labReport: { type: Number, default: 0 },
+      prescription: { type: Number, default: 0 },
+      transcribe: { type: Number, default: 0 },
+    },
   },
   { timestamps: true },
 );
