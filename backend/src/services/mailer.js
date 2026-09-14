@@ -2,6 +2,7 @@ import nodemailer from 'nodemailer';
 
 import { env } from '../config/env.js';
 import { logger } from '../config/logger.js';
+import { outboundBlocked } from '../config/outbound.js';
 
 /**
  * Sending email, and not sending it when there is nowhere to send from.
@@ -51,6 +52,13 @@ function transporter() {
  * telling a stranger which addresses have accounts.
  */
 export async function sendMail({ to, subject, text }) {
+  // A test run emails nobody, whatever this machine's .env holds — see
+  // config/outbound.js.
+  if (outboundBlocked()) {
+    logger.debug({ to, subject }, 'test run — email not sent');
+    return { delivered: false, logged: true };
+  }
+
   if (!mailConfigured()) {
     // Not a silent no-op: the whole message goes to the log, so a developer can
     // copy the link out of it and carry on.

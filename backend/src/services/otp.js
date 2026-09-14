@@ -1,7 +1,7 @@
 import jwt from 'jsonwebtoken';
 import { env } from '../config/env.js';
 import { OtpChallenge, generateOtp, hashOtp } from '../models/OtpChallenge.js';
-import { sendOtpSms, smsConfigured, maskPhone } from './sms.js';
+import { sendOtpSms, maskPhone } from './sms.js';
 import { badRequest, tooMany, unauthorized } from '../middleware/errors.js';
 import { logger } from '../config/logger.js';
 
@@ -58,8 +58,9 @@ export async function requestOtp({ phone, purpose }) {
     { upsert: true, new: true, setDefaultsOnInsert: true },
   );
 
+  let sent;
   try {
-    await sendOtpSms({ phone, code, purpose });
+    sent = await sendOtpSms({ phone, code, purpose });
   } catch (err) {
     await OtpChallenge.deleteOne({ phone, purpose }).catch(() => {});
     throw err;
@@ -68,10 +69,12 @@ export async function requestOtp({ phone, purpose }) {
   return {
     expiresInSeconds: Math.floor(TTL_MS() / 1000),
     resendAfterSeconds: env.OTP_RESEND_COOLDOWN_SECONDS,
-    // So a clinic running without credentials can see why no SMS arrived,
-    // rather than assuming the network ate it. Never true in production —
-    // the sender throws there instead.
-    simulated: !smsConfigured(),
+    // Whether the code was actually texted, as the sender reports it — so a
+    // clinic running without credentials can see why no SMS arrived, rather
+    // than assuming the network ate it. It was `!smsConfigured()`, which said
+    // "sent" in a test run holding live credentials that sent nothing. Never
+    // true in production: the sender throws there instead.
+    simulated: sent?.simulated === true,
   };
 }
 

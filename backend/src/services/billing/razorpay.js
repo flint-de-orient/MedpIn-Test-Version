@@ -2,6 +2,7 @@ import crypto from 'node:crypto';
 
 import { env } from '../../config/env.js';
 import { logger } from '../../config/logger.js';
+import { outboundBlocked } from '../../config/outbound.js';
 
 /**
  * Razorpay, over `fetch` and `crypto`.
@@ -51,6 +52,12 @@ export function planIdFor(plan) {
 
 async function call(method, path, body) {
   if (!configured()) throw new Error('Razorpay is not configured on this server');
+
+  // A test run never uses the practice's keys, whatever this machine's .env
+  // holds — see config/outbound.js. Thrown rather than faked: every caller
+  // already treats Razorpay failing as a state it handles (a null price, a
+  // best-effort reference), which is exactly what a test should exercise.
+  if (outboundBlocked()) throw new Error('Razorpay is not called from a test run');
 
   const auth = Buffer.from(`${env.RAZORPAY_KEY_ID}:${env.RAZORPAY_KEY_SECRET}`).toString('base64');
   const res = await fetch(`${API}${path}`, {

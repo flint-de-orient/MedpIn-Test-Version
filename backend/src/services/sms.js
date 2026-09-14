@@ -1,5 +1,6 @@
 import { env } from '../config/env.js';
 import { logger } from '../config/logger.js';
+import { outboundBlocked } from '../config/outbound.js';
 
 /**
  * Sending one-time passcodes over MSG91.
@@ -47,6 +48,14 @@ function toMobiles(phone) {
  * never sent.
  */
 export async function sendOtpSms({ phone, code, purpose }) {
+  // A test run texts nobody, whatever this machine's .env holds — see
+  // config/outbound.js. Asked before the credentials, because credentials
+  // being present is precisely the case this exists for.
+  if (outboundBlocked()) {
+    logger.debug({ phone: maskPhone(phone), purpose }, 'test run — OTP not sent');
+    return { delivered: false, simulated: true };
+  }
+
   const templateId = templateFor(purpose);
 
   // No credentials: log the code and carry on, so the whole flow can be walked

@@ -8,6 +8,7 @@ import { getMessaging as messagingFor } from 'firebase-admin/messaging';
 
 import { env } from './env.js';
 import { logger } from './logger.js';
+import { outboundBlocked } from './outbound.js';
 
 /**
  * Firebase Admin, initialised lazily and at most once.
@@ -23,7 +24,22 @@ import { logger } from './logger.js';
 let messaging;
 let attempted = false;
 
+/**
+ * A stand-in for FCM, installed by a test.
+ *
+ * The only way to see who a push was actually addressed to: a test hands in an
+ * object with `sendEachForMulticast` and reads what it was given. Under the
+ * test runner nothing else is ever returned — see config/outbound.js — so a
+ * test that installs nothing pushes to nobody, never to a real project.
+ */
+let testMessaging = null;
+
+export function useMessagingForTests(fake) {
+  testMessaging = fake ?? null;
+}
+
 export function getMessaging() {
+  if (outboundBlocked()) return testMessaging;
   if (attempted) return messaging;
   attempted = true;
 
