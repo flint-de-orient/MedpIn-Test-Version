@@ -12,7 +12,7 @@ import { clinicIdentity } from '../clinicIdentity.js';
 import { assistantContextFor } from './departmentAssistant.js';
 import { threadHasAssistant } from '../threads.js';
 import { mayAssistantReply, countReply } from './allowance.js';
-import { practiceOfPatient } from '../../middleware/practiceScope.js';
+import { practiceOfPatient, practiceForPatient } from '../../middleware/practiceScope.js';
 import { raiseAlert } from '../alerts.js';
 import { detectAppointmentIntent } from '../triage/appointmentIntent.js';
 import { notifyClinicOfPatientMessage } from '../notifications.js';
@@ -303,7 +303,7 @@ export async function handlePatientMessage({ patientId, sessionId, text, languag
 
   // This patient's practice. Asked without it, this was the first clinic on
   // the platform, for every patient on it.
-  const identity = await clinicIdentity(null, { practiceId: await practiceOfPatient(patientId) });
+  const identity = await clinicIdentity(null, { practiceId: await practiceForPatient(patientId) });
 
   // The department this thread belongs to decides what the assistant is. Null
   // department is the practice's general thread, which keeps the remit the
@@ -593,7 +593,7 @@ export async function* streamPatientMessage({ patientId, sessionId, text, langua
   ];
   // This patient's practice. Asked without it, this was the first clinic on
   // the platform, for every patient on it.
-  const identity = await clinicIdentity(null, { practiceId: await practiceOfPatient(patientId) });
+  const identity = await clinicIdentity(null, { practiceId: await practiceForPatient(patientId) });
 
   // The department this thread belongs to decides what the assistant is. Null
   // department is the practice's general thread, which keeps the remit the

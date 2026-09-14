@@ -65,7 +65,7 @@ describe('nothing reads the clinic brand out of the environment', () => {
     // And resolved for this patient's practice. Asked with no argument it was
     // the first clinic on the platform's, which this used to count as resolved.
     const resolves = (
-      src.match(/await clinicIdentity\(null, \{ practiceId: await practiceOfPatient\(patientId\) \}\)/g) ?? []
+      src.match(/await clinicIdentity\(null, \{ practiceId: await practiceForPatient\(patientId\) \}\)/g) ?? []
     ).length;
     assert.ok(prompts > 0, 'no prompt is built here any more — has this moved?');
     assert.equal(resolves, prompts, 'a prompt is built without this patient’s practice’s identity');

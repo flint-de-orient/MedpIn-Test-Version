@@ -5,7 +5,7 @@ import { logger } from '../config/logger.js';
 import { PatientProfile } from '../models/PatientProfile.js';
 import { ChatSession } from '../models/ChatSession.js';
 import { ChatMessage } from '../models/ChatMessage.js';
-import { practiceOfPatient, memberIdsOf } from '../middleware/practiceScope.js';
+import { practicesOfPatient, practiceOfAppointment, memberIdsOf } from '../middleware/practiceScope.js';
 
 /**
  * Notification transport.
@@ -309,16 +309,31 @@ export async function sendLabUploadNudgePush({ patient, tests }) {
  * It arrives on a lock screen belonging to somebody with no relationship to the
  * patient at all.
  *
+ * ---- Whose patient ------------------------------------------------------
+ *
+ * Every practice actively caring for them, from their enrolments — see
+ * `practicesOfPatient`. This asked the assigned doctor alone, and the desk
+ * enrolling a patient by phone assigns none: for exactly the patients a second
+ * practice brings, the answer was "unknown", and unknown woke everybody.
+ *
  * ---- Permissive on unknown, like every other guard here ----------------
  *
- * A patient with no practice — no assigned doctor yet — falls back to everyone,
- * which is today's behaviour for today's single clinic. It narrows the moment
- * there is something to narrow to.
+ * A patient no practice is caring for — enrolled nowhere, no doctor assigned —
+ * still falls back to everyone, which is today's behaviour for today's single
+ * clinic. Who should be woken about a patient nobody has taken on is a decision
+ * about the clinic, not a default to change quietly here.
+ *
+ * Exported so that whose phones ring can be asked directly.
  */
-async function staffFor(patientId, roles) {
+export async function staffFor(patientId, roles) {
   const wanted = [].concat(roles);
-  const practiceId = patientId ? await practiceOfPatient(patientId) : null;
-  const ids = await memberIdsOf(practiceId, wanted);
+  const practices = patientId ? await practicesOfPatient(patientId) : [];
+  // `memberIdsOf(null)` is the unknown answer, and any null means "do not
+  // restrict" — a practice whose memberships have not been backfilled.
+  const lists = await Promise.all(
+    (practices.length ? practices : [null]).map((practiceId) => memberIdsOf(practiceId, wanted)),
+  );
+  const ids = lists.some((list) => list === null) ? null : lists.flat();
 
   return User.find({
     role: { $in: wanted },
@@ -886,13 +901,15 @@ export async function notifyClinicOfTomorrowSchedule(appointments) {
   // reason this exists.
   if (!appointments.length) return { delivered: 0, skipped: 'empty' };
 
-  // Grouped by the practice each appointment's patient belongs to. `null` is
-  // the unknown bucket and keeps the old behaviour — one digest to everybody —
-  // for a database where nothing is enrolled yet.
+  // Grouped by whose day it is: the appointment's doctor's practice, or its
+  // patient's when the doctor belongs to none. This grouped by the patient's
+  // assigned doctor alone, which a patient the desk enrolled does not have, so
+  // their appointments went into the digest sent to everybody. `null` is still
+  // the unknown bucket — one digest to everybody — for a database where nothing
+  // is enrolled yet.
   const byPractice = new Map();
   for (const appt of appointments) {
-    const patientId = appt.patient?._id ?? appt.patient ?? null;
-    const key = patientId ? ((await practiceOfPatient(patientId)) ?? null) : null;
+    const key = (await practiceOfAppointment(appt)) ?? null;
     if (!byPractice.has(key)) byPractice.set(key, []);
     byPractice.get(key).push(appt);
   }

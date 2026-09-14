@@ -6,7 +6,7 @@ import { Appointment } from '../models/Appointment.js';
 import { ACTIVE_STATUSES } from './scheduling.js';
 import { notifyClinicOfTomorrowSchedule, notifyVisitTomorrow } from './notifications.js';
 import { User, ROLES } from '../models/User.js';
-import { practiceOfPatient, memberIdsOf } from '../middleware/practiceScope.js';
+import { practiceOfAppointment, memberIdsOf } from '../middleware/practiceScope.js';
 import { logger } from '../config/logger.js';
 
 dayjs.extend(utc);
@@ -74,7 +74,7 @@ async function sendVisitReminders() {
   if (!due.length) return;
 
   /**
-   * The doctors to copy in, for the practice this patient belongs to.
+   * The doctors to copy in, for the practice whose day this appointment is.
    *
    * Still once rather than once per appointment — a clinic with forty tomorrow
    * made forty identical queries before the cache — but keyed by practice
@@ -82,13 +82,15 @@ async function sendVisitReminders() {
    * clinic's patient by name is the same leak as the digest above, one
    * appointment at a time.
    *
-   * `null` keys the unknown bucket, which is every patient with no assigned
-   * doctor and is the behaviour this had before.
+   * The appointment's doctor's practice, or its patient's — see
+   * `practiceOfAppointment`. It was the patient's assigned doctor alone, which a
+   * patient the desk enrolled does not have, and every doctor on the platform
+   * was reminded of them by name. `null` is still the unknown bucket, the
+   * behaviour this had before, for a patient nobody is caring for.
    */
   const tokenCache = new Map();
-  async function doctorTokensFor(patient) {
-    const patientId = patient?._id ?? patient ?? null;
-    const key = patientId ? ((await practiceOfPatient(patientId)) ?? null) : null;
+  async function doctorTokensFor(appt) {
+    const key = (await practiceOfAppointment(appt)) ?? null;
     if (tokenCache.has(key)) return tokenCache.get(key);
 
     const ids = await memberIdsOf(key, ROLES.DOCTOR);
@@ -107,7 +109,7 @@ async function sendVisitReminders() {
 
   for (const appt of due) {
     try {
-      const doctorTokens = await doctorTokensFor(appt.patient);
+      const doctorTokens = await doctorTokensFor(appt);
       await notifyVisitTomorrow(appt, { patient: appt.patient, doctorTokens });
       // Marked after the send, so a push that throws is retried on the next
       // tick rather than silently skipped for good.

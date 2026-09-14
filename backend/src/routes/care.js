@@ -21,7 +21,7 @@ import { paged, pageParams } from '../utils/pagination.js';
 import { recordWindow } from '../middleware/authorise.js';
 import { requireCapability } from '../middleware/requireCapability.js';
 import { CAPABILITIES } from '../services/capabilities.js';
-import { practiceOfPatient } from '../middleware/practiceScope.js';
+import { practiceForPatient } from '../middleware/practiceScope.js';
 
 const router = Router({ mergeParams: true });
 router.use(requireAuth, resolvePatientScope);
@@ -76,7 +76,7 @@ router.post(
           symptoms,
           language: req.user.language ?? 'en',
           patientContext: context.text,
-          practiceId: await practiceOfPatient(req.patientId),
+          practiceId: await practiceForPatient(req.patientId),
         })
       : null;
 
@@ -235,7 +235,7 @@ router.post(
       reportedGrade: req.body.reportedGrade,
       language: req.user.language ?? 'en',
       patientContext: context.text,
-      practiceId: await practiceOfPatient(req.patientId),
+      practiceId: await practiceForPatient(req.patientId),
     });
 
     const urgency = aiExplanation?.referralUrgency ?? 'routine';

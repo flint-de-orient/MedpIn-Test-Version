@@ -70,6 +70,75 @@ export async function practiceOfPatient(patientId) {
 }
 
 /**
+ * The practice a staff member belongs to, by user id — `practiceOf` for where
+ * there is no request, such as the doctor named on a prescription or an
+ * appointment.
+ */
+export async function practiceOfMember(userId) {
+  if (!userId) return null;
+  const row = await Membership.findOne(Membership.currentFilter(userId)).select('practice').lean();
+  return row?.practice ? String(row.practice) : null;
+}
+
+/**
+ * Every practice actively caring for a patient, the one to answer first at
+ * the front.
+ *
+ * ---- Why not `practiceOfPatient` ----------------------------------------
+ *
+ * That answers through the assigned doctor, which the note at the top of this
+ * file calls the right proxy "until Enrollment exists". Enrollment exists, and
+ * the path that brings a patient into a second practice — the desk enrolling
+ * them by phone — writes the enrolment and assigns no doctor. For exactly those
+ * patients it answered null, and every caller read null as everybody: their
+ * alerts woke every clinician on the platform, their visit reminders named them
+ * to every doctor on it, and the assistant introduced the first clinic.
+ *
+ * It stays as it is for the tenant guards and the allowance, which want its
+ * single conservative answer. This is for "who looks after this patient".
+ *
+ * ---- The order ------------------------------------------------------------
+ *
+ * Active enrolments, earliest first — with the assigned doctor's practice at the
+ * front when the patient is actively enrolled there, since that is where a
+ * doctor deliberately took them on. With no active enrolment, the assigned
+ * doctor's practice as before; with neither, none, and each caller keeps what
+ * it did for an unknown patient.
+ */
+export async function practicesOfPatient(patientId) {
+  if (!patientId) return [];
+  const [rows, viaDoctor] = await Promise.all([
+    Enrollment.find({ patient: patientId, status: ENROLLMENT_STATUS.ACTIVE, revokedAt: null })
+      .sort({ enrolledOn: 1, _id: 1 })
+      .select('practice')
+      .lean(),
+    practiceOfPatient(patientId),
+  ]);
+
+  const enrolled = [...new Set(rows.map((r) => String(r.practice)))];
+  if (!enrolled.length) return viaDoctor ? [viaDoctor] : [];
+  return viaDoctor && enrolled.includes(viaDoctor)
+    ? [viaDoctor, ...enrolled.filter((p) => p !== viaDoctor)]
+    : enrolled;
+}
+
+/** The first of those: the practice whose name a patient should read. */
+export async function practiceForPatient(patientId) {
+  return (await practicesOfPatient(patientId))[0] ?? null;
+}
+
+/**
+ * Whose day an appointment is: its doctor's practice, and the patient's only
+ * when the doctor belongs to none. Appointments are scoped by their doctor
+ * everywhere else, and a patient cared for by two practices is booked with one.
+ */
+export async function practiceOfAppointment(appointment) {
+  const doctorId = appointment?.doctor?._id ?? appointment?.doctor ?? null;
+  const patientId = appointment?.patient?._id ?? appointment?.patient ?? null;
+  return (await practiceOfMember(doctorId)) ?? (await practiceForPatient(patientId));
+}
+
+/**
  * Refuse when the caller and the patient are demonstrably in different
  * practices. Permit in every other case, including every case where either
  * answer is unknown — see the note at the top.

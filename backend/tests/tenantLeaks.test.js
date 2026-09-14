@@ -255,7 +255,10 @@ describe('nobody is woken up about another practice’s patient', () => {
 
   test('there is one helper and it derives the practice from the patient', () => {
     assert.match(notif, /async function staffFor\(patientId, roles\)/);
-    assert.match(notif, /await practiceOfPatient\(patientId\)/);
+    // From the patient's enrolments. The assigned doctor alone answered null for
+    // a patient the desk enrolled, and null fanned out to the whole platform —
+    // see practiceFromEnrolment.test.js.
+    assert.match(notif, /await practicesOfPatient\(patientId\)/);
   });
 
   test('every fan-out goes through it', () => {

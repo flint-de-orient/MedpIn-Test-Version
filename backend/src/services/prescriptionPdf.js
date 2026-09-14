@@ -12,8 +12,7 @@ import { MediaAsset } from '../models/MediaAsset.js';
 import { Prescription } from '../models/Prescription.js';
 import { PatientProfile } from '../models/PatientProfile.js';
 import { User } from '../models/User.js';
-import { Membership } from '../models/Membership.js';
-import { practiceOfPatient } from '../middleware/practiceScope.js';
+import { practiceOfMember, practiceForPatient } from '../middleware/practiceScope.js';
 import { clinicEmergencyPhone } from './clinicContact.js';
 
 dayjs.extend(utc);
@@ -343,10 +342,8 @@ function ensureSpace(doc, y, need, x, onNewPage) {
 export async function letterheadIdentityFor(prescription) {
   if (prescription.letterhead?.clinicName) return prescription.letterhead;
 
-  const membership = prescription.doctor
-    ? await Membership.findOne(Membership.currentFilter(prescription.doctor)).select('practice').lean()
-    : null;
-  const practiceId = membership?.practice ?? (await practiceOfPatient(prescription.patient));
+  const practiceId =
+    (await practiceOfMember(prescription.doctor)) ?? (await practiceForPatient(prescription.patient));
   return identitySnapshot(null, { practiceId });
 }
 

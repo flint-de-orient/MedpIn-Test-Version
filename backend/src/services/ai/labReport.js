@@ -13,7 +13,7 @@ import { env } from '../../config/env.js';
 import { clinicIdentity } from '../clinicIdentity.js';
 import { logger } from '../../config/logger.js';
 import { countAiCall } from './allowance.js';
-import { practiceOfPatient } from '../../middleware/practiceScope.js';
+import { practiceForPatient } from '../../middleware/practiceScope.js';
 
 /**
  * Reading a lab report and filing what is on it.
@@ -157,7 +157,7 @@ export async function analyseLabResult(labResultId) {
      * Resolving it here is what stops a whole class of AI spend being
      * invisible: every lab photo a patient uploads goes through this.
      */
-    const extracted = await extractLabValues(doc.photo, await practiceOfPatient(doc.patient));
+    const extracted = await extractLabValues(doc.photo, await practiceForPatient(doc.patient));
     if (!extracted) {
       doc.set('analysis.status', 'failed');
       await doc.save();

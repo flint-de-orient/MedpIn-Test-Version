@@ -7,7 +7,7 @@ import { asyncHandler, notFound, badRequest } from '../middleware/errors.js';
 import { ROLES } from '../models/User.js';
 import { dieticianFacingPatient } from '../services/dieticianIdentity.js';
 import { audit } from '../middleware/audit.js';
-import { practicePatients, practiceOfPatient } from '../middleware/practiceScope.js';
+import { practicePatients, practiceForPatient } from '../middleware/practiceScope.js';
 import { handlePatientMessage, streamPatientMessage } from '../services/ai/assistant.js';
 import { ChatSession } from '../models/ChatSession.js';
 import { ChatMessage } from '../models/ChatMessage.js';
@@ -824,7 +824,7 @@ router.post(
         language: replyLanguage,
         // Without this the meter is a no-op. Every one of these calls cost
         // money and appeared in no counter at all.
-        practiceId: await practiceOfPatient(patientId),
+        practiceId: await practiceForPatient(patientId),
       }).catch(() => null);
 
       if (reply) {
