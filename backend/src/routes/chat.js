@@ -976,7 +976,38 @@ router.post(
  * anyone is free to take over, and a thread with the assistant off and nobody
  * watching is a question into silence.
  */
-async function threadFor(patientId, kind) {
+/**
+ * One thread, and only if the caller's practice has that patient.
+ *
+ * ---- Why these three routes needed their own check ---------------------
+ *
+ * The assistant switch and the presence heartbeat take `:patientId` from the
+ * URL and were guarded by a role list alone — so a clinician at any practice
+ * could switch off the assistant in any patient's thread, and hold it back
+ * with a heartbeat that a client sends every few seconds anyway.
+ *
+ * Switching it off is the one that changes care: the patient keeps writing
+ * into a thread that has silently stopped answering, and nobody at their own
+ * practice is told, because from that side nothing happened.
+ *
+ * ---- And why not `resolvePatientScope` ---------------------------------
+ *
+ * It would scope these correctly and refuse every dietician. Dieticians are
+ * deliberately absent from DIRECT_PATIENT_ACCESS — they reach their assigned
+ * patients through /dietician, which enforces the assignment — and they still
+ * need to turn the assistant off in a nutrition thread they are answering.
+ *
+ * `practicePatients` asks the narrower question these routes actually have:
+ * is this patient one of ours. It answers `{}` for a practice the enrolment
+ * backfill has not reached, so nothing gets stricter than it was.
+ */
+async function threadFor(req, patientId, kind) {
+  const scope = await practicePatients(req, '_id');
+  const theirs = !scope._id || scope._id.$in.some((id) => String(id) === String(patientId));
+  // `notFound`, not `forbidden`: confirming that a thread exists is itself an
+  // answer about another practice's patient.
+  if (!theirs) throw notFound('No conversation with this patient');
+
   return ChatSession.findOne({
     patient: patientId,
     kind: kind === 'nutrition' ? 'nutrition' : { $ne: 'nutrition' },
@@ -1000,7 +1031,7 @@ router.get(
   requireRole(ROLES.DOCTOR, ROLES.STAFF, ROLES.DIETICIAN),
   validate({ query: threadKind }),
   asyncHandler(async (req, res) => {
-    const session = await threadFor(req.params.patientId, req.query.kind);
+    const session = await threadFor(req, req.params.patientId, req.query.kind);
     // No thread yet means nothing has been turned off. On is the default.
     if (!session) return res.json({ assistantEnabled: true, heldByPresence: false });
 
@@ -1027,7 +1058,7 @@ router.patch(
   validate({ body: threadKind.extend({ enabled: z.boolean() }) }),
   audit('update', 'ChatSession'),
   asyncHandler(async (req, res) => {
-    const session = await threadFor(req.params.patientId, req.body.kind);
+    const session = await threadFor(req, req.params.patientId, req.body.kind);
     if (!session) throw notFound('No conversation with this patient yet');
     session.assistantEnabled = req.body.enabled;
     // A person has now decided, so presence stops second-guessing it.
@@ -1053,7 +1084,7 @@ router.post(
   requireRole(ROLES.DOCTOR, ROLES.STAFF, ROLES.DIETICIAN),
   validate({ body: threadKind }),
   asyncHandler(async (req, res) => {
-    const session = await threadFor(req.params.patientId, req.body.kind);
+    const session = await threadFor(req, req.params.patientId, req.body.kind);
     // No thread yet is not an error: the clinician opened a patient who has
     // never written. There is simply nothing to hold back.
     if (!session) return res.status(204).end();
