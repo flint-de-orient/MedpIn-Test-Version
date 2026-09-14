@@ -62,9 +62,31 @@ describe('nothing reads the clinic brand out of the environment', () => {
   test('the assistant asks for the identity before building a prompt', () => {
     const src = readFileSync(new URL('../src/services/ai/assistant.js', import.meta.url), 'utf8');
     const prompts = (src.match(/buildSystemPrompt\(\{/g) ?? []).length;
-    const resolves = (src.match(/await clinicIdentity\(\)/g) ?? []).length;
+    // And resolved for this patient's practice. Asked with no argument it was
+    // the first clinic on the platform's, which this used to count as resolved.
+    const resolves = (
+      src.match(/await clinicIdentity\(null, \{ practiceId: await practiceOfPatient\(patientId\) \}\)/g) ?? []
+    ).length;
     assert.ok(prompts > 0, 'no prompt is built here any more — has this moved?');
-    assert.equal(resolves, prompts, 'a prompt is built without resolving the identity first');
+    assert.equal(resolves, prompts, 'a prompt is built without this patient’s practice’s identity');
+  });
+
+  test('no service asks for an identity without saying whose', () => {
+    // The bare call is the platform's first clinic. A caller that knows a
+    // location or a practice passes it; one that knows neither has no business
+    // naming a clinic to a patient.
+    const offenders = [];
+    for (const file of serviceFiles()) {
+      if (file.endsWith(path.join('services', 'clinicIdentity.js'))) continue;
+      const src = readFileSync(file, 'utf8');
+      src.split('\n').forEach((line, i) => {
+        if (/^\s*(\/\/|\*|\/\*)/.test(line)) return;
+        if (/\b(clinicIdentity|identitySnapshot)\(\s*(null\s*)?\)/.test(line)) {
+          offenders.push(`${path.relative(SERVICES, file)}:${i + 1}  ${line.trim().slice(0, 70)}`);
+        }
+      });
+    }
+    assert.deepEqual(offenders, [], `\n  ${offenders.join('\n  ')}\n`);
   });
 
   test('the prescription letterhead is snapshotted, not re-read', () => {
@@ -72,8 +94,14 @@ describe('nothing reads the clinic brand out of the environment', () => {
     // *current* name every time it is opened would let a settings screen
     // silently re-letterhead every prescription ever issued.
     const src = readFileSync(new URL('../src/services/prescriptionPdf.js', import.meta.url), 'utf8');
-    assert.match(src, /identitySnapshot\(/);
+    assert.match(src, /identitySnapshot\(null, \{ practiceId \}\)/);
+    // Lettered by the practice that issued it — see identityPerPractice.test.js.
+    assert.match(src, /const identity = await letterheadIdentityFor\(prescription\)/);
     assert.match(src, /letterhead: letterheadToPersist/);
+    // The number goes with it, and the document prints that rather than the
+    // configured one — identityPerPractice.test.js is about whose number it is.
+    assert.match(src, /emergencyPhone: identity\.emergencyPhone \?\? null/);
+    assert.match(src, /identity\?\.emergencyPhone !== undefined \? identity\.emergencyPhone : clinicEmergencyPhone\(\)/);
     // Persisted in the same write as the file it describes, so the two can
     // never disagree.
     assert.match(src, /pdfFile: asset\._id, \.\.\.\(letterheadToPersist/);

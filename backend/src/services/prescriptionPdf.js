@@ -12,6 +12,8 @@ import { MediaAsset } from '../models/MediaAsset.js';
 import { Prescription } from '../models/Prescription.js';
 import { PatientProfile } from '../models/PatientProfile.js';
 import { User } from '../models/User.js';
+import { Membership } from '../models/Membership.js';
+import { practiceOfPatient } from '../middleware/practiceScope.js';
 import { clinicEmergencyPhone } from './clinicContact.js';
 
 dayjs.extend(utc);
@@ -94,7 +96,12 @@ export function buildPrescriptionPdf({ prescription: p, patient, doctor, profile
     doc.fillColor(SLATE).font('Helvetica').fontSize(10.5).text(`${doctorName}${credentials ? ` — ${credentials}` : ''}`, {
       width: contentW,
     });
-    const clinicPhone = clinicEmergencyPhone();
+    // This practice's number when the identity resolved one — `null` included,
+    // which prints no number rather than another practice's. A letterhead
+    // stamped before practices had numbers carries none, and reads the
+    // configured one as it always did.
+    const clinicPhone =
+      identity?.emergencyPhone !== undefined ? identity.emergencyPhone : clinicEmergencyPhone();
     const contactBits = [
       // The doctor's own council number first — it is theirs, not the
       // practice's — then the practice's as the fallback for a clinic that
@@ -321,6 +328,29 @@ function ensureSpace(doc, y, need, x, onNewPage) {
 }
 
 /**
+ * The identity a prescription is lettered with.
+ *
+ * A letterhead already stamped is kept — a prescription prints what it was
+ * issued under. Otherwise it is the prescribing doctor's practice, or the
+ * patient's when that doctor has since left one. Never the first clinic on the
+ * platform, which is what `identitySnapshot(null)` answered for every
+ * prescription a second practice issued — and, being stamped, kept answering.
+ *
+ * A prescription does not record the location it was written at, so this is
+ * the practice's primary one. When it does, that id belongs in the first
+ * argument and nothing else changes.
+ */
+export async function letterheadIdentityFor(prescription) {
+  if (prescription.letterhead?.clinicName) return prescription.letterhead;
+
+  const membership = prescription.doctor
+    ? await Membership.findOne(Membership.currentFilter(prescription.doctor)).select('practice').lean()
+    : null;
+  const practiceId = membership?.practice ?? (await practiceOfPatient(prescription.patient));
+  return identitySnapshot(null, { practiceId });
+}
+
+/**
  * Return the stored prescription PDF, generating and caching it as a
  * `prescription_pdf` MediaAsset (owned by the patient) on first request.
  * Prescriptions are immutable, so the document only ever needs building once.
@@ -344,13 +374,9 @@ export async function ensurePrescriptionPdf(prescription) {
 
   // Taken once, at first render, and kept. A prescription re-opened in a year
   // must print the letterhead it was issued under, not whatever the clinic is
-  // called by then.
-  //
-  // A prescription does not record which location it was written at, so this
-  // resolves the practice's primary one. When it does carry a location, that
-  // id is what belongs here and nothing else changes.
+  // called by then. Whose letterhead it is: see `letterheadIdentityFor`.
   const existingLetterhead = prescription.letterhead?.clinicName ? prescription.letterhead : null;
-  const identity = existingLetterhead ?? (await identitySnapshot(null));
+  const identity = await letterheadIdentityFor(prescription);
   const letterheadToPersist = existingLetterhead
     ? null
     : {
@@ -361,6 +387,9 @@ export async function ensurePrescriptionPdf(prescription) {
         phone: identity.phone,
         addressLine: identity.addressLine,
         city: identity.city,
+        // Kept with the rest, so a document rebuilt later still offers this
+        // practice's number and not the configured one.
+        emergencyPhone: identity.emergencyPhone ?? null,
       };
 
   const buffer = await buildPrescriptionPdf({

@@ -1,5 +1,19 @@
 import { env } from '../../config/env.js';
-import { orCallClinic } from '../clinicContact.js';
+import { orCallClinic, clinicEmergencyPhone } from '../clinicContact.js';
+
+/**
+ * The number to offer this patient: their practice's, from the identity.
+ *
+ * An identity that never resolved a number — a fixture, or a caller from before
+ * practices had numbers of their own — reads the configured one, as every
+ * prompt did. One that resolved `null` is a practice with no number to give,
+ * and gets no clause rather than somebody else's.
+ */
+function emergencyPhoneOf(identity) {
+  return identity && identity.emergencyPhone !== undefined
+    ? identity.emergencyPhone
+    : clinicEmergencyPhone();
+}
 
 const LANGUAGE_NAME = { en: 'English', bn: 'Bengali (বাংলা)', hi: 'Hindi (हिन्दी)' };
 
@@ -99,6 +113,8 @@ export function buildSystemPrompt({
   // assistant as working for nobody.
   const doctorName = identity?.doctorName || env.DOCTOR_DISPLAY_NAME;
   const clinicName = identity?.clinicName || env.CLINIC_NAME;
+  // The clause naming the number to ring — this patient's practice's.
+  const orCall = orCallClinic('en', emergencyPhoneOf(identity));
 
   // A department that has written its own scope replaces this entirely. One
   // that has not keeps the remit the assistant has always had, so Dr. Dey's
@@ -177,8 +193,8 @@ If the photo is something else (a meal, a glucose meter, a lab report), describe
 ## Safety rules — these override everything above
 1. A clinical triage system has ALREADY assessed this message. Its verdict is authoritative.
 2. You may RAISE the urgency if the patient describes something more serious than the triage caught. You must NEVER downplay, soften, or argue against the verdict.
-3. If the verdict is EMERGENCY, your entire reply must do three things and nothing else: state plainly that this needs immediate medical attention, give the one or two safe things to do right now, and tell them to go to the nearest hospital${orCallClinic('en')}. Do not offer reassurance, do not suggest waiting, do not answer unrelated parts of the question.
-3b. If the verdict is URGENT, tell the patient plainly that this needs prompt attention and that they should contact ${doctorName}'s clinic today${orCallClinic('en')} — not wait for their next appointment. Give the one or two safe things to do meanwhile.
+3. If the verdict is EMERGENCY, your entire reply must do three things and nothing else: state plainly that this needs immediate medical attention, give the one or two safe things to do right now, and tell them to go to the nearest hospital${orCall}. Do not offer reassurance, do not suggest waiting, do not answer unrelated parts of the question.
+3b. If the verdict is URGENT, tell the patient plainly that this needs prompt attention and that they should contact ${doctorName}'s clinic today${orCall} — not wait for their next appointment. Give the one or two safe things to do meanwhile.
 4. If the grounded knowledge below does not cover the question, say you do not have approved guidance on it and offer to escalate to ${doctorName}. Do not fill the gap with general knowledge.
 5. Never repeat back another patient's data. Only the context provided below belongs to this patient.
 6. These symptoms mean "go to hospital now", never "monitor it" or "mention it at your next visit": chest pain or pressure; sudden breathlessness; sudden weakness, drooping face or slurred speech; sudden vision loss; a seizure or unresponsiveness; vomiting that stops a steroid-dependent patient keeping tablets down; fever with a racing heart in someone with thyroid disease; confusion or drowsiness with very high sugar; a black, discharging or foul-smelling foot wound.
@@ -222,21 +238,21 @@ export const FALLBACK_REPLIES = {
   emergency: {
     en: `This needs medical attention right now.
 
-• Please go to the nearest hospital emergency department immediately${orCallClinic('en')}.
+• Please go to the nearest hospital emergency department immediately{{orCall}}.
 • Do not wait to see if it improves on its own.
 • If you can, ask someone to go with you and carry your medicine list.
 
 The clinic has been notified about this message.`,
     bn: `এই অবস্থায় এখনই চিকিৎসকের সাহায্য প্রয়োজন।
 
-• অনুগ্রহ করে এখনই নিকটতম হাসপাতালের জরুরি বিভাগে যান${orCallClinic('bn')}।
+• অনুগ্রহ করে এখনই নিকটতম হাসপাতালের জরুরি বিভাগে যান{{orCall}}।
 • নিজে থেকে ভালো হয়ে যায় কিনা দেখার জন্য অপেক্ষা করবেন না।
 • সম্ভব হলে কাউকে সঙ্গে নিয়ে যান এবং আপনার ওষুধের তালিকা সঙ্গে রাখুন।
 
 আপনার এই বার্তাটি সম্পর্কে ক্লিনিককে জানানো হয়েছে।`,
     hi: `इस स्थिति में तुरंत चिकित्सा सहायता की आवश्यकता है।
 
-• कृपया तुरंत नज़दीकी अस्पताल के आपातकालीन विभाग में जाएँ${orCallClinic('hi')}।
+• कृपया तुरंत नज़दीकी अस्पताल के आपातकालीन विभाग में जाएँ{{orCall}}।
 • यह अपने आप ठीक होगा या नहीं, यह देखने के लिए प्रतीक्षा न करें।
 • यदि संभव हो तो किसी को साथ ले जाएँ और अपनी दवाओं की सूची साथ रखें।
 
@@ -245,19 +261,19 @@ The clinic has been notified about this message.`,
   unavailable: {
     en: `I am not able to answer right now because the assistant service is temporarily unavailable.
 
-• If this is an emergency, go to the nearest hospital${orCallClinic('en')}.
+• If this is an emergency, go to the nearest hospital{{orCall}}.
 • Otherwise, please try again in a few minutes, or book an appointment with {{doctor}}.
 
 Your message has been saved.`,
     bn: `এই মুহূর্তে আমি উত্তর দিতে পারছি না, কারণ সহকারী পরিষেবাটি সাময়িকভাবে বন্ধ আছে।
 
-• যদি এটি জরুরি অবস্থা হয়, নিকটতম হাসপাতালে যান${orCallClinic('bn')}।
+• যদি এটি জরুরি অবস্থা হয়, নিকটতম হাসপাতালে যান{{orCall}}।
 • অন্যথায়, কয়েক মিনিট পরে আবার চেষ্টা করুন, অথবা {{doctor}}-এর সঙ্গে অ্যাপয়েন্টমেন্ট নিন।
 
 আপনার বার্তাটি সংরক্ষণ করা হয়েছে।`,
     hi: `मैं इस समय उत्तर नहीं दे पा रहा हूँ, क्योंकि सहायक सेवा अस्थायी रूप से उपलब्ध नहीं है।
 
-• यदि यह आपातकालीन स्थिति है, तो नज़दीकी अस्पताल जाएँ${orCallClinic('hi')}।
+• यदि यह आपातकालीन स्थिति है, तो नज़दीकी अस्पताल जाएँ{{orCall}}।
 • अन्यथा, कुछ मिनटों बाद पुनः प्रयास करें, या {{doctor}} से अपॉइंटमेंट लें।
 
 आपका संदेश सुरक्षित रख लिया गया है।`,
@@ -343,7 +359,11 @@ export const DISCLAIMER = {
 export function fallbackReply(kind, language = 'en', identity = null) {
   const set = FALLBACK_REPLIES[kind] ?? FALLBACK_REPLIES.unavailable;
   const text = set[language] ?? set.en;
-  // The doctor is a placeholder in the stored strings rather than baked in at
-  // module load, because the module loads once and a practice is per request.
-  return text.replaceAll('{{doctor}}', identity?.doctorName || env.DOCTOR_DISPLAY_NAME);
+  // The doctor and the number are placeholders in the stored strings rather
+  // than baked in at module load, because the module loads once and a practice
+  // is per request. The number was baked in, and so was the founding clinic's
+  // for every practice on the platform.
+  return text
+    .replaceAll('{{doctor}}', identity?.doctorName || env.DOCTOR_DISPLAY_NAME)
+    .replaceAll('{{orCall}}', orCallClinic(set[language] ? language : 'en', emergencyPhoneOf(identity)));
 }

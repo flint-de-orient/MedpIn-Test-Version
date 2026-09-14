@@ -38,7 +38,7 @@ export async function assessFootImages({ images, symptoms, language = 'en', pati
     limit: 4,
   }).catch(() => []);
 
-  const doctorName = (await clinicIdentity()).doctorName || env.DOCTOR_DISPLAY_NAME;
+  const doctorName = (await clinicIdentity(null, { practiceId })).doctorName || env.DOCTOR_DISPLAY_NAME;
   const system = `You are a clinical triage assistant supporting ${doctorName}, a Consultant Diabetologist, in reviewing diabetic foot photographs submitted by patients.
 
 Your role is strictly limited:
@@ -127,7 +127,7 @@ export async function explainEyeReport({ reportText, images, reportedGrade, lang
     limit: 4,
   }).catch(() => []);
 
-  const doctorName = (await clinicIdentity()).doctorName || env.DOCTOR_DISPLAY_NAME;
+  const doctorName = (await clinicIdentity(null, { practiceId })).doctorName || env.DOCTOR_DISPLAY_NAME;
   const system = `You explain eye examination reports to patients of ${doctorName}, a Consultant Diabetologist. Many of these patients have diabetic retinopathy.
 
 Rules:

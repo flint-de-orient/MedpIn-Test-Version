@@ -67,6 +67,10 @@ const prescriptionSchema = new mongoose.Schema(
       phone: String,
       addressLine: String,
       city: String,
+      /// The number the document offers. Stamped with the rest, so a copy
+      /// rebuilt later offers this practice's number and not the configured
+      /// one. Absent on older rows, which print the configured number as before.
+      emergencyPhone: String,
     },
 
     /// How this prescription came to exist.

@@ -2,7 +2,7 @@ import test, { describe } from 'node:test';
 import assert from 'node:assert/strict';
 
 import { env } from '../src/config/env.js';
-import { clinicEmergencyPhone, orCallClinic } from '../src/services/clinicContact.js';
+import { clinicEmergencyPhone, orCallClinic, callablePhone } from '../src/services/clinicContact.js';
 
 /**
  * The number a patient in an emergency is told to ring.
@@ -50,6 +50,23 @@ describe('the clinic emergency number', () => {
     set('+91123');
     assert.equal(clinicEmergencyPhone(), null);
     restore();
+  });
+
+  test('a practice’s own number is used when given, and null means no clause', () => {
+    set('+918981540690');
+    assert.match(orCallClinic('en', '+913324001234'), /\+913324001234/);
+    assert.ok(!orCallClinic('en', '+913324001234').includes('8981540690'));
+    // Not "fall back to the configured one": null is this practice having no
+    // number, and another practice's number is worse than none.
+    assert.equal(orCallClinic('en', null), '');
+    restore();
+  });
+
+  test('a location’s number passes the same test as the configured one', () => {
+    assert.equal(callablePhone('+913324001234'), '+913324001234');
+    assert.equal(callablePhone('+91-0000000000'), null);
+    assert.equal(callablePhone('+91123'), null);
+    assert.equal(callablePhone(undefined), null);
   });
 
   test('each language gets its own wording, not English', () => {

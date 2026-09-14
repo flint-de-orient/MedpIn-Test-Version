@@ -28,7 +28,16 @@ const PLACEHOLDER = /^\+?[\s-]*0+[\s-]*$|0{6,}/;
  * +91-0000000000" is worse than saying nothing, because a patient will try it.
  */
 export function clinicEmergencyPhone() {
-  const raw = (env.CLINIC_EMERGENCY_PHONE ?? '').trim();
+  return callablePhone(env.CLINIC_EMERGENCY_PHONE);
+}
+
+/**
+ * A number somebody could actually ring, or null — whichever source it came
+ * from. A location saved with the old placeholder is no more callable than the
+ * environment was.
+ */
+export function callablePhone(value) {
+  const raw = String(value ?? '').trim();
   if (!raw) return null;
   if (PLACEHOLDER.test(raw.replace(/[^\d+]/g, ''))) return null;
   // Fewer than eight digits cannot be a phone number anyone can ring.
@@ -39,10 +48,15 @@ export function clinicEmergencyPhone() {
 /**
  * The "or call ..." clause, ready to drop into a sentence, or ''.
  *
+ * `phone` is the number for this patient's practice — `emergencyPhone` on the
+ * clinic identity. Left out, it is the configured number, which is what every
+ * caller meant before practices had numbers of their own. `null` is an answer
+ * rather than an omission: that practice has no number, and gets no clause.
+ *
  * @param {string} lang - 'en' | 'bn' | 'hi'
+ * @param {string|null} [phone]
  */
-export function orCallClinic(lang = 'en') {
-  const phone = clinicEmergencyPhone();
+export function orCallClinic(lang = 'en', phone = clinicEmergencyPhone()) {
   if (!phone) return '';
   return {
     en: ` or call the clinic on ${phone}`,

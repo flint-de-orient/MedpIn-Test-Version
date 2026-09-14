@@ -160,7 +160,7 @@ export async function nutritionReply({ patientId, sessionId, text, language = 'e
   try {
     const result = await generate({
       system: buildNutritionPrompt({
-        identity: await clinicIdentity(),
+        identity: await clinicIdentity(null, { practiceId }),
         plan,
         dieticianNotes,
         grounding: formatContext(chunks),

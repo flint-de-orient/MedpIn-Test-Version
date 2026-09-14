@@ -301,7 +301,9 @@ export async function handlePatientMessage({ patientId, sessionId, text, languag
     { role: 'user', parts: userParts },
   ];
 
-  const identity = await clinicIdentity();
+  // This patient's practice. Asked without it, this was the first clinic on
+  // the platform, for every patient on it.
+  const identity = await clinicIdentity(null, { practiceId: await practiceOfPatient(patientId) });
 
   // The department this thread belongs to decides what the assistant is. Null
   // department is the practice's general thread, which keeps the remit the
@@ -589,7 +591,9 @@ export async function* streamPatientMessage({ patientId, sessionId, text, langua
     ...languagePrimer(language),
     { role: 'user', parts: userParts },
   ];
-  const identity = await clinicIdentity();
+  // This patient's practice. Asked without it, this was the first clinic on
+  // the platform, for every patient on it.
+  const identity = await clinicIdentity(null, { practiceId: await practiceOfPatient(patientId) });
 
   // The department this thread belongs to decides what the assistant is. Null
   // department is the practice's general thread, which keeps the remit the

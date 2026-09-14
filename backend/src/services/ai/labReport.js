@@ -93,7 +93,7 @@ export async function extractLabValues(assetId, practiceId = null) {
 
   const buffer = await assetBuffer(asset);
   const result = await generateFromImage({
-    system: buildSystem((await clinicIdentity()).clinicName || env.CLINIC_NAME),
+    system: buildSystem((await clinicIdentity(null, { practiceId })).clinicName || env.CLINIC_NAME),
     prompt: 'Transcribe this pathology report.',
     images: [{ mimeType: asset.mimeType, base64: buffer.toString('base64') }],
     responseSchema: LAB_SCHEMA,

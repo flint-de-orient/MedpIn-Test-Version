@@ -18,10 +18,11 @@
  * ---- What this does instead ---------------------------------------------
  *
  * Imports the real prompt module with the real environment and prints every
- * composed string. `FALLBACK_REPLIES` is a module-level const, so its clauses
- * are baked at import from the environment the process booted with — which is
- * why a restart was needed, and why running this in that same environment shows
- * exactly what a patient would receive.
+ * composed string, built the way a reply is built: `fallbackReply` fills the
+ * number in per reply, and with no practice given it is the configured one —
+ * the founding practice's, and what a patient whose practice is not known is
+ * given. Another practice's patients are offered their own location's number
+ * instead (see clinicIdentity.js), which this does not check.
  *
  *   node scripts/checkEmergencyContact.js
  *   node scripts/checkEmergencyContact.js --expect +918981540690
@@ -31,7 +32,7 @@
  * not prove it is the right one. A transposed digit boots perfectly.
  */
 import { clinicEmergencyPhone, orCallClinic } from '../src/services/clinicContact.js';
-import { FALLBACK_REPLIES } from '../src/services/ai/prompts.js';
+import { fallbackReply } from '../src/services/ai/prompts.js';
 
 const LANGS = ['en', 'bn', 'hi'];
 
@@ -87,7 +88,7 @@ function main() {
   // patient is least able to wait. They are the highest-stakes strings here.
   console.log('\n  The scripted emergency reply\n');
   for (const lang of LANGS) {
-    const text = FALLBACK_REPLIES.emergency?.[lang];
+    const text = fallbackReply('emergency', lang);
     if (!text) {
       bad(`emergency fallback missing for ${lang}`);
       continue;
@@ -102,7 +103,7 @@ function main() {
 
   console.log('\n  The scripted unavailable reply\n');
   for (const lang of LANGS) {
-    const text = FALLBACK_REPLIES.unavailable?.[lang];
+    const text = fallbackReply('unavailable', lang);
     if (!text?.includes(phone)) {
       bad(`the ${lang} unavailable script does not carry the number`);
       continue;
@@ -114,7 +115,7 @@ function main() {
   // ---- and nothing anywhere still says the old one ----------------------
   const every = [
     ...LANGS.map((l) => orCallClinic(l)),
-    ...LANGS.flatMap((l) => [FALLBACK_REPLIES.emergency?.[l], FALLBACK_REPLIES.unavailable?.[l]]),
+    ...LANGS.flatMap((l) => [fallbackReply('emergency', l), fallbackReply('unavailable', l)]),
   ].join('\n');
 
   const others = [...every.matchAll(/\+?\d[\d\s-]{7,}\d/g)]

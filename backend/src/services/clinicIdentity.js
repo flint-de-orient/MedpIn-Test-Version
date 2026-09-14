@@ -1,8 +1,9 @@
 import { Clinic } from '../models/Clinic.js';
-// Imported for the side effect only: populating `practice` below needs the
-// model registered with mongoose, and nothing else on this path imports it.
-import '../models/Practice.js';
+// Registered for `populate('practice')` below, and read directly for a practice
+// that has no location yet.
+import { Practice } from '../models/Practice.js';
 import { env } from '../config/env.js';
+import { callablePhone, clinicEmergencyPhone } from './clinicContact.js';
 
 /**
  * Who the clinic says it is — one answer, read from the database.
@@ -35,9 +36,14 @@ import { env } from '../config/env.js';
  * which is what makes the backfill safe to run and safe to half-run.
  */
 
-/** Cached briefly: this is read on every prescription and every AI turn. */
-let cache = null;
-let cachedAt = 0;
+/**
+ * Cached briefly: this is read on every prescription and every AI turn.
+ *
+ * Per location and per practice. It was one slot, which made it one answer for
+ * the whole platform — and the answer it held was whichever practice owned the
+ * first clinic.
+ */
+const cache = new Map();
 const TTL_MS = 60_000;
 
 /**
@@ -90,29 +96,78 @@ export function resolveIdentity(doc, fallbacks = {}) {
 }
 
 /**
- * The active clinic's identity, falling back to the environment.
+ * Who a patient's clinic is, and the number they are told to ring.
  *
- * Takes an optional clinic id so a prescription issued at one location prints
- * that location. With none, the primary clinic is used — which is every case
- * until there is a second one.
+ * ---- Whose ----------------------------------------------------------------
+ *
+ * A location by id when the caller has one. Otherwise the practice's own first
+ * active location, or — for a practice that has not added one yet — the
+ * practice itself. With neither, the platform's first active location, which
+ * is every case in a deployment that does not know its practices yet.
+ *
+ * That last fallback used to be the only answer, and every caller took it: the
+ * assistant, the nutrition assistant, the foot and eye readers, lab extraction
+ * and the prescription letterhead all introduced a second practice's patients
+ * to the first practice's doctor. Callers that know the practice now say so.
  */
-export async function clinicIdentity(clinicId = null) {
-  if (!clinicId && cache && Date.now() - cachedAt < TTL_MS) return cache;
+export async function clinicIdentity(clinicId = null, { practiceId = null } = {}) {
+  const key = clinicId ? `clinic:${clinicId}` : practiceId ? `practice:${practiceId}` : 'primary';
+  const hit = cache.get(key);
+  if (hit && Date.now() - hit.at < TTL_MS) return hit.identity;
 
-  const doc = clinicId
-    ? await Clinic.findById(clinicId).populate('practice').lean()
-    : await Clinic.findOne({ isActive: true })
+  let doc;
+  if (clinicId) {
+    doc = await Clinic.findById(clinicId).populate('practice').lean();
+  } else if (practiceId) {
+    doc =
+      (await Clinic.findOne({ practice: practiceId, isActive: true })
         .sort({ sortIndex: 1, createdAt: 1 })
         .populate('practice')
-        .lean();
-
-  const identity = resolveIdentity(doc, env);
-
-  if (!clinicId) {
-    cache = identity;
-    cachedAt = Date.now();
+        .lean()) ?? (await practiceWithoutLocation(practiceId));
+  } else {
+    doc = await Clinic.findOne({ isActive: true })
+      .sort({ sortIndex: 1, createdAt: 1 })
+      .populate('practice')
+      .lean();
   }
+
+  const identity = {
+    ...resolveIdentity(doc, env),
+    emergencyPhone: emergencyPhoneFor(doc, { known: Boolean(clinicId || practiceId) }),
+  };
+
+  cache.set(key, { identity, at: Date.now() });
   return identity;
+}
+
+/** A practice with no location yet still has a name, and it is not somebody else's. */
+async function practiceWithoutLocation(practiceId) {
+  const practice = await Practice.findById(practiceId).lean();
+  return practice ? { practice } : null;
+}
+
+/**
+ * The number this patient is told to ring in an emergency, or null.
+ *
+ * `CLINIC_EMERGENCY_PHONE` is one value for the process, and it is the founding
+ * clinic's. It stays the answer for the founding practice, for a location that
+ * predates practices, and for any caller that did not say whose patient this
+ * is — which is exactly what it answered before.
+ *
+ * Any other practice gets its own location's number if somebody could ring it,
+ * or none. Never the configured one: that is a stranger's switchboard, given to
+ * somebody with chest pain. No number drops the "or call ..." clause, and "go
+ * to the nearest hospital" on its own is still the correct advice.
+ */
+function emergencyPhoneFor(doc, { known }) {
+  if (!known) return clinicEmergencyPhone();
+  const practice =
+    doc?.practice && typeof doc.practice === 'object' && doc.practice.name !== undefined
+      ? doc.practice
+      : null;
+  if (!practice) return clinicEmergencyPhone();
+  if (practice.isFounding) return clinicEmergencyPhone() ?? callablePhone(doc?.phone);
+  return callablePhone(doc?.phone);
 }
 
 /**
@@ -120,8 +175,7 @@ export async function clinicIdentity(clinicId = null) {
  * rather than up to a minute of the previous name.
  */
 export function forgetClinicIdentity() {
-  cache = null;
-  cachedAt = 0;
+  cache.clear();
 }
 
 /**
@@ -133,8 +187,8 @@ export function forgetClinicIdentity() {
  * ever issued — rewriting history from a settings screen. So the identity is
  * copied onto the prescription at issue and read back from there afterwards.
  */
-export async function identitySnapshot(clinicId = null) {
-  const id = await clinicIdentity(clinicId);
+export async function identitySnapshot(clinicId = null, { practiceId = null } = {}) {
+  const id = await clinicIdentity(clinicId, { practiceId });
   return {
     clinicName: id.clinicName,
     tagline: id.tagline,
@@ -145,5 +199,6 @@ export async function identitySnapshot(clinicId = null) {
     city: id.city,
     registrationNo: id.registrationNo,
     logoAssetId: id.logoLightAssetId,
+    emergencyPhone: id.emergencyPhone,
   };
 }
