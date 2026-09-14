@@ -92,9 +92,16 @@ async function vectorSearchInProcess(queryVector, { limit, languages, categories
     .slice(0, limit);
 }
 
-/** Lexical fallback for when embeddings are unavailable entirely. */
-async function textSearch(query, { limit, language }) {
-  const filter = { status: 'approved', $text: { $search: query } };
+/**
+ * Lexical fallback for when embeddings are unavailable entirely.
+ *
+ * Narrowed exactly as the vector searches are. It only runs once embedding has
+ * already failed, which is how it came to be the one path still searching every
+ * practice's passages — and an outage is no reason for a patient to be grounded
+ * on, and shown the titles of, another clinic's private guidance.
+ */
+async function textSearch(query, { limit, language, practice = null, department = null }) {
+  const filter = { status: 'approved', $text: { $search: query }, ...scopeFilter({ practice, department }) };
   if (language) filter.language = language;
   const results = await KnowledgeChunk.find(filter, { score: { $meta: 'textScore' } })
     .sort({ score: { $meta: 'textScore' } })
@@ -161,7 +168,7 @@ export async function retrieve(
   } catch (err) {
     logger.warn({ err: err?.message }, 'vector retrieval failed, falling back to text search');
     // Text scores are on a different scale, so minScore does not apply.
-    return textSearch(query, { limit, language });
+    return textSearch(query, { limit, language, practice, department });
   }
 }
 

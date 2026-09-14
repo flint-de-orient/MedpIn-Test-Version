@@ -1,12 +1,19 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { requireAuth, requireClinician, resolvePatientScope } from '../middleware/auth.js';
+import {
+  requireAuth,
+  requireClinician,
+  requireRole,
+  resolvePatientScope,
+  DIRECT_PATIENT_ACCESS,
+} from '../middleware/auth.js';
 import { validate } from '../middleware/validate.js';
 import { asyncHandler, notFound } from '../middleware/errors.js';
 import { audit } from '../middleware/audit.js';
 import { DirectMessage } from '../models/DirectMessage.js';
 import { User, ROLES } from '../models/User.js';
 import { recordWindow } from '../middleware/authorise.js';
+import { practicePatients } from '../middleware/practiceScope.js';
 
 const router = Router();
 router.use(requireAuth);
@@ -86,9 +93,15 @@ router.get(
 /** Inbox: every patient the clinic has a conversation with, newest first. */
 router.get(
   '/threads',
-  requireClinician,
+  // The roles that may open one of these conversations, and no others: a list
+  // of patients' names, phones and last words is the conversations' contents.
+  requireRole(...DIRECT_PATIENT_ACCESS),
   asyncHandler(async (req, res) => {
     const threads = await DirectMessage.aggregate([
+      // This practice's patients, first. With no `$match` at all this grouped
+      // every direct message on the platform and handed each patient's name,
+      // phone and last message to any clinician who asked.
+      { $match: await practicePatients(req, 'patient') },
       { $sort: { createdAt: -1 } },
       {
         $group: {

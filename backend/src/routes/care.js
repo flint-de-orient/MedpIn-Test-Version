@@ -21,7 +21,9 @@ import { paged, pageParams } from '../utils/pagination.js';
 import { recordWindow } from '../middleware/authorise.js';
 import { requireCapability } from '../middleware/requireCapability.js';
 import { CAPABILITIES } from '../services/capabilities.js';
-import { practiceForPatient } from '../middleware/practiceScope.js';
+import { practiceForPatient, practicesOfPatient, practiceOf } from '../middleware/practiceScope.js';
+import { attachableAssetIds } from '../services/mediaAccess.js';
+import { ROLES } from '../models/User.js';
 
 const router = Router({ mergeParams: true });
 router.use(requireAuth, resolvePatientScope);
@@ -60,6 +62,12 @@ router.post(
   }),
   audit('create', 'FootAssessment'),
   asyncHandler(async (req, res) => {
+    // This patient's photographs, or ones the caller took for them. The model
+    // describes whatever it is shown, and the description is filed here.
+    req.body.images = await attachableAssetIds(req.body.images, {
+      patientId: req.patientId,
+      uploaderIds: [req.user._id],
+    });
     const { site, images, symptoms, assessedAt } = req.body;
 
     // Deterministic rules run first and always.
@@ -224,6 +232,12 @@ router.post(
   }),
   audit('create', 'EyeReport'),
   asyncHandler(async (req, res) => {
+    // This patient's files, or ones the caller uploaded for them. The model
+    // explains whatever it is shown and the explanation is filed here.
+    req.body.files = await attachableAssetIds(req.body.files, {
+      patientId: req.patientId,
+      uploaderIds: [req.user._id],
+    });
     const [aiImages, context] = await Promise.all([
       req.body.files.length ? loadAssetsForAi(req.body.files) : Promise.resolve([]),
       buildPatientContext(req.patientId),
@@ -307,13 +321,28 @@ router.get(
   }),
   asyncHandler(async (req, res) => {
     const language = q(req).language ?? req.user.language ?? 'en';
-    let items = await KnowledgeChunk.find({ status: 'approved', category: 'eye_care', language })
+
+    /*
+     * Shared guidance, and this patient's own practices' — never another's.
+     *
+     * Read with no practice filter, this served every practice's approved
+     * passages, and a practice's passages are its own clinical voice: its
+     * clinic hours, its referral arrangements, its wording. A patient reads the
+     * practices caring for them; staff read their own practice's.
+     */
+    const practices =
+      req.user.role === ROLES.PATIENT
+        ? await practicesOfPatient(req.patientId)
+        : [await practiceOf(req)].filter(Boolean);
+    const scope = { practice: { $in: [null, ...practices] } };
+
+    let items = await KnowledgeChunk.find({ status: 'approved', category: 'eye_care', language, ...scope })
       .select('title section content sourceCitation')
       .limit(20)
       .lean();
 
     if (!items.length && language !== 'en') {
-      items = await KnowledgeChunk.find({ status: 'approved', category: 'eye_care', language: 'en' })
+      items = await KnowledgeChunk.find({ status: 'approved', category: 'eye_care', language: 'en', ...scope })
         .select('title section content sourceCitation')
         .limit(20)
         .lean();
@@ -365,6 +394,12 @@ router.post(
   }),
   audit('create', 'LabReport'),
   asyncHandler(async (req, res) => {
+    // This patient's reports, or ones the caller uploaded for them.
+    req.body.files = await attachableAssetIds(req.body.files, {
+      patientId: req.patientId,
+      uploaderIds: [req.user._id],
+    });
+
     // Flag out-of-range values up front so the UI does not have to.
     const values = req.body.values.map((v) => {
       let flag;

@@ -59,6 +59,8 @@ import { enrollmentGate } from '../middleware/authorise.js';
 import { requireCapability } from '../middleware/requireCapability.js';
 import { CAPABILITIES } from '../services/capabilities.js';
 import { LabReport } from '../models/LabReport.js';
+import { attachableAssetIds } from '../services/mediaAccess.js';
+import { quotableMessageId, quotePreview, QUOTE_FIELDS } from '../services/quotedMessage.js';
 
 const router = Router();
 router.use(requireAuth, requireClinician);
@@ -271,8 +273,11 @@ router.get(
 router.post(
   '/notifications/seen',
   asyncHandler(async (req, res) => {
+    // This practice's patients only. Unscoped, closing one practice's bell
+    // cleared every practice's badge, and stamped their patients' messages as
+    // seen by a clinic that never read them.
     const result = await ChatMessage.updateMany(
-      { role: 'user', seenByClinicAt: null },
+      { role: 'user', seenByClinicAt: null, ...(await practicePatients(req, 'patient')) },
       { $set: { seenByClinicAt: new Date() } },
     );
     res.json({ cleared: result.modifiedCount ?? 0 });
@@ -1704,7 +1709,7 @@ router.get(
       .sort({ seq: 1 })
       .populate('sender', 'name role avatarAssetId')
       .populate('attachments', 'kind mimeType transcript originalName sizeBytes')
-      .populate('replyTo', 'content role')
+      .populate('replyTo', QUOTE_FIELDS)
       .lean();
 
     res.json({
@@ -1748,10 +1753,9 @@ router.get(
           // same way the patient and doctor threads do.
           pinned: Boolean(m.pinnedAt),
           replyToId: m.replyTo ? String(m.replyTo._id ?? m.replyTo) : null,
-          replyPreview:
-            m.replyTo && typeof m.replyTo === 'object' && m.replyTo.content != null
-              ? { content: String(m.replyTo.content).slice(0, 160), role: m.replyTo.role ?? null }
-              : null,
+          // None for a quote from another conversation or one taken back. See
+          // quotePreview.
+          replyPreview: quotePreview(m),
           urgency: m.triage?.urgency ?? 'routine',
           matchedRules: m.triage?.matchedRules ?? [],
           ruleDriven: m.triage?.ruleDriven ?? false,
@@ -1846,14 +1850,23 @@ router.post(
   audit('create', 'ChatMessage'),
   asyncHandler(async (req, res) => {
     const session = await ChatSession.findById(req.params.sessionId);
-    if (!session || session.isArchived) throw notFound('Conversation not found');
+    if (!session || session.isArchived || !session.patient) throw notFound('Conversation not found');
 
     // Writing into a conversation is the sharpest of these: the message is
     // attributed to this doctor and the patient sees it as clinical advice.
-    if (session.patient) {
-      await assertSamePractice(req, session.patient);
-      await enrollmentGate(req, session.patient);
-    }
+    await assertSamePractice(req, session.patient);
+    await enrollmentGate(req, session.patient);
+
+    // The patient's files or the doctor's own, and a quote from this same
+    // conversation. See services/mediaAccess.js and services/quotedMessage.js.
+    req.body.attachments = await attachableAssetIds(req.body.attachments, {
+      patientId: session.patient,
+      uploaderIds: [req.user._id],
+    });
+    req.body.replyTo = await quotableMessageId(req.body.replyTo, {
+      patientId: session.patient,
+      kind: session.kind === 'nutrition' ? 'nutrition' : 'care',
+    });
 
     const last = await ChatMessage.findOne({ session: session._id }).sort({ seq: -1 }).select('seq').lean();
     const message = await ChatMessage.create({

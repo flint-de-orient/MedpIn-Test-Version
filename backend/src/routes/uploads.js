@@ -13,7 +13,14 @@ import { requireAuth } from '../middleware/auth.js';
 import { validate } from '../middleware/validate.js';
 import { asyncHandler, badRequest, notFound, forbidden } from '../middleware/errors.js';
 import { audit } from '../middleware/audit.js';
-import { practicePatients, practiceOfPatient } from '../middleware/practiceScope.js';
+import {
+  practicePatients,
+  practicePatientIds,
+  practiceOfPatient,
+  practiceOf,
+  memberIdsOf,
+} from '../middleware/practiceScope.js';
+import { Practice } from '../models/Practice.js';
 import { MediaAsset } from '../models/MediaAsset.js';
 import { ChatMessage } from '../models/ChatMessage.js';
 import { User, ROLES } from '../models/User.js';
@@ -319,9 +326,32 @@ router.get(
     const asset = await MediaAsset.findById(req.params.id);
     if (!asset || asset.deletedAt) throw notFound('File not found');
 
-    const isOwner = asset.owner.toString() === req.user._id.toString();
-    const isClinician = req.user.role !== ROLES.PATIENT;
-    let allowed = isOwner || isClinician;
+    let allowed = asset.owner.toString() === req.user._id.toString();
+
+    /*
+     * Staff read their own practice's files, not every practice's.
+     *
+     * This was `owner || role !== PATIENT`: any account that was not a patient
+     * could download any patient's lab report, prescription or photograph, at
+     * any practice on the platform, by an id that is in every URL the app
+     * renders.
+     *
+     * A file is this practice's in two ways. It belongs to one of the
+     * practice's patients, or somebody at the practice put it there — a
+     * colleague's voice note in a patient's thread is owned by the colleague,
+     * not by the patient. `practicePatientIds` is null only where the enrolment
+     * backfill has not run, so a single-clinic deployment reads what it read.
+     */
+    if (!allowed && req.user.role !== ROLES.PATIENT) {
+      const patients = await practicePatientIds(req);
+      allowed = !patients || patients.some((id) => String(id) === String(asset.owner));
+      if (!allowed) {
+        const colleagues = (await memberIdsOf(await practiceOf(req))) ?? [];
+        allowed = colleagues.some(
+          (id) => String(id) === String(asset.owner) || String(id) === String(asset.uploadedBy),
+        );
+      }
+    }
 
     // A patient can also view a file that appears in their OWN chat thread — a
     // photo or voice note the clinic sent them. This covers files still owned by
@@ -364,7 +394,18 @@ router.get(
       });
     }
 
-    if (!allowed) throw forbidden('You do not have access to this file');
+    // And the practice's own, which is the letterhead a patient's app draws
+    // above everything else. Only a location's logo was published, so a
+    // practice's came back refused and the masthead fell back to initials.
+    if (!allowed) {
+      allowed = await Practice.exists({
+        $or: [{ logoLightAssetId: asset._id }, { logoDarkAssetId: asset._id }],
+      });
+    }
+
+    // Not found, not forbidden: a refusal that differs from a missing file
+    // confirms the id is somebody's.
+    if (!allowed) throw notFound('File not found');
 
     req.patientId = asset.owner;
 

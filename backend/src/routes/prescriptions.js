@@ -25,6 +25,7 @@ import { requirePermission, recordWindow } from '../middleware/authorise.js';
 import { requireCapability } from '../middleware/requireCapability.js';
 import { CAPABILITIES } from '../services/capabilities.js';
 import { practiceOfPatient } from '../middleware/practiceScope.js';
+import { attachableAssetIds } from '../services/mediaAccess.js';
 
 const router = Router({ mergeParams: true });
 router.use(requireAuth, resolvePatientScope);
@@ -305,7 +306,13 @@ router.post(
   validate({ body: z.object({ assetId: z.string() }) }),
   audit('read', 'MediaAsset'),
   asyncHandler(async (req, res) => {
-    const images = await loadAssetsForAi([req.body.assetId], { max: 1 });
+    // This patient's file, or one the caller uploaded. The reader hands back the
+    // medicines, diagnosis and printed name of whatever it is pointed at.
+    const [assetId] = await attachableAssetIds([req.body.assetId], {
+      patientId: req.patientId,
+      uploaderIds: [req.user._id],
+    });
+    const images = await loadAssetsForAi([assetId], { max: 1 });
     if (!images.length) {
       throw badRequest('That file is not an image this can read.');
     }
@@ -422,8 +429,12 @@ router.post(
   }),
   audit('create', 'Prescription'),
   asyncHandler(async (req, res) => {
+    const [assetId] = await attachableAssetIds([req.body.assetId], {
+      patientId: req.patientId,
+      uploaderIds: [req.user._id],
+    });
     const asset = await MediaAsset.findOne({
-      _id: req.body.assetId,
+      _id: assetId,
       deletedAt: null,
     });
     if (!asset) throw notFound('That file was not found');

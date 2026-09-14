@@ -16,6 +16,7 @@ import { generateSlots } from '../services/scheduling.js';
 import { forgetClinicIdentity } from '../services/clinicIdentity.js';
 import { dayjs, DATE_RE, TIME_RE } from '../utils/clinicTime.js';
 import { resolveDoctor } from '../services/doctorContext.js';
+import { assertLogoAssets } from '../services/mediaAccess.js';
 
 const router = Router();
 router.use(requireAuth);
@@ -200,6 +201,10 @@ router.post(
       }
     }
 
+    // A logo is published to every patient once a location carries it, so it
+    // has to be this practice's own artwork. See services/mediaAccess.js.
+    await assertLogoAssets(req, req.body, practiceId);
+
     const clinic = await Clinic.create({
       ...req.body,
       doctor: doctor?._id,
@@ -239,6 +244,7 @@ router.patch(
     // `$and`, so the scope can never stand in for the id asked for.
     const clinic = await Clinic.findOne({ $and: [{ _id: req.params.id }, await practiceClinics(req)] });
     if (!clinic) throw notFound('Clinic not found');
+    await assertLogoAssets(req, req.body, clinic.practice);
     Object.assign(clinic, req.body);
     await clinic.save();
     // The identity resolver caches for a minute. Without this the person who

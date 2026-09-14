@@ -13,6 +13,7 @@ import { GlucoseReading } from '../models/GlucoseReading.js';
 import { recomputePatientRisk } from '../services/analytics.js';
 import { reportedNames, isReported } from '../utils/testNames.js';
 import { recordWindow } from '../middleware/authorise.js';
+import { attachableAssetId } from '../services/mediaAccess.js';
 
 /**
  * The patient's lab tests: the tests the doctor advised (pulled from active
@@ -122,11 +123,18 @@ router.post(
   }),
   audit('create', 'LabResult'),
   asyncHandler(async (req, res) => {
+    // The patient's own report. The reader transcribes it into this patient's
+    // HbA1c and glucose history, so somebody else's file here would move this
+    // patient's numbers.
+    const photo = await attachableAssetId(req.body.photo || undefined, {
+      patientId: req.patientId,
+      uploaderIds: [req.user._id],
+    });
     const entry = await LabResult.create({
       patient: req.patientId,
       testName: req.body.testName,
       note: req.body.note,
-      photo: req.body.photo || undefined,
+      photo: photo || undefined,
     });
     // Populated before serialising so the row the client renders right after
     // upload knows whether it is a picture or a PDF, exactly as a reloaded one

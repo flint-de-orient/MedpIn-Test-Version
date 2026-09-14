@@ -169,13 +169,13 @@ describe('the clinic logo is readable by the people it is for', () => {
   const route = readFileSync(new URL('../src/routes/uploads.js', import.meta.url), 'utf8');
 
   test('a patient may fetch it', () => {
-    // Asset reads are owner-or-clinician. A clinic logo is owned by the doctor
+    // Asset reads are the owner's and their practice's. A clinic logo is owned by the doctor
     // who uploaded it, is in nobody's chat thread and is not an avatar, so
     // every one of those doors is shut to a patient — and the patient's app is
     // the one that most needs to say whose clinic this is.
     const guard = route.slice(
       route.indexOf("'/:id/raw'"),
-      route.indexOf('You do not have access to this file'),
+      route.indexOf('router.delete('),
     );
     assert.ok(guard.length > 0, 'could not find the raw-read guard');
     assert.match(guard, /Clinic\.exists/);
@@ -188,7 +188,7 @@ describe('the clinic logo is readable by the people it is for', () => {
     const code = route
       .slice(
         route.indexOf("'/:id/raw'"),
-        route.indexOf('You do not have access to this file'),
+        route.indexOf('router.delete('),
       )
       .split(/\r?\n/)
       // The comment above the guard discusses the rejected approach by name,

@@ -24,6 +24,8 @@ import { FoodLog } from '../models/FoodLog.js';
 import { MediaAsset } from '../models/MediaAsset.js';
 import { paged, pageParams } from '../utils/pagination.js';
 import { threadsFor } from '../services/threads.js';
+import { attachableAssetIds } from '../services/mediaAccess.js';
+import { quotableMessageId, quotePreview, QUOTE_FIELDS } from '../services/quotedMessage.js';
 
 // The dietician assistant's one canned line — asked when a food PHOTO arrives
 // with no meal named — in the patient's language, so it is not the single
@@ -119,8 +121,15 @@ router.post(
   }),
   audit('create', 'ChatMessage'),
   asyncHandler(async (req, res) => {
+    // This patient's own files, and a quote from their own conversation, before
+    // anything is saved or shown to the model. See services/mediaAccess.js and
+    // services/quotedMessage.js.
+    const patientId = req.user._id;
+    req.body.attachments = await attachableAssetIds(req.body.attachments, { patientId, uploaderIds: [patientId] });
+    req.body.replyTo = await quotableMessageId(req.body.replyTo, { patientId });
+
     const result = await handlePatientMessage({
-      patientId: req.user._id,
+      patientId,
       sessionId: req.body.sessionId,
       text: req.body.text,
       language: req.body.language ?? req.user.language ?? 'en',
@@ -160,6 +169,13 @@ router.post(
   }),
   audit('create', 'ChatMessage'),
   asyncHandler(async (req, res) => {
+    // Checked before the stream opens. Once the headers are sent a refusal can
+    // only arrive as an event, and a file or a quote that is not this
+    // patient's has to be refused as plainly here as on the plain send.
+    const patientId = req.user._id;
+    req.body.attachments = await attachableAssetIds(req.body.attachments, { patientId, uploaderIds: [patientId] });
+    req.body.replyTo = await quotableMessageId(req.body.replyTo, { patientId });
+
     res.set({
       'Content-Type': 'text/event-stream',
       'Cache-Control': 'no-cache, no-transform',
@@ -270,7 +286,7 @@ router.get(
         .skip(skip)
         .limit(limit)
         .populate('sender', 'name avatarAssetId role')
-        .populate('replyTo', 'content role')
+        .populate('replyTo', QUOTE_FIELDS)
         .populate('attachments', 'kind mimeType transcript originalName sizeBytes')
         .lean(),
       ChatMessage.countDocuments(filter),
@@ -302,7 +318,7 @@ router.get(
         .skip(skip)
         .limit(limit)
         .populate('sender', 'name avatarAssetId role')
-        .populate('replyTo', 'content role')
+        .populate('replyTo', QUOTE_FIELDS)
         .populate('attachments', 'kind mimeType transcript originalName sizeBytes')
         .lean(),
       ChatMessage.countDocuments(filter),
@@ -431,7 +447,7 @@ router.get(
       .skip(skip)
       .limit(limit)
       .populate('sender', 'name avatarAssetId role')
-      .populate('replyTo', 'content role')
+      .populate('replyTo', QUOTE_FIELDS)
         .populate('attachments', 'kind mimeType transcript originalName sizeBytes')
       .lean();
 
@@ -504,6 +520,15 @@ router.post(
   }),
   audit('create', 'ChatMessage'),
   asyncHandler(async (req, res) => {
+    // The patient's files or the clinician's own, and a quote from this
+    // patient's care thread. See services/mediaAccess.js and
+    // services/quotedMessage.js.
+    req.body.attachments = await attachableAssetIds(req.body.attachments, {
+      patientId: req.patientId,
+      uploaderIds: [req.user._id],
+    });
+    req.body.replyTo = await quotableMessageId(req.body.replyTo, { patientId: req.patientId });
+
     let session = await ChatSession.findOne({ patient: req.patientId, kind: { $ne: 'nutrition' }, isArchived: false }).sort({
       lastMessageAt: -1,
     });
@@ -549,7 +574,7 @@ router.post(
     }
     // Populate the quoted turn so the reply comes back with its preview.
     if (message.replyTo) {
-      await message.populate('replyTo', 'content role');
+      await message.populate('replyTo', QUOTE_FIELDS);
     }
 
     res.status(201).json({
@@ -646,6 +671,13 @@ router.post(
   audit('create', 'ChatMessage'),
   asyncHandler(async (req, res) => {
     const patientId = req.user._id;
+    // This patient's own files, and a quote from this nutrition thread. A photo
+    // here becomes a food-log entry and a voice note becomes the message's
+    // words, so a file that is not theirs would do both. See
+    // services/mediaAccess.js and services/quotedMessage.js.
+    req.body.attachments = await attachableAssetIds(req.body.attachments, { patientId, uploaderIds: [patientId] });
+    req.body.replyTo = await quotableMessageId(req.body.replyTo, { patientId, kind: 'nutrition' });
+
     // Voice-only message → use the transcript as the text, so the nutrition
     // assistant answers what was said instead of an empty prompt.
     const text = await resolveVoiceText(req.body.content, req.body.attachments);
@@ -1284,11 +1316,9 @@ function serialiseMessage(m) {
       ? (m.replyTo._id ? String(m.replyTo._id) : (m.replyTo.toString?.() ?? String(m.replyTo)))
       : null,
     // Text of the quoted turn, so the reply renders its quote on every device
-    // without needing the original message loaded on that side.
-    replyPreview:
-      m.replyTo && typeof m.replyTo === 'object' && m.replyTo.content != null
-        ? { content: String(m.replyTo.content).slice(0, 160), role: m.replyTo.role ?? null }
-        : null,
+    // without needing the original message loaded on that side — when it may
+    // be shown at all. See quotePreview.
+    replyPreview: quotePreview(m),
     seenByClinicAt: m.seenByClinicAt ?? null,
     content: m.content,
     language: m.language,

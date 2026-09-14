@@ -139,14 +139,18 @@ describe('knowledge is filtered before ranking', () => {
     assert.match(rag, /status: 'approved', \.\.\.scopeFilter\(\{ practice, department \}\)/);
   });
 
-  test('both retrieval backends are scoped, not just one', () => {
-    // Atlas vector search and the in-process cosine fallback. Scoping one would
-    // leak on whichever deployment used the other.
+  test('every retrieval path is scoped, not just the ones that usually run', () => {
+    // Atlas vector search, the in-process cosine fallback, and the text search
+    // both fall back to when embedding fails. Scoping one would leak on
+    // whichever deployment used another — and this counted two while the text
+    // search, which only runs during an outage, searched every practice's
+    // passages. ragFallbackScope.test.js runs that path for real.
     assert.equal(
       (rag.match(/scopeFilter\(\{ practice, department \}\)/g) ?? []).length,
-      2,
-      'a retrieval backend is unscoped',
+      3,
+      'a retrieval path is unscoped',
     );
+    assert.match(rag, /return textSearch\(query, \{ limit, language, practice, department \}\)/);
   });
 
   test('null practice means shared, null department means all', () => {

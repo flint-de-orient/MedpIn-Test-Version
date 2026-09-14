@@ -6,6 +6,7 @@ import { asyncHandler, notFound } from '../middleware/errors.js';
 import { audit } from '../middleware/audit.js';
 import { FoodLog, MEAL_TYPES } from '../models/FoodLog.js';
 import { recordWindow } from '../middleware/authorise.js';
+import { attachableAssetId } from '../services/mediaAccess.js';
 
 /**
  * The patient's food log — meals they record (a photo and/or a note) for their
@@ -60,11 +61,16 @@ router.post(
   }),
   audit('create', 'FoodLog'),
   asyncHandler(async (req, res) => {
+    // The patient's own photograph. The dietician opens whatever is filed here.
+    const photo = await attachableAssetId(req.body.photo || undefined, {
+      patientId: req.patientId,
+      uploaderIds: [req.user._id],
+    });
     const entry = await FoodLog.create({
       patient: req.patientId,
       mealType: req.body.mealType,
       note: req.body.note,
-      photo: req.body.photo || undefined,
+      photo: photo || undefined,
     });
     res.status(201).json({ entry: serialiseFoodLog(entry) });
   }),

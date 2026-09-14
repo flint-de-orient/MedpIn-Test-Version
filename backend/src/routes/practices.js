@@ -21,6 +21,7 @@ import {
 import { phoneFromToken } from '../services/otp.js';
 import { toE164 } from '../utils/phone.js';
 import { callablePhone } from '../services/clinicContact.js';
+import { assertLogoAssets } from '../services/mediaAccess.js';
 import { badRequest, forbidden } from '../middleware/errors.js';
 
 /**
@@ -475,6 +476,10 @@ router.patch(
 
     const practice = await Practice.findById(req.params.id);
     if (!practice) throw notFound('Practice not found');
+
+    // The letterhead's artwork has to be this practice's own: once set, it is
+    // readable by everyone signed in. See services/mediaAccess.js.
+    await assertLogoAssets(req, req.body, practice._id);
 
     /*
      * A number somebody can actually ring, or nothing.

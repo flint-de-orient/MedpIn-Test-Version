@@ -16,6 +16,7 @@ import { glucoseTrends, recomputePatientRisk } from '../services/analytics.js';
 import { paged, pageParams, dateRange } from '../utils/pagination.js';
 import { logger } from '../config/logger.js';
 import { recordWindow } from '../middleware/authorise.js';
+import { attachableAssetId } from '../services/mediaAccess.js';
 
 // mergeParams so :patientId from the parent mount is visible here.
 const router = Router({ mergeParams: true });
@@ -139,6 +140,11 @@ router.post(
   }),
   audit('create', 'Hba1cRecord'),
   asyncHandler(async (req, res) => {
+    // The report behind the number has to be this patient's.
+    req.body.reportFile = await attachableAssetId(req.body.reportFile, {
+      patientId: req.patientId,
+      uploaderIds: [req.user._id],
+    });
     const record = await Hba1cRecord.create({ ...req.body, patient: req.patientId });
     recomputePatientRisk(req.patientId).catch(() => {});
     res.status(201).json({ record: serialiseHba1c(record) });

@@ -24,6 +24,8 @@ import { getClinicSettings } from '../models/ClinicSettings.js';
 import { buildAttention } from '../services/nutritionAttention.js';
 import { normaliseTestName } from '../utils/testNames.js';
 import { practicePatients } from '../middleware/practiceScope.js';
+import { attachableAssetIds } from '../services/mediaAccess.js';
+import { quotableMessageId, quotePreview, QUOTE_FIELDS } from '../services/quotedMessage.js';
 
 /**
  * The dietician panel API. A dietician only ever sees the patients a doctor has
@@ -1086,7 +1088,7 @@ router.get(
       .limit(300)
       .populate('sender', 'name avatarAssetId')
       .populate('attachments', 'kind mimeType transcript originalName sizeBytes')
-      .populate('replyTo', 'content role')
+      .populate('replyTo', QUOTE_FIELDS)
       .lean();
 
     res.json({
@@ -1116,10 +1118,9 @@ router.get(
           // them the same way the patient and doctor threads do.
           pinned: Boolean(m.pinnedAt),
           replyToId: m.replyTo ? String(m.replyTo._id ?? m.replyTo) : null,
-          replyPreview:
-            m.replyTo && typeof m.replyTo === 'object' && m.replyTo.content != null
-              ? { content: String(m.replyTo.content).slice(0, 160), role: m.replyTo.role ?? null }
-              : null,
+          // None for a quote from another conversation or one taken back. See
+          // quotePreview.
+          replyPreview: quotePreview(m),
           // The same shape the patient's own thread sends. Bare ids left the
           // dietician's screen unable to tell a food photo from a voice note
           // from a PDF, so it rendered all three as the words "1 attachment" —
@@ -1263,6 +1264,15 @@ router.post(
   audit('create', 'ChatMessage'),
   asyncHandler(async (req, res) => {
     await requireAssigned(req);
+
+    // The patient's files or the dietician's own, and a quote from the
+    // nutrition thread this lands in. See services/mediaAccess.js and
+    // services/quotedMessage.js.
+    req.body.attachments = await attachableAssetIds(req.body.attachments, {
+      patientId: req.params.id,
+      uploaderIds: [req.user._id],
+    });
+    req.body.replyTo = await quotableMessageId(req.body.replyTo, { patientId: req.params.id, kind: 'nutrition' });
 
     const message = await postToCareThread(
       req.params.id,

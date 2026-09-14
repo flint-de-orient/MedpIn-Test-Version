@@ -18,6 +18,7 @@ import { detectAppointmentIntent } from '../triage/appointmentIntent.js';
 import { notifyClinicOfPatientMessage } from '../notifications.js';
 import { loadAssetsForAi } from '../../routes/uploads.js';
 import { resolveVoiceText } from '../voiceText.js';
+import { quotePreview, QUOTE_FIELDS } from '../quotedMessage.js';
 import { logger } from '../../config/logger.js';
 import { maxUrgency } from '../triage/thresholds.js';
 import { env } from '../../config/env.js';
@@ -187,7 +188,7 @@ export async function handlePatientMessage({ patientId, sessionId, text, languag
   });
 
   // Populate the quoted turn so the send response carries its text preview.
-  if (replyTo) await userMessage.populate('replyTo', 'content role');
+  if (replyTo) await userMessage.populate('replyTo', QUOTE_FIELDS);
   // Populate so serialiseMessage can tell a voice note from a photo — otherwise
   // the just-sent recording renders as a broken image thumbnail.
   if (attachments.length) await userMessage.populate('attachments', 'kind mimeType transcript originalName sizeBytes');
@@ -500,7 +501,7 @@ export async function* streamPatientMessage({ patientId, sessionId, text, langua
   });
 
   // Populate the quoted turn so the send response carries its text preview.
-  if (replyTo) await userMessage.populate('replyTo', 'content role');
+  if (replyTo) await userMessage.populate('replyTo', QUOTE_FIELDS);
   // Populate so serialiseMessage can tell a voice note from a photo — otherwise
   // the just-sent recording renders as a broken image thumbnail.
   if (attachments.length) await userMessage.populate('attachments', 'kind mimeType transcript originalName sizeBytes');
@@ -768,7 +769,8 @@ function serialiseMessage(m) {
     // The quoted turn: its id (so the app can scroll to it) and a text preview
     // (so the quote renders even when the original is not loaded on this side).
     replyToId: rt ? (rtDoc ? String(rtDoc._id) : (rt.toString?.() ?? String(rt))) : null,
-    replyPreview: rtDoc ? { content: String(rtDoc.content).slice(0, 160), role: rtDoc.role ?? null } : null,
+    // None for a quote from another conversation or one taken back.
+    replyPreview: quotePreview(m),
     createdAt: m.createdAt,
     // Attachments carry kind/mimeType/transcript so the app can tell a voice
     // note from a photo — without them a recording is drawn as a (broken) image

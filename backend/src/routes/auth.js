@@ -27,6 +27,7 @@ import { resolveUi } from '../services/uiConfig.js';
 import { Practice } from '../models/Practice.js';
 import { clinicIdentity } from '../services/clinicIdentity.js';
 import { practiceOf, practiceForPatient } from '../middleware/practiceScope.js';
+import { attachableAssetId } from '../services/mediaAccess.js';
 
 const router = Router();
 
@@ -661,6 +662,12 @@ router.patch(
     }),
   }),
   asyncHandler(async (req, res) => {
+    // A picture or a signature is published the moment it is set — an avatar to
+    // every patient this person writes to, a signature onto every prescription.
+    // So it has to be this account's own file.
+    for (const field of ['avatarAssetId', 'signatureAssetId']) {
+      if (req.body[field]) req.body[field] = await attachableAssetId(req.body[field], { ownerId: req.user._id });
+    }
     Object.assign(req.user, req.body);
     await req.user.save();
     res.json({ user: req.user.toPublic() });

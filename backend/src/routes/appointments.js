@@ -33,6 +33,7 @@ import {
   patientClinics,
   patientPracticeIds,
   memberIdsOf,
+  practiceOfMember,
 } from '../middleware/practiceScope.js';
 
 const router = Router();
@@ -67,6 +68,29 @@ const isPatient = (req) => req.user.role === ROLES.PATIENT;
 async function scopeFilter(req) {
   if (isPatient(req)) return { patient: req.user._id };
   return practiceMembers(req, ROLES.DOCTOR, 'doctor');
+}
+
+/**
+ * The queue a patient is standing in today, as a filter — or null when they are
+ * not in one.
+ *
+ * The same queue their number was drawn from at check-in: the location's, or
+ * for a teleconsult, which has no location, the doctors of the practice it is
+ * with. Anything wider shows them other practices' waiting rooms.
+ */
+async function queueOfPatient(patientId, today) {
+  const mine = await Appointment.findOne({
+    patient: patientId,
+    queueDate: today,
+    status: { $in: ['checked_in', 'in_consultation'] },
+  })
+    .select('clinic doctor')
+    .lean();
+  if (!mine) return null;
+  if (mine.clinic) return { clinic: mine.clinic };
+
+  const doctors = await memberIdsOf(await practiceOfMember(mine.doctor), ROLES.DOCTOR);
+  return { doctor: { $in: doctors ?? [mine.doctor] } };
 }
 
 /**
@@ -860,13 +884,27 @@ router.get(
     // them, so a screen in Behala showing Salt Lake's queue is not a leak but
     // is certainly wrong — the person watching it is looking for who to call
     // next through the door in front of them.
-    const here = await memberLocation(req);
+    //
+    // A patient has no membership, so the practice scope below was `{}` for
+    // every one of them and their "queue" was every practice's. A patient
+    // stands in the queue their own number was drawn from, and in none before
+    // they have checked in.
+    let queue;
+    if (isPatient(req)) {
+      queue = await queueOfPatient(req.user._id, today);
+      if (!queue) return res.json({ date: today, nowServing: null, entries: [] });
+    } else {
+      const here = await memberLocation(req);
+      queue = {
+        ...(await practiceMembers(req, ROLES.DOCTOR, 'doctor')),
+        ...(here ? { clinic: here } : {}),
+      };
+    }
 
     const entries = await Appointment.find({
       queueDate: today,
       status: { $in: ['checked_in', 'in_consultation'] },
-      ...(await practiceMembers(req, ROLES.DOCTOR, 'doctor')),
-      ...(here ? { clinic: here } : {}),
+      ...queue,
     })
       .sort({ isPriority: -1, queueNumber: 1 })
       .populate('patient', 'name')
