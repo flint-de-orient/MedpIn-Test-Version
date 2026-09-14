@@ -221,6 +221,8 @@ class _ChunkRow extends StatelessWidget {
                 // clinical note reads as a greeting before it reads as Hindi.
                 _tag(_languageName(c.language), scheme),
                 _tag('Version ${c.version}', scheme),
+                // Why tapping it opens something that cannot be edited.
+                if (c.isShared) _tag('shared, read-only', scheme),
                 // States the consequence rather than the mechanism: an entry
                 // with no embedding is one the assistant cannot find, which is
                 // the only part of it the doctor can act on.

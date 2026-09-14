@@ -6,7 +6,7 @@ import { requirePermission } from '../middleware/authorise.js';
 import { validate } from '../middleware/validate.js';
 import { asyncHandler, badRequest, notFound, forbidden } from '../middleware/errors.js';
 import { audit } from '../middleware/audit.js';
-import { practicePatients } from '../middleware/practiceScope.js';
+import { practiceOf, practicePatients } from '../middleware/practiceScope.js';
 import { PERMISSIONS } from '../models/Membership.js';
 import { Prescription } from '../models/Prescription.js';
 import { RECORD_STATE } from '../models/plugins/clinicalRecord.js';
@@ -57,7 +57,15 @@ router.post(
   }),
   audit('update', 'Prescription'),
   asyncHandler(async (req, res) => {
-    const prescription = await Prescription.findById(req.params.id);
+    /*
+     * This practice's patients' prescriptions only. `findById` let a doctor at
+     * any practice void another practice's — which tells that patient's app,
+     * and anybody dispensing against it, that it no longer stands. `$and` for
+     * the reason given at the detach route below.
+     */
+    const prescription = await Prescription.findOne({
+      $and: [{ _id: req.params.id }, await practicePatients(req, 'patient')],
+    });
     if (!prescription) throw notFound('Prescription not found');
 
     if (!prescription.isCurrent()) {
@@ -68,6 +76,25 @@ router.post(
     // not, because nothing replaced it — it should not have existed.
     if (req.body.state !== RECORD_STATE.VOIDED && !req.body.replacedBy) {
       throw badRequest('A correction or supersession must name the prescription replacing it.');
+    }
+
+    if (req.body.replacedBy) {
+      /*
+       * The replacement has to be this patient's. It was stored unchecked, so a
+       * correction could point at somebody else's prescription — a
+       * wrong-patient link in a clinical record, and across practices a link
+       * into another practice's.
+       */
+      if (String(req.body.replacedBy) === String(prescription._id)) {
+        throw badRequest('A prescription cannot replace itself.');
+      }
+      const replacement = await Prescription.exists({
+        _id: req.body.replacedBy,
+        patient: prescription.patient,
+      });
+      if (!replacement) {
+        throw badRequest('The replacement must be a prescription for the same patient.');
+      }
     }
 
     prescription.endAs(req.body.state, {
@@ -193,7 +220,16 @@ router.get(
   requireClinician,
   audit('read', 'Enrollment'),
   asyncHandler(async (req, res) => {
-    const enrollment = await Enrollment.findById(req.params.id).lean();
+    /*
+     * This practice's enrolments only. A consent history is one practice's
+     * relationship with a patient, and `findById` read any practice's.
+     * Permissive where the caller has no practice, like every scope — see
+     * middleware/practiceScope.js.
+     */
+    const mine = await practiceOf(req);
+    const enrollment = await Enrollment.findOne({
+      $and: [{ _id: req.params.id }, mine ? { practice: mine } : {}],
+    }).lean();
     if (!enrollment) throw notFound('That enrolment was not found');
 
     const latest = await ConsentEvent.latestFor(enrollment._id);

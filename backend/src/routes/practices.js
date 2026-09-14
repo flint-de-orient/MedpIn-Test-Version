@@ -467,6 +467,15 @@ router.patch(
   }),
   audit('update', 'Practice'),
   asyncHandler(async (req, res) => {
+    /*
+     * Theirs, first. `requirePermission(MANAGE_STAFF)` answers whether the
+     * caller may edit a letterhead at their own practice; it cannot answer
+     * whether `:id` is that practice, and these fields print on the
+     * prescriptions of whichever practice it is. Refused the same way for a
+     * practice that does not exist, so the refusal confirms nothing.
+     */
+    await assertOwner(req, req.params.id);
+
     const practice = await Practice.findById(req.params.id);
     if (!practice) throw notFound('Practice not found');
 

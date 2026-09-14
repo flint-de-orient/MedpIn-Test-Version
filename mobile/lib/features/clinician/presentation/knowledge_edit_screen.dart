@@ -38,6 +38,11 @@ class _KnowledgeEditScreenState extends ConsumerState<KnowledgeEditScreen> {
 
   bool get _editing => widget.chunk != null;
 
+  /// The platform's own passage, which every practice's assistant cites. It
+  /// opens so the doctor can read what patients are being told, and offers
+  /// nothing the server would refuse — see [KnowledgeChunk.isShared].
+  bool get _readOnly => widget.chunk?.isShared ?? false;
+
   @override
   void initState() {
     super.initState();
@@ -180,9 +185,15 @@ class _KnowledgeEditScreenState extends ConsumerState<KnowledgeEditScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(_editing ? 'Edit entry' : 'New entry'),
+        title: Text(
+          _readOnly
+              ? 'Shared entry'
+              : _editing
+              ? 'Edit entry'
+              : 'New entry',
+        ),
         actions: [
-          if (_editing && _status != 'retired')
+          if (_editing && !_readOnly && _status != 'retired')
             PopupMenuButton<String>(
               onSelected: (v) => v == 'retire' ? _retire() : null,
               itemBuilder:
@@ -195,13 +206,19 @@ class _KnowledgeEditScreenState extends ConsumerState<KnowledgeEditScreen> {
       body: Form(
         key: _formKey,
         child: ListView(
-          padding: const EdgeInsets.fromLTRB(
+          padding: EdgeInsets.fromLTRB(
             AppSpacing.md,
             AppSpacing.md,
             AppSpacing.md,
-            120,
+            // Clears the action bar, and a shared entry has none.
+            _readOnly ? AppSpacing.md : 120,
           ),
           children: [
+            if (_readOnly)
+              const Padding(
+                padding: EdgeInsets.only(bottom: AppSpacing.md),
+                child: _SharedNotice(),
+              ),
             if (_editing)
               Padding(
                 padding: const EdgeInsets.only(bottom: AppSpacing.md),
@@ -232,6 +249,7 @@ class _KnowledgeEditScreenState extends ConsumerState<KnowledgeEditScreen> {
               ),
             TextFormField(
               controller: _title,
+              readOnly: _readOnly,
               decoration: const InputDecoration(labelText: 'Title'),
               validator:
                   (v) => (v == null || v.trim().isEmpty) ? 'Required' : null,
@@ -243,6 +261,7 @@ class _KnowledgeEditScreenState extends ConsumerState<KnowledgeEditScreen> {
             // the one showing "e.g. diet-basi…".
             TextFormField(
               controller: _docId,
+              readOnly: _readOnly,
               decoration: const InputDecoration(
                 labelText: 'Document ID',
                 hintText: 'e.g. diet-basics-01',
@@ -255,6 +274,7 @@ class _KnowledgeEditScreenState extends ConsumerState<KnowledgeEditScreen> {
             const SizedBox(height: AppSpacing.md),
             TextFormField(
               controller: _section,
+              readOnly: _readOnly,
               decoration: const InputDecoration(
                 labelText: 'Section',
                 hintText: 'Optional — e.g. Breakfast',
@@ -263,6 +283,7 @@ class _KnowledgeEditScreenState extends ConsumerState<KnowledgeEditScreen> {
             const SizedBox(height: AppSpacing.md),
             TextFormField(
               controller: _content,
+              readOnly: _readOnly,
               minLines: 5,
               maxLines: 14,
               maxLength: 8000,
@@ -298,7 +319,10 @@ class _KnowledgeEditScreenState extends ConsumerState<KnowledgeEditScreen> {
                   ChoiceChip(
                     label: Text(l.$2),
                     selected: _language == l.$1,
-                    onSelected: (_) => setState(() => _language = l.$1),
+                    onSelected:
+                        _readOnly
+                            ? null
+                            : (_) => setState(() => _language = l.$1),
                   ),
               ],
             ),
@@ -313,11 +337,15 @@ class _KnowledgeEditScreenState extends ConsumerState<KnowledgeEditScreen> {
                     child: Text(c.replaceAll('_', ' ')),
                   ),
               ],
-              onChanged: (v) => setState(() => _category = v ?? 'general'),
+              onChanged:
+                  _readOnly
+                      ? null
+                      : (v) => setState(() => _category = v ?? 'general'),
             ),
             const SizedBox(height: AppSpacing.md),
             TextFormField(
               controller: _source,
+              readOnly: _readOnly,
               decoration: const InputDecoration(
                 labelText: 'Source citation',
                 hintText: 'Optional — where this guidance comes from',
@@ -326,6 +354,7 @@ class _KnowledgeEditScreenState extends ConsumerState<KnowledgeEditScreen> {
             const SizedBox(height: AppSpacing.md),
             TextFormField(
               controller: _tags,
+              readOnly: _readOnly,
               decoration: const InputDecoration(
                 labelText: 'Tags',
                 hintText: 'diet, breakfast',
@@ -335,7 +364,8 @@ class _KnowledgeEditScreenState extends ConsumerState<KnowledgeEditScreen> {
           ],
         ),
       ),
-      bottomSheet: Container(
+      // Nothing to save, approve or retire on a shared entry.
+      bottomSheet: _readOnly ? null : Container(
         padding: EdgeInsets.fromLTRB(
           AppSpacing.md,
           AppSpacing.sm,
@@ -397,6 +427,56 @@ class _KnowledgeEditScreenState extends ConsumerState<KnowledgeEditScreen> {
             );
           },
         ),
+      ),
+    );
+  }
+}
+
+/// Why a shared entry opens with no way to change it.
+///
+/// Said on the screen rather than left to missing buttons: a doctor who finds
+/// the controls gone assumes the app is broken, and one who is told whose
+/// content this is knows what to do instead.
+class _SharedNotice extends StatelessWidget {
+  const _SharedNotice();
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.all(AppSpacing.md),
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(AppSpacing.cardRadius),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(Icons.public_rounded, color: scheme.onSurfaceVariant),
+          const SizedBox(width: AppSpacing.sm),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Shared with every practice',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Every practice’s assistant draws on this guidance, so it '
+                  'cannot be changed from here. You can add an entry of your '
+                  'own alongside it.',
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: scheme.onSurfaceVariant,
+                    height: 1.35,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }

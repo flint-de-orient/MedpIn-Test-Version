@@ -5,7 +5,7 @@ import { requireAuth, requireClinician, requireDoctor } from '../middleware/auth
 import { requirePermission } from '../middleware/authorise.js';
 import { PERMISSIONS } from '../models/Membership.js';
 import { validate, q } from '../middleware/validate.js';
-import { asyncHandler, notFound, conflict, badRequest } from '../middleware/errors.js';
+import { asyncHandler, notFound, conflict, badRequest, forbidden } from '../middleware/errors.js';
 import { audit } from '../middleware/audit.js';
 import { User, ROLES } from '../models/User.js';
 import { PatientProfile } from '../models/PatientProfile.js';
@@ -1493,7 +1493,8 @@ router.post(
   requireDoctor,
   audit('update', 'ClinicalAlert'),
   asyncHandler(async (req, res) => {
-    const alert = await acknowledgeAlert(req.params.id, req.user._id);
+    // Another practice's alert is not found — see services/alerts.js.
+    const alert = await acknowledgeAlert(req.params.id, req.user._id, await practicePatients(req, 'patient'));
     if (!alert) throw notFound('Alert not found');
     res.json({ alert: serialiseAlert(alert) });
   }),
@@ -1507,7 +1508,12 @@ router.post(
   validate({ body: z.object({ notes: z.string().max(2000).optional() }) }),
   audit('update', 'ClinicalAlert'),
   asyncHandler(async (req, res) => {
-    const alert = await resolveAlert(req.params.id, req.user._id, req.body.notes);
+    const alert = await resolveAlert(
+      req.params.id,
+      req.user._id,
+      req.body.notes,
+      await practicePatients(req, 'patient'),
+    );
     if (!alert) throw notFound('Alert not found');
     res.json({ alert: serialiseAlert(alert) });
   }),
@@ -1893,6 +1899,36 @@ const knowledgeSchema = z.object({
   sourceCitation: z.string().max(500).optional(),
 });
 
+/**
+ * Which passages a doctor reads: the shared corpus and their practice's own.
+ *
+ * ---- Why a practice and not a role ---------------------------------------
+ *
+ * `requireDoctor` was the whole guard, and every passage was created with no
+ * practice because nothing set one. No practice means *shared* — `rag.js`
+ * serves it to every practice's assistant. So any doctor on the platform could
+ * write a passage, approve it themselves and have every practice's assistant
+ * cite it to patients, and could rewrite or retire the passages all of them
+ * depend on.
+ *
+ * Now a practice reads the shared passages and its own, and changes only its
+ * own. Shared passages are the platform's clinical content; the seed changes
+ * them, and a practice does not.
+ */
+async function readableKnowledge(req) {
+  const mine = await practiceOf(req);
+  return mine ? { $or: [{ practice: null }, { practice: mine }] } : { practice: null };
+}
+
+/** The filter for one passage this doctor's practice wrote — never a shared one. */
+async function ownKnowledge(req) {
+  const mine = await practiceOf(req);
+  // With no practice, nothing is theirs. `{ practice: mine }` with `mine` null
+  // would select the shared corpus: exactly the rows this exists to protect.
+  if (!mine) throw notFound('Knowledge entry not found');
+  return { _id: req.params.id, practice: mine };
+}
+
 router.get(
   '/knowledge',
   // The knowledge base is what the assistant answers patients from.
@@ -1913,6 +1949,7 @@ router.get(
       ...(status ? { status } : {}),
       ...(category ? { category } : {}),
       ...(language ? { language } : {}),
+      ...(await readableKnowledge(req)),
     };
     const [items, total] = await Promise.all([
       KnowledgeChunk.find(filter).sort({ updatedAt: -1 }).skip(skip).limit(limit).lean(),
@@ -1932,7 +1969,11 @@ router.post(
   audit('create', 'KnowledgeChunk'),
   validate({ body: knowledgeSchema }),
   asyncHandler(async (req, res) => {
-    const chunk = await KnowledgeChunk.create({ ...req.body, status: 'pending_review' });
+    // Stamped with the practice, or it is shared and served to every practice's
+    // assistant. See `readableKnowledge`.
+    const practice = await practiceOf(req);
+    if (!practice) throw forbidden('Knowledge can only be written from within a practice.');
+    const chunk = await KnowledgeChunk.create({ ...req.body, practice, status: 'pending_review' });
     // Embed in the background — the doctor should not wait on the API, and the
     // chunk is not retrievable until approved anyway.
     embedChunk(chunk._id, req.body.content, req.body.title).catch((err) =>
@@ -1949,7 +1990,7 @@ router.patch(
   audit('update', 'KnowledgeChunk'),
   validate({ body: knowledgeSchema.partial() }),
   asyncHandler(async (req, res) => {
-    const chunk = await KnowledgeChunk.findById(req.params.id);
+    const chunk = await KnowledgeChunk.findOne(await ownKnowledge(req));
     if (!chunk) throw notFound('Knowledge entry not found');
 
     const contentChanged = req.body.content && req.body.content !== chunk.content;
@@ -1978,7 +2019,7 @@ router.post(
   requireClinician,
   audit('update', 'KnowledgeChunk'),
   asyncHandler(async (req, res) => {
-    const chunk = await KnowledgeChunk.findById(req.params.id).select('+embedding');
+    const chunk = await KnowledgeChunk.findOne(await ownKnowledge(req)).select('+embedding');
     if (!chunk) throw notFound('Knowledge entry not found');
 
     // Refuse to approve something that cannot actually be retrieved.
@@ -2001,7 +2042,11 @@ router.post(
   requireDoctor,
   audit('update', 'KnowledgeChunk'),
   asyncHandler(async (req, res) => {
-    const chunk = await KnowledgeChunk.findByIdAndUpdate(req.params.id, { status: 'retired' }, { new: true });
+    const chunk = await KnowledgeChunk.findOneAndUpdate(
+      await ownKnowledge(req),
+      { status: 'retired' },
+      { new: true },
+    );
     if (!chunk) throw notFound('Knowledge entry not found');
     res.json({ chunk: serialiseChunk(chunk) });
   }),
@@ -2067,6 +2112,9 @@ const serialiseChunk = (c) => ({
   status: c.status,
   version: c.version,
   hasEmbedding: Boolean(c.embeddedAt),
+  // The platform's shared content, which a practice reads and cannot change.
+  // The app hides the controls the server would refuse.
+  isShared: c.practice == null,
   sourceCitation: c.sourceCitation ?? null,
   approvedAt: c.approvedAt ?? null,
   updatedAt: c.updatedAt,
@@ -2194,7 +2242,18 @@ router.patch(
 
     if (dieticianId !== undefined) {
       if (dieticianId) {
-        const d = await User.findOne({ _id: dieticianId, role: ROLES.DIETICIAN, isActive: true })
+        /*
+         * One of this practice's dieticians. The patient is checked above and
+         * the dietician was not — and the dietician routes trust the
+         * assignment, so naming another practice's dietician here handed them
+         * this patient's record. `$and`: the member filter is keyed on `_id`.
+         */
+        const d = await User.findOne({
+          $and: [
+            { _id: dieticianId, role: ROLES.DIETICIAN, isActive: true },
+            await practiceMembers(req, ROLES.DIETICIAN),
+          ],
+        })
           .select('_id')
           .lean();
         if (!d) throw notFound('Dietician not found');

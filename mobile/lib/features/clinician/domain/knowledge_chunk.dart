@@ -13,6 +13,7 @@ class KnowledgeChunk {
     this.tags = const [],
     this.version = 1,
     this.hasEmbedding = false,
+    this.isShared = false,
     this.sourceCitation,
     this.approvedAt,
     this.updatedAt,
@@ -29,6 +30,15 @@ class KnowledgeChunk {
   final List<String> tags;
   final int version;
   final bool hasEmbedding;
+
+  /// The platform's own clinical content, served to every practice.
+  ///
+  /// Read-only from the app. Any doctor editing, approving or retiring it would
+  /// change what every practice's assistant tells patients, which is why the
+  /// server refuses — and why the edit screen must not offer controls that
+  /// would only come back refused.
+  final bool isShared;
+
   final String? sourceCitation;
   final DateTime? approvedAt;
   final DateTime? updatedAt;
@@ -66,6 +76,9 @@ class KnowledgeChunk {
     tags: (j['tags'] as List?)?.map((e) => e.toString()).toList() ?? const [],
     version: (j['version'] as num?)?.toInt() ?? 1,
     hasEmbedding: j['hasEmbedding'] == true,
+    // Absent means editable, which is what an older server not sending the
+    // field is describing — it did not refuse edits either.
+    isShared: j['isShared'] == true,
     sourceCitation: j['sourceCitation']?.toString(),
     approvedAt: DateTime.tryParse(j['approvedAt']?.toString() ?? '')?.toLocal(),
     updatedAt: DateTime.tryParse(j['updatedAt']?.toString() ?? '')?.toLocal(),

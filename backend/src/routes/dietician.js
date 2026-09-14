@@ -23,6 +23,7 @@ import { dayjs } from '../utils/clinicTime.js';
 import { getClinicSettings } from '../models/ClinicSettings.js';
 import { buildAttention } from '../services/nutritionAttention.js';
 import { normaliseTestName } from '../utils/testNames.js';
+import { practicePatients } from '../middleware/practiceScope.js';
 
 /**
  * The dietician panel API. A dietician only ever sees the patients a doctor has
@@ -213,15 +214,36 @@ async function recentActivity(ids, byId, limit = 6) {
  * schema change and nothing to migrate.
  */
 async function scopeFilter(req) {
-  const assigned = await PatientProfile.find({ assignedDietician: req.user._id }).select('user').lean();
-  if (assigned.length === 0) return {};
+  /*
+   * Within the dietician's own practice, before anything else.
+   *
+   * "Covers everyone" was written when there was one clinic, and `{}` then
+   * meant every patient on the platform: a dietician with no assignments
+   * opened any practice's records. `practicePatients` is `{}` only where the
+   * enrolment backfill has not run, which is the one-clinic case this default
+   * was written for.
+   *
+   * Assignments are counted inside the practice too, so one that reached
+   * outside it restricts nothing and grants nothing.
+   */
+  const practice = await practicePatients(req, 'user');
+  const assigned = await PatientProfile.find({ assignedDietician: req.user._id, ...practice })
+    .select('user')
+    .lean();
+  if (assigned.length === 0) return practice;
   return { user: { $in: assigned.map((p) => p.user) } };
 }
 
 /** Guard: the id must be a patient this dietician may see. Returns the profile. */
 async function requireAssigned(req) {
   const scope = await scopeFilter(req);
-  const profile = await PatientProfile.findOne({ user: req.params.id, ...scope }).lean();
+  /*
+   * `$and`, not a spread. The scope is keyed on `user` as well, so
+   * `{ user: req.params.id, ...scope }` replaced the requested patient with the
+   * dietician's own list: the guard found one of their patients whatever id
+   * was asked for, and the handler went on to read the one asked for.
+   */
+  const profile = await PatientProfile.findOne({ $and: [{ user: req.params.id }, scope] }).lean();
   if (!profile) throw notFound('Patient not found or not in your list');
   return profile;
 }

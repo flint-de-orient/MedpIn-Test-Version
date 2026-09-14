@@ -57,17 +57,41 @@ export async function raiseAlert({
   return alert;
 }
 
-export async function acknowledgeAlert(alertId, userId) {
-  return ClinicalAlert.findByIdAndUpdate(
-    alertId,
+/**
+ * The filter for changing one alert, inside a practice.
+ *
+ * ---- Why the scope is required -------------------------------------------
+ *
+ * These took an id and nothing else, and `requireDoctor` in front of them was
+ * the whole guard — so any doctor on the platform could mark another
+ * practice's urgent alert as seen, or resolve it. A resolved alert leaves that
+ * practice's triage queue, which is how a patient who needed a doctor stops
+ * being shown to one.
+ *
+ * An optional scope is how that comes back: the next caller leaves it off and
+ * nothing complains. So a missing one throws. `{}` is still a real answer —
+ * `practicePatients` gives it where the enrolment backfill has not run — and
+ * has to be passed on purpose.
+ */
+function inScope(alertId, scope) {
+  if (!scope || typeof scope !== 'object') {
+    throw new Error('Changing an alert needs a practice scope: pass practicePatients(req, "patient").');
+  }
+  // `$and`, so a scope can never stand in for the id that was asked for.
+  return { $and: [{ _id: alertId }, scope] };
+}
+
+export async function acknowledgeAlert(alertId, userId, scope) {
+  return ClinicalAlert.findOneAndUpdate(
+    inScope(alertId, scope),
     { status: 'acknowledged', acknowledgedBy: userId, acknowledgedAt: new Date() },
     { new: true },
   );
 }
 
-export async function resolveAlert(alertId, userId, notes) {
-  return ClinicalAlert.findByIdAndUpdate(
-    alertId,
+export async function resolveAlert(alertId, userId, notes, scope) {
+  return ClinicalAlert.findOneAndUpdate(
+    inScope(alertId, scope),
     { status: 'resolved', resolvedBy: userId, resolvedAt: new Date(), resolutionNotes: notes },
     { new: true },
   );

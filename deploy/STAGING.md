@@ -134,6 +134,32 @@ pm2 restart clinq
 node scripts/smoke.mjs https://clinq.flintdeorient.in
 ```
 
+### Once, after deploying the knowledge scoping
+
+Before that change, a passage written on the app's knowledge screen was saved
+with no practice — which makes it shared, cited by every practice's assistant.
+Shared passages are now read-only from the app, so a practice's own passages
+stay read-only to it until this hands them back:
+
+```bash
+cd /var/www/clinq-staging/backend     # then /var/www/clinq/backend for production
+mongosh --quiet --eval 'db.getSiblingDB("medpin_staging").practices.find({}, { name: 1 })'
+node scripts/backfillKnowledgePractice.js --practice <practiceId>            # dry run
+mongodump --db medpin_staging --collection knowledgechunks --out ~/dumps/knowledge-before-backfill
+node scripts/backfillKnowledgePractice.js --practice <practiceId> --apply
+```
+
+The script reads `.env` from the directory it is run in, and that file alone
+decides which database it writes to — run it from the deployment's own
+`backend/`. For production, `medpin_staging` above becomes the database named in
+production's `MONGODB_URI`.
+
+It adopts passages that have no practice and whose `docId` is not in the seed,
+so the platform's seeded clinical content stays shared. Passages record no
+author, so it cannot tell which practice wrote one: where more than one practice
+has written knowledge, read the dry run before applying. A second run adopts
+nothing.
+
 ## Pointing the app at staging
 
 `API_BASE_URL` is a `--dart-define`, so no code change:

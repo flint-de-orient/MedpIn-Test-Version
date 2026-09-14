@@ -228,7 +228,10 @@ router.patch(
   validate({ body: clinicBody.partial() }),
   audit('update', 'Clinic'),
   asyncHandler(async (req, res) => {
-    const clinic = await Clinic.findById(req.params.id);
+    // This practice's locations only. `findById` edited anybody's — and a
+    // location's name, phone and letterhead are what its patients are shown.
+    // `$and`, so the scope can never stand in for the id asked for.
+    const clinic = await Clinic.findOne({ $and: [{ _id: req.params.id }, await practiceClinics(req)] });
     if (!clinic) throw notFound('Clinic not found');
     Object.assign(clinic, req.body);
     await clinic.save();
@@ -249,7 +252,11 @@ router.delete(
   requireRole(...PRACTICE_SETUP),
   audit('update', 'Clinic'),
   asyncHandler(async (req, res) => {
-    const clinic = await Clinic.findByIdAndUpdate(req.params.id, { isActive: false }, { new: true });
+    const clinic = await Clinic.findOneAndUpdate(
+      { $and: [{ _id: req.params.id }, await practiceClinics(req)] },
+      { isActive: false },
+      { new: true },
+    );
     if (!clinic) throw notFound('Clinic not found');
     res.json({ clinic: clinic.toPublic() });
   }),
