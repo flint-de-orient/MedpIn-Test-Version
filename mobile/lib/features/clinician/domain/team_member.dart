@@ -35,7 +35,9 @@ class TeamMember {
   final String name;
   final String phone;
 
-  /// `doctor`, `staff`, `dietician`.
+  /// `doctor`, `staff`, `dietician`, `doctor_assistant`, `lab_manager`,
+  /// `lab_technician` or `practice_manager` — or a role this build has not
+  /// heard of, which the People screen still draws, under Others.
   final String role;
 
   /// The head. Cannot be demoted or suspended from the app — a practice with

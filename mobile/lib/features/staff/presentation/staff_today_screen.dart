@@ -1663,6 +1663,7 @@ class _PatientPickerSheetState extends ConsumerState<_PatientPickerSheet> {
         riskBand: null,
         search: _search.isEmpty ? null : _search,
         sort: 'name',
+        pages: 1,
       )),
     );
 

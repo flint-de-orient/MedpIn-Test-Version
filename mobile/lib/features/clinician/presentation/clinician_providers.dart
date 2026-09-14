@@ -82,18 +82,45 @@ final attentionPatientsProvider =
       return paged.items;
     });
 
-typedef PatientsQuery = ({String? riskBand, String? search, String sort});
+/// One page of the roll: the most the server sends at once.
+const patientsPageSize = 100;
 
+/// `pages` is how many pages deep, counting from the first.
+typedef PatientsQuery = ({
+  String? riskBand,
+  String? search,
+  String sort,
+  int pages,
+});
+
+/// The roll, `pages` pages deep, as one list.
+///
+/// ---- Why pages, and why every one of them on each read ------------------
+///
+/// This was one page of a hundred sorted by name, and the inbox put unread
+/// conversations first on the phone. So an unread message from the
+/// hundred-and-first patient by name was never fetched, and the screen whose
+/// whole job is "who is waiting on me" could not show it. The server now puts
+/// the whole list in order before paging it, and a longer list is more pages.
+///
+/// The pages already on screen are read again together, in parallel, because
+/// the inbox polls: refreshing only the newest page would leave the ones above
+/// it stale, and a conversation that moved between them would be missing from
+/// both.
 final patientsProvider = FutureProvider.autoDispose
-    .family<Paged<PatientListItem>, PatientsQuery>((ref, q) {
-      return ref
-          .watch(clinicianRepositoryProvider)
-          .patients(
+    .family<Paged<PatientListItem>, PatientsQuery>((ref, q) async {
+      final repo = ref.watch(clinicianRepositoryProvider);
+      final pages = await Future.wait([
+        for (var page = 1; page <= (q.pages < 1 ? 1 : q.pages); page++)
+          repo.patients(
             riskBand: q.riskBand,
             search: q.search,
             sort: q.sort,
-            limit: 100,
-          );
+            page: page,
+            limit: patientsPageSize,
+          ),
+      ]);
+      return mergePages(pages, idOf: (p) => p.id);
     });
 
 /// Who the practice is waiting on a code from.

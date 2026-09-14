@@ -35,7 +35,13 @@ import '../../../auth/presentation/auth_controller.dart';
 /// would drift three ways, and the half that drifts is the half that decides
 /// whether the number was checked at all.
 class VerifiedPhoneField extends ConsumerStatefulWidget {
-  const VerifiedPhoneField({super.key, required this.onToken, this.label});
+  const VerifiedPhoneField({
+    super.key,
+    required this.onToken,
+    this.label,
+    this.sendCode,
+    this.verifyCode,
+  });
 
   /// The proof, or null whenever the number is not (or no longer) verified.
   ///
@@ -45,6 +51,25 @@ class VerifiedPhoneField extends ConsumerStatefulWidget {
   final ValueChanged<String?> onToken;
 
   final String? label;
+
+  /// Sends the code to a number in E.164. Null sends a registration code.
+  ///
+  /// ---- Why hiring brings its own ------------------------------------------
+  ///
+  /// A registration code is refused for a number that already has an account.
+  /// That is right for a form about to create one, and it made hiring
+  /// impossible for anybody who already uses MedPin — a doctor who consults
+  /// elsewhere has an account by definition. The hire sheet sends and checks
+  /// its code through the team routes instead, and the server decides there
+  /// what an existing account may be added as.
+  ///
+  /// Pass both callbacks or neither: a code sent by one route is not spent by
+  /// the other.
+  final Future<void> Function(String e164)? sendCode;
+
+  /// Checks the code read back for a number in E.164 and returns the phone
+  /// token. Null checks a registration code.
+  final Future<String> Function(String e164, String code)? verifyCode;
 
   @override
   ConsumerState<VerifiedPhoneField> createState() => _VerifiedPhoneFieldState();
@@ -80,12 +105,18 @@ class _VerifiedPhoneFieldState extends ConsumerState<VerifiedPhoneField> {
       _error = null;
     });
     try {
-      // `register`, not a purpose of its own. It is the right one: it refuses
-      // a number that already has an account — which is the other way this
-      // form goes wrong — and it ends in the phone token the server wants.
-      await ref
-          .read(authRepositoryProvider)
-          .requestOtp(phone: _e164, purpose: 'register');
+      final send = widget.sendCode;
+      if (send != null) {
+        await send(_e164);
+      } else {
+        // `register`, not a purpose of its own. It is the right one for a new
+        // account: it refuses a number that already has one — which is the
+        // other way that form goes wrong — and it ends in the phone token the
+        // server wants.
+        await ref
+            .read(authRepositoryProvider)
+            .requestOtp(phone: _e164, purpose: 'register');
+      }
       if (mounted) setState(() => _sent = true);
     } catch (e) {
       setState(() {
@@ -105,9 +136,14 @@ class _VerifiedPhoneFieldState extends ConsumerState<VerifiedPhoneField> {
       _error = null;
     });
     try {
-      final token = await ref
-          .read(authRepositoryProvider)
-          .verifyRegisterOtp(phone: _e164, code: _code.text.trim());
+      final code = _code.text.trim();
+      final verify = widget.verifyCode;
+      final token =
+          verify != null
+              ? await verify(_e164, code)
+              : await ref
+                  .read(authRepositoryProvider)
+                  .verifyRegisterOtp(phone: _e164, code: code);
       widget.onToken(token);
       if (mounted) setState(() => _verified = true);
     } catch (e) {

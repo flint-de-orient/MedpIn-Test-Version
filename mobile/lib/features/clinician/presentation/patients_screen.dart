@@ -7,6 +7,8 @@ import 'package:go_router/go_router.dart';
 
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
+import '../../../core/theme/tokens.dart';
+import '../../../shared/models/paged.dart';
 import '../../../shared/widgets/markdown_text.dart';
 import '../../../shared/widgets/user_avatar.dart';
 import '../../auth/presentation/auth_controller.dart';
@@ -27,6 +29,15 @@ import '../../../shared/widgets/clinic_brand.dart';
 ///
 /// Rows sort unread-first, then by most recent message, so the list orders
 /// itself around that question without the doctor having to filter.
+///
+/// ---- The server sorts the whole roll; the phone pages through it ---------
+///
+/// This used to fetch the first hundred patients by name and put unread first
+/// on the phone. The rule was right and the hundred were the wrong hundred: an
+/// unread message from the hundred-and-first patient by name was never
+/// fetched, so it never appeared on the one screen whose job is to show it.
+/// The server now orders every patient this way before paging, and the rest of
+/// the roll is a button at the end of the list.
 class PatientsScreen extends ConsumerStatefulWidget {
   const PatientsScreen({super.key});
 
@@ -43,6 +54,13 @@ class _PatientsScreenState extends ConsumerState<PatientsScreen>
 
   /// Only unread conversations, when the doctor wants the queue and nothing else.
   bool _unreadOnly = false;
+
+  /// How many pages of the roll are loaded. Back to one whenever the search or
+  /// a filter changes, because a different list starts from its own first page.
+  int _pages = 1;
+
+  /// The last list that arrived, and the query it answered. See [build].
+  ({PatientsQuery query, Paged<PatientListItem> paged})? _held;
 
   /// The inbox is only useful if it is current. There is no socket, so it
   /// re-reads on a timer while on screen and immediately on resume.
@@ -78,21 +96,47 @@ class _PatientsScreenState extends ConsumerState<PatientsScreen>
 
   void _refresh() {
     if (!mounted) return;
+    // A read still on its way is left to finish. Invalidating restarts it, and
+    // with every loaded page read again on each tick, a slow connection can
+    // take longer than the tick — so each poll would throw away the one before
+    // it, and the list, or the page just asked for, would never arrive.
+    if (ref.read(patientsProvider(_query)).isLoading) return;
     ref.invalidate(patientsProvider(_query));
   }
 
   void _onSearchChanged(String v) {
     _debounce?.cancel();
     _debounce = Timer(const Duration(milliseconds: 400), () {
-      if (mounted) setState(() => _search = v.trim());
+      final next = v.trim();
+      if (!mounted || next == _search) return;
+      setState(() {
+        _search = next;
+        _pages = 1;
+      });
+    });
+  }
+
+  void _setUnreadOnly(bool v) {
+    if (v == _unreadOnly) return;
+    setState(() {
+      _unreadOnly = v;
+      _pages = 1;
     });
   }
 
   PatientsQuery get _query => (
     riskBand: null,
     search: _search.isEmpty ? null : _search,
-    sort: 'name',
+    // Unread first, newest unread first, then by latest message, then everyone
+    // who has never written by name — across the whole roll, on the server,
+    // before it is paged.
+    sort: 'inbox',
+    pages: _pages,
   );
+
+  /// The same patients in the same order, however many pages of them.
+  static bool _sameRoll(PatientsQuery a, PatientsQuery b) =>
+      a.riskBand == b.riskBand && a.search == b.search && a.sort == b.sort;
 
   /// Unread first, then newest message. A patient who has never written sinks
   /// to the bottom — there is nothing waiting there.
@@ -113,13 +157,32 @@ class _PatientsScreenState extends ConsumerState<PatientsScreen>
 
   @override
   Widget build(BuildContext context) {
-    final asyncRaw = ref.watch(patientsProvider(_query));
+    final query = _query;
+    final asyncRaw = ref.watch(patientsProvider(query));
     // Hold the last list while a refresh is in flight. The screen polls, and
     // every tick dropped the whole list to a spinner and back — which is the
     // flicker you see, most obviously at the moment you tap the toggle and are
     // actually looking at it.
-    final loaded = asyncRaw.valueOrNull;
+    //
+    // A refresh keeps its own previous value. Another page is a new query with
+    // no value yet, so the list it extends is held here instead — and only for
+    // the same search: the last search's patients under a new search's words
+    // would be a wrong answer, not a steady one.
+    final fresh = asyncRaw.valueOrNull;
+    if (fresh != null) _held = (query: query, paged: fresh);
+    final held = _held;
+    Paged<PatientListItem>? kept;
+    var growing = false;
+    if (fresh == null && held != null && _sameRoll(held.query, query)) {
+      kept = held.paged;
+      growing = query.pages > held.query.pages;
+    }
+    final loaded = fresh ?? kept;
     final async = loaded != null ? AsyncData(loaded) : asyncRaw;
+    // About the page being added, and only that. A shorter read after a filter
+    // change is still a read, but "loading more" is not what it is.
+    final loadingMore = growing && asyncRaw.isLoading;
+    final moreFailed = growing && asyncRaw.hasError && !asyncRaw.isLoading;
     final scheme = Theme.of(context).colorScheme;
 
     return Scaffold(
@@ -167,7 +230,7 @@ class _PatientsScreenState extends ConsumerState<PatientsScreen>
                   children: [
                     _SectionBar(
                       unreadOnly: _unreadOnly,
-                      onSelect: (v) => setState(() => _unreadOnly = v),
+                      onSelect: _setUnreadOnly,
                     ),
                     _SearchField(
                       controller: _searchController,
@@ -276,6 +339,7 @@ class _PatientsScreenState extends ConsumerState<PatientsScreen>
                                   OutlinedButton(
                                     onPressed: () {
                                       setState(() {
+                                        _pages = 1;
                                         if (searching) {
                                           _searchController.clear();
                                           _search = '';
@@ -291,6 +355,15 @@ class _PatientsScreenState extends ConsumerState<PatientsScreen>
                             ),
                           );
                         }
+
+                        // Offered only where another page could show somebody.
+                        // With Unread on, the server's order puts every unread
+                        // conversation before every read one, so once the last
+                        // one loaded is read, no later page holds anything this
+                        // filter would let through.
+                        final more =
+                            paged.hasMore &&
+                            (!_unreadOnly || paged.items.last.unreadCount > 0);
 
                         // A separate card per conversation (per the redesign),
                         // with a red rail on anything flagged urgent/emergency.
@@ -346,6 +419,16 @@ class _PatientsScreenState extends ConsumerState<PatientsScreen>
                                   ),
                                 ),
                               ),
+                            if (more)
+                              _ShowMorePatients(
+                                remaining: paged.total - paged.items.length,
+                                loading: loadingMore,
+                                failed: moreFailed,
+                                onPressed:
+                                    moreFailed
+                                        ? _refresh
+                                        : () => setState(() => _pages += 1),
+                              ),
                           ],
                         );
                       },
@@ -355,6 +438,66 @@ class _PatientsScreenState extends ConsumerState<PatientsScreen>
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+/// The end of what is loaded, and the way past it.
+///
+/// A button rather than loading on scroll. The inbox re-reads every page it
+/// holds every three seconds, so a page loaded because a thumb flicked past
+/// the end would be re-read all day; asked for, it is somebody's decision.
+class _ShowMorePatients extends StatelessWidget {
+  const _ShowMorePatients({
+    required this.remaining,
+    required this.loading,
+    required this.failed,
+    required this.onPressed,
+  });
+
+  /// Patients on the roll that are not loaded yet. Not loaded, rather than not
+  /// shown: with a filter on, some loaded rows are hidden as well.
+  final int remaining;
+
+  final bool loading;
+  final bool failed;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final label =
+        loading
+            ? 'Loading more patients…'
+            : failed
+            ? 'Could not load more. Try again'
+            : 'Show more patients';
+
+    return Padding(
+      padding: const EdgeInsets.only(top: AppSpacing.sm),
+      // Full width, and at least a tap tall. A minimum rather than a height,
+      // so text raised in the phone's settings makes the button taller instead
+      // of clipping the words inside it.
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(
+          minWidth: double.infinity,
+          minHeight: T.tap,
+        ),
+        child: OutlinedButton(
+          onPressed: loading ? null : onPressed,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(label, textAlign: TextAlign.center, style: T.bodyStrong),
+              if (remaining > 0)
+                Text(
+                  '$remaining more after these',
+                  textAlign: TextAlign.center,
+                  style: T.small,
+                ),
+            ],
+          ),
         ),
       ),
     );

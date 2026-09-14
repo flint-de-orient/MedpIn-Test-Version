@@ -409,16 +409,41 @@ class ClinicianRepository {
     return TeamRoster.fromJson(await _client.getJson('/team'));
   }
 
-  /// Hire somebody — a doctor, a front-desk account or a dietician.
+  /// Send a hiring code to [phone], in E.164.
   ///
-  /// One call for all three. The role is a field, not a URL: three routes is
+  /// Not `/auth/otp/request` with purpose `register`. That refuses a number
+  /// which already has an account, so a doctor or a receptionist who already
+  /// used MedPin anywhere could never be added to another practice. This sends
+  /// the code whether or not the number has an account; what an existing
+  /// account may be hired as is the server's answer to [hire].
+  Future<void> requestHireCode(String phone) async {
+    await _client.postJson('/team/phone/otp', body: {'phone': phone});
+  }
+
+  /// Spend the code read back from [phone]. Returns the phone token [hire]
+  /// takes as proof the number was answered.
+  Future<String> verifyHireCode(String phone, String code) async {
+    final json = await _client.postJson(
+      '/team/phone/verify',
+      body: {'phone': phone, 'code': code},
+    );
+    return json['phoneToken'] as String;
+  }
+
+  /// Hire somebody into any role the practice employs.
+  ///
+  /// One call for every role. The role is a field, not a URL: three routes is
   /// how the dietician path came to be the only one that forgot to create a
   /// membership, because nothing held them together.
   ///
   /// [phoneToken] is proof the number was answered. A regex tests the shape of
   /// a phone number and nothing about who holds it, and for a doctor the
   /// account it creates can prescribe.
-  Future<void> hire({
+  ///
+  /// True when the number already had an account and this practice was added
+  /// to it, rather than a new account being made. They keep their own sign-in,
+  /// and [password] only ever applies to a new account.
+  Future<bool> hire({
     required String role,
     required String name,
     required String phoneToken,
@@ -428,7 +453,7 @@ class ClinicianRepository {
     String? qualifications,
     String? registrationNo,
   }) async {
-    await _client.postJson(
+    final json = await _client.postJson(
       '/team',
       body: {
         'role': role,
@@ -443,6 +468,7 @@ class ClinicianRepository {
           'registrationNo': registrationNo,
       },
     );
+    return json['existing'] == true;
   }
 
   /// Change what somebody is here: their role, their department, their
