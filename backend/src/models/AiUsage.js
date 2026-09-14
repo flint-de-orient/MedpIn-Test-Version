@@ -98,6 +98,9 @@ const aiUsageSchema = new mongoose.Schema(
       labReport: { type: Number, default: 0 },
       prescription: { type: Number, default: 0 },
       transcribe: { type: Number, default: 0 },
+      // A day of a patient's conversation, summarised for the clinicians it
+      // did not interrupt. See services/ai/chatSummary.js.
+      summary: { type: Number, default: 0 },
     },
   },
   { timestamps: true },

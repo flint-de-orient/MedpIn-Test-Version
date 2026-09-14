@@ -244,6 +244,11 @@ const schema = z.object({
   // (a VPS is often UTC). India is a single zone.
   CLINIC_TZ: z.string().default('Asia/Kolkata'),
 
+  // The clinic's hour for the evening summary of the day's patient
+  // conversations, pushed to the clinicians who decide. See
+  // services/chatDigest.js.
+  CHAT_DIGEST_HOUR: z.coerce.number().int().min(0).max(23).default(19),
+
   // How many minutes a "before food" / "after food" dose is reminded before or
   // after the meal. A clinic-wide clinical convention rather than a magic
   // number — change it here and every schedule (re)computed afterwards uses it.

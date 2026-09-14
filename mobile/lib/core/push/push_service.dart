@@ -190,6 +190,13 @@ class PushService {
       return;
     }
 
+    // The evening summary of the day's conversations. It names no patient —
+    // the list is where they are.
+    if (kind == 'chat_digest') {
+      router.go(area == '/staff' ? '/staff/today' : '/clinician/chat-summaries');
+      return;
+    }
+
     final patientId = data['patientId']?.toString();
     if (patientId != null && patientId.isNotEmpty) {
       router.push('$area/patients/$patientId/thread');

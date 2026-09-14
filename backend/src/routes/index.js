@@ -22,6 +22,7 @@ import brandRoutes from './brand.js';
 import appVersionRoutes from './appVersion.js';
 import dashboardRoutes from './dashboard.js';
 import doctorRoutes from './doctor.js';
+import chatSummaryRoutes from './chatSummaries.js';
 import departmentRoutes from './departments.js';
 import teamRoutes from './team.js';
 import billingRoutes from './billing.js';
@@ -108,6 +109,8 @@ router.use('/appointments', appointmentRoutes);
 router.use('/clinics', clinicRoutes);
 router.use('/messages', messageRoutes);
 router.use('/doctor', doctorRoutes);
+// A day of each patient's conversation, for the clinicians it did not interrupt.
+router.use('/chat-summaries', chatSummaryRoutes);
 // Specialties and who practises in them. Its own router: `doctor.js` is
 // already two thousand lines, and a subject with its own models earns one.
 router.use('/departments', departmentRoutes);

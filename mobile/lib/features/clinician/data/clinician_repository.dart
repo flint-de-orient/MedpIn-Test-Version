@@ -16,6 +16,7 @@ import '../domain/knowledge_chunk.dart';
 import '../domain/patient_summary.dart';
 import '../../../shared/widgets/notification_list_sheet.dart';
 import '../domain/prescription_scan.dart';
+import '../domain/chat_summary.dart';
 
 /// Talks to `/doctor/*` — the clinician (doctor + staff) API: dashboard
 /// overview, the patient directory, and clinical-alert triage.
@@ -646,6 +647,30 @@ class ClinicianRepository {
   /// stay interpretable.
   Future<void> stopMedication(String patientId, String medicationId) async {
     await _client.delete('/patients/$patientId/medications/$medicationId');
+  }
+
+  // ---- Conversation summaries ---------------------------------------------
+
+  /// One day of patients' conversations, summarised, the ones needing a
+  /// clinician first. [day] null is today in the clinic's timezone — never the
+  /// phone's. [scope] is `mine` (the patients this person answers for, and
+  /// those nobody does) or `practice`.
+  Future<ChatSummaryDay> chatSummaries({
+    String? day,
+    String scope = 'mine',
+    String kind = 'care',
+  }) async {
+    final json = await _client.getJson(
+      '/chat-summaries',
+      query: {'scope': scope, 'kind': kind, if (day != null) 'day': day},
+    );
+    return ChatSummaryDay.fromJson(json);
+  }
+
+  /// "I have read this day." Per person; the server clears it when the patient
+  /// writes again.
+  Future<void> markSummaryReviewed(String id) async {
+    await _client.postJson('/chat-summaries/$id/reviewed');
   }
 
   // ---- Chat review ------------------------------------------------------

@@ -5,6 +5,7 @@ import '../data/clinician_repository.dart';
 import '../domain/appointment.dart';
 import '../../medications/domain/medication.dart';
 import '../domain/chat_review.dart';
+import '../domain/chat_summary.dart';
 import '../domain/department.dart';
 import '../domain/patient_registration.dart';
 import '../domain/team_member.dart';
@@ -164,6 +165,18 @@ final chatReviewProvider = FutureProvider.autoDispose
 final chatReviewDetailProvider = FutureProvider.autoDispose
     .family<ChatReviewDetail, String>((ref, sessionId) {
       return ref.watch(clinicianRepositoryProvider).chatReviewDetail(sessionId);
+    });
+
+// ---- Conversation summaries ---------------------------------------------
+
+/// [day] null is today in the clinic's timezone; [scope] `mine` or `practice`.
+typedef ChatSummaryQuery = ({String? day, String scope, String kind});
+
+final chatSummariesProvider = FutureProvider.autoDispose
+    .family<ChatSummaryDay, ChatSummaryQuery>((ref, q) {
+      return ref
+          .watch(clinicianRepositoryProvider)
+          .chatSummaries(day: q.day, scope: q.scope, kind: q.kind);
     });
 
 // ---- Knowledge base -----------------------------------------------------

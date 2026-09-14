@@ -6,6 +6,7 @@ import '../../../../core/theme/tokens.dart';
 import '../../domain/clinician_models.dart';
 import '../../domain/lab_overview.dart';
 
+import 'chat_summary_card.dart';
 import 'dashboard_sections.dart';
 import 'lab_panels.dart';
 import 'todays_clinic.dart';
@@ -114,6 +115,9 @@ final Map<String, WidgetBuilderFn> dashboardWidgets = {
     // worth stating, and no recent activity is the absence of a log.
     return events.isEmpty ? null : LiveActivity(events: events);
   },
+
+  // Its own request rather than the shared poll — see ChatSummaryCard.
+  'CHAT_SUMMARIES': (d) => const ChatSummaryCard(),
 
   // ---- what the practice has bought ---------------------------------------
   'ANALYTICS_SUMMARY': (d) => d.analytics == null

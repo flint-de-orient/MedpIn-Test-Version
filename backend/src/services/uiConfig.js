@@ -90,6 +90,11 @@ export const WIDGETS = Object.freeze({
   OPEN_ALERTS: { needs: { permission: P.VIEW_PATIENT } },
   /// What the practice has been doing — context, not work.
   LIVE_ACTIVITY: { needs: { permission: P.VIEW_PATIENT } },
+  /// Each patient's conversation today, summarised, the ones needing a
+  /// clinician first — GET /chat-summaries. For the people who are pushed
+  /// emergencies and high-risk alerts only, and still need to know what the
+  /// rest of the day's messages said.
+  CHAT_SUMMARIES: { needs: { permission: P.VIEW_PATIENT } },
 
   // ---- what the practice has bought --------------------------------------
   /// GET /doctor/analytics — trends over a window the reader chooses.
@@ -203,6 +208,10 @@ const GENERAL = {
     'ACTION_QUEUE',
     'NUTRITION_REVIEWS',
     'OPEN_ALERTS',
+    // The one addition to the transcribed list, and deliberate: doctors are
+    // pushed emergencies and high-risk alerts only, so the day's other
+    // conversations reach them here or not at all.
+    'CHAT_SUMMARIES',
     'LIVE_ACTIVITY',
   ],
   quickActions: [
@@ -287,6 +296,10 @@ export const DEPARTMENT_DEFAULTS = Object.freeze({
       'RECENT_LAB_REPORTS',
       'ACTION_QUEUE',
       'OPEN_ALERTS',
+      // For the reason the general set carries it: a cardiologist is pushed
+      // emergencies and high-risk alerts only, so the rest of the day's
+      // conversations reach them here.
+      'CHAT_SUMMARIES',
     ],
     quickActions: [
       'START_CONSULTATION',

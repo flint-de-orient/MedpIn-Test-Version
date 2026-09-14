@@ -7,6 +7,8 @@ import { ACTIVE_STATUSES } from './scheduling.js';
 import { notifyClinicOfTomorrowSchedule, notifyVisitTomorrow } from './notifications.js';
 import { User, ROLES } from '../models/User.js';
 import { practiceOfAppointment, memberIdsOf } from '../middleware/practiceScope.js';
+import { sendChatDigests } from './chatDigest.js';
+import { env } from '../config/env.js';
 import { logger } from '../config/logger.js';
 
 dayjs.extend(utc);
@@ -122,6 +124,9 @@ async function sendVisitReminders() {
   logger.info({ count: due.length }, 'sent day-before visit reminders');
 }
 
+/** Guards the conversation digest the way `lastDigestDate` guards tomorrow's list. */
+let lastChatDigestDate = null;
+
 async function tick() {
   try {
     const now = dayjs().tz(CLINIC_TZ);
@@ -130,6 +135,14 @@ async function tick() {
     if (now.hour() === DIGEST_HOUR && lastDigestDate !== today) {
       lastDigestDate = today;
       await sendTomorrowDigest();
+    }
+
+    // The day's patient conversations, summarised, to the clinicians who were
+    // pushed only what could not wait. See services/chatDigest.js.
+    if (now.hour() === env.CHAT_DIGEST_HOUR && lastChatDigestDate !== today) {
+      lastChatDigestDate = today;
+      const { sent } = await sendChatDigests(today);
+      logger.info({ sent, for: today }, 'sent conversation digest');
     }
 
     // Every tick, not only at the digest hour. An appointment confirmed at

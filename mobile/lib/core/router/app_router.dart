@@ -26,6 +26,7 @@ import '../../features/clinician/presentation/departments_screen.dart';
 import '../../features/clinician/presentation/team_screen.dart';
 import '../../features/clinician/presentation/chat_review_detail_screen.dart';
 import '../../features/clinician/presentation/chat_review_screen.dart';
+import '../../features/clinician/presentation/chat_summaries_screen.dart';
 import '../../features/clinician/presentation/clinician_dashboard_screen.dart';
 import '../../features/clinician/presentation/clinician_more_screen.dart';
 import '../../features/clinician/presentation/clinician_shell.dart';
@@ -257,6 +258,11 @@ final Provider<GoRouter> appRouterProvider = Provider<GoRouter>((ref) {
         builder:
             (context, state) =>
                 ChatReviewDetailScreen(sessionId: state.pathParameters['id']!),
+      ),
+      // The day's conversations, summarised. The evening digest opens here.
+      GoRoute(
+        path: '/clinician/chat-summaries',
+        builder: (context, state) => const ChatSummariesScreen(),
       ),
       // One screen where there were two.
       //

@@ -14,6 +14,7 @@ import 'widgets/clinician_notification_sheet.dart';
 import '../../../core/theme/tokens.dart';
 import 'widgets/triage_queue.dart';
 import '../../../shared/widgets/clinic_brand.dart';
+import 'widgets/chat_summary_card.dart';
 import 'widgets/dashboard_registry.dart';
 import '../../../core/capabilities/capabilities.dart';
 
@@ -81,7 +82,10 @@ class _ClinicianDashboardScreenState
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) _refresh();
+    if (state == AppLifecycleState.resumed) {
+      _refresh();
+      _refreshConversations();
+    }
   }
 
   void _refresh() {
@@ -94,6 +98,16 @@ class _ClinicianDashboardScreenState
     // nobody is watching does nothing, which is cheaper than deciding here
     // whether it is.
     ref.invalidate(labOverviewProvider(_days));
+  }
+
+  /// The day's conversation summaries: on return to the app and on pull only.
+  ///
+  /// Not on the twenty-second poll. The list reads every conversation of the
+  /// day and may have the assistant summarise each patient whose day moved on,
+  /// and a summary changes when a patient writes, not three times a minute. A
+  /// doctor coming back to the app, or pulling down, is asking for it.
+  void _refreshConversations() {
+    ref.invalidate(chatSummariesProvider(ChatSummaryCard.query));
   }
 
   @override
@@ -170,7 +184,10 @@ class _ClinicianDashboardScreenState
                   loading
                       ? const Center(child: CircularProgressIndicator())
                       : RefreshIndicator(
-                        onRefresh: () async => _refresh(),
+                        onRefresh: () async {
+                          _refresh();
+                          _refreshConversations();
+                        },
                         // A plain list. This was briefly a CustomScrollView
                         // with the band as a collapsing sliver, which was a
                         // mistake worth recording: FlexibleSpaceBar draws its

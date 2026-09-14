@@ -953,6 +953,30 @@ export async function notifyClinicOfTomorrowSchedule(appointments) {
 }
 
 /**
+ * Tell a clinician that the day's patient conversations are summarised.
+ *
+ * Counts only. The body lands on a lock screen, which is no place for a
+ * patient's name or words; the summaries are one tap away behind the app's own
+ * sign-in.
+ *
+ * Sent only to somebody with at least one patient who wrote. A push every
+ * evening saying nothing happened is the push that teaches somebody to turn
+ * the rest off.
+ */
+export async function notifyClinicianOfChatDigest({ user, patients, needYou, day }) {
+  const tokens = user?.deviceTokens ?? [];
+  if (!tokens.length || !patients) return { delivered: 0 };
+
+  const wrote = `${patients} patient${patients === 1 ? '' : 's'} wrote today.`;
+  return deliver({
+    tokens,
+    title: 'Today’s patient conversations',
+    body: needYou ? `${wrote} ${needYou} need${needYou === 1 ? 's' : ''} you.` : `${wrote} None needs you.`,
+    data: { kind: 'chat_digest', day },
+  });
+}
+
+/**
  * Tell waitlisted patients that a slot has opened on a day they wanted.
  *
  * Only patients who explicitly joined the waitlist are contacted — see

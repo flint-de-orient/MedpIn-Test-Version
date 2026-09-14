@@ -237,6 +237,9 @@ describe('the clinic that exists today keeps the screen it has', () => {
       'ACTION_QUEUE',
       'NUTRITION_REVIEWS',
       'OPEN_ALERTS',
+      // Added on purpose: the day's conversations, which doctors are no longer
+      // pushed one message at a time.
+      'CHAT_SUMMARIES',
       'LIVE_ACTIVITY',
     ]);
   });
@@ -398,6 +401,9 @@ describe('the resolver accepts what its callers actually hold', () => {
       'ACTION_QUEUE',
       'NUTRITION_REVIEWS',
       'OPEN_ALERTS',
+      // Added on purpose: the day's conversations, which doctors are no longer
+      // pushed one message at a time.
+      'CHAT_SUMMARIES',
       'LIVE_ACTIVITY',
     ]);
     assert.ok(ui.quickActions.includes('WRITE_PRESCRIPTION'));
