@@ -2,8 +2,8 @@ import { Membership, MEMBERSHIP_STATUS } from '../models/Membership.js';
 import { Enrollment, ENROLLMENT_STATUS } from '../models/Enrollment.js';
 import { PatientProfile } from '../models/PatientProfile.js';
 import { Clinic } from '../models/Clinic.js';
-import { ROLES } from '../models/User.js';
-import { forbidden } from './errors.js';
+import { ROLES, CLINICIAN_ROLES } from '../models/User.js';
+import { AppError, forbidden } from './errors.js';
 import { recordDenial } from './recordDenial.js';
 
 /**
@@ -236,6 +236,36 @@ async function membershipsExist() {
   if (_membershipsExist) return true;
   _membershipsExist = (await Membership.estimatedDocumentCount()) > 0;
   return _membershipsExist;
+}
+
+/**
+ * A member of staff with no current practice, on a platform that has practices.
+ *
+ * ---- Refused, not unrestricted ------------------------------------------
+ *
+ * Absence permitted while memberships did not exist, because refusing then
+ * would have locked out the one clinic running. They exist now, and an account
+ * whose membership ended, or was never made, is the case that rule was never
+ * written for: every scope helper read "no practice" as "no restriction", so a
+ * doctor who had left could list every patient on the platform. The guards ask
+ * this first and refuse.
+ *
+ * A patient has no membership by design and is never unplaced. A platform with
+ * no memberships at all has not been migrated, and keeps the old rule.
+ */
+export async function unplacedStaff(req) {
+  if (!req.user || !CLINICIAN_ROLES.includes(req.user.role)) return false;
+  if (!(await membershipsExist())) return false;
+  return !(await practiceOf(req));
+}
+
+/** The refusal for a member of staff with no current practice. See unplacedStaff. */
+export function noPractice() {
+  return new AppError(
+    403,
+    'NO_PRACTICE',
+    'This account is not part of a practice any more. Ask the practice to add you back.',
+  );
 }
 
 /** And about locations: has anything been linked to a practice yet? */

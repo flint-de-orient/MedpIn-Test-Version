@@ -1,7 +1,7 @@
 import { verifyAccessToken } from '../services/tokens.js';
 import { User, ROLES, CLINICIAN_ROLES } from '../models/User.js';
 import { unauthorized, forbidden, asyncHandler } from './errors.js';
-import { assertSamePractice } from './practiceScope.js';
+import { assertSamePractice, unplacedStaff, noPractice } from './practiceScope.js';
 import { enrollmentGate } from './authorise.js';
 import { loginMayAccess } from '../services/patientsForLogin.js';
 import { recordDenial } from './recordDenial.js';
@@ -20,12 +20,41 @@ export const requireAuth = asyncHandler(async (req, res, next) => {
   next();
 });
 
+/**
+ * The routes an account with no current practice may still reach.
+ *
+ * Each only describes the caller's own placement and answers "no practice" when
+ * there is none, which is a true sentence the app shows and a refusal would
+ * replace with an error. Every other staff route reads or writes a practice's
+ * data, and without a practice there is no answer that is not somebody else's.
+ */
+const UNPLACED_MAY_ASK = Object.freeze([
+  { method: 'GET', path: '/practices/mine' },
+  { method: 'GET', path: '/billing' },
+]);
+
+function unplacedMayAsk(req) {
+  const path = `${req.baseUrl ?? ''}${req.path ?? ''}`.replace(/\/+$/, '');
+  return UNPLACED_MAY_ASK.some((r) => r.method === req.method && path.endsWith(r.path));
+}
+
 export const requireRole =
   (...roles) =>
-  (req, res, next) => {
+  async (req, res, next) => {
     if (!req.user) return next(unauthorized());
     if (!roles.includes(req.user.role)) {
       return next(forbidden('This action requires a different role'));
+    }
+    try {
+      // The role says what somebody does; a current membership says where. A
+      // member of staff with no practice has nowhere their role applies. See
+      // unplacedStaff.
+      if (!unplacedMayAsk(req) && (await unplacedStaff(req))) {
+        recordDenial(req, { reason: 'no_current_practice' });
+        return next(noPractice());
+      }
+    } catch (err) {
+      return next(err);
     }
     next();
   };
@@ -203,6 +232,12 @@ export const resolvePatientScope = asyncHandler(async (req, res, next) => {
   if (!DIRECT_PATIENT_ACCESS.includes(req.user.role)) {
     recordDenial(req, { reason: 'role_has_no_patient_access', patientId: requested });
     throw forbidden('You do not have access to this patient');
+  }
+  // Before the patient is looked up, so the refusal says nothing about them:
+  // an account with no practice is refused whoever it names.
+  if (await unplacedStaff(req)) {
+    recordDenial(req, { reason: 'no_current_practice', patientId: requested });
+    throw noPractice();
   }
   if (!requested || requested === 'me') {
     throw forbidden('A patient must be specified for clinician access');

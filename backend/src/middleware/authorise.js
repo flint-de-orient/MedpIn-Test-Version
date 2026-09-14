@@ -1,6 +1,6 @@
 import { Membership, MEMBERSHIP_STATUS } from '../models/Membership.js';
 import { forbidden } from './errors.js';
-import { practiceOf, assertSamePractice } from './practiceScope.js';
+import { practiceOf, assertSamePractice, unplacedStaff, noPractice } from './practiceScope.js';
 import { practiceMaySee } from '../services/enrollments.js';
 import { recordDenial } from './recordDenial.js';
 
@@ -120,9 +120,13 @@ export const requirePermission = (permission) => async (req, res, next) => {
   try {
     const membership = await membershipOf(req);
 
-    // No membership is no evidence, not a denial. This is the line that keeps
-    // the guard shippable before the migration.
-    if (!membership) return next();
+    // No membership is no evidence, not a denial — on a platform that has not
+    // been migrated. On one that has, a member of staff with no current
+    // practice is refused; see unplacedStaff. A patient is never unplaced.
+    if (!membership) {
+      if (await unplacedStaff(req)) return next(noPractice());
+      return next();
+    }
 
     if (!membership.can(permission)) {
       return next(forbidden('Your role at this practice does not allow that'));
@@ -140,6 +144,7 @@ export const requirePermission = (permission) => async (req, res, next) => {
  * the same parts in the same order for the routes that go through it.
  */
 export async function authorise(req, { permission, patientId } = {}) {
+  if (await unplacedStaff(req)) throw noPractice();
   const membership = await membershipOf(req);
 
   if (membership && permission && !membership.can(permission)) {

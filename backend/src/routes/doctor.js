@@ -840,37 +840,6 @@ router.post(
     // creates the body, and adds an enrolment. A first practice starts
     // immediately; a second needs the patient's own handset to answer a code,
     // because that one is reaching for a record it did not create.
-    const known = await User.findByLoginPhone(b.phone).select('_id name').lean();
-    if (known) {
-      const practiceId = await practiceOf(req);
-      if (!practiceId) {
-        // No practice on the caller means the deployment has not migrated, and
-        // there is no relationship to add them to. The old refusal is still the
-        // honest answer in that state.
-        throw conflict('An account with this phone number already exists');
-      }
-
-      const { patient, enrollment, consentRequired } = await enrolByPhone({
-        phone: b.phone,
-        name: b.name,
-        practiceId,
-        enrolledBy: req.user._id,
-      });
-
-      return res.status(200).json({
-        id: String(patient._id),
-        name: known.name,
-        phone: b.phone,
-        // The desk needs to know which of two quite different things happened.
-        existing: true,
-        enrollmentId: String(enrollment._id),
-        consentRequired,
-        message: consentRequired
-          ? 'This patient already uses MedPin. We have texted them a code — ask them to read it out.'
-          : 'This patient is already registered here.',
-      });
-    }
-
     // A token vouches for one number. Taking the token and the phone as two
     // independent fields would let a desk verify one number and register
     // another, so the two have to agree before the token means anything.
@@ -883,6 +852,80 @@ router.post(
     }
 
     const dob = b.dateOfBirth ?? (b.age != null ? dayjs().subtract(b.age, 'year').toDate() : undefined);
+    const practiceId = await practiceOf(req);
+
+    /*
+     * Every registration is an enrolment at the practice making it.
+     *
+     * A known number went through `enrolByPhone`; a new one did not. It made
+     * the account and the profile and no enrolment, and every list here is the
+     * practice's enrolled patients — so the patient the desk had just added
+     * appeared nowhere, and the practice's patient limit never counted them.
+     * Both now go through the one service, which finds or makes the login, adds
+     * the enrolment, and checks the limit and the subscription before anything
+     * is written.
+     */
+    if (practiceId) {
+      const doctor = await resolveDoctor({ actingUser: req.user, practiceId });
+      const { login, patient, enrollment, consentRequired, isNewLogin } = await enrolByPhone({
+        phone: b.phone,
+        name: b.name,
+        practiceId,
+        enrolledBy: req.user._id,
+        primaryDoctor: doctor?._id ?? null,
+        dateOfBirth: dob ?? null,
+        gender: b.gender ?? 'undisclosed',
+      });
+      req.auditResourceId = login._id;
+
+      if (!isNewLogin) {
+        return res.status(200).json({
+          id: String(patient._id),
+          name: login.name,
+          phone: b.phone,
+          // The desk needs to know which of two quite different things happened.
+          existing: true,
+          enrollmentId: String(enrollment._id),
+          consentRequired,
+          message: consentRequired
+            ? 'This patient already uses MedPin. We have texted them a code — ask them to read it out.'
+            : 'This patient is already registered here.',
+        });
+      }
+
+      // What the desk took, on the account the service has just made.
+      await User.updateOne(
+        { _id: login._id },
+        {
+          $set: {
+            consent: {
+              termsAcceptedAt: new Date(),
+              dataProcessingAcceptedAt: new Date(),
+              aiDisclaimerAcceptedAt: new Date(),
+            },
+            ...(phoneVerifiedAt ? { phoneVerifiedAt } : {}),
+          },
+        },
+      );
+      await writeIntake(login._id, b, doctor);
+
+      return res.status(201).json({
+        id: String(login._id),
+        name: login.name,
+        phone: login.phone,
+        existing: false,
+        enrollmentId: String(enrollment._id),
+        consentRequired: false,
+      });
+    }
+
+    // No practice on the caller: a platform with no memberships at all, which
+    // has not been migrated. A member of staff with no practice on a migrated
+    // platform is refused before reaching here (see unplacedStaff), so the old
+    // behaviour, and its refusal of a known number, stands only for that case.
+    if (await User.findByLoginPhone(b.phone).select('_id').lean()) {
+      throw conflict('An account with this phone number already exists');
+    }
 
     const user = new User({
       name: b.name,
@@ -906,39 +949,46 @@ router.post(
     // they do for a self-signed-up patient. A doctor registering someone takes
     // them on; the desk registering someone falls through to the head doctor.
     const doctor = await resolveDoctor({ actingUser: req.user });
-
-    await PatientProfile.create({
-      user: user._id,
-      ...(doctor ? { assignedDoctor: doctor._id } : {}),
-      ...(b.address ? { address: b.address } : {}),
-      ...(b.complaints ? { chiefComplaint: b.complaints } : {}),
-      ...(b.heightCm != null ? { heightCm: b.heightCm } : {}),
-      ...(b.weightKg != null ? { baselineWeightKg: b.weightKg } : {}),
-    });
-
-    // Intake vitals snapshot (source: clinic), written only when the desk
-    // actually captured a measurement — an empty VitalRecord would be noise.
-    const vitals = {};
-    if (b.systolic != null) vitals.systolic = b.systolic;
-    if (b.diastolic != null) vitals.diastolic = b.diastolic;
-    if (b.pulse != null) vitals.pulse = b.pulse;
-    if (b.spo2 != null) vitals.spo2 = b.spo2;
-    if (b.weightKg != null) vitals.weightKg = b.weightKg;
-    if (Object.keys(vitals).length) {
-      await VitalRecord.create({ patient: user._id, ...vitals });
-    }
-    if (b.glucoseMgDl != null) {
-      await GlucoseReading.create({
-        patient: user._id,
-        valueMgDl: b.glucoseMgDl,
-        context: 'random',
-        source: 'clinic',
-      });
-    }
+    await writeIntake(user._id, b, doctor);
 
     res.status(201).json({ id: String(user._id), name: user.name, phone: user.phone });
   }),
 );
+
+/**
+ * What the desk took at registration: the profile, and a vitals snapshot when
+ * anything was measured.
+ */
+async function writeIntake(patientId, b, doctor) {
+  await PatientProfile.create({
+    user: patientId,
+    ...(doctor ? { assignedDoctor: doctor._id } : {}),
+    ...(b.address ? { address: b.address } : {}),
+    ...(b.complaints ? { chiefComplaint: b.complaints } : {}),
+    ...(b.heightCm != null ? { heightCm: b.heightCm } : {}),
+    ...(b.weightKg != null ? { baselineWeightKg: b.weightKg } : {}),
+  });
+
+  // Intake vitals snapshot (source: clinic), written only when the desk
+  // actually captured a measurement — an empty VitalRecord would be noise.
+  const vitals = {};
+  if (b.systolic != null) vitals.systolic = b.systolic;
+  if (b.diastolic != null) vitals.diastolic = b.diastolic;
+  if (b.pulse != null) vitals.pulse = b.pulse;
+  if (b.spo2 != null) vitals.spo2 = b.spo2;
+  if (b.weightKg != null) vitals.weightKg = b.weightKg;
+  if (Object.keys(vitals).length) {
+    await VitalRecord.create({ patient: patientId, ...vitals });
+  }
+  if (b.glucoseMgDl != null) {
+    await GlucoseReading.create({
+      patient: patientId,
+      valueMgDl: b.glucoseMgDl,
+      context: 'random',
+      source: 'clinic',
+    });
+  }
+}
 
 /**
  * Record a consult-time vitals snapshot. Updates the profile's height / current
@@ -1007,6 +1057,84 @@ router.post(
 // Patient list + segmentation
 // ---------------------------------------------------------------------------
 
+/**
+ * The list's patients in the order asked for, as ids, across the whole list.
+ *
+ * `risk`: highest score first. `recent`: the latest glucose reading first.
+ * `inbox`: whoever is waiting on an unread message first, newest first; then
+ * everybody else who has written, by their latest message; then the rest by
+ * name. Ties fall back to the newest registration, or to name in the inbox, so
+ * a page boundary does not move between two requests.
+ */
+async function orderPatients(req, candidates, sort, profileMap) {
+  const byNewest = (a, b) => new Date(b.createdAt ?? 0) - new Date(a.createdAt ?? 0);
+  const ids = candidates.map((c) => c._id);
+
+  if (sort === 'risk') {
+    const risk = (c) => profileMap.get(String(c._id))?.riskScore ?? 0;
+    return [...candidates].sort((a, b) => risk(b) - risk(a) || byNewest(a, b)).map((c) => c._id);
+  }
+
+  if (sort === 'recent') {
+    const latest = new Map(
+      (
+        await GlucoseReading.aggregate([
+          { $match: { patient: { $in: ids } } },
+          { $group: { _id: '$patient', at: { $max: '$measuredAt' } } },
+        ])
+      ).map((r) => [String(r._id), new Date(r.at).getTime()]),
+    );
+    const at = (c) => latest.get(String(c._id)) ?? -Infinity;
+    return [...candidates].sort((a, b) => at(b) - at(a) || byNewest(a, b)).map((c) => c._id);
+  }
+
+  if (sort === 'inbox') {
+    // This practice's care conversations, the same ones the rows read.
+    const sessions = await ChatSession.find({
+      $and: [{ patient: { $in: ids }, kind: { $ne: 'nutrition' } }, await practiceSessions(req)],
+    })
+      .select('_id patient lastMessageAt')
+      .lean();
+    const lastAt = new Map();
+    for (const s of sessions) {
+      if (!s.lastMessageAt) continue;
+      const key = String(s.patient);
+      const t = new Date(s.lastMessageAt).getTime();
+      if (t > (lastAt.get(key) ?? -Infinity)) lastAt.set(key, t);
+    }
+    const unreadAt = new Map(
+      (
+        await ChatMessage.aggregate([
+          {
+            $match: {
+              patient: { $in: ids },
+              session: { $in: sessions.map((s) => s._id) },
+              role: 'user',
+              seenByClinicAt: null,
+            },
+          },
+          { $group: { _id: '$patient', at: { $max: '$createdAt' } } },
+        ])
+      ).map((r) => [String(r._id), new Date(r.at).getTime()]),
+    );
+    const rank = (c) => {
+      const key = String(c._id);
+      if (unreadAt.has(key)) return [0, -unreadAt.get(key)];
+      if (lastAt.has(key)) return [1, -lastAt.get(key)];
+      return [2, 0];
+    };
+    return [...candidates]
+      .sort((a, b) => {
+        const [ga, ta] = rank(a);
+        const [gb, tb] = rank(b);
+        return ga - gb || ta - tb || String(a.name ?? '').localeCompare(String(b.name ?? ''));
+      })
+      .map((c) => c._id);
+  }
+
+  return [...candidates].sort(byNewest).map((c) => c._id);
+}
+
 router.get(
   '/patients',
   validate({
@@ -1014,7 +1142,7 @@ router.get(
       z.object({
         riskBand: z.enum(['low', 'moderate', 'high', 'critical']).optional(),
         search: z.string().max(120).optional(),
-        sort: z.enum(['risk', 'name', 'recent']).default('risk'),
+        sort: z.enum(['risk', 'name', 'recent', 'inbox']).default('risk'),
       }),
     ),
   }),
@@ -1052,19 +1180,34 @@ router.get(
       userFilter._id = { $in: allowed ? byRisk.filter((id) => allowed.includes(id)) : byRisk };
     }
 
-    const sortSpec = sort === 'name' ? { name: 1 } : { createdAt: -1 };
-    const [users, total] = await Promise.all([
-      // avatarAssetId included so a photo the patient sets is visible to the
-      // clinic. Without it the field never left the database and the doctor's
-      // list showed an initial for a patient who had uploaded a picture.
-      User.find(userFilter)
-        .sort(sortSpec)
-        .skip(skip)
-        .limit(limit)
-        .select('name phone createdAt avatarAssetId')
-        .lean(),
-      User.countDocuments(userFilter),
-    ]);
+    /*
+     * Put in order before it is cut into pages.
+     *
+     * Risk and reading order were applied to a page already taken newest-first,
+     * so page one of "highest risk" was the newest patients in risk order, and
+     * the patient who most needed seeing, registered last year, was on a page
+     * the app never asked for. Every order is now worked out across the whole
+     * list and the page is cut from it. Name order is the database's own.
+     */
+    // avatarAssetId included so a photo the patient sets is visible to the
+    // clinic. Without it the field never left the database and the doctor's
+    // list showed an initial for a patient who had uploaded a picture.
+    const listFields = 'name phone createdAt avatarAssetId';
+    let users;
+    let total;
+    if (sort === 'name') {
+      [users, total] = await Promise.all([
+        User.find(userFilter).sort({ name: 1 }).skip(skip).limit(limit).select(listFields).lean(),
+        User.countDocuments(userFilter),
+      ]);
+    } else {
+      const candidates = await User.find(userFilter).select('_id name createdAt').lean();
+      total = candidates.length;
+      const pageIds = (await orderPatients(req, candidates, sort, profileMap)).slice(skip, skip + limit);
+      const found = await User.find({ _id: { $in: pageIds } }).select(listFields).lean();
+      const byId = new Map(found.map((u) => [String(u._id), u]));
+      users = pageIds.map((id) => byId.get(String(id))).filter(Boolean);
+    }
 
     const ids = users.map((u) => u._id);
 
@@ -1237,11 +1380,6 @@ router.get(
         hba1cSpark: (hba1cMap.get(id)?.values ?? []).slice(0, 6).reverse(),
       };
     });
-
-    if (sort === 'risk') items.sort((a, b) => b.riskScore - a.riskScore);
-    if (sort === 'recent') {
-      items.sort((a, b) => new Date(b.lastReadingAt ?? 0) - new Date(a.lastReadingAt ?? 0));
-    }
 
     res.json(paged(items, { page, limit, total }));
   }),

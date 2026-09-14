@@ -21,6 +21,8 @@ Practice sign-up adds four, each because a client has to do something different 
 `ACCOUNT_NOT_ELIGIBLE` (409 — the number's existing account is not a doctor's, so it cannot own a new practice; returned when the code is checked and on submission, never when a code is requested).
 `details` is a list of `{ path, message }` on `VALIDATION_ERROR` and may be an object on these.
 
+`NO_PRACTICE` (403) — a member of staff whose membership has ended, or who was never placed at a practice, on a platform that has practices. Every staff route returns it except `GET /practices/mine` and `GET /billing`, which answer "no practice" instead. A client should say the account is no longer part of a practice rather than retry. A patient never receives it.
+
 **Paged list shape:**
 ```json
 { "items": [ ... ], "page": 1, "limit": 50, "total": 137, "hasMore": true }
@@ -247,6 +249,31 @@ Two consequences worth knowing before deploying:
 `GET /alerts?status=open&severity=` → paged · `POST /alerts/:id/acknowledge` · `POST /alerts/:id/resolve` `{ "notes":"" }`
 `GET /chat-review?flagged=true` → paged sessions needing review · `GET /chat-review/:sessionId` → full transcript + citations
 `POST /knowledge` / `PATCH /knowledge/:id` / `POST /knowledge/:id/approve` — knowledge-base curation
+
+### Patient list order and registration
+`GET /doctor/patients?sort=risk|recent|name|inbox&page=&limit=` → paged. The order is worked out across the whole list before the page is cut:
+- `risk`: highest risk score first.
+- `recent`: latest glucose reading first.
+- `name`: alphabetical.
+- `inbox`: unread conversations first, newest unread first; then other conversations by latest message; then everybody else by name.
+
+`POST /doctor/patients` enrols the patient at the caller's practice:
+- A new number → `201 { id, name, phone, existing: false, enrollmentId, consentRequired: false }`.
+- A number MedPin already has → `200 { id, name, phone, existing: true, enrollmentId, consentRequired, message }`. `consentRequired` means the patient has to read back a texted code first.
+- A practice at its patient limit, or with a lapsed subscription → `400`, and nothing is written.
+
+## 11a. People — `/team` *(role: any staff at a practice)*
+### `GET /team`
+→ `{ items, canManage, departments, locations, limits }`. Each item is `{ id, userId, name, phone, role, isOwner, department, location, permissions, usingPreset, status, startedOn, endedOn }`, where `status` is `active`, `suspended`, `left` or `disabled`.
+### `POST /team/phone/otp` `{ phone }`
+Texts a hiring code (same response as `/auth/otp/request`). Works for any number, including one that already has an account. Needs `MANAGE_STAFF`, and a doctor or the practice's owner.
+### `POST /team/phone/verify` `{ phone, code }` → `{ phoneToken }`
+### `POST /team` `{ role, name, phoneToken, password?, departmentId?, locationId?, qualifications?, registrationNo? }` → `201 { id, userId, name, phone, role, existing }`
+- A number that already has an account in the same role is added to this practice with that account (`existing: true`). Its name, password and qualifications stay as they are.
+- `409` for a patient's number, an account in another role, a switched-off account, somebody who already works here, or a practice at its limit on people.
+### `PATCH /team/:id` `{ role?, departmentId?, locationId?, status? }` → `{ membership }`
+- `status` is `active` or `suspended`. `active` brings back somebody who was suspended or who left, and is `409` at the limit on people.
+- A role change also changes the account's role, and is `409` while the person works at another practice in a different role.
 
 ## 12. Uploads — `/uploads`
 `POST /` `multipart/form-data`: `file` + `kind` (`foot_photo|retinal_report|lab_report|meal_photo|other`)

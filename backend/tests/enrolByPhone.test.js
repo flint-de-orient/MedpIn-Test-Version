@@ -79,8 +79,11 @@ describe('consent is asked when a practice reaches, not when it starts', () => {
       [...OtpChallenge.schema.path('purpose').enumValues].sort(),
       // `practice` joined them when self-registration landed: somebody applying
       // to open a clinic proves their number the same way, and a shared purpose
-      // would let an enrolment code burn an application half-filled in.
-      ['enrol', 'login', 'practice', 'register'],
+      // would let an enrolment code burn an application half-filled in. `hire`
+      // joined when a practice could add somebody who already has an account:
+      // the registration code refuses those numbers, and a shared purpose would
+      // let a hiring code burn somebody's login or registration.
+      ['enrol', 'hire', 'login', 'practice', 'register'],
     );
   });
 });

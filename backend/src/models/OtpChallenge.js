@@ -25,7 +25,7 @@ const otpChallengeSchema = new mongoose.Schema(
     // because there is one live code per number per purpose and an enrolment
     // code arriving would otherwise burn a registration the patient was
     // part-way through.
-    purpose: { type: String, enum: ['register', 'login', 'enrol', 'practice'], required: true },
+    purpose: { type: String, enum: ['register', 'login', 'enrol', 'practice', 'hire'], required: true },
 
     codeHash: { type: String, required: true },
 

@@ -498,12 +498,18 @@ describe('the assistant’s knowledge is each practice’s own', () => {
     assert.equal((await KnowledgeChunk.findById(mine._id).lean()).status, 'retired');
   });
 
-  test('a doctor with no practice reads only shared passages and changes nothing', async () => {
+  test('a doctor with no practice is refused the knowledge base and changes nothing', async () => {
     /*
      * `practiceOf` is null for a doctor whose membership has ended. Treated as
      * "unknown, so permit", they would write shared passages — served to every
      * practice — and `{ practice: null }` would select the shared corpus as
      * theirs to edit.
+     *
+     * This test used to say "reads only shared passages", from when a missing
+     * membership still permitted. On a platform with memberships, a member of
+     * staff with no practice is now refused outright (NO_PRACTICE; see
+     * unplacedStaff). That keeps every promise the old test made, and adds a
+     * stronger one: nothing is listed at all.
      */
     const user = await User.create({
       name: 'Dr Former',
@@ -516,10 +522,11 @@ describe('the assistant’s knowledge is each practice’s own', () => {
     const theirs = await chunkFor(a.practice._id);
 
     const list = await former.get('/doctor/knowledge');
-    assert.equal(list.status, 200);
-    const ids = list.body.items.map((c) => String(c.id));
-    assert.ok(ids.includes(String(shared._id)));
-    assert.ok(!ids.includes(String(theirs._id)), 'a practice’s passage was listed to a doctor with no practice');
+    assert.equal(list.status, 403);
+    assert.equal(list.body.error.code, 'NO_PRACTICE');
+    const said = JSON.stringify(list.body);
+    assert.ok(!said.includes(String(theirs._id)), 'a practice’s passage was listed to a doctor with no practice');
+    assert.ok(!said.includes(String(shared._id)), 'the refusal carried the shared corpus');
 
     const created = await former.post('/doctor/knowledge', {
       docId: 'unowned',
@@ -531,7 +538,7 @@ describe('the assistant’s knowledge is each practice’s own', () => {
     assert.equal(created.status, 403);
     assert.equal(await KnowledgeChunk.countDocuments({ docId: 'unowned' }), 0);
 
-    assert.equal((await former.patch(`/doctor/knowledge/${shared._id}`, { title: 'Rewritten' })).status, 404);
+    assert.equal((await former.patch(`/doctor/knowledge/${shared._id}`, { title: 'Rewritten' })).status, 403);
     assert.equal((await KnowledgeChunk.findById(shared._id).lean()).title, 'Hypoglycaemia at night');
   });
 });

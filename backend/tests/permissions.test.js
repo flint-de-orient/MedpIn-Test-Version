@@ -101,8 +101,17 @@ describe('the guard is wired where it matters', () => {
     // One route hires and one changes a job, both in team.js. It was two
     // creation routes in doctor.js — the count is the same and the reason is
     // different, which is why this names the file it means.
+    //
+    // Two more send and spend the code that proves the number of the person
+    // being hired. They carry the same guard as the hire, so nobody who could
+    // not add a person can use them to text a number of their choosing.
     const src = routeSrc('team.js');
-    assert.equal((src.match(/requirePermission\(PERMISSIONS\.MANAGE_STAFF\)/g) ?? []).length, 2);
+    assert.equal((src.match(/requirePermission\(PERMISSIONS\.MANAGE_STAFF\)/g) ?? []).length, 4);
+    for (const path of ["'/phone/otp'", "'/phone/verify'"]) {
+      const at = src.indexOf(path);
+      assert.ok(at > 0, `${path} is gone`);
+      assert.match(src.slice(at, at + 200), /requirePermission\(PERMISSIONS\.MANAGE_STAFF\)/, `${path} is not guarded`);
+    }
   });
 
   test('creating and editing departments requires MANAGE_DEPARTMENT', () => {

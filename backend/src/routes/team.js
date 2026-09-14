@@ -15,7 +15,8 @@ import { Clinic } from '../models/Clinic.js';
 import { User, ROLES, CLINICIAN_ROLES } from '../models/User.js';
 import { practiceOf } from '../middleware/practiceScope.js';
 import { joinPractice, membersOf } from '../services/memberships.js';
-import { phoneFromToken } from '../services/otp.js';
+import { phoneFromToken, requestOtp, verifyOtp, signPhoneToken } from '../services/otp.js';
+import { toE164 } from '../utils/phone.js';
 
 /**
  * Who works here, in one place.
@@ -201,6 +202,65 @@ router.get(
   }),
 );
 
+/** What each role is called in a sentence about somebody's account. */
+const ROLE_WORDS = Object.freeze({
+  [ROLES.DOCTOR]: 'doctor',
+  [ROLES.STAFF]: 'front-desk',
+  [ROLES.DIETICIAN]: 'dietician',
+  [ROLES.DOCTOR_ASSISTANT]: 'doctor’s assistant',
+  [ROLES.LAB_MANAGER]: 'laboratory manager',
+  [ROLES.LAB_TECHNICIAN]: 'laboratory technician',
+  [ROLES.PRACTICE_MANAGER]: 'practice manager',
+});
+const roleWord = (role) => ROLE_WORDS[role] ?? String(role).replace(/_/g, ' ');
+
+const hirePhone = z
+  .string()
+  .trim()
+  .transform(toE164)
+  .pipe(z.string().regex(/^\+?[1-9]\d{7,14}$/, 'Enter a valid phone number'));
+
+/**
+ * Text a hiring code to the number of the person being added.
+ *
+ * ---- Its own purpose, and only for somebody who may hire ----------------
+ *
+ * The hire sheet used the registration code, and registration refuses a number
+ * that already has an account — so a doctor who already used MedPin, or a
+ * receptionist moving from another clinic, could never be added. This code
+ * works for any number. It proves only that the person in front of the
+ * practice holds it, which is all a hire needs; what their account may become
+ * here is decided when they are added.
+ *
+ * Behind the same guards as the hire itself, so nobody else can use it to send
+ * texts to numbers of their choosing.
+ */
+router.post(
+  '/phone/otp',
+  requireDoctorOrOwner,
+  requirePermission(PERMISSIONS.MANAGE_STAFF),
+  validate({ body: z.object({ phone: hirePhone }) }),
+  audit('create', 'PhoneVerification'),
+  asyncHandler(async (req, res) => {
+    res.json(await requestOtp({ phone: req.body.phone, purpose: 'hire' }));
+  }),
+);
+
+/** Spend a hiring code for the proof `POST /team` takes. */
+router.post(
+  '/phone/verify',
+  requireDoctorOrOwner,
+  requirePermission(PERMISSIONS.MANAGE_STAFF),
+  validate({
+    body: z.object({ phone: hirePhone, code: z.string().trim().regex(/^\d{4,8}$/) }),
+  }),
+  audit('update', 'PhoneVerification'),
+  asyncHandler(async (req, res) => {
+    await verifyOtp({ phone: req.body.phone, purpose: 'hire', code: req.body.code });
+    res.json({ phoneToken: signPhoneToken(req.body.phone) });
+  }),
+);
+
 /**
  * Hire somebody.
  *
@@ -292,6 +352,70 @@ router.post(
     if (b.departmentId && !department) throw notFound('Department not found');
     if (b.locationId && !location) throw notFound('Location not found');
 
+    /*
+     * Somebody who already uses MedPin keeps their account.
+     *
+     * This refused every number with an account, so a doctor who already had
+     * one — at another practice, or from before — could never be added, and
+     * neither could a receptionist moving clinics. An account keeps one role
+     * everywhere, and a patient's account never becomes staff: that would put
+     * their own record under whoever manages this practice.
+     *
+     * The proof above came from a code the person read out, so saying what
+     * their account is tells nobody anything they did not already know.
+     */
+    const existing = await User.findByLoginPhone(phone);
+    if (existing) {
+      // Anybody who is not staff is a patient: the only account that works at
+      // no practice. Asked as "not staff" so this route never names the role it
+      // must never create.
+      if (!CLINICIAN_ROLES.includes(existing.role)) {
+        throw conflict(
+          'That number belongs to a patient account. A patient cannot also be added as staff; use a different number.',
+        );
+      }
+      if (existing.role !== b.role) {
+        const was = roleWord(existing.role);
+        throw conflict(`That number belongs to a ${was} account. Add them as a ${was}, or use a different number.`);
+      }
+      if (!existing.isActive) {
+        throw conflict('That account has been switched off, so it cannot be added. Ask MedPin support to turn it back on.');
+      }
+      const here = await Membership.findOne({ user: existing._id, practice: practiceId }).lean();
+      if (here && here.status === MEMBERSHIP_STATUS.ACTIVE && !here.endedOn) {
+        throw conflict('They already work here.');
+      }
+
+      const joined = await joinPractice({
+        user: existing._id,
+        practice: practiceId,
+        role: b.role,
+        addedBy: req.user._id,
+        department: department?._id ?? null,
+        location: location?._id ?? null,
+      });
+      req.auditResourceId = existing._id;
+
+      noticeUsage(
+        practiceId,
+        'staff',
+        await Membership.countDocuments({ practice: practiceId, status: MEMBERSHIP_STATUS.ACTIVE, endedOn: null }),
+      ).catch(() => {});
+
+      return res.status(201).json({
+        id: String(joined._id),
+        userId: String(existing._id),
+        name: existing.name,
+        phone: existing.phone,
+        role: joined.role,
+        // Their name, number, password and qualifications are their own and
+        // stay as they were. What this practice added is the membership.
+        existing: true,
+      });
+    }
+
+    // A number that is on another account as its second number is not free to
+    // become a new login.
     if (await User.phoneTaken(phone)) {
       throw conflict('An account with this phone number already exists');
     }
@@ -351,12 +475,14 @@ router.post(
       }),
     ).catch(() => {});
 
+    req.auditResourceId = user._id;
     res.status(201).json({
       id: String(membership._id),
       userId: String(user._id),
       name: user.name,
       phone: user.phone,
       role: membership.role,
+      existing: false,
     });
   }),
 );
@@ -432,6 +558,32 @@ router.patch(
       }
     }
 
+    /*
+     * A role change reaches the account.
+     *
+     * It changed the membership alone, and the doctor picker, the dietician
+     * picker and every doctor-only route read the account's role — so somebody
+     * made a dietician here stayed front desk everywhere that mattered. An
+     * account keeps one role everywhere, so while they hold a current
+     * membership at another practice in a different role, the change is
+     * refused rather than made half-way.
+     */
+    if (req.body.role && req.body.role !== membership.role) {
+      const elsewhere = await Membership.exists({
+        user: membership.user,
+        practice: { $ne: membership.practice },
+        status: MEMBERSHIP_STATUS.ACTIVE,
+        endedOn: null,
+        role: { $ne: req.body.role },
+      });
+      if (elsewhere) {
+        throw conflict(
+          'They work at another practice in their current role, and an account keeps one role everywhere. ' +
+            'Change it there first, or add them with a different number.',
+        );
+      }
+    }
+
     if (req.body.role) {
       membership.role = req.body.role;
       // The grant follows the role unless somebody has customised it. A
@@ -442,9 +594,46 @@ router.patch(
       }
     }
 
+    /*
+     * Bringing somebody back brings them back.
+     *
+     * This set the status and left `endedOn`, so a member who had left was
+     * saved as active, still shown as having left, and still refused
+     * everything, because a current membership is one with no end date. Coming
+     * back takes a place as a hire does, so the practice's limit and a lapsed
+     * subscription are checked the same way.
+     */
+    const returning =
+      req.body.status === MEMBERSHIP_STATUS.ACTIVE &&
+      (membership.status !== MEMBERSHIP_STATUS.ACTIVE || membership.endedOn != null);
+    if (returning) {
+      const lapsed = await billingBlocks(membership.practice, 'ADD_MEMBER');
+      if (lapsed) {
+        throw conflict(
+          'Adding people is paused while the subscription payment is outstanding. ' +
+            'Everyone already here keeps working as normal.',
+        );
+      }
+      const practice = await Practice.findById(membership.practice);
+      const current = await Membership.countDocuments({
+        practice: membership.practice,
+        status: MEMBERSHIP_STATUS.ACTIVE,
+        endedOn: null,
+      });
+      const over = practice?.overLimit('staff', current);
+      if (over) {
+        throw conflict(
+          `This practice is at its limit of ${over.cap} people. Remove somebody, or ask about a larger plan.`,
+        );
+      }
+      membership.endedOn = null;
+    }
     if (req.body.status) membership.status = req.body.status;
 
     await membership.save();
+    if (req.body.role) {
+      await User.updateOne({ _id: membership.user, role: { $ne: req.body.role } }, { $set: { role: req.body.role } });
+    }
     res.json({ membership: membership.toPublic() });
   }),
 );
