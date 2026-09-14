@@ -32,6 +32,10 @@ import { PRACTICE_TYPE } from './Practice.js';
  * a state to sit in, and "active" is a fact about the Practice that results —
  * `Practice.status` already answers it. An application that carries its own
  * copy is a second answer that goes stale.
+ *
+ * What an approval in progress does have is a lease — see `approvingUntil` —
+ * because "one call" was check, provision, save, and two operators pressing
+ * Approve together both passed the check.
  */
 export const APPLICATION_STATUS = Object.freeze({
   SUBMITTED: 'submitted',
@@ -102,6 +106,22 @@ const practiceApplicationSchema = new mongoose.Schema(
     contactEmail: { type: String, required: true, trim: true, lowercase: true, maxlength: 160 },
 
     /**
+     * Whether the person applying is the doctor who will run the practice.
+     *
+     * The contact used to become the head doctor unconditionally: approval made
+     * a doctor account on the contact's number and named it after whoever the
+     * form called the primary doctor. When those were two people — a manager
+     * applying for a clinic — the manager's phone signed in as a doctor, under
+     * the doctor's name, holding PRESCRIBE.
+     *
+     * So the form asks. Yes keeps that arrangement; no makes the contact the
+     * practice's manager and keeps the doctor they named for the practice to
+     * add. Null on rows filed before the question existed, which approval reads
+     * as yes — the only answer those applicants were ever offered.
+     */
+    contactIsPrimaryDoctor: { type: Boolean, default: null },
+
+    /**
      * Whether that address has been shown to reach somebody.
      *
      * ---- Why it is confirmed after submitting, not before -------------------
@@ -146,6 +166,27 @@ const practiceApplicationSchema = new mongoose.Schema(
     contactPhone: { type: String, required: true, trim: true, index: true },
     phoneVerifiedAt: { type: Date, required: true },
 
+    /**
+     * The number, while this application is open — and nothing once it is decided.
+     *
+     * It exists to carry a unique index. "One open application per number" was
+     * a read followed by a write, so two presses of Submit on a slow connection
+     * both read nothing open and both wrote. Only the database can refuse the
+     * second of two writes that arrive together, and the value it refuses on
+     * has to disappear when the application is decided: a rejection is not a
+     * ban, and the same number applies again.
+     *
+     * Not `contactPhone` with a partial filter on the status. That needs a
+     * MongoDB new enough to accept `$in` in a partial index, and a second index
+     * on a key that is already indexed — both of which fail at startup, quietly,
+     * on exactly the server nobody is watching. A string that is present or
+     * absent works on every version.
+     *
+     * Kept in step by the hooks below rather than by the routes, so a decision
+     * made by any path releases the number.
+     */
+    openPhone: { type: String, default: null },
+
     // ---- what a reviewer checks -------------------------------------------
     registrationNo: { type: String, trim: true, maxlength: 60, default: null },
     doctorName: { type: String, trim: true, maxlength: 120, default: null },
@@ -189,6 +230,22 @@ const practiceApplicationSchema = new mongoose.Schema(
     reviewerEmail: { type: String, default: null },
 
     /**
+     * An approval in progress: until when it holds the application, and whose it is.
+     *
+     * Approving was check, provision, save. Two operators pressing Approve
+     * together both passed the check and made two practices for one clinic. So
+     * an approval now takes the application with one conditional update first,
+     * and the second finds it taken.
+     *
+     * A lease that ends, rather than a status. A status would be one more state
+     * for the applicant's page and every filter to learn, and a process that
+     * died half-way would leave the application in it for good. A lease lapses
+     * by itself, and the next operator simply approves.
+     */
+    approvingUntil: { type: Date, default: null },
+    approvingBy: { type: String, default: null },
+
+    /**
      * Every decision, in order, kept on the row.
      *
      * The admin audit log records these too and is the authority. This copy
@@ -204,6 +261,50 @@ const practiceApplicationSchema = new mongoose.Schema(
 
 /// "The queue", newest first — the only list an operator ever asks for.
 practiceApplicationSchema.index({ status: 1, createdAt: -1 });
+
+/// One open application per number, enforced where two requests at once cannot
+/// both get past it. Partial on the value being a string, so every decided row
+/// — whose `openPhone` is null — is outside the index entirely.
+practiceApplicationSchema.index(
+  { openPhone: 1 },
+  { unique: true, partialFilterExpression: { openPhone: { $type: 'string' } } },
+);
+
+/** The number is held while the application is open and released once it is decided. */
+practiceApplicationSchema.pre('validate', function holdOpenPhone(next) {
+  // A document loaded without its phone cannot say which number it holds.
+  if (this.contactPhone === undefined) return next();
+  this.openPhone = OPEN_STATUSES.includes(this.status) ? this.contactPhone : null;
+  next();
+});
+
+/**
+ * And the same for a decision made by an update rather than a save.
+ *
+ * `updateOne({ status: 'rejected' })` never runs the hook above. Without this,
+ * an application decided that way kept its number held, and the applicant who
+ * was turned away was turned away again when they came back with the papers.
+ */
+practiceApplicationSchema.pre(
+  ['updateOne', 'updateMany', 'findOneAndUpdate'],
+  function releaseOpenPhone(next) {
+    const update = this.getUpdate() ?? {};
+    const status = update.$set?.status ?? update.status;
+    if (status !== undefined && !OPEN_STATUSES.includes(status)) {
+      this.set('openPhone', null);
+    }
+    next();
+  },
+);
+
+/**
+ * What the applicant is told an operator said.
+ *
+ * A request for information and a rejection are addressed to them; the note on
+ * an approval is not. The console tells the operator writing it that nobody at
+ * the practice sees it, and the status page was showing it anyway.
+ */
+const ADDRESSED_TO_APPLICANT = new Set(['more_info', 'rejected']);
 
 /** What the applicant may see: their own submission and where it has got to. */
 practiceApplicationSchema.methods.toApplicant = function toApplicant() {
@@ -226,7 +327,8 @@ practiceApplicationSchema.methods.toApplicant = function toApplicant() {
      * opened it, when, which operator — is the platform's business.
      */
     latestNote:
-      [...this.history].reverse().find((h) => h.note)?.note ?? null,
+      [...this.history].reverse().find((h) => h.note && ADDRESSED_TO_APPLICANT.has(h.action))
+        ?.note ?? null,
     decidedOn:
       this.status === APPLICATION_STATUS.APPROVED || this.status === APPLICATION_STATUS.REJECTED
         ? this.history[this.history.length - 1]?.at ?? null

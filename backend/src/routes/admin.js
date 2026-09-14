@@ -21,6 +21,7 @@ import {
   defaultLimitsFor,
 } from '../models/Practice.js';
 import { Clinic } from '../models/Clinic.js';
+import { PracticeApplication, APPLICATION_STATUS } from '../models/PracticeApplication.js';
 import { Subscription, SUBSCRIPTION_STATUS } from '../models/Subscription.js';
 import { Membership, MEMBERSHIP_STATUS, PERMISSIONS, presetFor } from '../models/Membership.js';
 import { Department } from '../models/Department.js';
@@ -1944,7 +1945,11 @@ router.get(
 router.get(
   '/attention',
   asyncHandler(async (req, res) => {
-    const [pendingVerification, onboarding, weakAdmins, capped] = await Promise.all([
+    const [waitingApplications, pendingVerification, onboarding, weakAdmins, capped] = await Promise.all([
+      // Waiting on an operator. `more_info` is waiting on the applicant.
+      PracticeApplication.countDocuments({
+        status: { $in: [APPLICATION_STATUS.SUBMITTED, APPLICATION_STATUS.UNDER_REVIEW] },
+      }),
       Practice.countDocuments({ verification: VERIFICATION.PENDING }),
       Practice.countDocuments({ status: PRACTICE_STATUS.ONBOARDING }),
       /**
@@ -1993,6 +1998,24 @@ router.get(
         // than one that goes nowhere.
         href: '',
         count: 1,
+      });
+    }
+
+    /*
+     * Practices that asked to exist and have not been answered.
+     *
+     * Missing until now, so the overview said "Nothing is waiting on you" over a
+     * queue of applications — the one kind of waiting where the person on the
+     * other end has been told, on three screens, that somebody will be in touch.
+     */
+    if (waitingApplications) {
+      items.push({
+        kind: 'applications',
+        severity: 'waiting',
+        title: `${waitingApplications} practice application${waitingApplications === 1 ? '' : 's'} waiting for a decision`,
+        detail: 'They have been told MedPin will review them. Nothing is created until an operator decides.',
+        href: '/signups/',
+        count: waitingApplications,
       });
     }
 

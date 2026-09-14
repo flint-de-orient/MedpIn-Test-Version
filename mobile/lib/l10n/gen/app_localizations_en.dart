@@ -1200,6 +1200,10 @@ class AppLocalizationsEn extends AppLocalizations {
       'No account found for this number. Please create one first.';
 
   @override
+  String get authApplicationPending =>
+      'This number is on a practice application that MedPin is still reviewing. You can sign in with it once the practice is approved; until then it cannot be used to register.';
+
+  @override
   String get authInviteLabel => 'Have an invite code?';
 
   @override

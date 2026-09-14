@@ -155,6 +155,19 @@ export async function joinByPhone({
   addedBy = null,
   qualifications = null,
   registrationNo = null,
+  /**
+   * The grant, when the preset for this role and ownership is the wrong one.
+   *
+   * An owner is seeded with the head preset whatever their role, and the head
+   * preset prescribes. A practice manager who owns the practice they run does
+   * not, so the caller making one says so — rather than this deciding that
+   * owners who are managers are a special kind of owner.
+   */
+  permissions = null,
+  /// For an account made here: where the person can be written to, and when
+  /// their number was answered. Both are things a caller already knows.
+  email = null,
+  phoneVerifiedAt = null,
 }) {
   const found = await Practice.findById(practice).select('_id name').lean();
   if (!found) throw notFound('Practice not found');
@@ -163,6 +176,15 @@ export async function joinByPhone({
   let created = false;
 
   if (!user) {
+    /*
+     * The address only if no other account has it. It is unique across
+     * accounts, and somebody else already using an address is not a reason to
+     * refuse this person a practice — it is a field this account goes without.
+     */
+    const emailFree = email
+      ? !(await User.exists({ email: String(email).trim().toLowerCase() }))
+      : false;
+
     user = await User.create({
       name,
       phone,
@@ -170,6 +192,8 @@ export async function joinByPhone({
       isActive: true,
       ...(qualifications ? { qualifications } : {}),
       ...(registrationNo ? { registrationNo } : {}),
+      ...(emailFree ? { email } : {}),
+      ...(phoneVerifiedAt ? { phoneVerifiedAt } : {}),
       // No password. Clinicians sign in with a texted code like everybody else;
       // nobody sets a password on somebody else's behalf.
     });
@@ -189,13 +213,41 @@ export async function joinByPhone({
     );
   }
 
-  const membership = await joinPractice({
-    user: user._id,
-    practice: found._id,
-    role,
-    isOwner,
-    addedBy,
-  });
+  // An existing account whose number was just answered by the person being
+  // joined. Saying it was never proved is now simply wrong.
+  if (!created && phoneVerifiedAt && !user.phoneVerifiedAt) {
+    await User.updateOne({ _id: user._id, phoneVerifiedAt: null }, { $set: { phoneVerifiedAt } });
+  }
+
+  let membership;
+  try {
+    membership = await joinPractice({
+      user: user._id,
+      practice: found._id,
+      role,
+      isOwner,
+      addedBy,
+      permissions,
+    });
+  } catch (err) {
+    /*
+     * An account made for this membership goes with it.
+     *
+     * Left behind, it is a person with a login and no practice. They sign in to
+     * nothing, and the next attempt finds "an existing account" and joins that
+     * one instead of making it properly — with whatever name and role this
+     * failed attempt happened to give it.
+     */
+    if (created) {
+      await User.deleteOne({ _id: user._id }).catch((cleanup) =>
+        logger.error(
+          { err: cleanup, user: String(user._id) },
+          'could not remove an account made for a membership that failed',
+        ),
+      );
+    }
+    throw err;
+  }
 
   logger.info(
     { practice: String(found._id), user: String(user._id), role, isOwner, created },

@@ -188,7 +188,19 @@ describe('managing is a permission, reading is not', () => {
     // answered by `canManage` in the payload rather than by hiding the list.
     const body = route("router.get(\n  '/',");
     assert.ok(!/requirePermission/.test(body), 'reading the team now needs a permission');
-    assert.match(body, /canManage: membership \? membership\.can\(PERMISSIONS\.MANAGE_STAFF\) : false/);
+    /*
+     * The permission and the same rule the hiring route applies — a doctor, or
+     * the practice's owner. It was the permission alone while the route also
+     * demanded a doctor, so a manager holding MANAGE_STAFF was offered "Add
+     * someone" and refused on pressing it. See mayChangeWhoWorksHere.
+     */
+    assert.match(
+      body,
+      /canManage: membership\s*\?\s*membership\.can\(PERMISSIONS\.MANAGE_STAFF\) && mayChangeWhoWorksHere\(req\.user, membership\)\s*:\s*false/,
+    );
+    for (const marker of ["router.post(\n  '/',", "router.patch(\n  '/:id',"]) {
+      assert.match(route(marker), /requireDoctorOrOwner/, 'the route and the button answer differently');
+    }
   });
 });
 

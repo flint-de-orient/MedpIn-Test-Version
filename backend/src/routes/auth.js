@@ -9,8 +9,15 @@ import { GlucoseReading } from '../models/GlucoseReading.js';
 import { signAccessToken, issueRefreshToken, rotateRefreshToken, revokeAllForUser } from '../services/tokens.js';
 import { requireAuth } from '../middleware/auth.js';
 import { validate } from '../middleware/validate.js';
-import { asyncHandler, unauthorized, conflict, badRequest, notFound } from '../middleware/errors.js';
-import { requestOtp, verifyOtp, signPhoneToken, phoneFromToken } from '../services/otp.js';
+import { AppError, asyncHandler, unauthorized, conflict, badRequest, notFound } from '../middleware/errors.js';
+import {
+  requestOtp,
+  verifyOtp,
+  signPhoneToken,
+  phoneFromToken,
+  signApplicationPhoneToken,
+} from '../services/otp.js';
+import { PracticeApplication, OPEN_STATUSES } from '../models/PracticeApplication.js';
 import { AuditLog } from '../models/AuditLog.js';
 import { audit } from '../middleware/audit.js';
 import { logger } from '../config/logger.js';
@@ -165,6 +172,36 @@ const otpLimiter = rateLimit({
 const otpPurpose = z.enum(['register', 'login', 'practice']);
 
 /**
+ * The refusal for a number that is waiting on a practice application, or null.
+ *
+ * ---- Why the app has to be told ----------------------------------------
+ *
+ * Somebody who applied to bring a practice to MedPin is told to sign in on the
+ * app with the number they proved — once the practice is approved. Until then
+ * the number has no account, so the app answered "No account found. Please
+ * register", and registering made them a patient: the wrong role, on the one
+ * number approval would then refuse to make a doctor, because a patient cannot
+ * be turned into a clinician.
+ *
+ * So a number with an open application is neither unknown nor registrable. It
+ * gets its own code and a sentence saying the application is being reviewed,
+ * and the app shows that instead of offering registration.
+ */
+async function applicationPending(phone) {
+  const open = await PracticeApplication.exists({
+    contactPhone: phone,
+    status: { $in: OPEN_STATUSES },
+  });
+  if (!open) return null;
+  return new AppError(
+    409,
+    'APPLICATION_PENDING',
+    'This number is on a practice application that MedPin is still reviewing. ' +
+      'Once the practice is approved you can sign in with it; until then it cannot be used to register.',
+  );
+}
+
+/**
  * Text a one-time passcode.
  *
  * The existence check differs by purpose and is deliberate rather than
@@ -191,6 +228,12 @@ router.post(
       throw conflict('This phone number is already registered. Please log in instead.', {
         reason: 'ALREADY_REGISTERED',
       });
+    }
+    // Before "no account", which is also true of a waiting applicant and sends
+    // them to the wrong place. A practice code is what they are allowed.
+    if (!existing && purpose !== 'practice') {
+      const pending = await applicationPending(phone);
+      if (pending) throw pending;
     }
     if (purpose === 'login') {
       if (!existing) {
@@ -236,6 +279,9 @@ router.post(
           reason: 'ALREADY_REGISTERED',
         });
       }
+      // And the same for an application filed while the code was on its way.
+      const pending = await applicationPending(phone);
+      if (pending) throw pending;
       return res.json({ phoneToken: signPhoneToken(phone) });
     }
 
@@ -249,7 +295,9 @@ router.post(
      * answer that number, which is the only thing it is asked to prove.
      */
     if (purpose === 'practice') {
-      return res.json({ phoneToken: signPhoneToken(phone) });
+      // The application's own proof, with the application's own lifetime —
+      // see signApplicationPhoneToken.
+      return res.json({ phoneToken: signApplicationPhoneToken(phone) });
     }
 
     const user = await User.findByLoginPhone(phone);
@@ -282,6 +330,11 @@ router.post(
     if (await User.phoneTaken(phone)) {
       throw conflict('An account with this phone number already exists');
     }
+
+    // A proof that arrived some other way does not make a waiting applicant a
+    // patient either. See applicationPending.
+    const pending = await applicationPending(phone);
+    if (pending) throw pending;
 
     // Public sign-up is a patient by default; the private dietician code is the
     // only way to self-register a non-patient account.

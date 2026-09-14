@@ -29,8 +29,10 @@
  * scoped to the console's host and never sent anywhere else, so a script on the
  * clinic app cannot reach the admin API with credentials at all.
  *
- * In development the console is on :8144 and the API on :4000. Cookies ignore
- * the port, so those are the same site and the cookie works between them.
+ * In development the console's dev server and the API are two ports on one
+ * machine. Cookies ignore the port, so that is one site — as long as both are
+ * addressed by the same host name, which `localhost` and `127.0.0.1` are not.
+ * See `apiBase()`.
  */
 
 const LOCAL = new Set(["localhost", "127.0.0.1"]);
@@ -41,12 +43,22 @@ const LOCAL = new Set(["localhost", "127.0.0.1"]);
  * Same origin in production — an empty base, so the browser resolves against
  * this host and the proxy forwards it. `?api=` overrides, query-string only, so
  * nothing persists a value that could outlive the tab.
+ *
+ * ---- In development, by the page's own host name -------------------------
+ *
+ * This was a fixed 127.0.0.1:4000 for any local page, and `next dev` serves on
+ * localhost:3000. Those are different sites. The console never sent the strict
+ * session cookie to the API, and could not read the CSRF cookie the API set, so
+ * signing in appeared to work and every write after it was refused as a
+ * forgery — on a laptop, and nowhere else. Built from the page's own host name,
+ * the two are one site whichever of them somebody typed.
  */
 export function apiBase(): string {
   if (typeof window === "undefined") return "/api/v1";
   const override = new URLSearchParams(window.location.search).get("api");
   if (override) return override;
-  return LOCAL.has(window.location.hostname) ? "http://127.0.0.1:4000/api/v1" : "/api/v1";
+  const host = window.location.hostname;
+  return LOCAL.has(host) ? `http://${host}:4000/api/v1` : "/api/v1";
 }
 
 /**
@@ -90,14 +102,43 @@ export class ApiError extends Error {
    * would be a round trip for nothing.
    */
   options?: unknown;
+  /**
+   * What a refusal said besides its sentence.
+   *
+   * A validation failure names its fields here, and "already with us" carries
+   * the reference it tells the applicant to use. Both were dropped at this
+   * line until now, which is why neither ever reached the screen that needed
+   * it.
+   */
+  details?: unknown;
 
-  constructor(message: string, status: number, code: string | null, options?: unknown) {
+  constructor(
+    message: string,
+    status: number,
+    code: string | null,
+    options?: unknown,
+    details?: unknown,
+  ) {
     super(message);
     this.name = "ApiError";
     this.status = status;
     this.code = code;
     this.options = options;
+    this.details = details;
   }
+}
+
+/**
+ * Whether a 404 from an admin route is the console being switched off.
+ *
+ * `requireAdmin` answers a disabled console with exactly `NOT_FOUND` and "Not
+ * found" — generic on purpose, so the namespace looks absent. A route that is on
+ * and could not find something says what it could not find, and a body that is
+ * not the API's at all is a proxy that never reached it.
+ */
+function switchedOff(body: { error?: { code?: string; message?: string } } | null): boolean {
+  if (!body?.error) return true;
+  return body.error.code === "NOT_FOUND" && body.error.message === "Not found";
 }
 
 let onExpired: (() => void) | null = null;
@@ -141,33 +182,6 @@ export async function api<T>(path: string, opts: Options = {}): Promise<T> {
     );
   }
 
-  /*
-   * A 404 on an admin route means the console is switched off, not broken.
-   *
-   * `requireAdmin` answers 404 rather than 401 when `ADMIN_JWT_SECRET` is
-   * unset, so the whole namespace disappears. Saying so saves an hour spent
-   * looking for a bug that is a missing environment variable.
-   *
-   * ---- Why this is now scoped to /admin ---------------------------------
-   *
-   * It used to fire on any 404 this client saw, which was true while every
-   * route it called was an admin one. Public application routes broke that:
-   * a practice pressing "Send the code" against a server that has not been
-   * redeployed yet got "The admin API is switched off (ADMIN_JWT_SECRET is not
-   * set)" — a sentence about a secret that has nothing to do with the route
-   * they called, on a page no admin is looking at. It sent the one person
-   * debugging it to the wrong file.
-   *
-   * A 404 anywhere else now falls through and says what the server said.
-   */
-  if (res.status === 404 && path.startsWith("/admin")) {
-    throw new ApiError(
-      "The admin API is switched off on this server (ADMIN_JWT_SECRET is not set).",
-      404,
-      "PANEL_OFF",
-    );
-  }
-
   let data: unknown = null;
   try {
     data = await res.json();
@@ -177,9 +191,34 @@ export async function api<T>(path: string, opts: Options = {}): Promise<T> {
 
   if (!res.ok) {
     const err = data as
-      | { error?: { message?: string; code?: string; options?: unknown } }
+      | { error?: { message?: string; code?: string; options?: unknown; details?: unknown } }
       | null;
     const code = err?.error?.code ?? null;
+
+    /*
+     * A 404 on an admin route can mean the console is switched off.
+     *
+     * `requireAdmin` answers 404 rather than 401 when `ADMIN_JWT_SECRET` is
+     * unset, so the whole namespace disappears. Saying so saves an hour spent
+     * looking for a bug that is a missing environment variable.
+     *
+     * ---- Scoped to /admin, and to the API's switched-off answer ----------
+     *
+     * It fired on any 404 once, which was true while every route this client
+     * called was an admin one; public application routes broke that, and a
+     * practice pressing "Send the code" was told about a secret that had nothing
+     * to do with them. Scoped to /admin, it still said "switched off" for a
+     * console that was on and could not find what it was asked for — an
+     * application id from a stale link read as a misconfigured server. So the
+     * body is read first, and only the deliberately generic answer counts.
+     */
+    if (res.status === 404 && path.startsWith("/admin") && switchedOff(err)) {
+      throw new ApiError(
+        "The admin API is switched off on this server (ADMIN_JWT_SECRET is not set), or this address does not reach it.",
+        404,
+        "PANEL_OFF",
+      );
+    }
 
     /**
      * An expired session returns to the sign-in screen rather than leaving a
@@ -198,6 +237,7 @@ export async function api<T>(path: string, opts: Options = {}): Promise<T> {
       res.status,
       code,
       err?.error?.options,
+      err?.error?.details,
     );
   }
 

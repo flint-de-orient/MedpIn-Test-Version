@@ -2,7 +2,7 @@ import jwt from 'jsonwebtoken';
 import { env } from '../config/env.js';
 import { OtpChallenge, generateOtp, hashOtp } from '../models/OtpChallenge.js';
 import { sendOtpSms, maskPhone } from './sms.js';
-import { badRequest, tooMany, unauthorized } from '../middleware/errors.js';
+import { AppError, badRequest, tooMany, unauthorized } from '../middleware/errors.js';
 import { logger } from '../config/logger.js';
 
 /**
@@ -150,6 +150,63 @@ export function phoneFromToken(token) {
   }
   // An access token is signed with the same secret and would otherwise pass.
   if (payload.use !== 'phone_verified' || !payload.phone) {
+    throw badRequest('Phone verification expired. Please verify your number again.');
+  }
+  return payload.phone;
+}
+
+/** What an application's proof says it is for. See signApplicationPhoneToken. */
+const APPLICATION_USE = 'practice_application';
+
+/**
+ * Proof of a number for a practice application, which outlives the code.
+ *
+ * ---- Its own lifetime, and its own `use` --------------------------------
+ *
+ * The code lives as long as the SMS says. The proof has to last through the
+ * rest of a form a patient's registration does not have — see
+ * APPLICATION_PHONE_TOKEN_MINUTES — and while it shared the code's ten minutes
+ * a slow applicant was refused at Submit with a number they had just proved.
+ *
+ * A different `use`, so the longer life buys nothing anywhere else. Patient
+ * registration and the console's head-doctor check accept `phone_verified`
+ * only, and half an hour of proof put in front of either is refused rather
+ * than stretching their ten minutes to thirty.
+ */
+export function signApplicationPhoneToken(phone) {
+  return jwt.sign({ phone, use: APPLICATION_USE }, env.JWT_ACCESS_SECRET, {
+    expiresIn: `${env.APPLICATION_PHONE_TOKEN_MINUTES}m`,
+    issuer: 'akd-care',
+  });
+}
+
+/**
+ * The number an application's proof vouches for, and why it does not.
+ *
+ * Takes the application proof and the ordinary one: a code spent through
+ * `/auth/otp/verify` with purpose `practice` proves the number just as well.
+ *
+ * What it adds is a name for the commonest failure. An expired proof is
+ * `PHONE_TOKEN_EXPIRED`, so the form can drop it and ask for the number again;
+ * as a bare 400 with a sentence, the form kept the dead token and the applicant
+ * pressed Submit into the same refusal until they gave up.
+ */
+export function applicantPhoneFromToken(token) {
+  let payload;
+  try {
+    payload = jwt.verify(token, env.JWT_ACCESS_SECRET, { issuer: 'akd-care' });
+  } catch (err) {
+    if (err?.name === 'TokenExpiredError') {
+      throw new AppError(
+        400,
+        'PHONE_TOKEN_EXPIRED',
+        'The check on your mobile number has expired. Verify the number again, then submit.',
+      );
+    }
+    throw badRequest('Phone verification expired. Please verify your number again.');
+  }
+  // An access token is signed with the same secret and would otherwise pass.
+  if (![APPLICATION_USE, 'phone_verified'].includes(payload.use) || !payload.phone) {
     throw badRequest('Phone verification expired. Please verify your number again.');
   }
   return payload.phone;

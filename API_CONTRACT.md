@@ -14,6 +14,13 @@ All requests/responses are JSON unless noted. All timestamps are ISO 8601 UTC.
 ```
 Codes: `BAD_REQUEST` `VALIDATION_ERROR` `UNAUTHORIZED` `FORBIDDEN` `NOT_FOUND` `CONFLICT` `DUPLICATE` `RATE_LIMITED` `INVALID_ID` `INTERNAL_ERROR` `AI_UNAVAILABLE`.
 
+Practice sign-up adds four, each because a client has to do something different for it:
+`APPLICATION_OPEN` (409 — an application from this number is still open; `details.reference` is its reference),
+`APPLICATION_PENDING` (409 — the number is on a practice application under review, so it can neither sign in nor register yet),
+`PHONE_TOKEN_EXPIRED` (400 — the proof of the number has lapsed; verify it again),
+`ACCOUNT_NOT_ELIGIBLE` (409 — the number's existing account is not a doctor's, so it cannot own a new practice).
+`details` is a list of `{ path, message }` on `VALIDATION_ERROR` and may be an object on these.
+
 **Paged list shape:**
 ```json
 { "items": [ ... ], "page": 1, "limit": 50, "total": 137, "hasMore": true }

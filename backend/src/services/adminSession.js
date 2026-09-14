@@ -32,8 +32,14 @@ import crypto from 'node:crypto';
  * anywhere else, so a script running on the *clinic* app cannot reach the admin
  * API with credentials even if it tries.
  *
- * In development the console is on :8144 and the API on :4000. Cookies ignore
- * the port, so those are the same site and a strict cookie works between them.
+ * In development the console's dev server and the API are two ports on one
+ * machine. Cookies ignore the port, so that is one site — but only while both
+ * are addressed by the same host name. `localhost` and `127.0.0.1` are
+ * different sites: a console on http://localhost:3000 calling
+ * http://127.0.0.1:4000 never sends the strict session cookie, and cannot read
+ * the CSRF cookie the API sets, so every write is refused as a forgery. The
+ * console builds its development API address from its own host name for that
+ * reason — see `apiBase()` in web/src/lib/api.ts.
  *
  * ---- And a CSRF token anyway ---------------------------------------------
  *

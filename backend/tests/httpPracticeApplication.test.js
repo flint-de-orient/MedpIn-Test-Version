@@ -209,10 +209,19 @@ describe('a practice applies', () => {
   });
 
   test('pressing submit twice does not make two queues of one clinic', async () => {
-    await call('POST', '/applications', form(), { anonymous: true });
+    const first = await call('POST', '/applications', form(), { anonymous: true });
     const again = await call('POST', '/applications', form(), { anonymous: true });
 
-    assert.equal(again.status, 400);
+    /*
+     * A conflict with what is already there, not a malformed request — and it
+     * carries the reference. The refusal says "use the reference you were
+     * given", and the person reading it is most often somebody who lost it.
+     * It said that for months with the reference attached on the server and
+     * dropped by the error handler on the way out.
+     */
+    assert.equal(again.status, 409);
+    assert.equal(again.body.error.code, 'APPLICATION_OPEN');
+    assert.equal(again.body.error.details.reference, first.body.application.reference);
     assert.equal(await PracticeApplication.countDocuments({}), 1);
   });
 
@@ -362,7 +371,10 @@ describe('an operator decides', () => {
     await call('POST', `/admin/applications/${a._id}/approve`, { note: 'Checked.' });
 
     const again = await call('POST', `/admin/applications/${a._id}/approve`, { note: 'Again.' });
-    assert.equal(again.status, 400);
+    // A conflict with the state the application is in, the same answer the
+    // claim route already gave — and the one a second operator approving at
+    // the same moment gets.
+    assert.equal(again.status, 409);
     assert.equal(await Practice.countDocuments({}), 1);
   });
 
@@ -551,18 +563,35 @@ describe('the number is proved inside the application namespace', () => {
     assert.equal(challenge.purpose, 'practice');
   });
 
-  test('and a number that already signs in somewhere is refused', async () => {
+  test('a number that signs in as a doctor may apply, because one person can run two practices', async () => {
     /*
-     * Applying is for a practice that is not on the platform. Somebody who can
-     * already sign in is either an existing customer — whose practice should be
-     * edited rather than created again — or is about to be sent a code that
-     * would let an application claim their number.
+     * This used to refuse every number with an account, on the reasoning that
+     * applying is for a practice that is not on the platform. It is — but it
+     * is not for a *person* who is not, and a doctor opening a second practice
+     * is exactly who approval was written to join: joinByPhone reuses the
+     * account rather than making a second Dr Sen. Refusing them sent a real
+     * customer away with "sign in on the app", where there is nothing to apply
+     * with.
      */
     await User.create({ name: 'Dr Sen', phone: NEW_PHONE, role: ROLES.DOCTOR, isActive: true });
 
     const res = await call('POST', '/applications/verify/send', { phone: NEW_PHONE }, { anonymous: true });
-    assert.equal(res.status, 400);
-    assert.match(res.body.error.message, /already has a MedPin account/);
+    assert.equal(res.status, 200);
+  });
+
+  test('but a number that signs in as a patient is refused, and told why', async () => {
+    /*
+     * Still refused, and now with the reason rather than "use a different
+     * number". The number that applies becomes the practice's sign-in, an
+     * account keeps one role everywhere, and a patient's own record would then
+     * be administered by whoever runs the practice.
+     */
+    await User.create({ name: 'Mr Sen', phone: NEW_PHONE, role: ROLES.PATIENT, isActive: true });
+
+    const res = await call('POST', '/applications/verify/send', { phone: NEW_PHONE }, { anonymous: true });
+    assert.equal(res.status, 409);
+    assert.equal(res.body.error.code, 'ACCOUNT_NOT_ELIGIBLE');
+    assert.match(res.body.error.message, /patient account/);
   });
 
   test('a wrong code buys nothing', async () => {

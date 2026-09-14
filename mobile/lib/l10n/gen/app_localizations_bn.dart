@@ -1194,6 +1194,10 @@ class AppLocalizationsBn extends AppLocalizations {
       'এই নম্বরের জন্য কোনও অ্যাকাউন্ট পাওয়া যায়নি। প্রথমে একটি তৈরি করুন।';
 
   @override
+  String get authApplicationPending =>
+      'এই নম্বরটি একটি প্র্যাকটিস আবেদনের সঙ্গে যুক্ত, যা MedPin এখনও পর্যালোচনা করছে। প্র্যাকটিসটি অনুমোদিত হলে এই নম্বর দিয়ে সাইন ইন করতে পারবেন; তার আগে এটি দিয়ে নিবন্ধন করা যাবে না।';
+
+  @override
   String get authInviteLabel => 'আপনার কি একটি আমন্ত্রণ কোড আছে?';
 
   @override

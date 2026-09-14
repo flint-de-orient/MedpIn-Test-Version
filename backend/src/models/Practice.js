@@ -276,6 +276,30 @@ const practiceSchema = new mongoose.Schema(
     /// clinic that has no doctor row set.
     headDoctor: { type: mongoose.Schema.Types.ObjectId, ref: 'User', index: true },
 
+    /**
+     * The doctor an application named, when the applicant was not that doctor.
+     *
+     * A manager applying for a clinic becomes its owner and does not prescribe.
+     * The doctor they named is not on the platform yet and has no number the
+     * application proved, so no account or membership can be made for them —
+     * and `headDoctor` stays empty rather than pointing at the manager. What can
+     * be kept is who the doctor is, so the practice and the operator both know
+     * who is still to be added. Null on every practice whose doctor applied,
+     * and on every practice made by hand.
+     */
+    namedDoctor: {
+      type: new mongoose.Schema(
+        {
+          name: { type: String, trim: true, maxlength: 120, default: null },
+          registrationNo: { type: String, trim: true, maxlength: 60, default: null },
+          /// A shared-catalogue key, as the application stored it.
+          department: { type: String, trim: true, maxlength: 80, default: null },
+        },
+        { _id: false },
+      ),
+      default: null,
+    },
+
     /// May this practice use the app. See the note above.
     status: {
       type: String,
@@ -405,6 +429,13 @@ practiceSchema.methods.toPublic = function toPublic() {
       locations: this.limits?.locations ?? null,
     },
     planRenewsOn: this.planRenewsOn ?? null,
+    namedDoctor: this.namedDoctor
+      ? {
+          name: this.namedDoctor.name ?? null,
+          registrationNo: this.namedDoctor.registrationNo ?? null,
+          department: this.namedDoctor.department ?? null,
+        }
+      : null,
     createdAt: this.createdAt,
   };
 };

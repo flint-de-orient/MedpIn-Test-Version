@@ -42,6 +42,10 @@ class ErrorView extends StatelessWidget {
           return l10n.commonNoInternet;
         case 'INTERNAL_ERROR':
           return l10n.errorInternal;
+        // A number waiting on a practice application: neither unknown nor one
+        // to register. See applicationPending in backend/src/routes/auth.js.
+        case 'APPLICATION_PENDING':
+          return l10n.authApplicationPending;
         default:
           return l10n.commonUnknownError;
       }

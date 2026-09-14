@@ -3,14 +3,14 @@ import rateLimit from 'express-rate-limit';
 import { z } from 'zod';
 
 import { validate } from '../middleware/validate.js';
-import { asyncHandler, badRequest, notFound } from '../middleware/errors.js';
+import { AppError, asyncHandler, badRequest, notFound } from '../middleware/errors.js';
 import {
-  phoneFromToken,
+  applicantPhoneFromToken,
   requestOtp,
-  signPhoneToken,
+  signApplicationPhoneToken,
   verifyOtp,
 } from '../services/otp.js';
-import { User } from '../models/User.js';
+import { User, ROLES } from '../models/User.js';
 import { toE164 } from '../utils/phone.js';
 
 /** The one purpose these codes are spent on. See the note on /verify/send. */
@@ -28,10 +28,7 @@ const applicantPhone = z
 import { PRACTICE_TYPE, PRACTICE_TYPE_ORDER } from '../models/Practice.js';
 import { Department } from '../models/Department.js';
 import { BY_TYPE, CAPABILITIES } from '../services/capabilities.js';
-import {
-  PracticeApplication,
-  APPLICATION_STATUS,
-} from '../models/PracticeApplication.js';
+import { PracticeApplication, OPEN_STATUSES } from '../models/PracticeApplication.js';
 import { logger } from '../config/logger.js';
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { sendMail } from '../services/mailer.js';
@@ -45,10 +42,9 @@ import { env } from '../config/env.js';
  * Nobody filling this in has an account — that is the point of it. So every
  * protection here is something other than a session:
  *
- *   * The phone is proved first. `/auth/otp/verify` with purpose `practice`
- *     returns a short-lived token, and this route takes the token rather than
- *     the number. One person cannot file applications naming numbers that are
- *     not theirs.
+ *   * The phone is proved first. `/verify/check` returns a short-lived token,
+ *     and this route takes the token rather than the number. One person cannot
+ *     file applications naming numbers that are not theirs.
  *   * The token's number is what gets stored. Taking both a token and a phone
  *     field and trusting them to agree is how somebody verifies one number and
  *     submits another.
@@ -190,18 +186,17 @@ router.get(
  * applicant closes — and a link that confirms the address reached somebody.
  * Both have to happen and neither justifies a message of its own.
  *
- * ---- Never fatal --------------------------------------------------------
+ * ---- Written first, sent after --------------------------------------------
  *
- * A send that throws must not fail the submission. The application is already
- * written and it is the thing that matters; an SMTP timeout is not a reason to
- * tell somebody their registration did not go through, and the operator can
- * see the address is unconfirmed and chase the phone number instead.
+ * The token is minted and stored before the applicant is answered, so a status
+ * page opened the next second already knows an email is on its way. The message
+ * itself goes out after the answer — see deliverConfirmation.
  *
  * With no SMTP configured `sendMail` writes the message to the log rather than
  * pretending, so a deployment without mail still shows the reference on screen
  * and the link is recoverable by whoever reads the logs.
  */
-async function sendConfirmation(application) {
+async function prepareConfirmation(application) {
   // The raw token is never stored. What is kept is a SHA-256 of it, the way a
   // password reset is, so a leaked collection holds nothing replayable.
   const token = randomBytes(24).toString('base64url');
@@ -216,33 +211,110 @@ async function sendConfirmation(application) {
     ? `${base}/?application=${application.reference}&confirm=${token}`
     : null;
 
-  try {
-    await sendMail({
-      to: application.contactEmail,
-      subject: `Your MedPin application ${application.reference}`,
-      text: [
-        `Thank you — we have your registration for ${application.practiceName}.`,
-        '',
-        `Your reference is ${application.reference}. Keep it: it is how you check`,
-        'what is happening with the application.',
-        '',
-        ...(link
-          ? ['Please confirm this address so our decision reaches you:', link, '']
-          : []),
-        'Nothing is created until somebody at MedPin has reviewed this. We will',
-        'write to you either way.',
-      ].join('\n'),
-    });
-  } catch (err) {
-    // Logged, not raised. See the note above.
+  return {
+    to: application.contactEmail,
+    subject: `Your MedPin application ${application.reference}`,
+    text: [
+      `Thank you — we have your registration for ${application.practiceName}.`,
+      '',
+      `Your reference is ${application.reference}. Keep it: it is how you check`,
+      'what is happening with the application.',
+      '',
+      ...(link
+        ? ['Please confirm this address so our decision reaches you:', link, '']
+        : []),
+      'Nothing is created until somebody at MedPin has reviewed this. We will',
+      'write to you either way.',
+    ].join('\n'),
+  };
+}
+
+/**
+ * Send it, without anybody waiting.
+ *
+ * ---- Never fatal, and never awaited ---------------------------------------
+ *
+ * A send that throws must not fail the submission. The application is already
+ * written and it is the thing that matters; an SMTP timeout is not a reason to
+ * tell somebody their registration did not go through, and the operator can
+ * see the address is unconfirmed and chase the phone number instead.
+ *
+ * It was awaited, over a transport with no timeouts, so a mail host that took
+ * the connection and said nothing held the applicant on "Submitting…" for as
+ * long as it liked — long enough to press Submit again, into "already with
+ * us". The applicant is answered first now, and a failure is logged.
+ */
+function deliverConfirmation(application, message) {
+  sendMail(message).catch((err) => {
     logger.error(
       { err, reference: application.reference },
       'could not send the application confirmation',
     );
-  }
+  });
 }
 
 const EMAIL_TOKEN_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+
+/**
+ * Whether the account already on this number, if any, may own a new practice.
+ *
+ * ---- A doctor may, and nobody else already signed in may -----------------
+ *
+ * This refused every number with an account, on the grounds that applying is
+ * for a practice that is not on the platform. It is — but not for a *person*
+ * who is not. A doctor opening a second practice is the case approval was built
+ * for: joinByPhone joins the account that exists rather than making a second
+ * one. Telling them to "sign in on the app" sent them somewhere with nothing to
+ * apply with.
+ *
+ * Every other account is still refused, and is now told why. The number that
+ * applies becomes the owner's sign-in, and an account keeps one role
+ * everywhere: a patient's number would put their own record under whoever runs
+ * the practice, and a desk or a dietician somewhere cannot become the owner of
+ * a practice by filling in a form.
+ *
+ * Asked before a code is sent and again on submission, because a proof can be
+ * had from /auth/otp/verify without ever passing through /verify/send.
+ */
+async function assertMayApply(phone) {
+  const existing = await User.findByLoginPhone(phone).select('role').lean();
+  if (!existing || existing.role === ROLES.DOCTOR) return;
+
+  const kind = String(existing.role).replace(/_/g, ' ');
+  throw new AppError(
+    409,
+    'ACCOUNT_NOT_ELIGIBLE',
+    `This number already has a MedPin ${kind} account, so it cannot register a practice. ` +
+      'The number that applies becomes the practice owner’s sign-in, and an account keeps one role ' +
+      'everywhere. Apply with the doctor’s or the practice manager’s own number instead.',
+  );
+}
+
+/** The open application on this number, if there is one. */
+function openApplicationFor(phone) {
+  return PracticeApplication.findOne({ contactPhone: phone, status: { $in: OPEN_STATUSES } })
+    .select('reference')
+    .lean();
+}
+
+/**
+ * "Already with us", carrying the reference that sentence tells them to use.
+ *
+ * A 409 with its own code rather than a 400. Nothing about the request is
+ * malformed — it collides with something that exists — and the form has to
+ * tell this refusal from every other one, because the right thing to show is
+ * the application, not an error. Handing the reference back is safe here: the
+ * caller has just proved they answer the number it was filed from.
+ */
+function alreadyOpen(open) {
+  return new AppError(
+    409,
+    'APPLICATION_OPEN',
+    'An application from this number is already with us, so this one was not filed. ' +
+      'Use its reference to see where it has got to.',
+    { reference: open.reference },
+  );
+}
 
 const verifyLimiter = rateLimit({
   windowMs: 60 * 60 * 1000,
@@ -257,20 +329,9 @@ router.post(
   verifyLimiter,
   validate({ body: z.object({ phone: applicantPhone }) }),
   asyncHandler(async (req, res) => {
-    /*
-     * A number that already has an account is refused.
-     *
-     * Applying is for a practice that is not on the platform. Somebody who can
-     * already sign in is either an existing customer — whose practice should be
-     * edited, not re-created — or is about to be sent a code that would let an
-     * application claim their number.
-     */
-    const existing = await User.findByLoginPhone(req.body.phone).select('_id').lean();
-    if (existing) {
-      throw badRequest(
-        'This number already has a MedPin account. Sign in on the app, or use a different number.',
-      );
-    }
+    // Before a code is spent on a number that could never apply. See
+    // assertMayApply for who may.
+    await assertMayApply(req.body.phone);
 
     res.json(await requestOtp({ phone: req.body.phone, purpose: PRACTICE_PURPOSE }));
   }),
@@ -286,8 +347,11 @@ router.post(
     await verifyOtp({ phone: req.body.phone, purpose: PRACTICE_PURPOSE, code: req.body.code });
     // The token carries the number, so the submission never takes it from a
     // field beside the proof — a form that did could verify one number and
-    // apply with another.
-    res.json({ phoneToken: signPhoneToken(req.body.phone) });
+    // apply with another. It outlives the code; see signApplicationPhoneToken.
+    res.json({
+      phoneToken: signApplicationPhoneToken(req.body.phone),
+      expiresInSeconds: env.APPLICATION_PHONE_TOKEN_MINUTES * 60,
+    });
   }),
 );
 
@@ -329,6 +393,14 @@ router.post(
       contactEmail: z.string().trim().toLowerCase().email(),
 
       /**
+       * Whether the person applying is the doctor who will run it.
+       *
+       * Optional so a form served before the question existed can still file,
+       * and read as yes — the only answer that form ever gave. See the model.
+       */
+      contactIsPrimaryDoctor: z.boolean().optional(),
+
+      /**
        * Proof, not a number.
        *
        * The phone is read out of this token. A separate `contactPhone` field
@@ -351,7 +423,11 @@ router.post(
   }),
   asyncHandler(async (req, res) => {
     const b = req.body;
-    const phone = phoneFromToken(b.phoneToken);
+    // An expired proof is refused by name, so the form can ask for the number
+    // again rather than let the applicant press Submit into the same wall.
+    const phone = applicantPhoneFromToken(b.phoneToken);
+
+    await assertMayApply(phone);
 
     /*
      * Departments, kept only where they are real and only where they apply.
@@ -384,57 +460,60 @@ router.post(
      * application is allowed once the first is decided — a rejection is not a
      * ban, and a practice that was turned down for missing papers should be
      * able to come back with them.
+     *
+     * Read first for the ordinary case, and refused by the unique index on
+     * `openPhone` for the other one: two presses arriving together both read
+     * "nothing open" before either has written, and only the database can say
+     * no to the second. Either way the answer carries the reference.
      */
-    const open = await PracticeApplication.findOne({
-      contactPhone: phone,
-      status: { $in: [APPLICATION_STATUS.SUBMITTED, APPLICATION_STATUS.UNDER_REVIEW, APPLICATION_STATUS.MORE_INFO] },
-    }).lean();
-
-    if (open) {
-      throw badRequest(
-        'An application from this number is already with us. Use the reference you were given to check it.',
-        { reason: 'ALREADY_OPEN', reference: open.reference },
-      );
-    }
+    const open = await openApplicationFor(phone);
+    if (open) throw alreadyOpen(open);
 
     const blank = (v) => (v && String(v).trim() ? String(v).trim() : null);
 
-    const application = await PracticeApplication.create({
-      practiceName: b.practiceName,
-      practiceType: b.practiceType ?? null,
-      specialty: blank(b.specialty),
-      addressLine: blank(b.addressLine),
-      city: blank(b.city),
-      state: blank(b.state),
-      postalCode: blank(b.postalCode),
+    let application;
+    try {
+      application = await PracticeApplication.create({
+        practiceName: b.practiceName,
+        practiceType: b.practiceType ?? null,
+        specialty: blank(b.specialty),
+        addressLine: blank(b.addressLine),
+        city: blank(b.city),
+        state: blank(b.state),
+        postalCode: blank(b.postalCode),
 
-      contactName: b.contactName,
-      contactEmail: b.contactEmail,
-      contactPhone: phone,
-      phoneVerifiedAt: new Date(),
+        contactName: b.contactName,
+        contactEmail: b.contactEmail,
+        contactIsPrimaryDoctor: b.contactIsPrimaryDoctor ?? null,
+        contactPhone: phone,
+        phoneVerifiedAt: new Date(),
 
-      registrationNo: blank(b.registrationNo),
-      doctorName: blank(b.doctorName),
-      doctorRegistrationNo: blank(b.doctorRegistrationNo),
-      departments,
-      doctorDepartment: departments.includes(b.doctorDepartment) ? b.doctorDepartment : null,
-      notes: blank(b.notes),
+        registrationNo: blank(b.registrationNo),
+        doctorName: blank(b.doctorName),
+        doctorRegistrationNo: blank(b.doctorRegistrationNo),
+        departments,
+        doctorDepartment: departments.includes(b.doctorDepartment) ? b.doctorDepartment : null,
+        notes: blank(b.notes),
 
-      history: [{ action: 'submitted', note: null }],
-      ip: req.ip ?? null,
-    });
+        history: [{ action: 'submitted', note: null }],
+        ip: req.ip ?? null,
+      });
+    } catch (err) {
+      if (err?.code === 11000 && err.keyPattern?.openPhone) {
+        const winner = await openApplicationFor(phone);
+        if (winner) throw alreadyOpen(winner);
+      }
+      throw err;
+    }
 
     logger.info(
       { reference: application.reference, practice: application.practiceName },
       'practice application submitted',
     );
 
-    // Awaited so the row carries its token before the response goes out, and
-    // so a status page opened immediately knows an email is on its way. The
-    // send itself cannot throw — see sendConfirmation.
-    await sendConfirmation(application);
-
+    const confirmation = await prepareConfirmation(application);
     res.status(201).json({ application: application.toApplicant() });
+    deliverConfirmation(application, confirmation);
   }),
 );
 
@@ -541,8 +620,9 @@ router.post(
     }
 
     application.history.push({ action: 'email_resent' });
-    await sendConfirmation(application);
+    const confirmation = await prepareConfirmation(application);
     res.json({ sent: true });
+    deliverConfirmation(application, confirmation);
   }),
 );
 

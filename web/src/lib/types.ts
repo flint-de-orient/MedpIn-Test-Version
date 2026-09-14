@@ -413,6 +413,11 @@ export type ApplicationRow = {
   contactEmail: string;
   /** Whether that address has been shown to reach somebody. */
   contactEmailVerified: boolean;
+  /**
+   * Whether the applicant is the practice's doctor. Approval makes them its
+   * head doctor if so, and its practice manager if not.
+   */
+  contactIsPrimaryDoctor?: boolean;
   /** Shared-catalogue keys this practice says it runs. Empty for a clinic. */
   departments?: string[];
   doctorDepartment?: string | null;
@@ -432,7 +437,31 @@ export type ApplicationDetail = ApplicationRow & {
   doctorName: string | null;
   doctorRegistrationNo: string | null;
   notes: string | null;
+  /** An approval in progress by another request, while it holds the application. */
+  approving?: { by: string | null; until: string } | null;
   history: { action: string; by: string | null; note: string | null; at: string }[];
+};
+
+/**
+ * What approving produced, as the server reports it.
+ *
+ * Shown to the operator straight after approving, because they are who the
+ * practice rings when it cannot get in: who signs in, with which number, as
+ * what, and whether the email saying so could be sent.
+ */
+export type ApprovalOutcome = {
+  ownerRole: string;
+  ownerName: string;
+  signInPhone: string;
+  /** The owner runs the practice and does not prescribe. */
+  managesOnly: boolean;
+  accountReused: boolean;
+  locationCreated: boolean;
+  department: string | null;
+  /** The doctor the applicant named, still to be added from the app. */
+  doctorToAdd: string | null;
+  emailTo: string;
+  mailConfigured: boolean;
 };
 
 /** What each state means, said once, where the operator and the applicant both read it. */

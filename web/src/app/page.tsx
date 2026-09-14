@@ -280,7 +280,8 @@ function AttentionPanel({
   if (items.length === 0) {
     return (
       <Alert tone="ok" title="Nothing is waiting on you">
-        Every practice is decided and every administrator has a second factor.
+        No application is waiting, every practice is decided, and every administrator has a
+        second factor.
       </Alert>
     );
   }

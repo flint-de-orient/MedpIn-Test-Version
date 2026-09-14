@@ -25,11 +25,20 @@ import { cn } from "@/lib/utils";
  */
 export function ApplicationStatusView({
   initialReference,
+  arrivedBy = "submitted",
   confirmToken,
   onBack,
 }: {
-  /** Set when they have just submitted — the one case where they have not had to type it. */
+  /** Set when there is a reference they have not had to type: just submitted, already open, or from a link. */
   initialReference: string | null;
+  /**
+   * How they got here, which decides the first thing the screen says.
+   *
+   * It said "Registration submitted" whenever it had a reference — to somebody
+   * clicking the link in an email a week later, and it would have said it to
+   * somebody whose second application had just been refused.
+   */
+  arrivedBy?: "submitted" | "existing" | "link" | null;
   /**
    * The secret from the link in their email, when they arrived by clicking it.
    *
@@ -118,12 +127,20 @@ export function ApplicationStatusView({
 
   return (
     <div className="flex flex-col gap-4">
-      {initialReference ? (
+      {initialReference && arrivedBy === "submitted" ? (
         <div className="border-l-ok bg-ok-tint text-ok-ink rounded-sm border-l-2 px-3 py-2.5">
           <p className="text-title font-semibold">Registration submitted</p>
           <p className="mt-0.5 text-caption leading-relaxed">
             It is with the MedPin team. Keep the reference below — it is the only
             way to check on it.
+          </p>
+        </div>
+      ) : initialReference && arrivedBy === "existing" ? (
+        <div className="border-l-waiting bg-waiting-tint text-waiting-ink rounded-sm border-l-2 px-3 py-2.5">
+          <p className="text-title font-semibold">You have already applied</p>
+          <p className="mt-0.5 text-caption leading-relaxed">
+            An application from this number is still with MedPin, so a second one
+            was not filed. This is where the first has got to — keep its reference.
           </p>
         </div>
       ) : null}
@@ -213,7 +230,7 @@ const MEANS: Record<ApplicationStatus, string> = {
     "Your registration has been received and is waiting for somebody at MedPin to review it.",
   under_review: "Somebody at MedPin is reading it now.",
   more_info:
-    "MedPin needs something more before this can be decided. What is needed is below — reply to the email you registered with.",
+    "MedPin needs something more before this can be decided. What is needed is below and in the email we sent you — reply to that email with it.",
   approved:
     "Your practice has been created. Sign in on the MedPin app with the mobile number you verified.",
   rejected: "This registration was not approved. The reason is below.",

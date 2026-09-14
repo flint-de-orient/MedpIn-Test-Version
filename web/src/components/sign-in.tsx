@@ -10,6 +10,7 @@ import { AudienceTabs, EntryShell } from "@/components/entry-shell";
 import { PracticeSignup } from "@/components/practice-signup";
 import { ApplicationStatusView } from "@/components/application-status";
 import { signInWithPasskey, type PublicKeyCredentialRequestOptionsJSON } from "@/lib/passkey";
+import type { Arrival } from "@/lib/arrival";
 
 /**
  * The way in, and the way back in.
@@ -20,8 +21,39 @@ import { signInWithPasskey, type PublicKeyCredentialRequestOptionsJSON } from "@
  * because the next person to reword the message should not silently break the
  * login.
  */
-export function SignIn() {
-  const [mode, setMode] = useState<"login" | "forgot" | "reset">("login");
+export function SignIn({
+  arrival = null,
+  signedIn = false,
+  onDone,
+}: {
+  /**
+   * A link from an email, read above the gate — see lib/arrival.ts.
+   *
+   * It was read here once, which only ever happened for somebody signed out:
+   * this screen is not mounted for anybody else.
+   */
+  arrival?: Arrival | null;
+  /**
+   * Opened over the console for a signed-in operator following a link.
+   *
+   * Only the screen the link is for is shown, with a way back to the console.
+   * The two audiences and the sign-in form are for somebody who is not in.
+   */
+  signedIn?: boolean;
+  /** The link has been dealt with; back to wherever the gate would have gone. */
+  onDone?: () => void;
+} = {}) {
+  /*
+   * The first render already shows what a link asked for.
+   *
+   * The gate hands the link over before this mounts, so the state below starts
+   * from it rather than from the sign-in form. Starting from the form and
+   * correcting it in an effect showed a signed-in operator the login screen for
+   * a frame on their way to the page they had clicked through to.
+   */
+  const [mode, setMode] = useState<"login" | "forgot" | "reset">(
+    arrival?.kind === "reset" ? "reset" : "login",
+  );
 
   /*
    * Which of the two audiences this is.
@@ -30,7 +62,9 @@ export function SignIn() {
    * practice side is the guest here. Held in state rather than the URL: there
    * is one page, and a tab is not a place somebody links to.
    */
-  const [who, setWho] = useState<"admin" | "practice">("admin");
+  const [who, setWho] = useState<"admin" | "practice">(
+    arrival?.kind === "application" ? "practice" : "admin",
+  );
 
   /*
    * What the practice side is showing.
@@ -40,11 +74,21 @@ export function SignIn() {
    * because a half-filled registration is not a place anybody should be able
    * to link somebody else into.
    */
-  const [practiceView, setPracticeView] = useState<"entry" | "register" | "status">("entry");
+  const [practiceView, setPracticeView] = useState<"entry" | "register" | "status">(
+    arrival?.kind === "application" ? "status" : "entry",
+  );
 
   /// Set once, when a registration comes back. The reference is the only thing
   /// the applicant leaves with.
-  const [submitted, setSubmitted] = useState<string | null>(null);
+  const [submitted, setSubmitted] = useState<string | null>(
+    arrival?.kind === "application" ? arrival.reference : null,
+  );
+
+  /// How the status view was reached, which decides what it says first: a
+  /// registration just sent, one that was already open, or a link from email.
+  const [arrivedBy, setArrivedBy] = useState<"submitted" | "existing" | "link" | null>(
+    arrival?.kind === "application" ? "link" : null,
+  );
 
   /**
    * A reset link opens straight into the form that spends it.
@@ -56,68 +100,42 @@ export function SignIn() {
    * Read once on mount and cleared from the address bar, so the token does not
    * sit in browser history or travel with a pasted URL.
    */
-  const [prefill, setPrefill] = useState<{ email: string; token: string } | null>(null);
+  const [prefill, setPrefill] = useState<{ email: string; token: string } | null>(
+    arrival?.kind === "reset" ? { email: arrival.email, token: arrival.token } : null,
+  );
 
-  const [verified, setVerified] = useState<"ok" | "failed" | null>(null);
+  /// What an address-confirmation link did, when one was followed. It is spent
+  /// above the gate, and only the outcome arrives here.
+  const verified =
+    arrival?.kind === "verify" && arrival.outcome !== "checking" ? arrival.outcome : null;
 
   /** The secret from a confirmation link, held only long enough to spend it. */
-  const [confirmToken, setConfirmToken] = useState<string | null>(null);
+  const [confirmToken, setConfirmToken] = useState<string | null>(
+    arrival?.kind === "application" ? arrival.confirm : null,
+  );
 
+  /*
+   * A link from an email, opening the screen it is for.
+   *
+   * `?application=<ref>&confirm=<token>` opens the status view with both, and a
+   * reset link opens the form that spends it. Read above the gate and handed
+   * down, so it works for somebody signed in as well as somebody who is not;
+   * the address bar was cleaned there, before anything rendered.
+   */
   useEffect(() => {
-    const q = new URLSearchParams(window.location.search);
-    const clean = () => window.history.replaceState({}, "", window.location.pathname);
-
-    /*
-     * Arriving from the confirmation email.
-     *
-     * `?application=<ref>&confirm=<token>` opens the status view with both, and
-     * the address bar is cleaned immediately — a one-time token should not sit
-     * in browser history or travel with a URL somebody pastes into a chat.
-     *
-     * Checked before the operator links below because this is the one that
-     * belongs to a practice rather than an operator, and the two never both
-     * appear.
-     */
-    const application = q.get("application");
-    const confirm = q.get("confirm");
-    if (application) {
-      setSubmitted(application);
-      setConfirmToken(confirm);
+    if (!arrival) return;
+    if (arrival.kind === "application") {
+      setSubmitted(arrival.reference);
+      setArrivedBy("link");
+      setConfirmToken(arrival.confirm);
       setWho("practice");
       setPracticeView("status");
-      clean();
-      return;
-    }
-
-    const reset = q.get("reset");
-    if (reset) {
-      setPrefill({ email: q.get("email") ?? "", token: reset });
+    } else if (arrival.kind === "reset") {
+      setPrefill({ email: arrival.email, token: arrival.token });
+      setWho("admin");
       setMode("reset");
-      clean();
-      return;
     }
-
-    /**
-     * A confirmation link is spent here, on the way past.
-     *
-     * It grants nothing — it marks an address the account already had as
-     * belonging to whoever reads that inbox — so it does not need a session,
-     * and requiring one would mean the link only works in the browser the
-     * operator happened to be signed into.
-     */
-    const verify = q.get("verify");
-    const email = q.get("email");
-    if (verify && email) {
-      clean();
-      api("/admin/auth/email/verify", {
-        method: "POST",
-        anonymous: true,
-        body: { email, token: verify },
-      })
-        .then(() => setVerified("ok"))
-        .catch(() => setVerified("failed"));
-    }
-  }, []);
+  }, [arrival]);
   return (
     <EntryShell>
       <div className="flex flex-col gap-5">
@@ -134,7 +152,22 @@ export function SignIn() {
         */}
         <Wordmark className="h-7 w-auto self-start lg:hidden" />
 
-        <AudienceTabs value={who} onChange={setWho} />
+        {/*
+          The two audiences, for somebody who is not signed in. An operator who
+          followed a link while signed in sees only the screen that link is for,
+          and the way back to where they were.
+        */}
+        {signedIn ? (
+          <button
+            type="button"
+            onClick={() => onDone?.()}
+            className="text-primary self-start text-caption underline underline-offset-4"
+          >
+            Back to the console
+          </button>
+        ) : (
+          <AudienceTabs value={who} onChange={setWho} />
+        )}
 
         <div className="border-border bg-card rounded-md border p-6 sm:p-7">
           {who === "admin" ? (
@@ -191,17 +224,31 @@ export function SignIn() {
                   onHaveToken={() => setMode("reset")}
                 />
               ) : (
-                <ResetForm onBack={() => setMode("login")} prefill={prefill} />
+                <ResetForm
+                  onBack={() => (signedIn ? onDone?.() : setMode("login"))}
+                  prefill={prefill}
+                />
               )}
             </div>
           ) : (
             <PracticeSide
               view={practiceView}
-              onView={setPracticeView}
+              // Leaving the status view while signed in goes back to the
+              // console, which is where the operator came from.
+              onView={(v) => (signedIn && v === "entry" ? onDone?.() : setPracticeView(v))}
               submitted={submitted}
+              arrivedBy={arrivedBy}
               confirmToken={confirmToken}
               onSubmitted={(ref) => {
                 setSubmitted(ref);
+                setArrivedBy("submitted");
+                setConfirmToken(null);
+                setPracticeView("status");
+              }}
+              onExisting={(ref) => {
+                setSubmitted(ref);
+                setArrivedBy("existing");
+                setConfirmToken(null);
                 setPracticeView("status");
               }}
             />
@@ -271,15 +318,20 @@ function PracticeSide({
   view,
   onView,
   submitted,
+  arrivedBy,
   confirmToken,
   onSubmitted,
+  onExisting,
 }: {
   view: "entry" | "register" | "status";
   onView: (v: "entry" | "register" | "status") => void;
   submitted: string | null;
+  arrivedBy: "submitted" | "existing" | "link" | null;
   /** The secret from a confirmation link, spent once by the status view. */
   confirmToken: string | null;
   onSubmitted: (reference: string) => void;
+  /** A second application refused because the first is still open, with its reference. */
+  onExisting: (reference: string) => void;
 }) {
   return (
     <div
@@ -304,13 +356,18 @@ function PracticeSide({
             discarded a part-filled application, which is not what somebody
             pressing "Back" on step one expects to happen.
           */}
-          <PracticeSignup onDone={onSubmitted} onLeave={() => onView("entry")} />
+          <PracticeSignup
+            onDone={onSubmitted}
+            onExisting={onExisting}
+            onLeave={() => onView("entry")}
+          />
         </>
       ) : view === "status" ? (
         <>
           <Eyebrow>Your application</Eyebrow>
           <ApplicationStatusView
             initialReference={submitted}
+            arrivedBy={arrivedBy}
             confirmToken={confirmToken}
             onBack={() => onView("entry")}
           />

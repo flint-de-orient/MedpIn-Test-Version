@@ -33,7 +33,19 @@ export function errorHandler(err, req, res, next) {
   let status = err.status ?? 500;
   let code = err.code ?? 'INTERNAL_ERROR';
   let message = err.message ?? 'Something went wrong';
-  let details;
+  /*
+   * What an AppError carried besides its sentence.
+   *
+   * This started undefined and only the validation branches below set it, so
+   * every `badRequest(msg, details)` and `conflict(msg, details)` built an
+   * object that never left the server. The practice application's "already
+   * with us — use the reference you were given" went out for months without
+   * the reference, which was sitting in `details` the whole time.
+   *
+   * An AppError's only. Anything else that happens to have a `details`
+   * property is an internal, and nobody promised it to a client.
+   */
+  let details = err instanceof AppError ? err.details : undefined;
 
   if (err instanceof ZodError) {
     status = 400;

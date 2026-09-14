@@ -2362,6 +2362,12 @@ abstract class AppLocalizations {
   /// **'No account found for this number. Please create one first.'**
   String get authNotRegistered;
 
+  /// Auth: a number with an open practice application, which can neither sign in nor register yet
+  ///
+  /// In en, this message translates to:
+  /// **'This number is on a practice application that MedPin is still reviewing. You can sign in with it once the practice is approved; until then it cannot be used to register.'**
+  String get authApplicationPending;
+
   /// Auth: authInviteLabel
   ///
   /// In en, this message translates to:

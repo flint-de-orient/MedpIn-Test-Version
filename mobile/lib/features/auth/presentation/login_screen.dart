@@ -48,6 +48,14 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   /// the other errors do not: go and make one.
   bool _offerRegister = false;
 
+  /// Set when the number is waiting on a practice application.
+  ///
+  /// It can neither sign in nor register yet, and registering is the harmful
+  /// one: it made the applicant a patient on the very number their practice's
+  /// approval needs. So while this is the answer, the screen offers no way to
+  /// register at all.
+  bool _applicationPending = false;
+
   /// What the server said about the code it sent, so the screen states the
   /// real cooldown rather than a number it made up.
   OtpSent? _sent;
@@ -105,6 +113,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       _isSubmitting = true;
       _errorMessage = null;
       _offerRegister = false;
+      _applicationPending = false;
     });
 
     final result = await ref
@@ -117,10 +126,15 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     final error = result.error;
     if (error != null) {
       setState(() {
-        // A number with no account is the one failure with somewhere to go.
+        // A number with no account is the one failure with somewhere to go —
+        // unless it is waiting on a practice application, which is told that
+        // instead and offered nowhere to go until the practice is approved.
+        _applicationPending = error.code == 'APPLICATION_PENDING';
         _offerRegister = error.code == 'NOT_FOUND';
         _errorMessage =
-            _offerRegister
+            _applicationPending
+                ? l10n.authApplicationPending
+                : _offerRegister
                 ? l10n.authNotRegistered
                 : ErrorView.messageFor(context, error);
       });
@@ -232,6 +246,12 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                               hint: l10n.authPhoneHint,
                               prefixText: '${AuthValidators.countryCode} ',
                             ),
+                            // A different number is a different question.
+                            onChanged: (_) {
+                              if (_applicationPending) {
+                                setState(() => _applicationPending = false);
+                              }
+                            },
                             onFieldSubmitted: (_) => _sendCode(),
                             validator: (value) {
                               if (value == null ||
@@ -325,8 +345,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     else ...[
                       // Wraps rather than a Row: two texts side by side fit
                       // in English and overflow in Hindi, where the same
-                      // sentence is half again as long.
-                      Wrap(
+                      // sentence is half again as long. Absent while the
+                      // number is waiting on a practice application.
+                      if (!_applicationPending)
+                        Wrap(
                         alignment: WrapAlignment.center,
                         crossAxisAlignment: WrapCrossAlignment.center,
                         children: [

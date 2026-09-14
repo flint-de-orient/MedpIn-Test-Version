@@ -1,10 +1,10 @@
 import { Router } from 'express';
 import { z } from 'zod';
 
-import { requireAuth, requireClinician, requireDoctor } from '../middleware/auth.js';
+import { requireAuth, requireClinician } from '../middleware/auth.js';
 import { requirePermission } from '../middleware/authorise.js';
 import { validate } from '../middleware/validate.js';
-import { asyncHandler, badRequest, conflict, notFound } from '../middleware/errors.js';
+import { asyncHandler, badRequest, conflict, forbidden, notFound } from '../middleware/errors.js';
 import { audit } from '../middleware/audit.js';
 import { Membership, MEMBERSHIP_STATUS, PERMISSIONS, presetFor } from '../models/Membership.js';
 import { Practice } from '../models/Practice.js';
@@ -63,6 +63,45 @@ router.use(requireAuth, requireClinician);
  * into is a role that does not exist.
  */
 const HIREABLE = [...CLINICIAN_ROLES];
+
+/**
+ * Whether somebody may change who works here — MANAGE_STAFF aside.
+ *
+ * ---- A doctor, or whoever owns the practice ------------------------------
+ *
+ * This was doctor-only, written when every owner was a doctor. Then a practice
+ * could be approved with its manager as the owner — the contact who said on the
+ * application that they were not the doctor — and the People screen showed that
+ * manager "Add someone", because they hold MANAGE_STAFF, and refused them the
+ * moment they pressed it. A practice whose owner could not add its own doctor,
+ * told by email to go and do exactly that.
+ *
+ * Owning the practice is what admits them, not the role. A manager somebody
+ * else hired holds the same preset and is still refused, so this is no wider for
+ * anybody who could not already run the practice.
+ *
+ * One rule for the route and for `canManage`, so the screen never offers a
+ * button the route turns down.
+ */
+function mayChangeWhoWorksHere(user, membership) {
+  return user?.role === ROLES.DOCTOR || Boolean(membership?.isOwner);
+}
+
+async function requireDoctorOrOwner(req, res, next) {
+  try {
+    if (mayChangeWhoWorksHere(req.user, null)) return next();
+    const practiceId = await practiceOf(req);
+    const membership = practiceId
+      ? await Membership.findOne(Membership.currentFilter(req.user._id, practiceId))
+          .select('isOwner')
+          .lean()
+      : null;
+    if (mayChangeWhoWorksHere(req.user, membership)) return next();
+    return next(forbidden('This action requires a different role'));
+  } catch (err) {
+    return next(err);
+  }
+}
 
 /**
  * Everyone at this practice, with every dimension the screens need.
@@ -141,7 +180,9 @@ router.get(
       // role. Absent a membership this is false rather than true — offering a
       // button that 403s is worse than not offering it, and unlike a *read*
       // guard nothing is lost by being cautious about an affordance.
-      canManage: membership ? membership.can(PERMISSIONS.MANAGE_STAFF) : false,
+      canManage: membership
+        ? membership.can(PERMISSIONS.MANAGE_STAFF) && mayChangeWhoWorksHere(req.user, membership)
+        : false,
 
       // For the pickers on the edit sheet, so the screen needs one request.
       departments: departments.map((d) => ({
@@ -170,7 +211,7 @@ router.get(
  */
 router.post(
   '/',
-  requireDoctor,
+  requireDoctorOrOwner,
   requirePermission(PERMISSIONS.MANAGE_STAFF),
   validate({
     body: z.object({
@@ -328,7 +369,7 @@ router.post(
  */
 router.patch(
   '/:id',
-  requireDoctor,
+  requireDoctorOrOwner,
   requirePermission(PERMISSIONS.MANAGE_STAFF),
   validate({
     body: z.object({

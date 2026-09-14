@@ -1,13 +1,15 @@
 "use client";
 
-import { Suspense, useCallback, useEffect, useState } from "react";
+import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { toast } from "sonner";
 
 import { api, ApiError } from "@/lib/api";
+import { useSession } from "@/lib/session";
 import {
   APPLICATION_LABELS,
+  type ApprovalOutcome,
   type ApplicationDetail,
   type ApplicationRow,
   type ApplicationStatus,
@@ -248,6 +250,10 @@ function Detail({ id }: { id: string }) {
   const [a, setA] = useState<ApplicationDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [ask, setAsk] = useState<Ask>(null);
+  const { admin } = useSession();
+  /// What approving produced, kept to say what happens next. Null until then.
+  const [outcome, setOutcome] = useState<ApprovalOutcome | null>(null);
+  const claimed = useRef(false);
 
   const load = useCallback(async () => {
     setError(null);
@@ -264,6 +270,30 @@ function Detail({ id }: { id: string }) {
   useEffect(() => {
     void load();
   }, [load]);
+
+  /*
+   * Opening an undecided application says so.
+   *
+   * The claim route existed and nothing called it, so the Reviewer column was
+   * empty for every application and "Pending review" never became "Under
+   * review" — two operators could read the same one with nothing on screen to
+   * tell either. Advisory, as the route is: an application somebody else has
+   * open is not taken from them.
+   */
+  useEffect(() => {
+    if (!a || claimed.current) return;
+    const undecided = ["submitted", "under_review", "more_info"].includes(a.status);
+    const mine = a.reviewer === admin?.email;
+    if (!undecided || (a.reviewer && !mine) || (mine && a.status !== "submitted")) return;
+    claimed.current = true;
+    api<{ application: ApplicationDetail }>(`/admin/applications/${a.id}/claim`, {
+      method: "POST",
+    })
+      .then((out) => setA(out.application))
+      .catch(() => {
+        /* Advisory. A refusal here changes nothing about deciding. */
+      });
+  }, [a, admin?.email]);
 
   if (error) return <Failed message={error} retry={() => void load()} />;
   if (!a) return <Loading rows={6} />;
@@ -333,12 +363,24 @@ function Detail({ id }: { id: string }) {
             </button>
           </div>
           <p className="text-muted-foreground border-border border-t px-4 py-3 text-micro leading-relaxed">
-            Approving creates the practice and attaches {a.doctorName ?? a.contactName}{" "}
-            as its head doctor, on the number they verified. Nothing here can be
-            undone — there is no delete on a practice.
+            {a.contactIsPrimaryDoctor === false
+              ? `Approving creates the practice with ${a.contactName} as its practice manager, on the number they verified. A manager cannot prescribe, and ${a.doctorName ?? "the doctor"} is added from the MedPin app afterwards.`
+              : `Approving creates the practice and makes ${a.doctorName ?? a.contactName} its head doctor, on the number they verified.`}{" "}
+            Nothing here can be undone — there is no delete on a practice.
           </p>
+          {a.approving ? (
+            <p className="text-waiting-ink border-border border-t px-4 py-3 text-caption leading-relaxed">
+              {a.approving.by ?? "Another operator"} is approving this right now.
+            </p>
+          ) : a.reviewer && a.reviewer !== admin?.email ? (
+            <p className="text-muted-foreground border-border border-t px-4 py-3 text-caption leading-relaxed">
+              {a.reviewer} has this open. That is advisory — you can still decide.
+            </p>
+          ) : null}
         </Panel>
       ) : null}
+
+      {outcome ? <NextSteps outcome={outcome} /> : null}
 
       <div className="grid min-w-0 gap-5 lg:grid-cols-[1.4fr_1fr]">
         <div className="flex min-w-0 flex-col gap-5">
@@ -392,6 +434,10 @@ function Detail({ id }: { id: string }) {
           <Panel title="Primary contact" description="Who would run it.">
             <dl className="divide-border divide-y">
               <Row label="Name" value={a.contactName} />
+              <Row
+                label="Approval makes them"
+                value={a.contactIsPrimaryDoctor === false ? "Practice manager" : "Head doctor"}
+              />
               {/*
                 Whether the decision this review produces will actually arrive.
                 An unconfirmed address is not a reason to refuse an application
@@ -466,9 +512,10 @@ function Detail({ id }: { id: string }) {
         ask={ask}
         application={a}
         onClose={() => setAsk(null)}
-        onDone={(next) => {
+        onDone={(next, result) => {
           setAsk(null);
           setA(next);
+          if (result) setOutcome(result);
           if (next.status === "approved") {
             toast.success(`${next.practiceName} created`);
             router.refresh();
@@ -476,6 +523,53 @@ function Detail({ id }: { id: string }) {
         }}
       />
     </div>
+  );
+}
+
+/**
+ * What happens now that the practice exists, told to the operator who made it.
+ *
+ * Approving used to end in a toast reading "created", and the operator is who
+ * the practice rings when it cannot get in. The server says who signs in, with
+ * which number, as what, and whether the email saying so could be sent — this
+ * puts that where it can be read back to them over the phone.
+ */
+function NextSteps({ outcome }: { outcome: ApprovalOutcome }) {
+  return (
+    <Panel title="What happens next">
+      <div className="flex flex-col gap-2 px-4 py-3 text-body leading-relaxed">
+        <p>
+          {outcome.ownerName} signs in to the MedPin app with{" "}
+          <span className="font-mono">{outcome.signInPhone}</span>, by a code texted to that
+          number. There is no password and no link to send.{" "}
+          {outcome.managesOnly
+            ? "They are the practice manager: they run the practice, and cannot see patients or prescribe."
+            : "They are its head doctor."}
+        </p>
+        {outcome.accountReused ? (
+          <p className="text-muted-foreground text-caption leading-relaxed">
+            That number already signed in to MedPin, so the practice was added to the account it has.
+          </p>
+        ) : null}
+        {outcome.managesOnly || outcome.doctorToAdd ? (
+          <p>
+            {outcome.doctorToAdd ?? "The practice’s doctor"} still has to be added, from People in
+            the app, with their own mobile number.
+          </p>
+        ) : null}
+        {!outcome.locationCreated ? (
+          <p className="text-muted-foreground text-caption leading-relaxed">
+            No location could be made from the address, so the practice adds one before it can take
+            a booking.
+          </p>
+        ) : null}
+        <p className="text-muted-foreground text-caption leading-relaxed">
+          {outcome.mailConfigured
+            ? `The same has been emailed to ${outcome.emailTo}.`
+            : `No email could be sent — this server has no mail configured — so tell them on ${outcome.signInPhone}.`}
+        </p>
+      </div>
+    </Panel>
   );
 }
 
@@ -522,7 +616,7 @@ function DecisionDialog({
   ask: Ask;
   application: ApplicationDetail;
   onClose: () => void;
-  onDone: (a: ApplicationDetail) => void;
+  onDone: (a: ApplicationDetail, outcome?: ApprovalOutcome) => void;
 }) {
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
@@ -539,20 +633,24 @@ function DecisionDialog({
     approve: {
       title: `Approve ${application.practiceName}`,
       confirm: "Approve and create",
-      why: `This creates the practice and attaches ${application.doctorName ?? application.contactName} as its head doctor. There is no delete on a practice.`,
+      why:
+        application.contactIsPrimaryDoctor === false
+          ? `This creates the practice with ${application.contactName} as its practice manager, who cannot prescribe. There is no delete on a practice.`
+          : `This creates the practice and makes ${application.doctorName ?? application.contactName} its head doctor. There is no delete on a practice.`,
       audience: "Nobody at the practice sees this — it goes to the platform log.",
     },
     "request-info": {
       title: "Ask for more information",
       confirm: "Send it back",
       why: "The application goes back to the applicant and can be decided once they answer.",
-      audience: "The applicant reads this. Say exactly what is needed.",
+      audience:
+        "The applicant reads this — it is emailed to them and shown on their status page. Say exactly what is needed.",
     },
     reject: {
       title: `Reject ${application.practiceName}`,
       confirm: "Reject",
       why: "They may apply again — a rejection is not a ban.",
-      audience: "The applicant reads this. It is the only thing they are told.",
+      audience: "The applicant reads this — it is emailed to them. It is the only reason they are given.",
     },
   }[ask];
 
@@ -565,11 +663,11 @@ function DecisionDialog({
     setBusy(true);
     setError(null);
     try {
-      const out = await api<{ application: ApplicationDetail }>(
+      const out = await api<{ application: ApplicationDetail; outcome?: ApprovalOutcome }>(
         `/admin/applications/${application.id}/${ask}`,
         { method: "POST", body: { note: note.trim() } },
       );
-      onDone(out.application);
+      onDone(out.application, out.outcome);
     } catch (ex) {
       setError((ex as ApiError).message);
     } finally {

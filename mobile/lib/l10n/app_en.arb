@@ -504,6 +504,10 @@
   "@authNotRegistered": {
     "description": "Auth: authNotRegistered"
   },
+  "authApplicationPending": "This number is on a practice application that MedPin is still reviewing. You can sign in with it once the practice is approved; until then it cannot be used to register.",
+  "@authApplicationPending": {
+    "description": "Auth: a number with an open practice application, which can neither sign in nor register yet"
+  },
   "authInviteLabel": "Have an invite code?",
   "@authInviteLabel": {
     "description": "Auth: authInviteLabel"

@@ -239,6 +239,19 @@ const schema = z.object({
    */
   APPLICATION_RATE_LIMIT: z.coerce.number().min(1).max(1000).default(6),
 
+  /**
+   * How long a proved number stays proved while a practice applies, in minutes.
+   *
+   * Not the code's ten. The code has to die when the SMS says it does; the
+   * proof it buys has to outlive the rest of the form — registration numbers
+   * looked up, departments ticked, a review read — and while it died with the
+   * code, an applicant who took eleven minutes was refused at the last button
+   * and sent back to verify a number they had already verified. Thirty is long
+   * enough for a real form and short enough that a proof left in an abandoned
+   * tab is not a standing permission.
+   */
+  APPLICATION_PHONE_TOKEN_MINUTES: z.coerce.number().int().min(5).max(240).default(30),
+
   // Clinic wall-clock timezone. All appointment slot times are computed in this
   // zone, so the schedule is correct no matter what timezone the server runs in
   // (a VPS is often UTC). India is a single zone.

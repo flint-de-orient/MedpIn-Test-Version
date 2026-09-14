@@ -1200,6 +1200,10 @@ class AppLocalizationsHi extends AppLocalizations {
       'इस नंबर के लिए कोई खाता नहीं मिला। कृपया पहले खाता बनाएँ।';
 
   @override
+  String get authApplicationPending =>
+      'यह नंबर एक प्रैक्टिस आवेदन से जुड़ा है, जिसकी MedPin अभी समीक्षा कर रहा है। प्रैक्टिस स्वीकृत होने के बाद आप इस नंबर से साइन इन कर सकेंगे; तब तक इससे पंजीकरण नहीं किया जा सकता।';
+
+  @override
   String get authInviteLabel => 'क्या आपके पास आमंत्रण कोड है?';
 
   @override
