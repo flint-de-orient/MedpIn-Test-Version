@@ -1,5 +1,7 @@
 import { ChatMessage } from '../../models/ChatMessage.js';
 import { lastGivenPlan } from '../dietPlanLookup.js';
+import { careTeamMessages } from '../careTeamNotes.js';
+import { Membership } from '../../models/Membership.js';
 import { generate, AiUnavailableError } from './gemini.js';
 import { retrieve, formatContext } from './rag.js';
 import { buildPatientContext } from '../patientContext.js';
@@ -119,13 +121,23 @@ function formatPlan(plan) {
 
 /** Generates the assistant's turn, or null when generation failed and the
  * dietician should answer instead. */
-export async function nutritionReply({ patientId, sessionId, text, language = 'en', practiceId = null }) {
+export async function nutritionReply({
+  patientId,
+  sessionId,
+  text,
+  language = 'en',
+  practiceId = null,
+  enrollment = null,
+  enrolledOn = null,
+}) {
+  // One practice's dieticians, plan and record: the practice this nutrition
+  // conversation is with. Loaded by patient alone, another practice's plan was
+  // quoted as this patient's, and another dietician's words as their own
+  // dietician's. See services/conversationPractice.js.
+  const authors = practiceId ? await Membership.distinct('user', { practice: practiceId }) : null;
   const [plan, notes, history, chunks, context] = await Promise.all([
-    lastGivenPlan(patientId),
-    ChatMessage.find({ patient: patientId, role: 'dietician', content: { $nin: [null, ''] } })
-      .sort({ createdAt: -1 })
-      .limit(6)
-      .lean(),
+    lastGivenPlan(patientId, { authors }),
+    careTeamMessages({ patientId, enrollment, roles: ['dietician'], kind: 'nutrition', limit: 6 }),
     ChatMessage.find({ session: sessionId, role: { $in: ['user', 'assistant'] } })
       .sort({ seq: -1 })
       .limit(HISTORY_TURNS)
@@ -136,7 +148,7 @@ export async function nutritionReply({ patientId, sessionId, text, language = 'e
     // Built fresh on every turn, never cached: a sugar logged a minute ago or a
     // prescription changed this morning has to be what this reply is written
     // against. A stale picture here is worse than none.
-    buildPatientContext(patientId).catch(() => null),
+    buildPatientContext(patientId, { practiceId, enrolledOn }).catch(() => null),
   ]);
 
   const dieticianNotes = notes

@@ -23,9 +23,16 @@ import { dayjs } from '../utils/clinicTime.js';
 import { getClinicSettings } from '../models/ClinicSettings.js';
 import { buildAttention } from '../services/nutritionAttention.js';
 import { normaliseTestName } from '../utils/testNames.js';
-import { practicePatients } from '../middleware/practiceScope.js';
+import { practicePatients, practiceOfMember } from '../middleware/practiceScope.js';
 import { attachableAssetIds } from '../services/mediaAccess.js';
 import { quotableMessageId, quotePreview, QUOTE_FIELDS } from '../services/quotedMessage.js';
+import {
+  callerEnrolment,
+  enrolmentAt,
+  practiceSessions,
+  relationshipSessions,
+  sessionForEnrolment,
+} from '../services/conversationPractice.js';
 
 /**
  * The dietician panel API. A dietician only ever sees the patients a doctor has
@@ -131,11 +138,12 @@ async function nutritionOverview(ids, days = 14) {
  * a different question from "what do I owe", and the rest of the screen already
  * answers the second one.
  */
-async function recentActivity(ids, byId, limit = 6) {
+async function recentActivity(ids, byId, limit = 6, sessionScope = {}) {
   if (ids.length === 0) return [];
 
   const since = dayjs().subtract(7, 'day').toDate();
-  const sessions = await ChatSession.find({ kind: 'nutrition', patient: { $in: ids } })
+  // This practice's nutrition conversations. See services/conversationPractice.js.
+  const sessions = await ChatSession.find({ kind: 'nutrition', patient: { $in: ids }, ...sessionScope })
     .select('_id patient')
     .lean();
 
@@ -266,9 +274,9 @@ async function requireAssigned(req) {
  * For a caseload with one dietician on it those are the same thing; a badge
  * that quietly meant something narrower would be worse than this.
  */
-async function urgentNutritionCount(patientIds) {
+async function urgentNutritionCount(patientIds, sessionScope = {}) {
   if (patientIds.length === 0) return 0;
-  const sessions = await ChatSession.find({ kind: 'nutrition', patient: { $in: patientIds } })
+  const sessions = await ChatSession.find({ kind: 'nutrition', patient: { $in: patientIds }, ...sessionScope })
     .select('_id')
     .lean();
   if (sessions.length === 0) return 0;
@@ -280,9 +288,9 @@ async function urgentNutritionCount(patientIds) {
   });
 }
 
-async function unreadNutritionCount(patientIds) {
+async function unreadNutritionCount(patientIds, sessionScope = {}) {
   if (patientIds.length === 0) return 0;
-  const sessions = await ChatSession.find({ kind: 'nutrition', patient: { $in: patientIds } })
+  const sessions = await ChatSession.find({ kind: 'nutrition', patient: { $in: patientIds }, ...sessionScope })
     .select('_id')
     .lean();
   if (sessions.length === 0) return 0;
@@ -379,7 +387,9 @@ router.get(
 
     let messages = [];
     if (ids.length > 0) {
-      const sessions = await ChatSession.find({ kind: 'nutrition', patient: { $in: ids } })
+      // This practice's nutrition conversations: a patient another practice
+      // also cares for writes to that practice's dietician too.
+      const sessions = await ChatSession.find({ kind: 'nutrition', patient: { $in: ids }, ...(await practiceSessions(req)) })
         .select('_id patient')
         .lean();
       if (sessions.length > 0) {
@@ -458,7 +468,7 @@ router.get(
     // above, so past that the sheet under-reported while the dashboard badge —
     // which uses a real count — kept saying the true figure. Two numbers for
     // one fact, disagreeing on the same screen.
-    const unread = await unreadNutritionCount(ids);
+    const unread = await unreadNutritionCount(ids, await practiceSessions(req));
 
     res.json({
       unread,
@@ -481,7 +491,9 @@ router.post(
     const ids = profiles.map((p) => p.user);
     if (ids.length === 0) return res.json({ cleared: 0 });
 
-    const sessions = await ChatSession.find({ kind: 'nutrition', patient: { $in: ids } })
+    // This practice's conversations only: clearing a badge here says nothing
+    // about whether anybody read what the patient wrote to another practice.
+    const sessions = await ChatSession.find({ kind: 'nutrition', patient: { $in: ids }, ...(await practiceSessions(req)) })
       .select('_id')
       .lean();
     if (sessions.length === 0) return res.json({ cleared: 0 });
@@ -536,8 +548,8 @@ router.get(
           .populate('photo', 'mimeType')
           .select('patient mealType note photo createdAt reviewedAt')
           .lean(),
-        unreadNutritionCount(ids),
-        urgentNutritionCount(ids),
+        unreadNutritionCount(ids, await practiceSessions(req)),
+        urgentNutritionCount(ids, await practiceSessions(req)),
         // A week of logs across the caseload, for the adherence read. Only the
         // two fields the calculation needs — this is every meal every patient
         // photographed, and pulling notes and photo refs for it would be the
@@ -555,7 +567,7 @@ router.get(
       ]);
     const planBy = new Map(plans.map((p) => [String(p.patient), p]));
     const profileById = new Map(assigned.map((p) => [String(p.user._id), p]));
-    const activity = await recentActivity(ids, profileById);
+    const activity = await recentActivity(ids, profileById, 6, await practiceSessions(req));
 
     const logsByPatient = new Map();
     for (const l of weekLogs) {
@@ -1076,9 +1088,11 @@ router.get(
   '/patients/:id/thread',
   asyncHandler(async (req, res) => {
     await requireAssigned(req);
+    // This practice's nutrition conversation with the patient, not the newest
+    // one they have anywhere. See services/conversationPractice.js.
+    const enrollment = await callerEnrolment(req, req.params.id);
     const session = await ChatSession.findOne({
-      patient: req.params.id,
-      kind: 'nutrition',
+      ...(await relationshipSessions({ patientId: req.params.id, enrollment, kind: 'nutrition' })),
       isArchived: false,
     }).sort({ lastMessageAt: -1 });
     if (!session) return res.json({ items: [], assistantEnabled: true });
@@ -1307,20 +1321,19 @@ router.post(
  * "send plan" so both land in the same thread with the same role and sequence.
  */
 async function postToCareThread(patientId, sender, content, attachments = [], replyTo) {
-  let session = await ChatSession.findOne({
-    patient: patientId,
+  // The writer's own practice's conversation with the patient. This took the
+  // newest nutrition session, which was whichever practice wrote last — so one
+  // practice's dietician wrote into the conversation another practice's
+  // dietician was holding. See services/conversationPractice.js.
+  const enrollment = await enrolmentAt(await practiceOfMember(sender._id), patientId);
+  const patient = await User.findById(patientId).select('language').lean();
+  const session = await sessionForEnrolment({
+    patientId,
+    enrollment,
     kind: 'nutrition',
-    isArchived: false,
-  }).sort({ lastMessageAt: -1 });
-  if (!session) {
-    const patient = await User.findById(patientId).select('language').lean();
-    session = await ChatSession.create({
-      patient: patientId,
-      kind: 'nutrition',
-      language: patient?.language ?? 'en',
-      title: 'Nutrition',
-    });
-  }
+    language: patient?.language ?? 'en',
+    title: 'Nutrition',
+  });
 
   const last = await ChatMessage.findOne({ session: session._id }).sort({ seq: -1 }).select('seq').lean();
   const message = await ChatMessage.create({

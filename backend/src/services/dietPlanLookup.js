@@ -14,16 +14,21 @@ import { DietPlanRevision } from '../models/DietPlanRevision.js';
  * Only plans that were sent are ever returned. A draft is not care the patient
  * received, and quoting one would tell them something nobody has told them.
  *
+ * `authors`, when given, are the people whose plans count: a practice's
+ * dieticians. Another practice's plan is not this practice's advice, and the
+ * nutrition assistant quotes whatever this returns as the patient's own plan.
+ *
  * @param {import('mongoose').Types.ObjectId|string} patientId
- * @param {{populate?: string}} [options] field list to populate on `dietician`
+ * @param {{populate?: string, authors?: Array}} [options] field list to populate on `dietician`
  */
-export async function lastGivenPlan(patientId, { populate } = {}) {
-  const current = DietPlan.findOne({ patient: patientId, sharedAt: { $ne: null } });
+export async function lastGivenPlan(patientId, { populate, authors = null } = {}) {
+  const writtenHere = authors ? { dietician: { $in: authors } } : {};
+  const current = DietPlan.findOne({ patient: patientId, sharedAt: { $ne: null }, ...writtenHere });
   if (populate) current.populate('dietician', populate);
   const plan = await current.lean();
   if (plan) return plan;
 
-  const previous = DietPlanRevision.findOne({ patient: patientId, sharedAt: { $ne: null } }).sort({
+  const previous = DietPlanRevision.findOne({ patient: patientId, sharedAt: { $ne: null }, ...writtenHere }).sort({
     replacedAt: -1,
   });
   if (populate) previous.populate('dietician', populate);

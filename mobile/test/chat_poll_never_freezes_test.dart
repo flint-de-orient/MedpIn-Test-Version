@@ -42,6 +42,7 @@ class _FakeChatRepository extends ChatRepository {
   @override
   Future<SendMessageResult> sendMessage({
     String? sessionId,
+    String? practiceId,
     required String text,
     required String language,
     List<String>? attachments,
@@ -51,7 +52,11 @@ class _FakeChatRepository extends ChatRepository {
   }
 
   @override
-  Future<Paged<ChatMessage>> getThread({int page = 1, int limit = 200}) async {
+  Future<Paged<ChatMessage>> getThread({
+    String? sessionId,
+    int page = 1,
+    int limit = 200,
+  }) async {
     threadReads += 1;
     if (failThread) throw StateError('thread unavailable');
     return Paged<ChatMessage>(

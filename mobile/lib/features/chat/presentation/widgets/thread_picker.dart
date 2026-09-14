@@ -15,11 +15,27 @@ import '../../domain/thread_group.dart';
 /// This appears the first time somebody sees a second doctor, or a second
 /// department at the same practice — and it looks like any messaging app,
 /// because that is the thing a patient already knows how to read.
+///
+/// ---- A practice with no conversation yet is still a row ----------------
+///
+/// A patient the desk enrolled at a second practice has nothing to open there
+/// until somebody writes. Without a row for it they had no way to write first,
+/// and a message sent without naming a practice is refused rather than guessed
+/// at — so [onStart] opens an empty conversation with that practice named.
 class ThreadPicker extends StatelessWidget {
-  const ThreadPicker({super.key, required this.threads, required this.onOpen});
+  const ThreadPicker({
+    super.key,
+    required this.threads,
+    required this.onOpen,
+    this.onStart,
+  });
 
   final ThreadList threads;
   final ValueChanged<ChatThread> onOpen;
+
+  /// Starts a first conversation with a practice that has none. Rows for such
+  /// practices are drawn only when this is given.
+  final ValueChanged<ThreadGroup>? onStart;
 
   @override
   Widget build(BuildContext context) {
@@ -43,6 +59,13 @@ class ThreadPicker extends StatelessWidget {
               thread: thread,
               practiceName: group.practiceName,
               onTap: () => onOpen(thread),
+            ),
+            const SizedBox(height: T.s3),
+          ],
+          if (group.threads.isEmpty && group.practiceId != null && onStart != null) ...[
+            _StartRow(
+              practiceName: group.practiceName,
+              onTap: () => onStart!(group),
             ),
             const SizedBox(height: T.s3),
           ],
@@ -100,5 +123,41 @@ class _ThreadRow extends StatelessWidget {
     // finding that out by being ignored is worse than being told.
     if (!t.hasAssistant) return 'Replies from the clinic only';
     return '${t.messageCount} message${t.messageCount == 1 ? '' : 's'}';
+  }
+}
+
+/// A practice the patient has not written to yet.
+///
+/// Named for what tapping it does. "No messages yet" under a practice's name
+/// read as a thread that had failed to load.
+class _StartRow extends StatelessWidget {
+  const _StartRow({required this.practiceName, required this.onTap});
+
+  final String? practiceName;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return InnerTile(
+      onTap: onTap,
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  practiceName ?? 'Your care team',
+                  style: T.bodyStrong.copyWith(color: T.ink),
+                ),
+                const SizedBox(height: T.s1),
+                Text('Start a conversation', style: T.label.copyWith(color: T.inkMuted)),
+              ],
+            ),
+          ),
+          const Icon(Icons.chevron_right_rounded, size: 20, color: T.inkFaint),
+        ],
+      ),
+    );
   }
 }

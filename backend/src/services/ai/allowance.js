@@ -62,15 +62,21 @@ export function allowanceFor(practice) {
 }
 
 /**
- * May the assistant answer for this patient?
+ * May the assistant answer for this patient, in a conversation with this practice?
  *
  * Returns `{ allowed, reason }`. Never throws: an assistant that cannot check
  * its own allowance should answer, not fail — the failure mode of this
  * function must be a working clinic, not a silent one.
+ *
+ * `practiceId` is the practice the conversation is with — see
+ * services/conversationPractice.js. This asked the assigned doctor's practice,
+ * which a desk-enrolled patient does not have: their assistant answered for a
+ * practice whose type had no assistant, and nothing was counted. The assigned
+ * doctor is the answer now only where no enrolment decides.
  */
-export async function mayAssistantReply(patientId) {
+export async function mayAssistantReply(patientId, { practiceId: conversationPractice = null } = {}) {
   try {
-    const practiceId = await practiceOfPatient(patientId);
+    const practiceId = conversationPractice ?? (await practiceOfPatient(patientId));
     if (!practiceId) return { allowed: true };
 
     const practice = await Practice.findById(practiceId).select('plan practiceType capabilities').lean();

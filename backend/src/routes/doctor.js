@@ -55,7 +55,8 @@ import {
   departmentThreads,
   practiceMembers,
 } from '../middleware/practiceScope.js';
-import { enrollmentGate } from '../middleware/authorise.js';
+import { enrollmentGate, recordWindow } from '../middleware/authorise.js';
+import { practiceSessions, practiceMessages, sessionBelongsTo } from '../services/conversationPractice.js';
 import { requireCapability } from '../middleware/requireCapability.js';
 import { CAPABILITIES } from '../services/capabilities.js';
 import { LabReport } from '../models/LabReport.js';
@@ -135,16 +136,22 @@ router.get(
         .limit(30)
         .populate('patient', 'name avatarAssetId')
         .lean(),
-      ChatSession.find({ isArchived: false, ...scope }).select('_id kind patient').lean(),
+      // This practice's conversations, not every conversation its patients
+      // have. See services/conversationPractice.js.
+      ChatSession.find({ isArchived: false, ...(await practiceSessions(req)) }).select('_id kind patient').lean(),
       isDesk
         ? []
         : ChatSession.find({
             flaggedForReview: true,
             isArchived: false,
-            ...scope,
-            // The same narrowing as the list it counts, or the badge says
-            // eleven and the screen shows four.
-            ...(await departmentThreads(req)),
+            // `$and`, not two spreads: both of these can be an `$or`, and the
+            // second would silently replace the first.
+            $and: [
+              await practiceSessions(req),
+              // The same narrowing as the list it counts, or the badge says
+              // eleven and the screen shows four.
+              await departmentThreads(req),
+            ],
           })
             .sort({ lastMessageAt: -1 })
             .limit(20)
@@ -163,7 +170,14 @@ router.get(
 
     const kindBySession = new Map(sessions.map((x) => [String(x._id), x.kind ?? 'care']));
 
-    const unread = await ChatMessage.find({ role: 'user', seenByClinicAt: null, ...scope })
+    const unread = await ChatMessage.find({
+      role: 'user',
+      seenByClinicAt: null,
+      ...scope,
+      // In this practice's conversations. A patient another practice also cares
+      // for writes there too, and the bell previewed those words here.
+      ...(await practiceMessages(req)),
+    })
       .sort({ createdAt: -1 })
       .limit(40)
       .populate('patient', 'name avatarAssetId')
@@ -239,10 +253,16 @@ router.get(
     // the bell and the sheet it opens can never say different things.
     const [alertTotal, unreadTotal, flaggedTotal, requestTotal] = await Promise.all([
       ClinicalAlert.countDocuments({ ...(isDesk ? DESK_ALERTS : { status: 'open' }), ...scope }),
-      ChatMessage.countDocuments({ role: 'user', seenByClinicAt: null, ...scope }),
+      ChatMessage.countDocuments({ role: 'user', seenByClinicAt: null, ...scope, ...(await practiceMessages(req)) }),
       isDesk
         ? 0
-        : ChatSession.countDocuments({ flaggedForReview: true, isArchived: false, ...scope }),
+        : ChatSession.countDocuments({
+            flaggedForReview: true,
+            isArchived: false,
+            // The same filter as the flagged list above, department included,
+            // or the badge counts threads the sheet does not show.
+            $and: [await practiceSessions(req), await departmentThreads(req)],
+          }),
       isDesk ? Appointment.countDocuments({ status: 'requested', ...scope }) : 0,
     ]);
 
@@ -334,14 +354,14 @@ router.get(
         ...scope,
       }),
       // Conversations flagged for the doctor to read — the "Pending" headline.
-      ChatSession.countDocuments({ flaggedForReview: true, isArchived: false, ...scope }),
+      ChatSession.countDocuments({ flaggedForReview: true, isArchived: false, ...(await practiceSessions(req)) }),
       // Patient messages no one at the clinic has opened yet — "New messages".
-      ChatMessage.countDocuments({ role: 'user', seenByClinicAt: null, ...scope }),
+      ChatMessage.countDocuments({ role: 'user', seenByClinicAt: null, ...scope, ...(await practiceMessages(req)) }),
       // How many of those are in a nutrition thread. The doctor's Patients tab
       // shows only the care conversation; nutrition lives behind Chat review's
       // Nutrition filter. Without the split, the headline counted messages the
       // doctor then could not find anywhere on the screen it was shown.
-      unreadNutritionCount(scope),
+      unreadNutritionCount(await practiceSessions(req)),
       // How many unread messages the patient themselves marked urgent.
       //
       // The dashboard used to put the open *alert* count under "Unread
@@ -353,6 +373,7 @@ router.get(
         seenByClinicAt: null,
         urgency: { $in: ['urgent', 'emergency'] },
         ...scope,
+        ...(await practiceMessages(req)),
       }),
       // Only profiles belonging to an ACTIVE patient. A deactivated or removed
       // patient can leave a lingering profile behind, and counting those inflated
@@ -375,7 +396,7 @@ router.get(
       PatientProfile.countDocuments({ assignedDietician: { $ne: null }, ...profileScope }),
       FoodLog.countDocuments({ createdAt: { $gte: dayStart }, ...scope }),
       User.countDocuments({ role: ROLES.PATIENT, createdAt: { $gte: dayStart }, ...userScope }),
-      nutritionReviews(profileScope),
+      nutritionReviews(profileScope, 4, await practiceSessions(req)),
       // Only worth asking about once there is a choice to make.
       //
       // With one dietician the fallbacks answer it: an unassigned patient is
@@ -608,7 +629,7 @@ async function unreadNutritionCount(scope = {}) {
  * analysis — the app records meals, not sodium, and a card that claimed
  * otherwise would be inventing a number the doctor might act on.
  */
-async function nutritionReviews(profileScope = {}, limit = 4) {
+async function nutritionReviews(profileScope = {}, limit = 4, sessionScope = {}) {
   // Every patient, on the clinic-wide cadence.
   //
   // This used to require `assignedDietician` and a per-patient
@@ -643,7 +664,9 @@ async function nutritionReviews(profileScope = {}, limit = 4) {
           // The thread the review is actually done in, so the card can open the
           // conversation rather than the record. Reviewing a food log means
           // reading what they logged and replying to it.
-          ChatSession.find({ patient: p.user._id, kind: 'nutrition', isArchived: false })
+          // This practice's nutrition conversation, so the card opens one the
+          // doctor can read. See services/conversationPractice.js.
+          ChatSession.find({ patient: p.user._id, kind: 'nutrition', isArchived: false, ...sessionScope })
             .sort({ lastMessageAt: -1 })
             .select('_id')
             .lean()
@@ -691,8 +714,8 @@ router.get(
       ChatSession.find({
         flaggedForReview: true,
         isArchived: false,
-        ...scope,
-        ...(await departmentThreads(req)),
+        // `$and`: both can be an `$or`, and a spread keeps only the second.
+        $and: [await practiceSessions(req), await departmentThreads(req)],
       })
         .sort({ lastMessageAt: -1 })
         .limit(20)
@@ -1049,7 +1072,7 @@ router.get(
     // that reads the thread is scoped through this, so the inbox and the
     // thread cannot disagree about what the last message was.
     const careSessionIds = (
-      await ChatSession.find({ patient: { $in: ids }, kind: { $ne: 'nutrition' } })
+      await ChatSession.find({ patient: { $in: ids }, kind: { $ne: 'nutrition' }, ...(await practiceSessions(req)) })
         .select('_id')
         .lean()
     ).map((x) => x._id);
@@ -1547,7 +1570,10 @@ router.get(
     // to true (only flagged threads), false only when explicitly "false".
     const flagged = req.query.flagged !== 'false';
     const filter = {
-      ...(await practicePatients(req, 'patient')),
+      // This practice's conversations, not every conversation its patients
+      // have: a patient another practice also cares for has a conversation
+      // there too, and it was listed here. See services/conversationPractice.js.
+      ...(await practiceSessions(req)),
       ...(flagged ? { flaggedForReview: true } : {}),
       ...(urgency ? { highestUrgency: urgency } : {}),
       // `nutrition` is an equality match; `care` has to be `$ne: 'nutrition'`
@@ -1699,13 +1725,17 @@ router.get(
       await assertSamePractice(req, session.patient._id);
       await enrollmentGate(req, session.patient._id);
     }
+    // And the conversation has to be this practice's. A patient another
+    // practice also cares for has a conversation there too, and passing the two
+    // checks above opened it by id. See services/conversationPractice.js.
+    if (!(await sessionBelongsTo(session, req.enrollment))) throw notFound('Conversation not found');
 
     req.patientId = session.patient?._id;
 
     // Attachments are populated because a food photo *is* the message: without
     // them the doctor sees an empty bubble above the assistant's reply and has
     // no way to judge whether that reply was right about the meal.
-    const messages = await ChatMessage.find({ session: session._id })
+    const messages = await ChatMessage.find({ session: session._id, ...recordWindow(req, 'createdAt') })
       .sort({ seq: 1 })
       .populate('sender', 'name role avatarAssetId')
       .populate('attachments', 'kind mimeType transcript originalName sizeBytes')
@@ -1811,6 +1841,8 @@ router.post(
       await assertSamePractice(req, session.patient);
       await enrollmentGate(req, session.patient);
     }
+    // This practice's conversation only. See services/conversationPractice.js.
+    if (!(await sessionBelongsTo(session, req.enrollment))) throw notFound('Conversation not found');
 
     session.flaggedForReview = false;
     session.reviewedBy = req.user._id;
@@ -1856,6 +1888,8 @@ router.post(
     // attributed to this doctor and the patient sees it as clinical advice.
     await assertSamePractice(req, session.patient);
     await enrollmentGate(req, session.patient);
+    // Into this practice's conversation only. See services/conversationPractice.js.
+    if (!(await sessionBelongsTo(session, req.enrollment))) throw notFound('Conversation not found');
 
     // The patient's files or the doctor's own, and a quote from this same
     // conversation. See services/mediaAccess.js and services/quotedMessage.js.

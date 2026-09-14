@@ -205,8 +205,14 @@ describe('a clinician answers their own department’s threads', () => {
 
   test('the badge counts what the list shows', () => {
     // Two reads of the same threads with different filters is a dashboard
-    // saying eleven over a screen showing four.
-    const uses = [...doctor.matchAll(/\.\.\.\(await departmentThreads\(req\)\)/g)];
-    assert.ok(uses.length >= 2, 'the flagged count and the flagged list disagree');
+    // saying eleven over a screen showing four. Inside `$and` beside the
+    // practice's conversations, because both filters can be an `$or` and a
+    // spread keeps only the second — see services/conversationPractice.js.
+    const bell = doctor.slice(doctor.indexOf("'/notifications',"), doctor.indexOf("'/notifications/seen'"));
+    const inBell = [...bell.matchAll(/\$and: \[\s*await practiceSessions\(req\),[\s\S]{0,200}?await departmentThreads\(req\),?\s*\]/g)];
+    assert.equal(inBell.length, 2, 'the flagged count and the flagged list disagree');
+
+    const worklist = doctor.slice(doctor.indexOf("'/worklist',"));
+    assert.match(worklist.slice(0, 2500), /\$and: \[await practiceSessions\(req\), await departmentThreads\(req\)\]/);
   });
 });

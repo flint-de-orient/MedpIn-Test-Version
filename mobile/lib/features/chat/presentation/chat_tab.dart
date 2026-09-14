@@ -10,7 +10,7 @@ import 'widgets/thread_picker.dart';
 
 /// What the Chat tab shows: a conversation, or a list of them.
 ///
-/// ---- It is a no-op today, deliberately ----------------------------------
+/// ---- It is a no-op for most patients, deliberately ----------------------
 ///
 /// A patient with one practice and one thread has exactly one conversation, so
 /// this resolves straight to [ChatScreen] and nothing about their tab changes.
@@ -25,8 +25,8 @@ import 'widgets/thread_picker.dart';
 ///
 /// [ChatScreen] is the most complex screen in the app: streaming replies,
 /// scroll anchoring, voice notes, attachments. Threading a "which conversation"
-/// question through it would mean touching all of that for a case that cannot
-/// occur yet. A wrapper decides, and the screen goes on doing one job.
+/// question through it would mean touching all of that for a choice that is
+/// made once. A wrapper decides, and the screen goes on doing one job.
 class ChatTab extends ConsumerStatefulWidget {
   const ChatTab({super.key});
 
@@ -50,8 +50,8 @@ class _ChatTabState extends ConsumerState<ChatTab> {
       loading: () => const SizedBox.shrink(),
 
       // The thread list failing must not cost a patient their conversation.
-      // With one practice — every patient today — the answer is the same
-      // whether the grouping loaded or not, so fall through to the screen.
+      // With one practice the answer is the same whether the grouping loaded or
+      // not, so fall through to the screen.
       error: (_, _) => const ChatScreen(),
 
       data: (list) {
@@ -74,6 +74,13 @@ class _ChatTabState extends ConsumerState<ChatTab> {
                 await ref.read(chatControllerProvider.notifier).openSession(thread.id);
                 if (mounted) setState(() => _openThreadId = thread.id);
               },
+              onStart: (group) {
+                // A practice the patient has not written to yet. The first
+                // message opens the conversation, so the screen starts empty with
+                // the practice named for that send.
+                ref.read(chatControllerProvider.notifier).startConversation(group.practiceId!);
+                setState(() => _openThreadId = 'new:${group.practiceId}');
+              },
             ),
           ),
         );
@@ -85,9 +92,8 @@ class _ChatTabState extends ConsumerState<ChatTab> {
 /// The failure state, kept for the case where a patient genuinely has several
 /// conversations and the list is the only way to reach any of them.
 ///
-/// Unused while every patient has one thread — falling through to [ChatScreen]
-/// is better then, because the answer is the same either way. It becomes the
-/// right response the moment a list is load-bearing.
+/// Unused while falling through to [ChatScreen] gives the same answer. It
+/// becomes the right response the moment a list is load-bearing.
 class ThreadListFailed extends StatelessWidget {
   const ThreadListFailed({super.key, required this.onRetry});
 

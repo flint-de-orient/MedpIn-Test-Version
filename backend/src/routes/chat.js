@@ -7,7 +7,7 @@ import { asyncHandler, notFound, badRequest } from '../middleware/errors.js';
 import { ROLES } from '../models/User.js';
 import { dieticianFacingPatient } from '../services/dieticianIdentity.js';
 import { audit } from '../middleware/audit.js';
-import { practicePatients, practiceForPatient } from '../middleware/practiceScope.js';
+import { practicePatients } from '../middleware/practiceScope.js';
 import { handlePatientMessage, streamPatientMessage } from '../services/ai/assistant.js';
 import { ChatSession } from '../models/ChatSession.js';
 import { ChatMessage } from '../models/ChatMessage.js';
@@ -26,6 +26,16 @@ import { paged, pageParams } from '../utils/pagination.js';
 import { threadsFor } from '../services/threads.js';
 import { attachableAssetIds } from '../services/mediaAccess.js';
 import { quotableMessageId, quotePreview, QUOTE_FIELDS } from '../services/quotedMessage.js';
+import {
+  sessionForPatientSend,
+  sessionForEnrolment,
+  relationshipSessions,
+  relationshipOfSession,
+  callerEnrolment,
+  enrolmentForPatientRead,
+} from '../services/conversationPractice.js';
+import { mayAssistantReply } from '../services/ai/allowance.js';
+import { recordWindow } from '../middleware/authorise.js';
 
 // The dietician assistant's one canned line — asked when a food PHOTO arrives
 // with no meal named — in the patient's language, so it is not the single
@@ -101,11 +111,18 @@ const chatLimiter = rateLimit({
 router.post(
   '/message',
   requireAuth,
+  // The patient's own account. A staff account sending here opened a
+  // conversation with itself as the "patient", passed an allowance check that
+  // could find no practice for it, and was answered and counted by nobody.
+  requireRole(ROLES.PATIENT),
   chatLimiter,
   validate({
     body: z
       .object({
         sessionId: z.string().optional(),
+        // The practice a message is for, when the patient is with more than one
+        // and is not writing into a conversation they already have.
+        practiceId: z.string().optional(),
         // Optional so a photo (or several) can be sent with no caption.
         text: z.string().trim().max(4000).optional().default(''),
         language: z.enum(['en', 'bn', 'hi']).optional(),
@@ -131,6 +148,7 @@ router.post(
     const result = await handlePatientMessage({
       patientId,
       sessionId: req.body.sessionId,
+      practiceId: req.body.practiceId,
       text: req.body.text,
       language: req.body.language ?? req.user.language ?? 'en',
       attachments: req.body.attachments,
@@ -149,11 +167,15 @@ router.post(
 router.post(
   '/message/stream',
   requireAuth,
+  // The patient's own account, as on the plain send.
+  requireRole(ROLES.PATIENT),
   chatLimiter,
   validate({
     body: z
       .object({
         sessionId: z.string().optional(),
+        // The practice a message is for, as on the plain send.
+        practiceId: z.string().optional(),
         // Optional so a photo (or several) can be sent with no caption.
         text: z.string().trim().max(4000).optional().default(''),
         language: z.enum(['en', 'bn', 'hi']).optional(),
@@ -176,6 +198,18 @@ router.post(
     req.body.attachments = await attachableAssetIds(req.body.attachments, { patientId, uploaderIds: [patientId] });
     req.body.replyTo = await quotableMessageId(req.body.replyTo, { patientId });
 
+    // And the conversation it goes into, for the same reason. A patient with two
+    // practices who has not chosen one is asked which, and that answer has to
+    // arrive as a status rather than as an event the client may never read.
+    const text = req.body.text;
+    const session = await sessionForPatientSend({
+      patientId,
+      sessionId: req.body.sessionId,
+      practiceId: req.body.practiceId,
+      language: req.body.language ?? req.user.language ?? 'en',
+      title: text.length > 60 ? `${text.slice(0, 57)}...` : text,
+    });
+
     res.set({
       'Content-Type': 'text/event-stream',
       'Cache-Control': 'no-cache, no-transform',
@@ -190,7 +224,7 @@ router.post(
     try {
       for await (const ev of streamPatientMessage({
         patientId: req.user._id,
-        sessionId: req.body.sessionId,
+        sessionId: session._id,
         text: req.body.text,
         language: req.body.language ?? req.user.language ?? 'en',
         attachments: req.body.attachments,
@@ -266,11 +300,14 @@ router.get(
   asyncHandler(async (req, res) => {
     const { page, limit, skip } = q(req);
 
+    // One practice's conversation: the one the patient opened, when they opened
+    // one; with more than one practice and none opened, their first practice's;
+    // with one practice, all of it, as it always was. Every practice's
+    // messages interleaved on one screen was the conversation nobody was
+    // having. See services/conversationPractice.js.
+    const enrollment = await enrolmentForPatientRead(req.user._id, req.query.sessionId ?? null);
     const sessionIds = (
-      await ChatSession.find({
-        patient: req.user._id,
-        kind: { $ne: 'nutrition' },
-      })
+      await ChatSession.find(await relationshipSessions({ patientId: req.user._id, enrollment, kind: 'care' }))
         .select('_id')
         .lean()
     ).map((x) => x._id);
@@ -377,7 +414,17 @@ router.get(
   validate({ query: pageParams }),
   audit('read', 'ChatMessage'),
   asyncHandler(async (req, res) => {
-    const session = await ChatSession.findOne({ patient: req.patientId, kind: { $ne: 'nutrition' }, isArchived: false })
+    // This practice's conversation with the patient, not every conversation the
+    // patient has. A patient another practice also cares for has one there too,
+    // and it was read, counted and marked seen from here. `req.enrollment` is
+    // this practice's enrolment, set by resolvePatientScope. See
+    // services/conversationPractice.js.
+    const relationship = await relationshipSessions({
+      patientId: req.patientId,
+      enrollment: req.enrollment,
+      kind: 'care',
+    });
+    const session = await ChatSession.findOne({ ...relationship, isArchived: false })
       .sort({ lastMessageAt: -1 })
       .lean();
 
@@ -386,15 +433,11 @@ router.get(
     // exchange is often exactly the context that explains today's question.
     // It also heals threads already split by sessions created per message
     // before that was fixed.
-    const careIdsForCount = await ChatSession.find({
-      patient: req.patientId,
-      kind: { $ne: 'nutrition' },
-    })
-      .select('_id')
-      .lean();
+    const careIdsForCount = await ChatSession.find(relationship).select('_id').lean();
     const total = await ChatMessage.countDocuments({
       patient: req.patientId,
       session: { $in: careIdsForCount.map((s) => s._id) },
+      ...recordWindow(req, 'createdAt'),
     });
 
     if (!session && total === 0) {
@@ -431,17 +474,14 @@ router.get(
     // nutrition thread is a separate conversation with the dietician, and
     // pulling it in here put the dietician's messages into the doctor's chat
     // as though they were part of it.
-    const careSessionIds = await ChatSession.find({
-      patient: req.patientId,
-      kind: { $ne: 'nutrition' },
-    })
-      .select('_id')
-      .lean();
+    const careSessionIds = careIdsForCount;
 
     const items = await ChatMessage.find({
       patient: req.patientId,
       session: { $in: careSessionIds.map((s) => s._id) },
       hiddenFor: { $ne: req.user._id },
+      // From when this practice was given access. See recordWindow.
+      ...recordWindow(req, 'createdAt'),
     })
       .sort({ createdAt: -1 })
       .skip(skip)
@@ -456,7 +496,9 @@ router.get(
     // has read them â€” deliberately in place of a typing indicator, which would
     // promise a reply in seconds that a full clinic list cannot honour.
     await ChatMessage.updateMany(
-      { patient: req.patientId, role: 'user', seenByClinicAt: null },
+      // This practice's conversation only: opening it says nothing about
+      // whether anybody has read the patient's messages to another practice.
+      { patient: req.patientId, role: 'user', seenByClinicAt: null, session: { $in: careSessionIds.map((s) => s._id) } },
       { seenByClinicAt: new Date() },
     );
 
@@ -529,17 +571,18 @@ router.post(
     });
     req.body.replyTo = await quotableMessageId(req.body.replyTo, { patientId: req.patientId });
 
-    let session = await ChatSession.findOne({ patient: req.patientId, kind: { $ne: 'nutrition' }, isArchived: false }).sort({
-      lastMessageAt: -1,
+    // This practice's conversation with the patient: the one bound to its
+    // enrolment, or the conversation it already had, or a new one. It was the
+    // newest care session, which was whichever practice last wrote — so one
+    // practice's reply landed in another practice's conversation. See
+    // services/conversationPractice.js.
+    const session = await sessionForEnrolment({
+      patientId: req.patientId,
+      enrollment: req.enrollment,
+      kind: 'care',
+      language: req.patientUser?.language ?? 'en',
+      title: 'Message from the clinic',
     });
-
-    if (!session) {
-      session = await ChatSession.create({
-        patient: req.patientId,
-        language: req.patientUser?.language ?? 'en',
-        title: 'Message from the clinic',
-      });
-    }
 
     // seq is unique per session, so derive it from the current tail rather than
     // a count â€” an archived or partially deleted history would collide.
@@ -647,6 +690,8 @@ router.get(
 router.post(
   '/nutrition',
   requireAuth,
+  // The patient's own account, as on the care thread.
+  requireRole(ROLES.PATIENT),
   chatLimiter,
   validate({
     body: z
@@ -662,6 +707,8 @@ router.post(
         // back to the session language (the account default fixed at creation),
         // so a Bengali message on an English account got an English answer.
         language: z.enum(['en', 'bn', 'hi']).optional(),
+        // The practice the message is for, when the patient is with more than one.
+        practiceId: z.string().optional(),
       })
       .refine((b) => b.content.trim().length > 0 || b.attachments.length > 0, {
         message: 'Add a message or attach a photo',
@@ -683,20 +730,17 @@ router.post(
     const text = await resolveVoiceText(req.body.content, req.body.attachments);
     let askedForMeal = false;
 
-    let session = await ChatSession.findOne({
-      patient: patientId,
+    // The nutrition conversation this message belongs to, and the practice it
+    // is with — which decides whose dietician's plan and words the assistant
+    // quotes and whose allowance it spends. See services/conversationPractice.js.
+    const session = await sessionForPatientSend({
+      patientId,
+      practiceId: req.body.practiceId,
       kind: 'nutrition',
-      isArchived: false,
-    }).sort({ lastMessageAt: -1 });
-
-    if (!session) {
-      session = await ChatSession.create({
-        patient: patientId,
-        kind: 'nutrition',
-        language: req.user.language ?? 'en',
-        title: 'Nutrition',
-      });
-    }
+      language: req.user.language ?? 'en',
+      title: 'Nutrition',
+    });
+    const relationship = await relationshipOfSession(session);
 
     // Resolve the reply language exactly as the care thread does: the app's live
     // language first, then the account, then the session's stored one. Using
@@ -704,7 +748,7 @@ router.post(
     // assistant did not follow the patient's language like the doctor assistant.
     const replyLanguage = req.body.language ?? req.user.language ?? session.language ?? 'en';
 
-    const context = await buildPatientContext(patientId);
+    const context = await buildPatientContext(patientId, relationship);
     const triage = triageMessage({
       text,
       targets: context.targets,
@@ -847,7 +891,11 @@ router.post(
       triage.urgency !== 'urgent' &&
       // The dietician is holding this conversation, or has asked to. Their
       // message is coming; a second answer under it would contradict them.
-      assistantShouldReply(session)
+      assistantShouldReply(session) &&
+      // What the practice this conversation is with has, and has left: the
+      // check the care assistant makes. The nutrition assistant made none, so a
+      // practice whose type has no assistant had one here.
+      (await mayAssistantReply(patientId, { practiceId: relationship.practiceId })).allowed
     ) {
       const reply = await nutritionReply({
         patientId,
@@ -856,7 +904,9 @@ router.post(
         language: replyLanguage,
         // Without this the meter is a no-op. Every one of these calls cost
         // money and appeared in no counter at all.
-        practiceId: await practiceForPatient(patientId),
+        practiceId: relationship.practiceId,
+        enrollment: relationship.enrollment,
+        enrolledOn: relationship.enrolledOn,
       }).catch(() => null);
 
       if (reply) {
@@ -1043,9 +1093,12 @@ async function threadFor(req, patientId, kind) {
   // answer about another practice's patient.
   if (!theirs) throw notFound('No conversation with this patient');
 
+  // And this practice's conversation with them. The newest session was
+  // whichever practice last wrote, so one practice could switch off the
+  // assistant in a conversation another practice was relying on.
+  const enrollment = await callerEnrolment(req, patientId);
   return ChatSession.findOne({
-    patient: patientId,
-    kind: kind === 'nutrition' ? 'nutrition' : { $ne: 'nutrition' },
+    ...(await relationshipSessions({ patientId, enrollment, kind: kind === 'nutrition' ? 'nutrition' : 'care' })),
     isArchived: false,
   }).sort({ lastMessageAt: -1 });
 }

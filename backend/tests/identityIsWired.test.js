@@ -62,10 +62,13 @@ describe('nothing reads the clinic brand out of the environment', () => {
   test('the assistant asks for the identity before building a prompt', () => {
     const src = readFileSync(new URL('../src/services/ai/assistant.js', import.meta.url), 'utf8');
     const prompts = (src.match(/buildSystemPrompt\(\{/g) ?? []).length;
-    // And resolved for this patient's practice. Asked with no argument it was
-    // the first clinic on the platform's, which this used to count as resolved.
+    // And resolved for the practice this conversation is with. Asked with no
+    // argument it was the first clinic on the platform's, which this used to
+    // count as resolved; asked for the patient's first practice, a patient two
+    // practices care for met the wrong one in half their conversations. See
+    // services/conversationPractice.js.
     const resolves = (
-      src.match(/await clinicIdentity\(null, \{ practiceId: await practiceForPatient\(patientId\) \}\)/g) ?? []
+      src.match(/await clinicIdentity\(null, \{ practiceId: relationship\.practiceId \}\)/g) ?? []
     ).length;
     assert.ok(prompts > 0, 'no prompt is built here any more — has this moved?');
     assert.equal(resolves, prompts, 'a prompt is built without this patient’s practice’s identity');

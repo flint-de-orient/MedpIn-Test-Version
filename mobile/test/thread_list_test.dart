@@ -65,6 +65,21 @@ void main() {
       expect(list.only, isNull);
     });
 
+    test('or a second practice the patient has not written to yet', () {
+      // Opening straight into the one conversation they have left no way to
+      // reach the other practice, and a message naming no practice is refused
+      // rather than guessed at.
+      final list = parse({
+        'groups': [
+          practiceGroup('Dey Diabetes Clinic', [thread('t1')]),
+          practiceGroup('Lake Town Heart Centre', []),
+        ],
+      });
+      expect(list.needsList, isTrue);
+      expect(list.groups.last.threads, isEmpty);
+      expect(list.groups.last.practiceId, 'p', reason: 'the practice could not be written to first');
+    });
+
     test('or one practice with two departments', () {
       // The polyclinic case: one relationship, two specialties, two threads.
       final list = parse({

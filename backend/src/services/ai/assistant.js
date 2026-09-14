@@ -1,5 +1,4 @@
-﻿import { ChatSession } from '../../models/ChatSession.js';
-import { ChatMessage } from '../../models/ChatMessage.js';
+﻿import { ChatMessage } from '../../models/ChatMessage.js';
 import { triageMessage } from '../triage/engine.js';
 import { buildPatientContext } from '../patientContext.js';
 import { retrieve, formatContext } from './rag.js';
@@ -12,7 +11,8 @@ import { clinicIdentity } from '../clinicIdentity.js';
 import { assistantContextFor } from './departmentAssistant.js';
 import { threadHasAssistant } from '../threads.js';
 import { mayAssistantReply, countReply } from './allowance.js';
-import { practiceOfPatient, practiceForPatient } from '../../middleware/practiceScope.js';
+import { sessionForPatientSend, relationshipOfSession } from '../conversationPractice.js';
+import { careTeamNotesFor } from '../careTeamNotes.js';
 import { raiseAlert } from '../alerts.js';
 import { detectAppointmentIntent } from '../triage/appointmentIntent.js';
 import { notifyClinicOfPatientMessage } from '../notifications.js';
@@ -25,50 +25,12 @@ import { env } from '../../config/env.js';
 
 const HISTORY_TURNS = 8;
 
-/** How many recent doctor/dietician messages are carried into the prompt. */
-const CARE_TEAM_NOTES = 6;
-
-/** Each is trimmed to this, so one long note cannot crowd out the rest. */
-const CARE_TEAM_NOTE_CHARS = 400;
-
 /**
- * The doctor's and dietician's own messages to this patient.
- *
- * These are deliberately NOT put into `contents` alongside the chat turns.
- * Gemini only accepts `user` and `model` roles, so a clinician's message would
- * have to be labelled as one or the other — and labelling it `model` lets the
- * assistant treat a doctor's instruction as its own earlier output, free to
- * extend or paraphrase. Carrying them as authoritative context in the system
- * prompt instead means the model can quote them but cannot speak as them.
- *
- * Scoped by patient rather than by session: care is one continuous story, and
- * an instruction given last week still stands this week.
+ * A session's title, from the message that opened it: trimmed to fit a list row.
  */
-async function loadCareTeamNotes(patientId) {
-  const notes = await ChatMessage.find({
-    patient: patientId,
-    role: { $in: ['clinician', 'dietician'] },
-    content: { $nin: [null, ''] },
-  })
-    .sort({ createdAt: -1 })
-    .limit(CARE_TEAM_NOTES)
-    .populate('sender', 'name')
-    .lean();
-
-  if (notes.length === 0) return '';
-
-  return notes
-    .reverse()
-    .map((m) => {
-      const who = m.role === 'dietician' ? 'Dietician' : 'Doctor';
-      const name = m.sender?.name ? ` (${m.sender.name})` : '';
-      const when = m.createdAt ? m.createdAt.toISOString().slice(0, 10) : '';
-      const body = m.content.length > CARE_TEAM_NOTE_CHARS
-        ? `${m.content.slice(0, CARE_TEAM_NOTE_CHARS)}…`
-        : m.content;
-      return `- ${when} ${who}${name}: ${body}`;
-    })
-    .join('\n');
+function titleFrom(text) {
+  const t = String(text ?? '');
+  return t.length > 60 ? `${t.slice(0, 57)}...` : t;
 }
 
 /**
@@ -107,7 +69,7 @@ function categoriesFor(triage) {
  * them is reading it this minute. Gates the reply only — triage and alerting
  * happen before this is ever consulted.
  */
-async function assistantShouldReply(session) {
+async function assistantShouldReply(session, relationship = null) {
   if (!session) return true;
 
   /*
@@ -122,7 +84,7 @@ async function assistantShouldReply(session) {
    *
    * The clinic is told, in the audit trail. See [ai/allowance.js].
    */
-  const may = await mayAssistantReply(session.patient);
+  const may = await mayAssistantReply(session.patient, { practiceId: relationship?.practiceId ?? null });
   if (!may.allowed) return false;
   // A department nobody has written a scope for has no assistant. Not a
   // general one, not a fallback to the diabetes prompt — silence, and the
@@ -155,13 +117,26 @@ async function assistantShouldReply(session) {
  *   4. retrieve grounding, then generate
  *   5. fall back to a written emergency script if generation fails
  */
-export async function handlePatientMessage({ patientId, sessionId, text, language = 'en', attachments = [], replyTo }) {
+export async function handlePatientMessage({
+  patientId,
+  sessionId,
+  practiceId = null,
+  text,
+  language = 'en',
+  attachments = [],
+  replyTo,
+}) {
   // A voice-only message carries no typed text; use the words transcribed at
   // upload so triage and the assistant answer what was actually said.
   text = await resolveVoiceText(text, attachments);
-  const session = await resolveSession({ patientId, sessionId, language, text });
+  // The conversation this message belongs to, and the practice it is with.
+  // That practice decides what the assistant reads, whose clinicians it
+  // quotes, who it speaks for and whose allowance it spends — see
+  // services/conversationPractice.js.
+  const session = await sessionForPatientSend({ patientId, sessionId, practiceId, language, title: titleFrom(text) });
+  const relationship = await relationshipOfSession(session);
 
-  const context = await buildPatientContext(patientId);
+  const context = await buildPatientContext(patientId, relationship);
 
   const triage = triageMessage({
     text,
@@ -233,7 +208,7 @@ export async function handlePatientMessage({ patientId, sessionId, text, languag
   // clinic has been alerted if it needed to be — but no reply is generated:
   // the person is answering, and a second answer arriving under theirs is how
   // a patient ends up with two different accounts of what to do.
-  if (!(await assistantShouldReply(session))) {
+  if (!(await assistantShouldReply(session, relationship))) {
     session.messageCount = seq;
     session.lastMessageAt = new Date();
     session.highestUrgency = maxUrgency(session.highestUrgency, triage.urgency);
@@ -270,7 +245,7 @@ export async function handlePatientMessage({ patientId, sessionId, text, languag
       .sort({ seq: -1 })
       .limit(HISTORY_TURNS)
       .lean(),
-    loadCareTeamNotes(patientId).catch(() => ''),
+    careTeamNotesFor({ patientId, enrollment: relationship.enrollment }).catch(() => ''),
   ]);
 
   // If the patient attached photos, load them so the assistant can actually
@@ -293,7 +268,7 @@ export async function handlePatientMessage({ patientId, sessionId, text, languag
       // for the same prompt (e.g. every "hi") instead of answering.
       // Clinician and dietician turns are deliberately absent here — they are
       // carried in the system prompt instead, so the model can quote them
-      // without being able to speak as the doctor. See loadCareTeamNotes.
+      // without being able to speak as the doctor. See services/careTeamNotes.js.
       .filter((m) => (m.role === 'user' || m.role === 'assistant') && !m.isFallback)
       .map((m) => ({ role: m.role === 'assistant' ? 'model' : 'user', parts: [{ text: m.content }] })),
     // The language primer sits between the history and the real message, so
@@ -304,7 +279,7 @@ export async function handlePatientMessage({ patientId, sessionId, text, languag
 
   // This patient's practice. Asked without it, this was the first clinic on
   // the platform, for every patient on it.
-  const identity = await clinicIdentity(null, { practiceId: await practiceForPatient(patientId) });
+  const identity = await clinicIdentity(null, { practiceId: relationship.practiceId });
 
   // The department this thread belongs to decides what the assistant is. Null
   // department is the practice's general thread, which keeps the remit the
@@ -396,7 +371,7 @@ ${forceLanguageInstruction(language)}`,
   // The token figures ride along. The allowance still compares replies; what
   // the practice actually costs is tokens, and that number was stored per
   // message and aggregated nowhere anybody could read it.
-  countReply(await practiceOfPatient(patientId), usage);
+  countReply(relationship.practiceId, usage);
 
   const assistantMessage = await ChatMessage.create({
     session: session._id,
@@ -477,9 +452,24 @@ ${forceLanguageInstruction(language)}`,
  * pieces) â†’ optional `replace` (swap the partial for scripted fallback text on
  * failure) â†’ `done` (the saved assistant message).
  */
-export async function* streamPatientMessage({ patientId, sessionId, text, language = 'en', attachments = [], replyTo }) {
-  const session = await resolveSession({ patientId, sessionId, language, text });
-  const context = await buildPatientContext(patientId);
+export async function* streamPatientMessage({
+  patientId,
+  sessionId,
+  practiceId = null,
+  text,
+  language = 'en',
+  attachments = [],
+  replyTo,
+}) {
+  // A voice-only message is answered from its transcript here too. The stream
+  // skipped this, so a voice note sent the way the app sends every message was
+  // triaged and answered as an empty string.
+  text = await resolveVoiceText(text, attachments);
+  // The same conversation, and the same practice deciding everything below, as
+  // the plain send. See services/conversationPractice.js.
+  const session = await sessionForPatientSend({ patientId, sessionId, practiceId, language, title: titleFrom(text) });
+  const relationship = await relationshipOfSession(session);
+  const context = await buildPatientContext(patientId, relationship);
   const triage = triageMessage({ text, targets: context.targets, latestGlucose: context.latestGlucose });
 
   const seq = session.messageCount + 1;
@@ -530,7 +520,7 @@ export async function* streamPatientMessage({ patientId, sessionId, text, langua
   // toggle would otherwise do nothing at all for any client that streams.
   // Everything above still ran — the message is saved and the clinic alerted
   // if it needed to be — but no reply is generated.
-  if (!(await assistantShouldReply(session))) {
+  if (!(await assistantShouldReply(session, relationship))) {
     session.messageCount = seq;
     session.lastMessageAt = new Date();
     session.highestUrgency = maxUrgency(session.highestUrgency, triage.urgency);
@@ -566,7 +556,7 @@ export async function* streamPatientMessage({ patientId, sessionId, text, langua
       .sort({ seq: -1 })
       .limit(HISTORY_TURNS)
       .lean(),
-    loadCareTeamNotes(patientId).catch(() => ''),
+    careTeamNotesFor({ patientId, enrollment: relationship.enrollment }).catch(() => ''),
   ]);
 
   const images = attachments.length ? await loadAssetsForAi(attachments).catch(() => []) : [];
@@ -584,7 +574,7 @@ export async function* streamPatientMessage({ patientId, sessionId, text, langua
       // for the same prompt (e.g. every "hi") instead of answering.
       //
       // Clinician and dietician turns are absent here too — carried in the
-      // system prompt instead. See loadCareTeamNotes.
+      // system prompt instead. See services/careTeamNotes.js.
       .filter((m) => (m.role === 'user' || m.role === 'assistant') && !m.isFallback)
       .map((m) => ({ role: m.role === 'assistant' ? 'model' : 'user', parts: [{ text: m.content }] })),
     // The language primer sits between the history and the real message, so
@@ -594,7 +584,7 @@ export async function* streamPatientMessage({ patientId, sessionId, text, langua
   ];
   // This patient's practice. Asked without it, this was the first clinic on
   // the platform, for every patient on it.
-  const identity = await clinicIdentity(null, { practiceId: await practiceForPatient(patientId) });
+  const identity = await clinicIdentity(null, { practiceId: relationship.practiceId });
 
   // The department this thread belongs to decides what the assistant is. Null
   // department is the practice's general thread, which keeps the remit the
@@ -692,7 +682,7 @@ ${forceLanguageInstruction(language)}`,
   // The token figures ride along. The allowance still compares replies; what
   // the practice actually costs is tokens, and that number was stored per
   // message and aggregated nowhere anybody could read it.
-  countReply(await practiceOfPatient(patientId), usage);
+  countReply(relationship.practiceId, usage);
 
   const assistantMessage = await ChatMessage.create({
     session: session._id,
@@ -719,31 +709,6 @@ ${forceLanguageInstruction(language)}`,
   await session.save();
 
   yield { type: 'done', data: { reply: serialiseMessage(assistantMessage) } };
-}
-
-async function resolveSession({ patientId, sessionId, language, text }) {
-  if (sessionId) {
-    const existing = await ChatSession.findOne({ _id: sessionId, patient: patientId });
-    if (existing) return existing;
-  }
-
-  // No session id means "continue where this patient left off", not "start
-  // again". Creating one unconditionally scattered a single patient's history
-  // across a new session per message whenever a client had not yet learned the
-  // id â€” which left the clinic reading only the newest fragment while the
-  // patient read another, and the doctor's reply landing in a thread the
-  // patient was not looking at.
-  const ongoing = await ChatSession.findOne({ patient: patientId, kind: { $ne: 'nutrition' }, isArchived: false }).sort({
-    lastMessageAt: -1,
-  });
-  if (ongoing) return ongoing;
-
-  return ChatSession.create({
-    patient: patientId,
-    language,
-    // First message doubles as the thread title; trimmed to fit a list row.
-    title: text.length > 60 ? `${text.slice(0, 57)}...` : text,
-  });
 }
 
 function serialiseMessage(m) {

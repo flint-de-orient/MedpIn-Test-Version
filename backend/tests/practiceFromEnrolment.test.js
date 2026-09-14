@@ -222,24 +222,29 @@ describe('the callers ask the new question', () => {
   const src = (rel) => readFileSync(new URL(`../src/${rel}`, import.meta.url), 'utf8');
   const count = (text, re) => (text.match(re) ?? []).length;
 
-  test('the assistant and the readers name the practice the patient is enrolled at', () => {
+  test('the assistant and the readers name the practice the conversation or patient is with', () => {
+    // The assistant speaks for the practice its conversation is with — see
+    // services/conversationPractice.js — which for a patient with one practice
+    // is the practice they are enrolled at, and never the assigned-doctor proxy
+    // where an enrolment decides.
     assert.equal(
-      count(src('services/ai/assistant.js'), /clinicIdentity\(null, \{ practiceId: await practiceForPatient\(patientId\) \}\)/g),
+      count(src('services/ai/assistant.js'), /clinicIdentity\(null, \{ practiceId: relationship\.practiceId \}\)/g),
       2,
-      'the assistant names a clinic from the assigned-doctor proxy',
+      'the assistant names a clinic other than the one its conversation is with',
     );
     assert.equal(count(src('routes/care.js'), /practiceId: await practiceForPatient\(req\.patientId\)/g), 2);
-    assert.match(src('routes/chat.js'), /practiceId: await practiceForPatient\(patientId\)/);
+    assert.match(src('routes/chat.js'), /practiceId: relationship\.practiceId/);
     assert.match(src('services/ai/labReport.js'), /extractLabValues\(doc\.photo, await practiceForPatient\(doc\.patient\)\)/);
     assert.match(src('services/prescriptionPdf.js'), /practiceOfMember\(prescription\.doctor\)/);
     assert.match(src('services/prescriptionPdf.js'), /practiceForPatient\(prescription\.patient\)/);
   });
 
-  test('while the allowance still counts by the assigned doctor, on purpose', () => {
-    // Re-attributing replies moves them into allowances that have never
-    // counted them, and a practice pushed over its limit by that has an
-    // assistant that goes quiet. A separate decision, not a side effect.
-    assert.equal(count(src('services/ai/assistant.js'), /countReply\(await practiceOfPatient\(patientId\), usage\)/g), 2);
+  test('and the allowance counts against that same practice', () => {
+    // Decided: the allowance follows the enrolled practice. It counted by the
+    // assigned doctor, which a desk-enrolled patient does not have — so their
+    // replies were counted nowhere, and a practice whose type has no assistant
+    // had one anyway. httpChatByPractice.test.js proves both over HTTP.
+    assert.equal(count(src('services/ai/assistant.js'), /countReply\(relationship\.practiceId, usage\)/g), 2);
   });
 
   test('and the digest and the reminders follow the appointment', () => {

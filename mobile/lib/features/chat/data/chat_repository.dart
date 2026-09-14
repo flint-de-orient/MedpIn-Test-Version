@@ -16,6 +16,7 @@ class ChatRepository {
 
   Future<SendMessageResult> sendMessage({
     String? sessionId,
+    String? practiceId,
     required String text,
     required String language,
     List<String>? attachments,
@@ -25,6 +26,7 @@ class ChatRepository {
       '/chat/message',
       body: {
         if (sessionId != null) 'sessionId': sessionId,
+        if (practiceId != null) 'practiceId': practiceId,
         'text': text,
         'language': language,
         if (attachments != null && attachments.isNotEmpty)
@@ -42,6 +44,7 @@ class ChatRepository {
   /// caller can fall back to [sendMessage].
   Stream<(String, Map<String, dynamic>)> streamMessage({
     String? sessionId,
+    String? practiceId,
     required String text,
     required String language,
     List<String>? attachments,
@@ -51,6 +54,7 @@ class ChatRepository {
       '/chat/message/stream',
       body: {
         if (sessionId != null) 'sessionId': sessionId,
+        if (practiceId != null) 'practiceId': practiceId,
         'text': text,
         'language': language,
         if (attachments != null && attachments.isNotEmpty)
@@ -84,10 +88,20 @@ class ChatRepository {
   /// this screen polling an older one — the reply simply never appeared, while
   /// the push notification still arrived, because that is addressed by patient
   /// rather than by session.
-  Future<Paged<ChatMessage>> getThread({int page = 1, int limit = 200}) async {
+  Future<Paged<ChatMessage>> getThread({
+    String? sessionId,
+    int page = 1,
+    int limit = 200,
+  }) async {
     final json = await _client.getJson(
       '/chat/thread',
-      query: {'page': page, 'limit': limit},
+      // The conversation open on screen. A patient with two practices has two,
+      // and without naming one the server shows their first practice's.
+      query: {
+        'page': page,
+        'limit': limit,
+        if (sessionId != null) 'sessionId': sessionId,
+      },
     );
     return Paged.fromJson(json, ChatMessage.fromJson);
   }

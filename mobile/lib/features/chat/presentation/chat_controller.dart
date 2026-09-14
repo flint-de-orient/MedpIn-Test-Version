@@ -9,6 +9,7 @@ import 'package:flutter/foundation.dart';
 class ChatState {
   const ChatState({
     this.sessionId,
+    this.practiceId,
     this.messages = const [],
     this.isSending = false,
     this.isLoadingHistory = false,
@@ -16,6 +17,12 @@ class ChatState {
   });
 
   final String? sessionId;
+
+  /// The practice a first message is for, before any conversation exists with
+  /// it. Set only by [ChatController.startConversation]; the first reply names
+  /// the conversation, and from then on [sessionId] is what is sent.
+  final String? practiceId;
+
   final List<ChatMessage> messages;
   final bool isSending;
   final bool isLoadingHistory;
@@ -31,6 +38,7 @@ class ChatState {
   }) {
     return ChatState(
       sessionId: sessionId ?? this.sessionId,
+      practiceId: practiceId,
       messages: messages ?? this.messages,
       isSending: isSending ?? this.isSending,
       isLoadingHistory: isLoadingHistory ?? this.isLoadingHistory,
@@ -88,6 +96,8 @@ class ChatController extends StateNotifier<ChatState> {
     try {
       final result = await _repository.sendMessage(
         sessionId: state.sessionId,
+        // Only until the first message has opened the conversation.
+        practiceId: state.sessionId == null ? state.practiceId : null,
         text: trimmed,
         language: language,
         attachments: attachments,
@@ -175,6 +185,8 @@ class ChatController extends StateNotifier<ChatState> {
       );
       final result = await _repository.sendMessage(
         sessionId: state.sessionId,
+        // Only until the first message has opened the conversation.
+        practiceId: state.sessionId == null ? state.practiceId : null,
         // The transcript becomes the text so deterministic triage reads a spoken
         // "chest pain" the same as a typed one; empty is fine (the audio is still
         // stored and sent).
@@ -265,6 +277,9 @@ class ChatController extends StateNotifier<ChatState> {
 
   Future<void> pollForUpdates() async {
     if (_sendIsBlocking || state.isLoadingHistory) return;
+    // A conversation that does not exist yet has nothing to read, and reading
+    // without naming one would pour the patient's other practice into it.
+    if (state.sessionId == null && state.practiceId != null) return;
 
     // Read the whole conversation, not one session of it.
     //
@@ -275,7 +290,7 @@ class ChatController extends StateNotifier<ChatState> {
     // the tab opened. Both sides now read the same thing.
 
     try {
-      final paged = await _repository.getThread(limit: 200);
+      final paged = await _repository.getThread(sessionId: state.sessionId, limit: 200);
       // Cleared here, not at the end of the try: the checks below return early
       // on the ordinary case of "nothing new", so a reset placed after them
       // never runs on a quiet thread — and a thread that had recovered from an
@@ -395,7 +410,7 @@ class ChatController extends StateNotifier<ChatState> {
   Future<void> openSession(String sessionId) async {
     state = ChatState(sessionId: sessionId, isLoadingHistory: true);
     try {
-      final paged = await _repository.getThread(limit: 200);
+      final paged = await _repository.getThread(sessionId: state.sessionId, limit: 200);
       final messages = [...paged.items]..sort((a, b) {
         final at = a.createdAt;
         final bt = b.createdAt;
@@ -417,9 +432,21 @@ class ChatController extends StateNotifier<ChatState> {
     }
   }
 
+  /// Starts a first conversation with one of the patient's practices.
+  ///
+  /// A patient with two practices who has written to neither has no
+  /// conversation to open, and a message that names no practice is refused
+  /// rather than guessed at. This names it until the first message comes back
+  /// with the conversation it opened.
+  void startConversation(String practiceId) {
+    state = ChatState(practiceId: practiceId);
+  }
+
   /// Opens the patient's existing conversation when the chat tab is first shown.
   Future<void> resumeLatest() async {
-    if (state.sessionId != null || state.isLoadingHistory) return;
+    // A conversation just started with a named practice is the one on screen,
+    // not the newest the patient has with somebody else.
+    if (state.sessionId != null || state.practiceId != null || state.isLoadingHistory) return;
     state = state.copyWith(isLoadingHistory: true, clearError: true);
     try {
       final paged = await _repository.getSessions(limit: 1);

@@ -41,9 +41,16 @@ function routes() {
 const touchesPatients = (r) =>
   /ROLES\.PATIENT|PatientProfile|GlucoseReading|VitalRecord|ChatSession/.test(r.body);
 
-/** Is it confined to the caller's own practice, by either mechanism? */
+/**
+ * Is it confined to the caller's own practice, by any mechanism?
+ *
+ * `practiceSessions` and `sessionBelongsTo` are the narrower form for
+ * conversations: a patient another practice also cares for has a conversation
+ * there too, and a patient scope alone admitted it. See
+ * services/conversationPractice.js.
+ */
 const isScoped = (r) =>
-  /assertSamePractice|enrollmentGate|practicePatients|practiceOf\(req\)/.test(r.body);
+  /assertSamePractice|enrollmentGate|practicePatients|practiceOf\(req\)|practiceSessions\(req\)|sessionBelongsTo\(/.test(r.body);
 
 describe('the clinician router asks which practice', () => {
   /**
@@ -85,7 +92,7 @@ describe('the clinician router asks which practice', () => {
       open,
       [],
       ['', 'A list spanning every practice:', '', ...open.map((s) => `  ${s}`),
-        '', 'Apply practicePatients(req, <field>) to the query.'].join('\n'),
+        '', 'Apply practicePatients(req, <field>) to the query, or practiceSessions(req) for conversations.'].join('\n'),
     );
   });
 

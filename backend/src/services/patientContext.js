@@ -9,6 +9,7 @@ import { Prescription } from '../models/Prescription.js';
 import { LabResult } from '../models/LabResult.js';
 import { DietPlan } from '../models/DietPlan.js';
 import { FootAssessment } from '../models/FootAssessment.js';
+import { Membership } from '../models/Membership.js';
 
 /**
  * Builds the compact clinical picture injected into the assistant prompt.
@@ -18,7 +19,32 @@ import { FootAssessment } from '../models/FootAssessment.js';
  * that knows the patient is on insulin and ran 320 mg/dL this morning gives a
  * materially different reply than one that does not.
  */
-export async function buildPatientContext(patientId) {
+export async function buildPatientContext(patientId, { practiceId = null, enrolledOn = null } = {}) {
+  /*
+   * One practice's picture of the patient.
+   *
+   * ---- What was wrong ----------------------------------------------------
+   *
+   * Every read here was by patient alone. A practice that enrolled a patient
+   * today was given another practice's latest prescription — its diagnosis,
+   * its advice, the tests it advised — and the assistant presented them as
+   * guidance "the doctor has approved", in the voice of the practice that had
+   * never seen them. The same text is what a clinician reads as "Assistant
+   * context".
+   *
+   * ---- Now ----------------------------------------------------------------
+   *
+   * The practice the conversation is with, from the date it was given access —
+   * the same windows the record routes apply — and the practice's own
+   * clinicians' writing only: a prescription by one of its doctors, a diet
+   * plan by one of its dieticians, an appointment with one of its doctors.
+   * Both default to null, which is a deployment with nothing to decide by, and
+   * reads as it always did.
+   */
+  const window = (field) => (enrolledOn ? { [field]: { $gte: new Date(enrolledOn) } } : {});
+  const authors = practiceId ? await Membership.distinct('user', { practice: practiceId }) : null;
+  const writtenHere = (field) => (authors ? { [field]: { $in: authors } } : {});
+
   const [
     profile,
     recentGlucose,
@@ -32,28 +58,33 @@ export async function buildPatientContext(patientId) {
     foot,
   ] = await Promise.all([
     PatientProfile.findOne({ user: patientId }).lean(),
-    GlucoseReading.find({ patient: patientId })
+    GlucoseReading.find({ patient: patientId, ...window('measuredAt') })
       .sort({ measuredAt: -1 })
       .limit(10)
       .select('valueMgDl context measuredAt flag')
       .lean(),
-    Medication.find({ patient: patientId, isActive: true }).select('name strength dose form schedule').lean(),
-    VitalRecord.findOne({ patient: patientId }).sort({ recordedAt: -1 }).lean(),
-    Hba1cRecord.findOne({ patient: patientId }).sort({ testedOn: -1 }).lean(),
+    Medication.find({ patient: patientId, isActive: true, ...window('createdAt') })
+      .select('name strength dose form schedule')
+      .lean(),
+    VitalRecord.findOne({ patient: patientId, ...window('recordedAt') }).sort({ recordedAt: -1 }).lean(),
+    Hba1cRecord.findOne({ patient: patientId, ...window('testedOn') }).sort({ testedOn: -1 }).lean(),
     Appointment.findOne({
       patient: patientId,
       status: { $in: ['requested', 'confirmed'] },
       scheduledFor: { $gte: new Date() },
+      ...writtenHere('doctor'),
     })
       .sort({ scheduledFor: 1 })
       .lean(),
     // The doctor's own record of this patient. Without it the assistant could
     // describe the medicines but not what they were prescribed *for*, and gave
     // general answers to a patient whose diagnosis was already written down.
-    Prescription.findOne({ patient: patientId }).sort({ issuedOn: -1 }).lean(),
-    LabResult.find({ patient: patientId }).sort({ createdAt: -1 }).limit(5).lean(),
-    DietPlan.findOne({ patient: patientId }).lean(),
-    FootAssessment.findOne({ patient: patientId }).sort({ assessedAt: -1 }).lean(),
+    Prescription.findOne({ patient: patientId, ...window('issuedOn'), ...writtenHere('doctor') })
+      .sort({ issuedOn: -1 })
+      .lean(),
+    LabResult.find({ patient: patientId, ...window('createdAt') }).sort({ createdAt: -1 }).limit(5).lean(),
+    DietPlan.findOne({ patient: patientId, ...writtenHere('dietician') }).lean(),
+    FootAssessment.findOne({ patient: patientId, ...window('assessedAt') }).sort({ assessedAt: -1 }).lean(),
   ]);
 
   const lines = [];

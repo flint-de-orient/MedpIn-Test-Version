@@ -91,8 +91,13 @@ describe('the month is the clinic’s month', () => {
 });
 
 describe('the gate is where silence already lives', () => {
-  test('assistantShouldReply asks', () => {
-    assert.match(assistant, /const may = await mayAssistantReply\(session\.patient\)/);
+  test('assistantShouldReply asks, about the practice the conversation is with', () => {
+    // Not the assigned doctor's practice, which a desk-enrolled patient does
+    // not have. See services/conversationPractice.js.
+    assert.match(
+      assistant,
+      /const may = await mayAssistantReply\(session\.patient, \{ practiceId: relationship\?\.practiceId \?\? null \}\)/,
+    );
     assert.match(assistant, /if \(!may\.allowed\) return false;/);
   });
 

@@ -16,6 +16,7 @@ class ThreadGroup {
     required this.practiceName,
     required this.enrollmentId,
     required this.threads,
+    this.practiceId,
   });
 
   /// Null before the migration, when there is nothing to group by. The screen
@@ -23,12 +24,17 @@ class ThreadGroup {
   final String? practiceName;
   final String? enrollmentId;
 
+  /// Which practice this is, so a patient who has not written to it yet can
+  /// start a conversation there. Null before the migration, with the name.
+  final String? practiceId;
+
   final List<ChatThread> threads;
 
   factory ThreadGroup.fromJson(Map<String, dynamic> j) {
     final practice = j['practice'] as Map<String, dynamic>?;
     return ThreadGroup(
       practiceName: practice?['name']?.toString(),
+      practiceId: practice?['id']?.toString(),
       enrollmentId: j['enrollment']?.toString(),
       threads:
           (j['threads'] as List?)
@@ -100,9 +106,11 @@ class ThreadList {
   /// True only when there is genuinely a choice to make.
   ///
   /// One thread means the screen opens into it. Anything else — two practices,
-  /// or one practice with a second department — means a list. Decided here so
-  /// no screen has to count, and so the answer is the same everywhere.
-  bool get needsList => all.length > 1;
+  /// or one practice with a second department — means a list. So does a second
+  /// practice the patient has not written to yet: opening straight into the
+  /// one conversation they do have left no way to reach the other, and a
+  /// message sent without choosing is refused rather than guessed at.
+  bool get needsList => groups.length > 1 || all.length > 1;
 
   /// The one thread, when there is exactly one. Null otherwise.
   ChatThread? get only => all.length == 1 ? all.first : null;
