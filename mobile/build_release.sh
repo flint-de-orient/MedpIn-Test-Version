@@ -86,14 +86,21 @@ echo "Version ${PREV} -> ${NAME}+${BUILD}"
 # drifted to 570 across 86 files. Failing outright would block every release,
 # so this is a ratchet: the debt cannot grow, and every file cleaned lowers the
 # bar behind it. When the run reports a number below the ceiling, lower this.
-TOKEN_CEILING=561
+TOKEN_CEILING=557
 dart run tool/verify_tokens.dart --max="${TOKEN_CEILING}"
 
 APK="build/app/outputs/flutter-apk/app-arm64-v8a-release.apk"
 BEFORE="$( [ -f "$APK" ] && date -r "$APK" +%s || echo 0 )"
 
 echo "Building ${NAME}+${BUILD}"
+# The architectures are named because android/app/build.gradle.kts keeps
+# x86_64 out of split builds: without --target-platform the Flutter tool waits
+# for an x86_64 APK that is never produced and exits non-zero after the ARM
+# APKs have built fine. Obfuscated like every release since 2026-08-18, with
+# the symbols kept so a crash can still be read.
 flutter build apk --release --split-per-abi \
+  --target-platform android-arm,android-arm64 \
+  --obfuscate --split-debug-info=build/symbols \
   --dart-define="APP_BUILD=${BUILD}" \
   --dart-define="APP_VERSION=${NAME}"
 

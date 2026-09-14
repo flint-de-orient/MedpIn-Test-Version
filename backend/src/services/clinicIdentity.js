@@ -3,7 +3,7 @@ import { Clinic } from '../models/Clinic.js';
 // that has no location yet.
 import { Practice } from '../models/Practice.js';
 import { env } from '../config/env.js';
-import { callablePhone, clinicEmergencyPhone } from './clinicContact.js';
+import { callablePhone } from './clinicContact.js';
 
 /**
  * Who the clinic says it is — one answer, read from the database.
@@ -133,7 +133,7 @@ export async function clinicIdentity(clinicId = null, { practiceId = null } = {}
 
   const identity = {
     ...resolveIdentity(doc, env),
-    emergencyPhone: emergencyPhoneFor(doc, { known: Boolean(clinicId || practiceId) }),
+    emergencyPhone: await emergencyPhoneFor(doc, { clinicId, practiceId }),
   };
 
   cache.set(key, { identity, at: Date.now() });
@@ -147,27 +147,48 @@ async function practiceWithoutLocation(practiceId) {
 }
 
 /**
- * The number this patient is told to ring in an emergency, or null.
+ * The number this patient is told to ring, or null.
  *
- * `CLINIC_EMERGENCY_PHONE` is one value for the process, and it is the founding
- * clinic's. It stays the answer for the founding practice, for a location that
- * predates practices, and for any caller that did not say whose patient this
- * is — which is exactly what it answered before.
+ * ---- One rule, for every practice ------------------------------------------
  *
- * Any other practice gets its own location's number if somebody could ring it,
- * or none. Never the configured one: that is a stranger's switchboard, given to
- * somebody with chest pain. No number drops the "or call ..." clause, and "go
- * to the nearest hospital" on its own is still the correct advice.
+ *   1. the practice's own `emergencyPhone`;
+ *   2. the location the caller named, when it named one;
+ *   3. otherwise the practice's only active location — only, never first;
+ *   4. otherwise none.
+ *
+ * `CLINIC_EMERGENCY_PHONE` is in none of those. It was the answer for the
+ * founding practice and for any caller that did not say whose patient this is,
+ * which made the founding clinic's switchboard the default for anybody the
+ * code could not place. It is nobody's practice's number now — the backfill
+ * script copies it onto the practice it belongs to, once, on purpose.
+ *
+ * No number drops the "or call ..." clause, and the app draws no call button:
+ * "go to the nearest hospital" on its own is correct advice, and a number that
+ * rings nowhere, or rings a stranger, is worse than none.
  */
-function emergencyPhoneFor(doc, { known }) {
-  if (!known) return clinicEmergencyPhone();
+async function emergencyPhoneFor(doc, { clinicId, practiceId }) {
   const practice =
     doc?.practice && typeof doc.practice === 'object' && doc.practice.name !== undefined
       ? doc.practice
       : null;
-  if (!practice) return clinicEmergencyPhone();
-  if (practice.isFounding) return clinicEmergencyPhone() ?? callablePhone(doc?.phone);
-  return callablePhone(doc?.phone);
+
+  const own = callablePhone(practice?.emergencyPhone);
+  if (own) return own;
+
+  if (clinicId) return callablePhone(doc?.phone);
+
+  if (practiceId) {
+    // Two answers is no answer. A practice with two branches and no number of
+    // its own has not said which desk its patients should ring, and the one
+    // that sorts first is not a decision anybody made.
+    const locations = await Clinic.find({ practice: practiceId, isActive: true })
+      .select('phone')
+      .limit(2)
+      .lean();
+    return locations.length === 1 ? callablePhone(locations[0].phone) : null;
+  }
+
+  return null;
 }
 
 /**

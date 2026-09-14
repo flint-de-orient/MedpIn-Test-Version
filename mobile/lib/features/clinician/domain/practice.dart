@@ -72,6 +72,7 @@ class PracticeOverview {
     required this.tagline,
     required this.doctorDisplayName,
     required this.registrationNo,
+    this.emergencyPhone,
     required this.logoLightUrl,
     required this.verification,
     required this.gaps,
@@ -87,6 +88,11 @@ class PracticeOverview {
   final String? tagline;
   final String? doctorDisplayName;
   final String? registrationNo;
+
+  /// The number this practice's patients ring, or null when it has not set
+  /// one. The practice's own — never a location's standing in for it.
+  final String? emergencyPhone;
+
   final String? logoLightUrl;
   final String verification;
 
@@ -114,6 +120,7 @@ class PracticeOverview {
       tagline: p['tagline'] as String?,
       doctorDisplayName: p['doctorDisplayName'] as String?,
       registrationNo: p['registrationNo'] as String?,
+      emergencyPhone: p['emergencyPhone'] as String?,
       logoLightUrl: p['logoLightUrl'] as String?,
       verification: p['verification'] as String? ?? 'unverified',
       gaps:

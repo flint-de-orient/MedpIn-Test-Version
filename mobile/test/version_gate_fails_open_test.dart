@@ -77,7 +77,7 @@ void main() {
 
   group('being told about an update, without being interrupted by it', () {
     final section =
-        File('lib/core/update/app_update_section.dart').readAsStringSync();
+        File('lib/core/update/app_section.dart').readAsStringSync();
     final prompt = File('lib/core/update/update_prompt.dart').readAsStringSync();
     final shell =
         File('lib/features/shell/presentation/app_shell.dart').readAsStringSync();

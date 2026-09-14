@@ -7,7 +7,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../../core/config/app_config.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/theme/app_colors.dart';
-import '../../../core/update/app_update_section.dart';
+import '../../../core/update/app_section.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/tokens.dart';
 import '../../../shared/widgets/hero_band.dart';
@@ -17,7 +17,7 @@ import '../../../shared/providers/app_lock_provider.dart';
 import '../../../shared/providers/locale_provider.dart';
 import '../../../shared/providers/preferences_provider.dart';
 import '../../../shared/widgets/profile_photo_header.dart';
-import '../../appointments/data/clinic_repository.dart';
+import '../../../shared/data/care_contact.dart';
 import '../../auth/presentation/auth_controller.dart';
 import 'widgets/profile_section.dart';
 import 'widgets/theme_selector.dart';
@@ -250,10 +250,9 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     }
   }
 
-  Future<void> _callClinic() async {
-    final phone =
-        ref.read(clinicPhoneProvider).valueOrNull ??
-        AppConfig.clinicPhoneNumber;
+  /// Rings the patient's own practice. Offered only when there is a number to
+  /// ring — see the Clinic section.
+  Future<void> _callClinic(String phone) async {
     await launchUrl(Uri(scheme: 'tel', path: phone));
   }
 
@@ -462,37 +461,35 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                 ProfileSection(
                   label: l10n.profileClinic,
                   children: [
-                    ProfileRow(
-                      icon: Icons.phone_outlined,
-                      title: l10n.profileCallClinic,
-                      trailingIcon: Icons.open_in_new_rounded,
-                      onTap: _callClinic,
-                    ),
+                    // Their own practice's number, and only when it has one.
+                    // This dialled a placeholder compiled into the app
+                    // whenever the real number had not loaded.
+                    if (ref.watch(careContactProvider).valueOrNull?.phone
+                        case final String phone)
+                      ProfileRow(
+                        icon: Icons.phone_outlined,
+                        title: l10n.profileCallClinic,
+                        trailingIcon: Icons.open_in_new_rounded,
+                        onTap: () => _callClinic(phone),
+                      ),
                     // Beside the clinic's number, because both are the same
                     // question: how do I reach a person about this.
                     ProfileRow(
                       icon: Icons.rate_review_outlined,
                       title: l10n.profileFeedback,
                       subtitle: l10n.profileFeedbackSub,
-                      onTap: () => context.push('/profile/feedback'),
-                    ),
-                    ProfileRow(
-                      icon: Icons.info_outline_rounded,
-                      title: l10n.profileAbout,
-                      value: 'v${AppConfig.appVersion}',
                       showDivider: false,
-                      onTap: () => _showAbout(context),
+                      onTap: () => context.push('/profile/feedback'),
                     ),
                   ],
                 ),
 
                 // ---- App -------------------------------------------------------
                 //
-                // Above sign-out and below everything else, because it is the
-                // last thing anyone reads and the first thing anyone is asked
-                // for when a handset misbehaves.
-                const SizedBox(height: AppSpacing.lg),
-                const AppUpdateSection(),
+                // The version once, and whether a newer one exists: the same
+                // section on every profile. Its About opens this screen's own
+                // dialog, which links to the searchable licences.
+                AppSection(onAbout: () => _showAbout(context)),
 
                 // ---- Logout ----------------------------------------------------
                 SizedBox(

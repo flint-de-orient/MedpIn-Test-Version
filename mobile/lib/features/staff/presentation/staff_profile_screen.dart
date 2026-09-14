@@ -4,7 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
-import '../../../core/update/app_update_section.dart';
+import '../../../core/update/app_section.dart';
 import '../../appointments/presentation/appointment_providers.dart';
 import '../../auth/presentation/auth_controller.dart';
 import '../../../shared/widgets/error_view.dart';
@@ -14,7 +14,6 @@ import '../../profile/presentation/widgets/theme_selector.dart';
 import '../../profile/presentation/widgets/profile_section.dart';
 import '../../../shared/providers/app_lock_provider.dart';
 import '../../../shared/providers/theme_provider.dart';
-import '../../../core/config/app_config.dart';
 import '../../../shared/widgets/profile_photo_header.dart';
 import '../../../l10n/gen/app_localizations.dart';
 import '../../../shared/widgets/language_picker.dart';
@@ -145,27 +144,6 @@ class _StaffProfileScreenState extends ConsumerState<StaffProfileScreen> {
     } else {
       await controller.disable();
     }
-  }
-
-  Future<void> _showAbout() async {
-    final scheme = Theme.of(context).colorScheme;
-    await showDialog<void>(
-      context: context,
-      builder:
-          (ctx) => AlertDialog(
-            title: Text(AppConfig.appName),
-            content: Text(
-              'Version ${AppConfig.appVersion}',
-              style: TextStyle(fontSize: 14, color: scheme.onSurfaceVariant),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(ctx),
-                child: Text(AppLocalizations.of(context).commonClose),
-              ),
-            ],
-          ),
-    );
   }
 
   @override
@@ -329,27 +307,11 @@ class _StaffProfileScreenState extends ConsumerState<StaffProfileScreen> {
             ),
             const SizedBox(height: AppSpacing.lg),
 
-            ProfileSection(
-              label: l10n.deskAbout,
-              children: [
-                ProfileRow(
-                  icon: Icons.info_outline_rounded,
-                  title: l10n.profileAbout,
-                  value: 'v${AppConfig.appVersion}',
-                  showDivider: false,
-                  onTap: _showAbout,
-                ),
-              ],
-            ),
-
-
-            // ---- App ---------------------------------------------------
+            // ---- About ---------------------------------------------------
             //
-            // Above sign-out and below everything else: the last thing anyone
-            // reads, and the first thing anyone is asked for when a handset
-            // misbehaves.
-            const AppUpdateSection(),
-            const SizedBox(height: AppSpacing.lg),
+            // The version once, and whether a newer one exists: the same
+            // section on every profile. See AppSection.
+            AppSection(label: l10n.deskAbout),
             // Set apart, below a gap, so it is never the thing tapped by
             // accident on the way to something else.
             OutlinedButton.icon(

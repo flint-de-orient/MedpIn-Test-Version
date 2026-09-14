@@ -14,6 +14,7 @@ import 'shared/providers/theme_provider.dart';
 import 'shared/providers/locale_provider.dart';
 import 'features/auth/presentation/auth_controller.dart';
 import 'core/router/app_router.dart';
+import 'core/update/build_info.dart';
 
 /// Handles a push that arrives while the app is terminated or backgrounded.
 ///
@@ -36,6 +37,12 @@ Future<void> _onBackgroundMessage(RemoteMessage message) async {
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Which build this is, from the platform rather than the build flags — so
+  // Profile shows the version actually installed and the update check can
+  // compare, whichever command produced the APK.
+  await BuildInfo.load();
+
   final prefs = await SharedPreferences.getInstance();
 
   // Before runApp: a notification tapped from a cold start is delivered during

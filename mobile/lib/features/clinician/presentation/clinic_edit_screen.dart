@@ -10,6 +10,7 @@ import '../../appointments/domain/clinic.dart';
 import '../../appointments/presentation/appointment_providers.dart';
 import '../../../shared/widgets/authed_image.dart';
 import '../../../shared/data/upload_repository.dart';
+import '../../../shared/data/care_contact.dart';
 import 'package:image_picker/image_picker.dart';
 import '../../../shared/widgets/error_view.dart';
 
@@ -176,9 +177,9 @@ class _ClinicEditScreenState extends ConsumerState<ClinicEditScreen> {
         await repo.create(body);
       }
       ref.invalidate(clinicsProvider);
-      ref.invalidate(
-        clinicPhoneProvider,
-      ); // so every "Call clinic" picks up the new number at once
+      // A location's phone is what patients ring when the practice has one
+      // location and no number of its own, so the contact is read again.
+      ref.invalidate(careContactProvider);
       messenger.showSnackBar(const SnackBar(content: Text('Clinic saved')));
       navigator.pop();
     } on ApiException catch (e) {

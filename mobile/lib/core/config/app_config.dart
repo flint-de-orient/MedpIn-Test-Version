@@ -68,9 +68,9 @@ class AppConfig {
     defaultValue: '1.0.0',
   );
 
-  /// Clinic contact number used by the emergency chat card's "Call clinic"
-  /// button. Not part of API_CONTRACT.md (no endpoint exposes clinic
-  /// contact details) — placeholder pending a real number from the clinic;
-  /// swap before release.
-  static const String clinicPhoneNumber = '+913322345678';
+  // There is no built-in clinic number, on purpose. There was one —
+  // '+913322345678', a placeholder — and every "Call clinic" button dialled it
+  // whenever the real number had not loaded, the emergency card's included.
+  // The number now comes from the person's own practice (GET /auth/me/contact),
+  // and where there is none, no button is drawn.
 }

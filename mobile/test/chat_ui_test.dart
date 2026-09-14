@@ -7,6 +7,7 @@ import 'package:akd_care/features/chat/presentation/widgets/emergency_card.dart'
 import 'package:akd_care/features/chat/presentation/widgets/generating_bubble.dart';
 import 'package:akd_care/features/chat/presentation/widgets/urgent_card.dart';
 import 'package:akd_care/l10n/gen/app_localizations.dart';
+import 'package:akd_care/shared/data/care_contact.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -15,10 +16,21 @@ import 'package:flutter_test/flutter_test.dart';
 void main() {
   // ChatComposer is a ConsumerWidget — it reads the upload repository when a
   // photo is attached — so everything is wrapped in a scope.
+  //
+  // The emergency and urgent cards read the patient's own practice number from
+  // the server. Supplied here as a practice that has one; the tests about a
+  // practice without one say so.
+  const withNumber = CareContact(
+    practiceName: 'Salt Lake Diabetes Care',
+    phone: '+913324001234',
+  );
+
   Widget harness(
     Widget child, {
     Locale locale = const Locale('en'),
+    CareContact contact = withNumber,
   }) => ProviderScope(
+    overrides: [careContactProvider.overrideWith((ref) async => contact)],
     child: MaterialApp(
       locale: locale,
       localizationsDelegates: const [
@@ -96,6 +108,57 @@ void main() {
       expect(find.byType(UrgentCard), findsOneWidget);
       expect(find.text('Call clinic'), findsOneWidget);
     });
+
+    testWidgets(
+      'an emergency is still an emergency when the practice has no number',
+      (tester) async {
+        // No number is a real answer. The card must keep saying the one thing
+        // that is always right, and must not offer a button that dials nothing
+        // — it used to dial a placeholder compiled into the app.
+        await tester.pumpWidget(
+          harness(
+            ChatMessageBubble(
+              message: msg(
+                role: 'assistant',
+                content: 'Chest pain needs review.',
+                urgency: 'emergency',
+              ),
+            ),
+            contact: const CareContact(practiceName: null, phone: null),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(find.byType(EmergencyCard), findsOneWidget);
+        expect(
+          find.text('Go to the nearest hospital immediately'),
+          findsOneWidget,
+        );
+        expect(find.text('Call clinic'), findsNothing);
+      },
+    );
+
+    testWidgets(
+      'and an urgent card offers no number the practice has not given',
+      (tester) async {
+        await tester.pumpWidget(
+          harness(
+            ChatMessageBubble(
+              message: msg(
+                role: 'assistant',
+                content: 'Please check soon.',
+                urgency: 'urgent',
+              ),
+            ),
+            contact: const CareContact(practiceName: null, phone: null),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(find.byType(UrgentCard), findsOneWidget);
+        expect(find.text('Call clinic'), findsNothing);
+      },
+    );
 
     testWidgets('a routine reply is a plain bubble with the disclaimer', (
       tester,

@@ -130,12 +130,18 @@ describe('nothing has switched over yet', () => {
 describe('the practice screen survives a missing backfill', () => {
   const route = readFileSync(new URL('../src/routes/practices.js', import.meta.url), 'utf8');
 
-  test('membership is preferred but never required', () => {
-    // There is a window between this deploying and the migration running, and
-    // an account that predates memberships entirely. Neither should lose the
-    // screen.
-    assert.match(route, /Membership\.findOne\(/);
-    assert.match(route, /if \(!practice\) \{[\s\S]{0,200}Clinic\.findOne/);
+  test('a practice comes from a membership, never from the first clinic', () => {
+    // This pinned the opposite: with no membership, the route fell back to the
+    // practice owning the platform's first active clinic. That showed an
+    // account whose membership had ended — or never existed — the founding
+    // practice as its own, and saved its edits there. No membership is no
+    // practice. httpPracticePhone.test.js proves the answer over HTTP; this
+    // keeps a location lookup from coming back into the route.
+    const at = route.indexOf("'/mine'");
+    const mine = route.slice(at, route.indexOf('router.get(', at));
+    assert.match(mine, /Membership\.findOne\(/);
+    assert.ok(!/Clinic\.findOne\(/.test(mine), 'the practice is looked up from a clinic again');
+    assert.match(mine, /if \(!practice\) return res\.json\(\{ practice: null \}\)/);
   });
 
   test('a working clinic never reports having nobody in it', () => {

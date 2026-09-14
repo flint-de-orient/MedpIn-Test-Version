@@ -2,6 +2,7 @@ import 'package:akd_care/core/theme/app_theme.dart';
 import 'package:akd_care/features/chat/presentation/widgets/emergency_card.dart';
 import 'package:akd_care/features/profile/presentation/widgets/theme_selector.dart';
 import 'package:akd_care/l10n/gen/app_localizations.dart';
+import 'package:akd_care/shared/data/care_contact.dart';
 import 'package:akd_care/shared/providers/core_providers.dart';
 import 'package:akd_care/shared/providers/theme_provider.dart';
 import 'package:flutter/material.dart';
@@ -22,7 +23,17 @@ void main() {
     SharedPreferences.setMockInitialValues(initial);
     final prefs = await SharedPreferences.getInstance();
     final c = ProviderContainer(
-      overrides: [sharedPreferencesProvider.overrideWithValue(prefs)],
+      overrides: [
+        sharedPreferencesProvider.overrideWithValue(prefs),
+        // The emergency card reads the patient's own practice number; a
+        // practice with one, so the whole card is on screen in both themes.
+        careContactProvider.overrideWith(
+          (ref) async => const CareContact(
+            practiceName: 'Salt Lake Diabetes Care',
+            phone: '+913324001234',
+          ),
+        ),
+      ],
     );
     addTearDown(c.dispose);
     return c;

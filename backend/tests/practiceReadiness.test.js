@@ -77,8 +77,14 @@ describe('prescription readiness', () => {
   });
 
   test('no practice yet is a normal answer, not a 404', () => {
-    // Every deployment that has not run the backfill is in this state, and the
-    // screen has a real thing to say about it.
-    assert.match(src, /practice: null, needsBackfill: true/);
+    // An account with no current membership has no practice, and the screen has
+    // a real thing to say about it. This pinned `needsBackfill: true`, which
+    // came from the branch that fell back to the platform's first clinic — that
+    // branch showed such an account another practice's letterhead, and it is
+    // gone. The answer is still a plain 200 with no practice, never a refusal.
+    const at = src.indexOf("'/mine'");
+    const mine = src.slice(at, src.indexOf('router.get(', at));
+    assert.match(mine, /if \(!practice\) return res\.json\(\{ practice: null \}\)/);
+    assert.ok(!/notFound\(/.test(mine), 'having no practice became an error');
   });
 });

@@ -160,6 +160,26 @@ author, so it cannot tell which practice wrote one: where more than one practice
 has written knowledge, read the dry run before applying. A second run adopts
 nothing.
 
+### Once, after deploying per-practice emergency numbers
+
+The number patients ring — "Call clinic", the emergency card, and the number the
+assistant names in emergency advice — is now each practice's own
+`emergencyPhone`. `CLINIC_EMERGENCY_PHONE` is no longer given to any practice's
+patients, so the live clinic's number has to be put back on its practice:
+
+```bash
+cd /var/www/clinq-staging/backend     # then /var/www/clinq/backend for production
+mongosh --quiet --eval 'db.getSiblingDB("medpin_staging").practices.find({}, { name: 1, emergencyPhone: 1 })'
+node scripts/backfillEmergencyPhone.js --practice <practiceId>            # dry run
+node scripts/backfillEmergencyPhone.js --practice <practiceId> --apply
+```
+
+It copies this deployment's `CLINIC_EMERGENCY_PHONE` onto the practice you name,
+and only when that practice has no number yet — a second run changes nothing.
+Every other practice sets its own in the app, under Profile → Clinic → Patient
+call number. Until one does, its patients are given the phone of its only
+location, or no number at all.
+
 ## Pointing the app at staging
 
 `API_BASE_URL` is a `--dart-define`, so no code change:

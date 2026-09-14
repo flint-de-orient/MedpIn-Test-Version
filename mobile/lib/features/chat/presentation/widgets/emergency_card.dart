@@ -2,16 +2,21 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-import '../../../../core/config/app_config.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_spacing.dart';
 import '../../../../l10n/gen/app_localizations.dart';
-import '../../../appointments/data/clinic_repository.dart';
+import '../../../../shared/data/care_contact.dart';
 
 /// Rendered whenever `triage.urgency == "emergency"`. This is a
-/// patient-safety requirement, not decoration — keep it loud, keep the
-/// "Call clinic" action always reachable, and never collapse it behind a
-/// tap.
+/// patient-safety requirement, not decoration — keep it loud, and never
+/// collapse it behind a tap.
+///
+/// "Call clinic" dials the patient's own practice, as the server resolves it,
+/// and is drawn only when there is a number to dial. It used to fall back to a
+/// placeholder compiled into the app, so a patient with chest pain could be
+/// connected to a number that rang nowhere — or to another practice. With no
+/// number the card still says the one thing that is always right: go to the
+/// nearest hospital.
 class EmergencyCard extends ConsumerWidget {
   const EmergencyCard({super.key, required this.content});
 
@@ -20,11 +25,7 @@ class EmergencyCard extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final l10n = AppLocalizations.of(context);
-    // The clinic's own number once the doctor has set one; the built-in number
-    // until then — this button must never be left without something to dial.
-    final clinicPhone =
-        ref.watch(clinicPhoneProvider).valueOrNull ??
-        AppConfig.clinicPhoneNumber;
+    final phone = ref.watch(careContactProvider).valueOrNull?.phone;
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(AppSpacing.md),
@@ -83,34 +84,38 @@ class EmergencyCard extends ConsumerWidget {
               ),
             ],
           ),
-          const SizedBox(height: AppSpacing.md),
-          SizedBox(
-            width: double.infinity,
-            height: AppSpacing.minTapTarget + 8,
-            child: ElevatedButton.icon(
-              onPressed: () => launchUrl(Uri(scheme: 'tel', path: clinicPhone)),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.white,
-                foregroundColor: AppColors.danger,
-                elevation: 0,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(AppSpacing.buttonRadius),
-                  side: BorderSide(
-                    color: AppColors.dangerOn(context),
-                    width: 1.5,
+          if (phone != null) ...[
+            const SizedBox(height: AppSpacing.md),
+            SizedBox(
+              width: double.infinity,
+              height: AppSpacing.minTapTarget + 8,
+              child: ElevatedButton.icon(
+                onPressed: () => launchUrl(Uri(scheme: 'tel', path: phone)),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.white,
+                  foregroundColor: AppColors.danger,
+                  elevation: 0,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(
+                      AppSpacing.buttonRadius,
+                    ),
+                    side: BorderSide(
+                      color: AppColors.dangerOn(context),
+                      width: 1.5,
+                    ),
+                  ),
+                ),
+                icon: const Icon(Icons.call_rounded, size: 22),
+                label: Text(
+                  l10n.chatCallClinic,
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
                   ),
                 ),
               ),
-              icon: const Icon(Icons.call_rounded, size: 22),
-              label: Text(
-                l10n.chatCallClinic,
-                style: const TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
             ),
-          ),
+          ],
         ],
       ),
     );

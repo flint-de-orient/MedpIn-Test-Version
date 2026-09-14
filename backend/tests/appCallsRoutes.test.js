@@ -132,8 +132,19 @@ describe('the capability names mean the same thing on both sides', () => {
 });
 
 describe('the app is told what it may do, and does not work it out', () => {
-  test('it reads the endpoint', () => {
-    assert.match(app, /getJson\('\/me\/capabilities'\)/);
+  test('it reads the endpoint, at the path the server actually mounts', () => {
+    // This asserted the string '/me/capabilities' — the path the app called —
+    // and the server has only ever served '/auth/me/capabilities'. So the call
+    // 404'd in every build, every capability and permission check in the app
+    // fell back to "allowed", and this test passed throughout, because it
+    // checked the app against itself. It checks the app against the mount now.
+    //
+    // Split across lines by the formatter, so matched on a collapsed copy.
+    assert.match(app.replace(/\s+/g, ''), /\.getJson\('\/auth\/me\/capabilities'\)/);
+    const index = readFileSync(new URL('../src/routes/index.js', import.meta.url), 'utf8');
+    const auth = readFileSync(new URL('../src/routes/auth.js', import.meta.url), 'utf8');
+    assert.match(index, /router\.use\('\/auth', authRoutes\)/);
+    assert.match(auth, /'\/me\/capabilities'/);
   });
 
   test('unknown permits, on this side too', () => {

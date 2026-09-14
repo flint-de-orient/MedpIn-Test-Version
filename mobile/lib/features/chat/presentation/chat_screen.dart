@@ -5,14 +5,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:scrollable_positioned_list/scrollable_positioned_list.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-import '../../../core/config/app_config.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../l10n/gen/app_localizations.dart';
 import '../../../shared/providers/locale_provider.dart';
 import '../../../shared/widgets/loading_view.dart';
 import '../../../shared/widgets/markdown_text.dart';
-import '../../appointments/data/clinic_repository.dart';
+import '../../../shared/data/care_contact.dart';
 import '../../auth/presentation/auth_controller.dart';
 import '../domain/chat_message.dart';
 import 'chat_controller.dart';
@@ -222,12 +221,11 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
     );
   }
 
-  Future<void> _callClinic() async {
+  /// Rings the patient's own practice. The header offers this only when there
+  /// is a number to ring.
+  Future<void> _callClinic(String phone) async {
     final messenger = ScaffoldMessenger.of(context);
     final l10n = AppLocalizations.of(context);
-    final phone =
-        ref.read(clinicPhoneProvider).valueOrNull ??
-        AppConfig.clinicPhoneNumber;
     final uri = Uri(scheme: 'tel', path: phone);
     if (!await launchUrl(uri)) {
       messenger.showSnackBar(
@@ -363,11 +361,16 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
             icon: const Icon(Icons.event_available_rounded),
             onPressed: _requestAppointment,
           ),
-          IconButton(
-            tooltip: l10n.chatCallClinic,
-            icon: const Icon(Icons.call_rounded),
-            onPressed: _callClinic,
-          ),
+          // The patient's own practice's number, and no button without one.
+          // It dialled a placeholder compiled into the app whenever the real
+          // number had not loaded.
+          if (ref.watch(careContactProvider).valueOrNull?.phone
+              case final String phone)
+            IconButton(
+              tooltip: l10n.chatCallClinic,
+              icon: const Icon(Icons.call_rounded),
+              onPressed: () => _callClinic(phone),
+            ),
         ],
       ),
       // The Scaffold does not resize for the keyboard; instead the content is

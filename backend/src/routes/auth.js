@@ -24,6 +24,9 @@ import { capabilityContext } from '../middleware/requireCapability.js';
 import { describeCapabilities, effectiveCapabilities } from '../services/capabilities.js';
 import { Department } from '../models/Department.js';
 import { resolveUi } from '../services/uiConfig.js';
+import { Practice } from '../models/Practice.js';
+import { clinicIdentity } from '../services/clinicIdentity.js';
+import { practiceOf, practiceForPatient } from '../middleware/practiceScope.js';
 
 const router = Router();
 
@@ -737,6 +740,41 @@ router.patch(
     }
 
     res.json({ profile });
+  }),
+);
+
+/**
+ * Who this person rings: their own practice, and its number when it has one.
+ *
+ * The number behind the patient app's "Call clinic" and its emergency card,
+ * resolved by the same rule the assistant uses for the number it names in
+ * emergency advice (services/clinicIdentity.js) — so the card and the reply
+ * above it can never give two different numbers.
+ *
+ * The app used to work this out for itself: the first location on the clinic
+ * list with a phone, or a placeholder compiled into the app until that list
+ * loaded. That was another practice's desk, or nobody, at the moment it
+ * mattered most. A person with no practice, or a practice with no number, gets
+ * `phone: null`, and the app draws no button.
+ */
+router.get(
+  '/me/contact',
+  requireAuth,
+  asyncHandler(async (req, res) => {
+    const practiceId =
+      req.user.role === ROLES.PATIENT ? await practiceForPatient(req.user._id) : await practiceOf(req);
+    if (!practiceId) return res.json({ practice: null, phone: null });
+
+    const [practice, identity] = await Promise.all([
+      Practice.findById(practiceId).select('name').lean(),
+      clinicIdentity(null, { practiceId }),
+    ]);
+    if (!practice) return res.json({ practice: null, phone: null });
+
+    res.json({
+      practice: { id: String(practice._id), name: practice.name },
+      phone: identity.emergencyPhone ?? null,
+    });
   }),
 );
 

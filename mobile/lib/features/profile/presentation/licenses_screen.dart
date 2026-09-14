@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 
 import '../../../core/config/app_config.dart';
 import '../../../core/theme/app_spacing.dart';
+import '../../../core/update/version_gate.dart';
 import '../../../shared/widgets/disclosure_tile.dart';
 
 /// The open-source licences, with a search box.
@@ -155,7 +156,7 @@ class _LicensesScreenState extends State<LicensesScreen> {
                     AppSpacing.md,
                   ),
                   child: Text(
-                    '${AppConfig.appName} v${AppConfig.appVersion} is built on '
+                    '${AppConfig.appName} v$runningVersion is built on '
                     '${snapshot.data!.length} open-source packages.',
                     style: TextStyle(
                       fontSize: 13.5,

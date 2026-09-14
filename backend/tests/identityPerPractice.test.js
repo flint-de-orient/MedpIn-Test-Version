@@ -192,10 +192,11 @@ describe('the number a patient is told to ring is their own practice’s', () =>
    * it is Dr Dey's clinic. A second practice's patient with chest pain would be
    * given a stranger's switchboard.
    *
-   * The configured number belongs to the founding practice and to a deployment
-   * that does not know its practice yet. Any other practice is given its own
-   * location's number or none: "go to the nearest hospital" on its own is the
-   * correct advice, which clinicContact.js already says of a missing number.
+   * Now one rule for every practice, the founding one included: the practice's
+   * own `emergencyPhone`, then the phone of its only location, then none. The
+   * configured number is nobody's practice's, so nobody's patients are given
+   * it: "go to the nearest hospital" on its own is the correct advice, which
+   * clinicContact.js already says of a missing number.
    */
   const CONFIGURED = '+918981540690';
   let saved;
@@ -249,17 +250,46 @@ describe('the number a patient is told to ring is their own practice’s', () =>
     assert.equal((await clinicIdentity(null, { practiceId: iyer._id })).emergencyPhone, null);
   });
 
-  test('the founding practice keeps the configured number', async () => {
+  test('the practice’s own number comes first, whatever its location says', async () => {
+    const { iyer, iyerClinic } = await twoPractices();
+    await Clinic.updateOne({ _id: iyerClinic._id }, { phone: '+913324001234' });
+    await Practice.updateOne({ _id: iyer._id }, { emergencyPhone: '+913324009999' });
+
+    const identity = await clinicIdentity(null, { practiceId: iyer._id });
+
+    assert.equal(identity.emergencyPhone, '+913324009999');
+    assert.ok(prompt(identity).includes('+913324009999'));
+  });
+
+  test('two locations and no number of its own is no number — never whichever sorts first', async () => {
+    const { iyer, iyerClinic } = await twoPractices();
+    await Clinic.updateOne({ _id: iyerClinic._id }, { phone: '+913324001234' });
+    await Clinic.create({ name: 'Lake Town Annexe', practice: iyer._id, phone: '+913324005678' });
+
+    assert.equal((await clinicIdentity(null, { practiceId: iyer._id })).emergencyPhone, null);
+  });
+
+  test('the founding practice follows the same rule — the configured number is not its own', async () => {
     const { dey } = await twoPractices();
     await Practice.updateOne({ _id: dey._id }, { isFounding: true });
+    assert.equal(
+      (await clinicIdentity(null, { practiceId: dey._id })).emergencyPhone,
+      null,
+      'the founding practice was handed the deployment’s configured number',
+    );
+
+    // Given it on purpose — which is what scripts/backfillEmergencyPhone.js does.
+    await Practice.updateOne({ _id: dey._id }, { emergencyPhone: CONFIGURED });
+    forgetClinicIdentity();
     assert.equal((await clinicIdentity(null, { practiceId: dey._id })).emergencyPhone, CONFIGURED);
   });
 
-  test('with nothing to go on, the configured number, as before', async () => {
+  test('with nothing to go on, no number', async () => {
     await twoPractices();
-    assert.equal((await clinicIdentity()).emergencyPhone, CONFIGURED);
-    // And a reply built with no identity still reads the configured number, at
-    // the time it is built rather than when the module loaded.
-    assert.ok(fallbackReply('emergency', 'en').includes(CONFIGURED));
+    assert.equal(
+      (await clinicIdentity()).emergencyPhone,
+      null,
+      'a caller that named no practice was given the founding clinic’s number',
+    );
   });
 });

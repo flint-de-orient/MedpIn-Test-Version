@@ -3,6 +3,7 @@ package com.akdcare.akd_care
 import android.annotation.SuppressLint
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.PowerManager
 import android.provider.Settings
@@ -14,6 +15,7 @@ import io.flutter.plugin.common.MethodChannel
 // the biometric prompt can attach to a FragmentActivity.
 class MainActivity : FlutterFragmentActivity() {
     private val remindersChannel = "clinq/reminders"
+    private val appInfoChannel = "clinq/app_info"
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -34,6 +36,44 @@ class MainActivity : FlutterFragmentActivity() {
                     else -> result.notImplemented()
                 }
             }
+
+        // Which build this is, from what is installed rather than from build
+        // flags a build can forget. See lib/core/update/build_info.dart.
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, appInfoChannel)
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "buildInfo" -> result.success(buildInfo())
+                    else -> result.notImplemented()
+                }
+            }
+    }
+
+    /**
+     * The installed version name, and the pubspec build number Gradle wrote
+     * into the manifest.
+     *
+     * Not the versionCode: --split-per-abi adds an ABI offset to it, so one
+     * build reports 10136 on a 64-bit phone and 9136 on a 32-bit one, and
+     * neither is the number the server's update check compares against.
+     */
+    @Suppress("DEPRECATION")
+    private fun buildInfo(): Map<String, Any?> {
+        val versionName = try {
+            packageManager.getPackageInfo(packageName, 0).versionName
+        } catch (_: Exception) {
+            null
+        }
+        val build = try {
+            packageManager
+                .getApplicationInfo(packageName, PackageManager.GET_META_DATA)
+                .metaData
+                ?.get("com.akdcare.akd_care.PUBSPEC_BUILD")
+                ?.toString()
+                ?.toIntOrNull()
+        } catch (_: Exception) {
+            null
+        }
+        return mapOf("versionName" to versionName, "build" to build)
     }
 
     private fun isIgnoringBatteryOptimizations(): Boolean {

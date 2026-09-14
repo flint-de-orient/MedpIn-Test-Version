@@ -1,6 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../../core/config/app_config.dart';
 import '../../../core/network/api_client.dart';
 import '../../../shared/providers/core_providers.dart';
 import '../domain/clinic.dart';
@@ -56,24 +55,6 @@ final Provider<ClinicRepository> clinicRepositoryProvider =
       return ClinicRepository(ref.watch(apiClientProvider));
     });
 
-/// The clinic's public phone number that every "Call clinic" action dials,
-/// sourced from the clinic the doctor manages (Profile → Clinics & hours).
-///
-/// Falls back to [AppConfig.clinicPhoneNumber] while the list loads, on any
-/// error, or until a clinic actually has a number — so the emergency "Call
-/// clinic" button is never left without something to dial. Invalidate it after
-/// editing a clinic so the new number takes effect immediately.
-final FutureProvider<String> clinicPhoneProvider = FutureProvider<String>((
-  ref,
-) async {
-  try {
-    final clinics = await ref.watch(clinicRepositoryProvider).list();
-    for (final c in clinics) {
-      final phone = c.phone?.trim() ?? '';
-      if (c.isActive && phone.isNotEmpty) return phone;
-    }
-  } catch (_) {
-    // Network or parse failure: fall through to the built-in number.
-  }
-  return AppConfig.clinicPhoneNumber;
-});
+// The number a patient rings is not worked out here any more. It was the first
+// location on this list with a phone, or a placeholder compiled into the app —
+// another practice's desk, or nobody. See shared/data/care_contact.dart.

@@ -3,21 +3,22 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 
-import '../../../core/config/app_config.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/capabilities/capabilities.dart';
 import '../../../core/router/area.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
-import '../../../core/update/app_update_section.dart';
+import '../../../core/update/app_section.dart';
 import '../../../l10n/gen/app_localizations.dart';
 import '../../../shared/data/upload_repository.dart';
 import '../../../shared/providers/app_lock_provider.dart';
 import '../../../shared/providers/locale_provider.dart';
 import '../../../shared/widgets/fullscreen_photo.dart';
 import '../../../shared/widgets/user_avatar.dart';
-import '../../appointments/data/clinic_repository.dart';
-import '../../appointments/domain/clinic.dart';
+import '../../../shared/data/care_contact.dart';
+import '../../../shared/utils/phone_format.dart';
+import '../data/practice_repository.dart';
+import '../domain/practice.dart';
 import '../../auth/presentation/auth_controller.dart';
 import '../../profile/presentation/widgets/profile_section.dart';
 import '../../profile/presentation/widgets/theme_selector.dart';
@@ -26,7 +27,6 @@ import 'widgets/panel_ui.dart';
 import '../../../shared/providers/theme_provider.dart';
 import 'widgets/clinician_notification_sheet.dart';
 import '../../../shared/widgets/language_picker.dart';
-import '../../../core/update/version_gate.dart';
 
 /// Full profile for doctor and staff — the clinician counterpart of the patient
 /// [ProfileScreen]: avatar, edit details, appearance, language, app lock, a
@@ -273,40 +273,49 @@ class _ClinicianMoreScreenState extends ConsumerState<ClinicianMoreScreen> {
     if (ok == true) await ref.read(authControllerProvider.notifier).logout();
   }
 
-  /// Reads and updates the clinic's public phone number — the one every
-  /// "Call clinic" button dials — right here, without a separate screen.
-  Future<void> _editClinicNumber() async {
+  /// The number this practice's patients ring, edited on the practice.
+  ///
+  /// It edited `clinics.first` — whichever location the list returned first —
+  /// and created a location called "Clinic" when there was none. The number is
+  /// the practice's, set once for all of its locations, and an empty field
+  /// clears it rather than being ignored.
+  Future<void> _editPracticePhone(PracticeOverview practice) async {
     final messenger = ScaffoldMessenger.of(context);
-    final repo = ref.read(clinicRepositoryProvider);
+    final scheme = Theme.of(context).colorScheme;
+    final controller = TextEditingController(
+      text: formatPhone(practice.emergencyPhone),
+    );
 
-    final List<Clinic> clinics;
-    try {
-      clinics = await repo.list();
-    } catch (_) {
-      messenger.showSnackBar(
-        const SnackBar(
-          content: Text('Could not load the clinic. Check your connection.'),
-        ),
-      );
-      return;
-    }
-    if (!mounted) return;
-
-    final Clinic? clinic = clinics.isNotEmpty ? clinics.first : null;
-    final controller = TextEditingController(text: clinic?.phone ?? '');
     final saved = await showDialog<String?>(
       context: context,
       builder:
           (ctx) => AlertDialog(
-            title: const Text('Clinic phone number'),
-            content: TextField(
-              controller: controller,
-              keyboardType: TextInputType.phone,
-              autofocus: true,
-              decoration: const InputDecoration(
-                labelText: 'Number patients call',
-                hintText: '+91 98300 00000',
-              ),
+            title: const Text('Patient call number'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Patients of ${practice.name} ring this from the emergency '
+                  'card and their profile, and the assistant gives it in '
+                  'emergency advice. Leave it empty to remove it.',
+                  style: TextStyle(
+                    fontSize: 14,
+                    height: 1.4,
+                    color: scheme.onSurfaceVariant,
+                  ),
+                ),
+                const SizedBox(height: AppSpacing.md),
+                TextField(
+                  controller: controller,
+                  keyboardType: TextInputType.phone,
+                  autofocus: true,
+                  decoration: const InputDecoration(
+                    labelText: 'Phone number',
+                    hintText: '+91 98300 00000',
+                  ),
+                ),
+              ],
             ),
             actions: [
               TextButton(
@@ -320,24 +329,27 @@ class _ClinicianMoreScreenState extends ConsumerState<ClinicianMoreScreen> {
             ],
           ),
     );
-    if (saved == null || saved.isEmpty || !mounted) return;
+    if (saved == null || !mounted) return;
 
     try {
-      if (clinic != null) {
-        await repo.update(clinic.id, {'phone': saved});
-      } else {
-        await repo.create({'name': 'Clinic', 'phone': saved});
-      }
-      ref.invalidate(clinicPhoneProvider);
+      await ref.read(practiceRepositoryProvider).update(practice.id, {
+        'emergencyPhone': saved.isEmpty ? null : saved,
+      });
+      ref.invalidate(practiceOverviewProvider);
+      ref.invalidate(careContactProvider);
       messenger.showSnackBar(
-        const SnackBar(content: Text('Clinic number updated')),
-      );
-    } catch (_) {
-      messenger.showSnackBar(
-        const SnackBar(
-          content: Text('Could not update the number. Please try again.'),
+        SnackBar(
+          content: Text(
+            saved.isEmpty
+                ? 'Patient call number removed'
+                : 'Patient call number saved',
+          ),
         ),
       );
+    } on ApiException catch (e) {
+      // The server says why — "Enter a phone number your patients can ring"
+      // is more use than "please try again" for a number it will never take.
+      messenger.showSnackBar(SnackBar(content: Text(e.message)));
     }
   }
 
@@ -358,9 +370,11 @@ class _ClinicianMoreScreenState extends ConsumerState<ClinicianMoreScreen> {
     // while there were two kinds of clinician and tells a laboratory
     // technician the wrong thing about themselves now.
     final roleLabel = roleLabels[user?.role ?? ''] ?? 'Clinic staff';
-    final clinicPhone =
-        ref.watch(clinicPhoneProvider).valueOrNull ??
-        AppConfig.clinicPhoneNumber;
+    // The practice's own record, for the number its patients ring. Null while
+    // it loads and for an account with no practice, and the row is simply
+    // absent then — never somebody else's number standing in.
+    final practice = ref.watch(practiceOverviewProvider).valueOrNull;
+    final mayEditPractice = caps.can(Perm.manageStaff);
 
     return Scaffold(
       // Transparent so the shell's ground runs unbroken behind this
@@ -754,48 +768,42 @@ class _ClinicianMoreScreenState extends ConsumerState<ClinicianMoreScreen> {
           const SizedBox(height: AppSpacing.lg),
 
           // ---- Clinic --------------------------------------------------
-          _label(l10n.profileClinic, scheme),
-          _ClinicPhoneCard(phone: clinicPhone, onEdit: _editClinicNumber),
-          const SizedBox(height: AppSpacing.lg),
-
-          // ---- App -----------------------------------------------------
-          ProfileSection(
-            label: 'App',
-            children: [
-              ProfileRow(
-                icon: Icons.info_outline_rounded,
-                title: l10n.profileAbout,
-                value: 'v$runningVersion',
-                showDivider: false,
-                onTap:
-                    () => showAboutDialog(
-                      context: context,
-                      applicationName: AppConfig.appName,
-                      applicationVersion: 'v$runningVersion',
-                    ),
-              ),
-            ],
-          ),
-
+          //
+          // The number patients ring belongs to the practice, set once for
+          // every location. Editable by whoever administers the practice;
+          // shown to everyone else, because a doctor asked "what number do
+          // patients call?" should be able to answer.
+          if (practice != null)
+            ProfileSection(
+              label: l10n.profileClinic,
+              children: [
+                ProfileRow(
+                  icon: Icons.phone_outlined,
+                  title: 'Patient call number',
+                  subtitle:
+                      practice.emergencyPhone == null
+                          ? 'Not set — patients have no number to ring'
+                          : formatPhone(practice.emergencyPhone),
+                  showDivider: false,
+                  onTap:
+                      mayEditPractice
+                          ? () => _editPracticePhone(practice)
+                          : null,
+                ),
+              ],
+            ),
 
           // ---- App -----------------------------------------------------
           //
-          // Above sign-out and below everything else: the last thing anyone
-          // reads, and the first thing anyone is asked for when a handset
-          // misbehaves.
-          const SizedBox(height: AppSpacing.lg),
-          const AppUpdateSection(),
+          // The version once, and whether a newer one exists: the same
+          // section on every profile. Above sign-out and below everything
+          // else, where somebody goes looking for it. See AppSection.
+          const AppSection(),
+
           // ---- Logout --------------------------------------------------
-          // Set apart from the settings above it. Sitting flush under the last
-          // card, "Log out" read as one more row of the App group — and it is
-          // the only control on this screen that ends the session.
-          Padding(
-            padding: const EdgeInsets.only(bottom: AppSpacing.lg),
-            child: Divider(
-              height: 1,
-              color: scheme.outlineVariant.withValues(alpha: 0.7),
-            ),
-          ),
+          // The only control on this screen that ends the session, so it is
+          // an outlined danger button rather than one more row of the group
+          // above it.
           SizedBox(
             width: double.infinity,
             height: AppSpacing.minTapTarget + 8,
@@ -821,13 +829,6 @@ class _ClinicianMoreScreenState extends ConsumerState<ClinicianMoreScreen> {
               ),
             ),
           ),
-          const SizedBox(height: AppSpacing.md),
-          Center(
-            child: Text(
-              'MedPin v$runningVersion',
-              style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant),
-            ),
-          ),
         ],
       ),
     );
@@ -847,121 +848,3 @@ class _ClinicianMoreScreenState extends ConsumerState<ClinicianMoreScreen> {
   );
 }
 
-/// A premium, tappable card for the clinic's public phone number — the one
-/// every "Call clinic" button dials. The number is the hero, set beside an
-/// emerald identity chip with an Edit affordance; tapping anywhere edits it.
-class _ClinicPhoneCard extends StatelessWidget {
-  const _ClinicPhoneCard({required this.phone, required this.onEdit});
-
-  final String phone;
-  final VoidCallback onEdit;
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final accent = isDark ? AppColors.primaryDark : AppColors.primary;
-
-    return Container(
-      decoration: BoxDecoration(
-        color: scheme.surfaceContainerLowest,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: accent.withValues(alpha: 0.22)),
-        boxShadow: [
-          BoxShadow(
-            color: accent.withValues(alpha: 0.06),
-            blurRadius: 16,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: onEdit,
-        child: Padding(
-          padding: const EdgeInsets.all(AppSpacing.md),
-          child: Row(
-            children: [
-              // Tinted icon tile in the app's own settings-icon style (the same
-              // treatment as the App lock and menu rows), not a loud gradient.
-              Container(
-                width: 46,
-                height: 46,
-                decoration: BoxDecoration(
-                  color: accent.withValues(alpha: 0.11),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Icon(Icons.phone_outlined, color: accent, size: 23),
-              ),
-              const SizedBox(width: AppSpacing.md),
-              // Label + the number as the hero.
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'CLINIC PHONE NUMBER',
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: 0.7,
-                        color: scheme.onSurfaceVariant,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      phone,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.w800,
-                        height: 1.1,
-                        color: scheme.onSurface,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      'The number patients call',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: scheme.onSurfaceVariant,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: AppSpacing.sm),
-              // Edit affordance.
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 8,
-                ),
-                decoration: BoxDecoration(
-                  color: accent.withValues(alpha: 0.10),
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(Icons.edit_rounded, size: 15, color: accent),
-                    const SizedBox(width: 4),
-                    Text(
-                      'Edit',
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w700,
-                        color: accent,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}

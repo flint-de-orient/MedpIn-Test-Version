@@ -2,14 +2,17 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-import '../../../../core/config/app_config.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_spacing.dart';
 import '../../../../l10n/gen/app_localizations.dart';
-import '../../../appointments/data/clinic_repository.dart';
+import '../../../../shared/data/care_contact.dart';
 
 /// Rendered when `triage.urgency == "urgent"` — one step below the
-/// emergency card, amber rather than red, still surfaces "Call clinic".
+/// emergency card, amber rather than red.
+///
+/// "Call clinic" dials the patient's own practice and is drawn only when there
+/// is a number to dial — never a placeholder compiled into the app. See
+/// [EmergencyCard].
 class UrgentCard extends ConsumerWidget {
   const UrgentCard({super.key, required this.content});
 
@@ -18,11 +21,7 @@ class UrgentCard extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final l10n = AppLocalizations.of(context);
-    // The clinic's own number once the doctor has set one; the built-in number
-    // until then, so this button always has something to dial.
-    final clinicPhone =
-        ref.watch(clinicPhoneProvider).valueOrNull ??
-        AppConfig.clinicPhoneNumber;
+    final phone = ref.watch(careContactProvider).valueOrNull?.phone;
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(AppSpacing.md),
@@ -70,32 +69,36 @@ class UrgentCard extends ConsumerWidget {
               ),
             ],
           ),
-          const SizedBox(height: AppSpacing.md),
-          SizedBox(
-            width: double.infinity,
-            height: AppSpacing.minTapTarget,
-            child: OutlinedButton.icon(
-              onPressed: () => launchUrl(Uri(scheme: 'tel', path: clinicPhone)),
-              style: OutlinedButton.styleFrom(
-                foregroundColor: AppColors.warning,
-                side: BorderSide(
-                  color: AppColors.warningOn(context),
-                  width: 1.5,
+          if (phone != null) ...[
+            const SizedBox(height: AppSpacing.md),
+            SizedBox(
+              width: double.infinity,
+              height: AppSpacing.minTapTarget,
+              child: OutlinedButton.icon(
+                onPressed: () => launchUrl(Uri(scheme: 'tel', path: phone)),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: AppColors.warning,
+                  side: BorderSide(
+                    color: AppColors.warningOn(context),
+                    width: 1.5,
+                  ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(
+                      AppSpacing.buttonRadius,
+                    ),
+                  ),
                 ),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(AppSpacing.buttonRadius),
-                ),
-              ),
-              icon: const Icon(Icons.call_rounded, size: 20),
-              label: Text(
-                l10n.chatCallClinic,
-                style: const TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w700,
+                icon: const Icon(Icons.call_rounded, size: 20),
+                label: Text(
+                  l10n.chatCallClinic,
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
               ),
             ),
-          ),
+          ],
         ],
       ),
     );

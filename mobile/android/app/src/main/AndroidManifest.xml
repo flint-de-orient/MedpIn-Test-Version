@@ -82,6 +82,13 @@
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
+        <!-- The pubspec build number, written by Gradle from the same value
+             Flutter uses for versionCode but without the ABI offset that
+             split-per-abi adds to it. Read back by MainActivity, so the app
+             knows which build it is however the APK was compiled. -->
+        <meta-data
+            android:name="com.akdcare.akd_care.PUBSPEC_BUILD"
+            android:value="${pubspecBuild}" />
         <!-- Channel FCM falls back to when it builds the notification itself
              (app backgrounded or killed). Without this, a background call ring
              or clinic alert can be dropped on Android O+ for want of a channel.

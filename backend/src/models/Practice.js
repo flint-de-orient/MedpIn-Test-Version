@@ -227,6 +227,20 @@ const practiceSchema = new mongoose.Schema(
     /// Printed under the signature on a prescription.
     registrationNo: { type: String, trim: true, maxlength: 60 },
 
+    /**
+     * The number this practice's patients ring: the emergency card's "Call
+     * clinic", the profile's, and the one the assistant names in emergency
+     * advice.
+     *
+     * The practice's own, never a platform default. It replaced
+     * `CLINIC_EMERGENCY_PHONE` — one value for the whole deployment, which was
+     * the founding clinic's switchboard handed to every practice's patients.
+     * Null means the practice has not set one; its patients are then given its
+     * only location's number, or no number and "go to the nearest hospital".
+     * See services/clinicIdentity.js.
+     */
+    emergencyPhone: { type: String, trim: true, maxlength: 40, default: null },
+
     /// What kind of organisation. Null until somebody says — see PRACTICE_TYPE.
     practiceType: {
       type: String,
@@ -374,6 +388,7 @@ practiceSchema.methods.toPublic = function toPublic() {
     tagline: this.tagline ?? null,
     doctorDisplayName: this.doctorDisplayName ?? null,
     registrationNo: this.registrationNo ?? null,
+    emergencyPhone: this.emergencyPhone ?? null,
     logoLightUrl: this.logoLightAssetId ? `/api/v1/uploads/${this.logoLightAssetId}/raw` : null,
     logoDarkUrl: this.logoDarkAssetId ? `/api/v1/uploads/${this.logoDarkAssetId}/raw` : null,
     logoNeedsDarkChip: Boolean(this.logoNeedsDarkChip),

@@ -20,6 +20,7 @@ import {
 } from '../services/memberships.js';
 import { phoneFromToken } from '../services/otp.js';
 import { toE164 } from '../utils/phone.js';
+import { callablePhone } from '../services/clinicContact.js';
 import { badRequest, forbidden } from '../middleware/errors.js';
 
 /**
@@ -136,10 +137,17 @@ function readinessOf(practice) {
 router.get(
   '/mine',
   asyncHandler(async (req, res) => {
-    // The caller's own membership first. Falling back to the primary clinic
-    // covers the window between this deploying and the backfill running — and
-    // any account that predates memberships — so nobody loses the screen
-    // waiting for a migration.
+    /*
+     * The caller's own current membership, and nothing else.
+     *
+     * This fell back to the practice owning the platform's first active clinic
+     * whenever the caller had no membership — so an account whose membership
+     * had ended, or never existed, was shown the founding practice's
+     * letterhead, plan, locations and headcount, and the edit sheet beneath it
+     * saved onto that practice. No membership is no practice. The screen
+     * already has an answer for that, and "whichever clinic was created first"
+     * is never it.
+     */
     const membership = await Membership.findOne({
       user: req.user.id ?? req.user._id,
       status: 'active',
@@ -148,25 +156,12 @@ router.get(
       .populate('practice')
       .lean();
 
-    let practice =
+    const practice =
       membership?.practice && typeof membership.practice === 'object'
         ? membership.practice
         : null;
 
-    if (!practice) {
-      const clinic = await Clinic.findOne({ isActive: true })
-        .sort({ sortIndex: 1, createdAt: 1 })
-        .populate('practice')
-        .lean();
-      practice =
-        clinic?.practice && typeof clinic.practice === 'object' ? clinic.practice : null;
-    }
-
-    if (!practice) {
-      // Not an error. It is every deployment that has not run the backfill,
-      // and the screen has a real answer for it.
-      return res.json({ practice: null, needsBackfill: true });
-    }
+    if (!practice) return res.json({ practice: null });
 
     const [locations, people] = await Promise.all([
       Clinic.find({ practice: practice._id }).sort({ sortIndex: 1, createdAt: 1 }).lean(),
@@ -463,6 +458,8 @@ router.patch(
       logoLightAssetId: z.string().nullable().optional(),
       logoDarkAssetId: z.string().nullable().optional(),
       logoNeedsDarkChip: z.boolean().optional(),
+      // The number patients ring. Null or empty clears it.
+      emergencyPhone: z.string().trim().max(40).nullable().optional(),
     }),
   }),
   audit('update', 'Practice'),
@@ -478,6 +475,23 @@ router.patch(
 
     const practice = await Practice.findById(req.params.id);
     if (!practice) throw notFound('Practice not found');
+
+    /*
+     * A number somebody can actually ring, or nothing.
+     *
+     * Stored in E.164 so every screen dials the same string, and refused when
+     * it is a placeholder or a word: this is the number on a patient's
+     * emergency card, and "+91-0000000000" there rings nowhere at the one
+     * moment it matters.
+     */
+    if (req.body.emergencyPhone === '') req.body.emergencyPhone = null;
+    if (req.body.emergencyPhone != null) {
+      const phone = callablePhone(toE164(req.body.emergencyPhone));
+      if (!phone) {
+        throw badRequest('Enter a phone number your patients can ring, including the area or country code.');
+      }
+      req.body.emergencyPhone = phone;
+    }
 
     for (const [k, v] of Object.entries(req.body)) practice[k] = v;
     await practice.save();

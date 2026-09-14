@@ -3,13 +3,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 
-import '../../../core/config/app_config.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../shared/data/upload_repository.dart';
 import '../../../shared/widgets/fullscreen_photo.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
-import '../../../core/update/app_update_section.dart';
+import '../../../core/update/app_section.dart';
 import '../../../l10n/gen/app_localizations.dart';
 import '../../../shared/providers/app_lock_provider.dart';
 import '../../../shared/providers/locale_provider.dart';
@@ -20,7 +19,6 @@ import '../../profile/presentation/widgets/theme_selector.dart';
 import '../../../shared/providers/theme_provider.dart';
 import 'widgets/dietician_bell.dart';
 import '../../../shared/widgets/language_picker.dart';
-import '../../../core/update/version_gate.dart';
 
 /// The dietician's profile — the counterpart of the doctor's, minus the clinic
 /// tools they have no business in (alerts, knowledge base, patient feedback).
@@ -447,42 +445,12 @@ class _DieticianProfileScreenState
           ),
           const SizedBox(height: AppSpacing.lg),
 
-          ProfileSection(
-            label: 'App',
-            children: [
-              ProfileRow(
-                icon: Icons.info_outline_rounded,
-                title: l10n.profileAbout,
-                value: 'v$runningVersion',
-                showDivider: false,
-                onTap:
-                    () => showAboutDialog(
-                      context: context,
-                      applicationName: AppConfig.appName,
-                      applicationVersion: 'v$runningVersion',
-                    ),
-              ),
-            ],
-          ),
-
           // ---- App -----------------------------------------------------
           //
-          // Above sign-out and below everything else: the last thing anyone
-          // reads, and the first thing anyone is asked for when a handset
-          // misbehaves.
-          const SizedBox(height: AppSpacing.lg),
-          const AppUpdateSection(),
-
-          // Set apart from the settings above it. Flush under the last card,
-          // "Log out" read as one more row of the App group — and it is the
-          // only control here that ends the session.
-          Padding(
-            padding: const EdgeInsets.only(bottom: AppSpacing.lg),
-            child: Divider(
-              height: 1,
-              color: scheme.outlineVariant.withValues(alpha: 0.7),
-            ),
-          ),
+          // The version once, and whether a newer one exists: the same
+          // section on every profile. Above sign-out and below everything
+          // else, where somebody goes looking for it. See AppSection.
+          const AppSection(),
           SizedBox(
             width: double.infinity,
             height: AppSpacing.minTapTarget + 8,

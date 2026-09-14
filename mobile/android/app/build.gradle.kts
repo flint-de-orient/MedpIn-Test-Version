@@ -74,6 +74,12 @@ android {
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+
+        // The pubspec build number, before --split-per-abi adds its ABI offset
+        // to versionCode (8136 ships as 10136 on arm64). Written into the
+        // manifest so the app can read which build it is however it was
+        // compiled — see lib/core/update/build_info.dart.
+        manifestPlaceholders["pubspecBuild"] = flutter.versionCode.toString()
     }
 
     signingConfigs {

@@ -258,7 +258,13 @@ abstract final class Cap {
 /// Not `autoDispose`: this is read by the navigation, so disposing it when the
 /// last screen using it goes away means re-fetching on the next tab change.
 final capabilitiesProvider = FutureProvider<Capabilities>((ref) async {
-  final json = await ref.watch(apiClientProvider).getJson('/me/capabilities');
+  // Under /auth, where the server mounts it. This read '/me/capabilities',
+  // which does not exist: every build since it was written got a 404, fell
+  // back to Capabilities.unknown, and treated every capability and permission
+  // as granted.
+  final json = await ref
+      .watch(apiClientProvider)
+      .getJson('/auth/me/capabilities');
   return Capabilities.fromJson(json);
 });
 

@@ -1,7 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../shared/providers/core_providers.dart';
-import '../config/app_config.dart';
+import 'build_info.dart';
 
 /// What the server says about app builds, and what this one is.
 ///
@@ -54,35 +54,30 @@ const VersionStatus _allClear = (
 /// — a forgotten flag must not become a locked door.
 const int appBuildNumber = int.fromEnvironment('APP_BUILD');
 
-const int _bakedBuild = appBuildNumber;
+/// What to show a reader who asks which version this is: the version name the
+/// platform says is installed.
+///
+/// It was `APP_VERSION`, which defaulted to "1.0.0" whenever a build skipped
+/// build_release.sh — so a phone running 1.0.20 said 1.0.0, and nothing on the
+/// screen could tell the reader it was wrong. See [BuildInfo].
+String get runningVersion => BuildInfo.current.version;
 
-/// What to show a reader who asks which version this is.
+/// The pubspec build number this APK was built from, or 0 when unknown.
 ///
-/// "1.0.0 (8112)", or just "1.0.0" when the build number was not baked in.
-///
-/// The build number is the half that matters here. Every APK in this pilot is
-/// 1.0.0 — the marketing version has not moved since the first one — so a
-/// screen showing only that cannot tell 8087 from 8112, which is precisely the
-/// question asked when a phone is behaving oddly. Seven screens showed the
-/// useless half; one showed both, and only because the update card happened to
-/// be written later.
-///
-/// A bare "1.0.0" is therefore also a signal: it means the APK was built
-/// without `--dart-define=APP_BUILD`, so the update check on that handset is
-/// switched off. See [appBuildNumber] and `build_release.sh`.
-String get runningVersion => AppConfig.appVersion;
+/// From the manifest first, where Gradle writes it without the ABI offset, and
+/// [appBuildNumber] only where the platform cannot answer. See [BuildInfo].
+int get runningBuild => BuildInfo.current.build;
 
-/// True when this APK was built without `--dart-define=APP_BUILD`.
+/// True when nothing could say which build this is, so no comparison is made.
 ///
-/// The build number used to be printed in brackets after the version, partly so
-/// its absence would show that the flag had been missed. That put a number
-/// nobody outside development reads onto a screen a receptionist looks at — so
-/// the version stands alone and the missing flag says so in words instead,
-/// which was always the clearer way to say it.
-bool get updateChecksDisabled => appBuildNumber <= 0;
+/// Rare now that the manifest carries the number — a release APK always does.
+/// The gate switches itself off rather than guessing, and the screen says
+/// nothing about it: an instruction to rebuild belongs in a build script, not
+/// on a receptionist's profile.
+bool get updateChecksDisabled => runningBuild <= 0;
 
 final versionStatusProvider = FutureProvider<VersionStatus>((ref) async {
-  final build = _bakedBuild;
+  final build = runningBuild;
   // No build number we can trust is no comparison we can make.
   if (build <= 0) return _allClear;
 

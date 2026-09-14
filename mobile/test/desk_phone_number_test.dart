@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:akd_care/features/clinician/presentation/widgets/desk_appointment_row.dart';
+import 'package:akd_care/shared/utils/phone_format.dart';
 
 /// Phone numbers on the front-desk screen.
 ///
