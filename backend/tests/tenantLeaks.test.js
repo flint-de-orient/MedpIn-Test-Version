@@ -142,6 +142,8 @@ function isScoped(stmt) {
     /practiceMembers\(/.test(stmt) ||
     /memberIdsOf\(/.test(stmt) ||
     /practiceClinics\(/.test(stmt) ||
+    /clinicsFor\(/.test(stmt) ||
+    /patientClinics\(/.test(stmt) ||
     /practicePatients\(/.test(stmt) ||
     /practiceStaffFilter\(/.test(stmt) ||
     /staffFor\(/.test(stmt) ||
@@ -235,12 +237,15 @@ describe('the two reads that were actually reported', () => {
     const clinics = read('routes/clinics.js');
     const at = clinics.indexOf("router.get(\n  '/',");
     const body = clinics.slice(at, at + 700);
-    assert.match(body, /practiceClinics\(req\)/);
-    // The patient branch too: a patient books at their own practice's
-    // addresses, and every other practice's were in the list they pick from.
+    assert.match(body, /clinicsFor\(req\)/);
+    // The patient branch too — and not merely in the order the code is
+    // written. This asserted that `practiceClinics` came before `isClinician`,
+    // and it did; but `practiceClinics` answers from a membership and a patient
+    // has none, so every patient was shown every practice's locations while
+    // this passed. httpBookingScope.test.js proves the patient's list over HTTP.
     assert.ok(
-      body.indexOf('practiceClinics') < body.indexOf('isClinician'),
-      'the practice filter is inside the clinician branch and misses patients',
+      body.indexOf('clinicsFor') < body.indexOf('isClinician'),
+      'the location filter is inside the clinician branch and misses patients',
     );
   });
 });

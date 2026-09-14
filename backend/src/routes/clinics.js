@@ -5,7 +5,7 @@ import { validate, q } from '../middleware/validate.js';
 import { asyncHandler, notFound, badRequest, conflict } from '../middleware/errors.js';
 import { audit } from '../middleware/audit.js';
 import { Clinic } from '../models/Clinic.js';
-import { practiceOf, practiceClinics } from '../middleware/practiceScope.js';
+import { practiceOf, practiceClinics, clinicsFor } from '../middleware/practiceScope.js';
 import { requestCan } from '../middleware/requireCapability.js';
 import { CAPABILITIES } from '../services/capabilities.js';
 import { Practice } from '../models/Practice.js';
@@ -80,7 +80,10 @@ const clinicBody = z.object({
 router.get(
   '/',
   asyncHandler(async (req, res) => {
-    const scope = await practiceClinics(req);
+    // `clinicsFor`, not `practiceClinics`: that one answers from a membership,
+    // and a patient has none — so every patient was shown every practice's
+    // locations. See httpBookingScope.test.js.
+    const scope = await clinicsFor(req);
     const filter = {
       ...scope,
       ...(isClinician(req) ? {} : { isActive: true }),
@@ -93,7 +96,10 @@ router.get(
 router.get(
   '/:id',
   asyncHandler(async (req, res) => {
-    const clinic = await Clinic.findById(req.params.id);
+    // Scoped like the list. By id it answered for any practice's location — to
+    // a patient choosing where to book, and to another practice's desk. `$and`,
+    // so the scope can never stand in for the id asked for.
+    const clinic = await Clinic.findOne({ $and: [{ _id: req.params.id }, await clinicsFor(req)] });
     if (!clinic || (!isClinician(req) && !clinic.isActive)) throw notFound('Clinic not found');
     res.json({ clinic: clinic.toPublic() });
   }),
@@ -112,7 +118,7 @@ router.get(
     }),
   }),
   asyncHandler(async (req, res) => {
-    const clinic = await Clinic.findById(req.params.id);
+    const clinic = await Clinic.findOne({ $and: [{ _id: req.params.id }, await clinicsFor(req)] });
     if (!clinic || (!isClinician(req) && !clinic.isActive)) throw notFound('Clinic not found');
 
     const { date, doctorId } = q(req);

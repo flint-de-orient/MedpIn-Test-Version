@@ -2,6 +2,7 @@ import { Membership, MEMBERSHIP_STATUS } from '../models/Membership.js';
 import { Enrollment, ENROLLMENT_STATUS } from '../models/Enrollment.js';
 import { PatientProfile } from '../models/PatientProfile.js';
 import { Clinic } from '../models/Clinic.js';
+import { ROLES } from '../models/User.js';
 import { forbidden } from './errors.js';
 import { recordDenial } from './recordDenial.js';
 
@@ -326,6 +327,53 @@ export async function practiceClinics(req, field = 'practice') {
   const practiceId = await practiceOf(req);
   if (!practiceId || !(await clinicsAreLinked())) return {};
   return { [field]: practiceId };
+}
+
+/**
+ * The practices a patient may use, or `null` meaning "do not restrict".
+ *
+ * ---- Why a patient needs their own answer --------------------------------
+ *
+ * `practiceClinics` asks the caller's membership, and a patient has none. So
+ * for every patient it returned `{}`, and the list they book from held every
+ * active location on the platform. The test pinning that list checked the call
+ * was made, which it was.
+ *
+ * ---- Absence permits, per patient ----------------------------------------
+ *
+ * The same switch as `hasAnyEnrollment`: a patient with no enrolment rows at
+ * all is one no practice has taken on yet — somebody who registered in the app
+ * before their first visit — and restricting them would leave them nowhere to
+ * book. Once they have one, the absence of an enrolment somewhere means that
+ * practice is not theirs, and a patient whose only enrolment was withdrawn has
+ * nowhere to book.
+ */
+export async function patientPracticeIds(patientId) {
+  if (!patientId) return null;
+  if (!(await Enrollment.exists({ patient: patientId }))) return null;
+  return Enrollment.distinct('practice', {
+    patient: patientId,
+    status: ENROLLMENT_STATUS.ACTIVE,
+    revokedAt: null,
+  });
+}
+
+/** `practiceClinics` for a patient: the locations of the practices they are enrolled at. */
+export async function patientClinics(patientId, field = 'practice') {
+  if (!(await clinicsAreLinked())) return {};
+  const ids = await patientPracticeIds(patientId);
+  return ids ? { [field]: { $in: ids } } : {};
+}
+
+/**
+ * The locations this caller may use: their practice's, or a patient's
+ * practices'. One question with two sources, so no route has to remember which
+ * one a patient needs.
+ */
+export async function clinicsFor(req, field = 'practice') {
+  return req.user?.role === ROLES.PATIENT
+    ? patientClinics(req.user._id, field)
+    : practiceClinics(req, field);
 }
 
 /**

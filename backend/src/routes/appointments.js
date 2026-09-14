@@ -24,7 +24,16 @@ import { ACTIVE_STATUSES, isSlotBookable } from '../services/scheduling.js';
 import { paged, pageParams, dateRange } from '../utils/pagination.js';
 import { postCareThreadNote } from '../services/careThreadNote.js';
 import { resolveDoctor } from '../services/doctorContext.js';
-import { practiceMembers, memberLocation } from '../middleware/practiceScope.js';
+import {
+  practiceMembers,
+  memberLocation,
+  practiceOf,
+  practicePatients,
+  practiceClinics,
+  patientClinics,
+  patientPracticeIds,
+  memberIdsOf,
+} from '../middleware/practiceScope.js';
 
 const router = Router();
 router.use(requireAuth);
@@ -58,6 +67,60 @@ const isPatient = (req) => req.user.role === ROLES.PATIENT;
 async function scopeFilter(req) {
   if (isPatient(req)) return { patient: req.user._id };
   return practiceMembers(req, ROLES.DOCTOR, 'doctor');
+}
+
+/**
+ * Refuse a patient named in the body who is not this practice's.
+ *
+ * The desk books on somebody's behalf by id, and nothing asked whose patient
+ * the id was: a receptionist could book another practice's patient into their
+ * own diary and read the name and number back from the response. The same
+ * check the upload route makes for a file filed against a patient.
+ */
+async function assertOwnPatient(req, patientId) {
+  const scope = await practicePatients(req, '_id');
+  // `{}` is the permissive answer — a deployment the enrolment backfill has
+  // not reached. Same rule as everywhere else.
+  const theirs = !scope._id || scope._id.$in.some((id) => String(id) === String(patientId));
+  if (!theirs) throw notFound('Patient not found');
+}
+
+/**
+ * The locations a booking may use: the desk's practice's, or the patient's
+ * practices'. `practiceClinics` answers from a membership, which a patient
+ * does not have.
+ */
+function bookableClinics(req, patientId) {
+  return isPatient(req) ? patientClinics(patientId) : practiceClinics(req);
+}
+
+/**
+ * Refuse a doctor who does not work where this booking is.
+ *
+ * `resolveDoctor` finds a named doctor anywhere on the platform, which is
+ * right for what it answers — and a booking naming one landed in that doctor's
+ * practice's diary. Refused in the words `resolveDoctor` uses for a doctor who
+ * does not exist, so the answer says nothing about who else is on the platform.
+ */
+async function assertDoctorHere(req, patientId, doctorId, location) {
+  let practices;
+  if (location?.practice) {
+    practices = [location.practice];
+  } else if (!isPatient(req)) {
+    const mine = await practiceOf(req);
+    practices = mine ? [mine] : null;
+  } else {
+    practices = await patientPracticeIds(patientId);
+  }
+  // Unknown is permissive, like every scope here.
+  if (!practices) return;
+
+  const members = await Promise.all(practices.map((p) => memberIdsOf(p, ROLES.DOCTOR)));
+  // `null` is "memberships not migrated", which permits too.
+  if (members.some((ids) => ids === null)) return;
+  if (!members.flat().some((id) => String(id) === String(doctorId))) {
+    throw conflict('That doctor was not found.');
+  }
 }
 
 const POPULATE = [
@@ -147,25 +210,36 @@ router.post(
 
     const patientId = isPatient(req) ? req.user._id : req.body.patientId;
     if (!patientId) throw badRequest('patientId is required');
+    if (!isPatient(req)) await assertOwnPatient(req, patientId);
+
+    // A named location has to be one this booking may use, and it is checked
+    // before anything reads it: resolving the doctor reads the clinic by id, and
+    // another practice's location must be refused in the same words as one that
+    // does not exist. An inactive one reads the same way, for the same reason.
+    const location = clinicId
+      ? await Clinic.findOne({ $and: [{ _id: clinicId }, await bookableClinics(req, patientId)] })
+      : null;
+    if (clinicId && !location) throw badRequest('That clinic is not available');
 
     // The chosen clinic already records its doctor, so a booking at the Salt
     // Lake branch lands on the doctor who sits there rather than on whichever
     // row the database returned first.
     const doctor = await resolveDoctor({
       explicitId: req.body.doctorId,
-      clinicId,
+      clinicId: location?._id ?? null,
       required: true,
     });
     if (!doctor) throw badRequest('No doctor is available for booking');
+    await assertDoctorHere(req, patientId, doctor._id, location);
 
     // An in-clinic visit must land on a real, free slot of the chosen clinic's
     // schedule. This is the authoritative check — the client cannot book a time
     // the schedule does not offer, or one already taken.
     let clinic = null;
     if (mode === 'in_clinic') {
-      if (!clinicId) throw badRequest('Please choose a clinic');
-      clinic = await Clinic.findOne({ _id: clinicId, isActive: true });
-      if (!clinic) throw badRequest('That clinic is not available');
+      if (!location) throw badRequest('Please choose a clinic');
+      if (!location.isActive) throw badRequest('That clinic is not available');
+      clinic = location;
       if (!(await isSlotBookable(clinic, scheduledFor, { doctorId: doctor._id }))) {
         throw badRequest('That time slot is no longer available. Please choose another.');
       }
@@ -301,6 +375,9 @@ router.post(
 
     const patientId = isPatient(req) ? req.user._id : req.body.patientId;
     if (!patientId) throw badRequest('patientId is required');
+    // Before anything is written — a request posts a line into the patient's
+    // care thread, and another practice's patient is not this desk's to write to.
+    if (!isPatient(req)) await assertOwnPatient(req, patientId);
 
     // No clinic is chosen yet — this is a request, and the desk gives it a time
     // later. So it goes to the doctor this patient is already under, which is
@@ -423,7 +500,12 @@ router.patch(
       throw badRequest('Appointment time must be in the future');
     }
 
-    const clinic = await Clinic.findOne({ _id: clinicId, isActive: true });
+    // One of this practice's locations. The appointment is scoped above and the
+    // location was not, so a request could be confirmed into another practice's
+    // building — holding a slot in its diary.
+    const clinic = await Clinic.findOne({
+      $and: [{ _id: clinicId, isActive: true }, await practiceClinics(req)],
+    });
     if (!clinic) throw badRequest('That clinic is not available');
 
     // The same authority a patient booking goes through. A request confirmed
@@ -641,6 +723,13 @@ router.post(
   audit('create', 'AppointmentWaitlist'),
   asyncHandler(async (req, res) => {
     if (req.user.role !== ROLES.PATIENT) throw badRequest('Only patients can join the waitlist');
+
+    // A location this patient may book at. The waitlist took any id, and a
+    // freed slot there is offered to everybody waiting on it.
+    const bookable = await Clinic.exists({
+      $and: [{ _id: req.body.clinicId, isActive: true }, await patientClinics(req.user._id)],
+    });
+    if (!bookable) throw badRequest('That clinic is not available');
 
     const desiredDate = dayjs(req.body.date).startOf('day').toDate();
     const entry = await AppointmentWaitlist.findOneAndUpdate(
