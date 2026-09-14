@@ -301,16 +301,27 @@ describe('a practice applies through the real routes', () => {
     assert.equal((await call('POST', '/applications', form(), anonymous)).status, 201);
   });
 
-  test('but a patient, desk or dietician number is refused, and told why', async () => {
+  test('but a patient, desk or dietician number is refused, and told why once its code is answered', async () => {
     const roles = [ROLES.PATIENT, ROLES.STAFF, ROLES.DIETICIAN];
     for (const [i, role] of roles.entries()) {
       const phone = `+91981234570${i}`;
       await User.create({ name: `Someone ${i}`, phone, role, isActive: true });
 
+      // Nothing is said before the code is answered: the refusal names the
+      // account, and would tell whoever typed a number what its owner is.
       const sent = await call('POST', '/applications/verify/send', { phone }, anonymous);
-      assert.equal(sent.status, 409, `a ${role} number was sent a code`);
-      assert.equal(sent.body.error.code, 'ACCOUNT_NOT_ELIGIBLE');
-      assert.match(sent.body.error.message, new RegExp(role), 'the refusal does not say what the account is');
+      assert.equal(sent.status, 200, `a ${role} number was answered differently before its code`);
+      assert.ok(!JSON.stringify(sent.body).includes(role), 'the answer to a code request named the account');
+
+      await OtpChallenge.updateOne(
+        { phone, purpose: 'practice' },
+        { $set: { codeHash: hashOtp('482913', phone, 'practice') } },
+      );
+      const checked = await call('POST', '/applications/verify/check', { phone, code: '482913' }, anonymous);
+      assert.equal(checked.status, 409, `a ${role} number was given a proof`);
+      assert.equal(checked.body.error.code, 'ACCOUNT_NOT_ELIGIBLE');
+      assert.match(checked.body.error.message, new RegExp(role), 'the refusal does not say what the account is');
+      assert.ok(!checked.body.phoneToken, `a ${role} number was given a proof`);
 
       // And a proof obtained some other way does not get round it.
       const res = await call('POST', '/applications', form({ phoneToken: signPhoneToken(phone) }), anonymous);

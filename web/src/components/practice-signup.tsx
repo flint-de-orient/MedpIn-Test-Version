@@ -374,11 +374,9 @@ export function PracticeSignup({
       });
       setCode("");
     } catch (ex) {
-      const err = ex as ApiError;
-      // A number whose account cannot own a practice is a problem with this
-      // box, and the sentence says why.
-      if (err.code === "ACCOUNT_NOT_ELIGIBLE") setServerErrors((c) => ({ ...c, phone: err.message }));
-      else setError(err.message);
+      // Never a refusal about the number itself: the server says nothing about
+      // a number until its code is answered. See checkCode.
+      setError((ex as ApiError).message);
     } finally {
       setBusy(false);
     }
@@ -404,7 +402,16 @@ export function PracticeSignup({
       setPhoneToken(out.phoneToken);
       clearServer("phone");
     } catch (ex) {
-      setError((ex as ApiError).message);
+      const err = ex as ApiError;
+      // A number whose account cannot own a practice is a problem with this
+      // box, and the sentence says why. Only now, to whoever answered the code:
+      // before that it would tell anyone what kind of account the number has.
+      if (err.code === "ACCOUNT_NOT_ELIGIBLE") {
+        setSent(null);
+        setServerErrors((c) => ({ ...c, phone: err.message }));
+      } else {
+        setError(err.message);
+      }
       setCode("");
     } finally {
       setBusy(false);

@@ -18,7 +18,7 @@ Practice sign-up adds four, each because a client has to do something different 
 `APPLICATION_OPEN` (409 — an application from this number is still open; `details.reference` is its reference),
 `APPLICATION_PENDING` (409 — the number is on a practice application under review, so it can neither sign in nor register yet),
 `PHONE_TOKEN_EXPIRED` (400 — the proof of the number has lapsed; verify it again),
-`ACCOUNT_NOT_ELIGIBLE` (409 — the number's existing account is not a doctor's, so it cannot own a new practice).
+`ACCOUNT_NOT_ELIGIBLE` (409 — the number's existing account is not a doctor's, so it cannot own a new practice; returned when the code is checked and on submission, never when a code is requested).
 `details` is a list of `{ path, message }` on `VALIDATION_ERROR` and may be an object on these.
 
 **Paged list shape:**

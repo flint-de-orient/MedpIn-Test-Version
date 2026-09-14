@@ -11,7 +11,7 @@ import { PracticeApplication, APPLICATION_STATUS } from '../src/models/PracticeA
 import { signPhoneToken } from '../src/services/otp.js';
 import { createHash } from 'node:crypto';
 import { Department } from '../src/models/Department.js';
-import { OtpChallenge } from '../src/models/OtpChallenge.js';
+import { OtpChallenge, hashOtp } from '../src/models/OtpChallenge.js';
 import { User, ROLES } from '../src/models/User.js';
 import { env } from '../src/config/env.js';
 
@@ -579,7 +579,7 @@ describe('the number is proved inside the application namespace', () => {
     assert.equal(res.status, 200);
   });
 
-  test('but a number that signs in as a patient is refused, and told why', async () => {
+  test('but a number that signs in as a patient is refused, and told why only once its code is answered', async () => {
     /*
      * Still refused, and now with the reason rather than "use a different
      * number". The number that applies becomes the practice's sign-in, an
@@ -588,10 +588,31 @@ describe('the number is proved inside the application namespace', () => {
      */
     await User.create({ name: 'Mr Sen', phone: NEW_PHONE, role: ROLES.PATIENT, isActive: true });
 
-    const res = await call('POST', '/applications/verify/send', { phone: NEW_PHONE }, { anonymous: true });
+    // Asking for a code says nothing about the number. The refusal names the
+    // account, and said before the code is answered it would tell whoever
+    // typed the number that its owner is a MedPin patient.
+    const asked = await call('POST', '/applications/verify/send', { phone: NEW_PHONE }, { anonymous: true });
+    const fresh = await call('POST', '/applications/verify/send', { phone: '+919812345698' }, { anonymous: true });
+    assert.equal(asked.status, 200, 'a patient number was answered differently before its code');
+    assert.equal(asked.status, fresh.status);
+    assert.deepEqual(Object.keys(asked.body).sort(), Object.keys(fresh.body).sort());
+    assert.ok(!JSON.stringify(asked.body).toLowerCase().includes('patient'), 'the answer named the account');
+
+    // Whoever answers the code holds the number, and is told.
+    await OtpChallenge.updateOne(
+      { phone: NEW_PHONE, purpose: 'practice' },
+      { $set: { codeHash: hashOtp('482913', NEW_PHONE, 'practice') } },
+    );
+    const res = await call(
+      'POST',
+      '/applications/verify/check',
+      { phone: NEW_PHONE, code: '482913' },
+      { anonymous: true },
+    );
     assert.equal(res.status, 409);
     assert.equal(res.body.error.code, 'ACCOUNT_NOT_ELIGIBLE');
     assert.match(res.body.error.message, /patient account/);
+    assert.ok(!res.body.phoneToken, 'a patient number was given a proof to apply with');
   });
 
   test('a wrong code buys nothing', async () => {

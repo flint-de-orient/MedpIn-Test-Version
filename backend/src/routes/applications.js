@@ -273,8 +273,11 @@ const EMAIL_TOKEN_TTL_MS = 7 * 24 * 60 * 60 * 1000;
  * the practice, and a desk or a dietician somewhere cannot become the owner of
  * a practice by filling in a form.
  *
- * Asked before a code is sent and again on submission, because a proof can be
- * had from /auth/otp/verify without ever passing through /verify/send.
+ * Asked once the code is answered and again on submission, and never before a
+ * code is answered: the refusal names the kind of account, and a patient's
+ * number must not tell a stranger that its owner is a patient. Submission asks
+ * again because a proof can be had from /auth/otp/verify without passing
+ * through /verify/check.
  */
 async function assertMayApply(phone) {
   const existing = await User.findByLoginPhone(phone).select('role').lean();
@@ -329,10 +332,10 @@ router.post(
   verifyLimiter,
   validate({ body: z.object({ phone: applicantPhone }) }),
   asyncHandler(async (req, res) => {
-    // Before a code is spent on a number that could never apply. See
-    // assertMayApply for who may.
-    await assertMayApply(req.body.phone);
-
+    // No account check here. The refusal names the kind of account, and said
+    // before the code is answered it would tell whoever typed a number that its
+    // owner is a MedPin patient. /verify/check asks once the code is answered,
+    // and submission asks again.
     res.json(await requestOtp({ phone: req.body.phone, purpose: PRACTICE_PURPOSE }));
   }),
 );
@@ -345,6 +348,9 @@ router.post(
   }),
   asyncHandler(async (req, res) => {
     await verifyOtp({ phone: req.body.phone, purpose: PRACTICE_PURPOSE, code: req.body.code });
+    // Whoever answered the code holds the number, so they may be told why it
+    // cannot apply — and are given no proof to apply with.
+    await assertMayApply(req.body.phone);
     // The token carries the number, so the submission never takes it from a
     // field beside the proof — a form that did could verify one number and
     // apply with another. It outlives the code; see signApplicationPhoneToken.
