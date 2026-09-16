@@ -6,6 +6,7 @@ import '../domain/appointment.dart';
 import '../../medications/domain/medication.dart';
 import '../domain/chat_review.dart';
 import '../domain/chat_summary.dart';
+import '../domain/caseload_panels.dart';
 import '../domain/department.dart';
 import '../domain/patient_registration.dart';
 import '../domain/team_member.dart';
@@ -205,6 +206,35 @@ final chatSummariesProvider = FutureProvider.autoDispose
           .watch(clinicianRepositoryProvider)
           .chatSummaries(day: q.day, scope: q.scope, kind: q.kind);
     });
+
+// ---- caseload panels (routes/panels.js) ------------------------------------
+//
+// Fetched when the dashboard opens, returns to the foreground or is pulled —
+// not on the twenty-second poll. Each reads every reading or prescription in
+// its window for the whole caseload, which is not a question worth asking three
+// times a minute. See _refreshConversations in the dashboard screen.
+
+/// Blood pressure bands over the last [days] days.
+final bpControlProvider = FutureProvider.autoDispose.family<BpControl, int>(
+  (ref, days) => ref.watch(clinicianRepositoryProvider).bpControl(days: days),
+);
+
+/// Follow-ups due in the next [days] days, and those overdue.
+final followUpsProvider = FutureProvider.autoDispose.family<FollowUps, int>(
+  (ref, days) => ref.watch(clinicianRepositoryProvider).followUps(days: days),
+);
+
+/// Diagnosed conditions across the caseload, named in [language].
+final conditionRegisterProvider =
+    FutureProvider.autoDispose.family<ConditionRegister, String>(
+  (ref, language) =>
+      ref.watch(clinicianRepositoryProvider).conditionRegister(language: language),
+);
+
+/// Latest pulses outside the triage limits over the last [days] days.
+final heartRateFlagsProvider = FutureProvider.autoDispose.family<HeartRateFlags, int>(
+  (ref, days) => ref.watch(clinicianRepositoryProvider).heartRateFlags(days: days),
+);
 
 // ---- Knowledge base -----------------------------------------------------
 

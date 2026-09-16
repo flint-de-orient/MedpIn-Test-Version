@@ -234,6 +234,13 @@ describe('the clinic that exists today keeps the screen it has', () => {
       'ANALYTICS_SUMMARY',
       'TRIAGE_QUEUE',
       'TODAYS_CLINIC',
+      // Added on purpose, when the general physician's panel was completed:
+      // blood pressure control, follow-ups due and the condition register, all
+      // read from records the practice already holds (routes/panels.js). The
+      // transcribed order around them is unchanged.
+      'BP_CONTROL',
+      'FOLLOW_UPS_DUE',
+      'CONDITION_REGISTRY',
       'ACTION_QUEUE',
       'NUTRITION_REVIEWS',
       'OPEN_ALERTS',
@@ -398,6 +405,13 @@ describe('the resolver accepts what its callers actually hold', () => {
       'ANALYTICS_SUMMARY',
       'TRIAGE_QUEUE',
       'TODAYS_CLINIC',
+      // Added on purpose, when the general physician's panel was completed:
+      // blood pressure control, follow-ups due and the condition register, all
+      // read from records the practice already holds (routes/panels.js). The
+      // transcribed order around them is unchanged.
+      'BP_CONTROL',
+      'FOLLOW_UPS_DUE',
+      'CONDITION_REGISTRY',
       'ACTION_QUEUE',
       'NUTRITION_REVIEWS',
       'OPEN_ALERTS',

@@ -15,6 +15,7 @@ import '../../../core/theme/tokens.dart';
 import 'widgets/triage_queue.dart';
 import '../../../shared/widgets/clinic_brand.dart';
 import 'widgets/chat_summary_card.dart';
+import 'widgets/caseload_panels.dart';
 import 'widgets/dashboard_registry.dart';
 import '../../../core/capabilities/capabilities.dart';
 
@@ -108,6 +109,11 @@ class _ClinicianDashboardScreenState
   /// doctor coming back to the app, or pulling down, is asking for it.
   void _refreshConversations() {
     ref.invalidate(chatSummariesProvider(ChatSummaryCard.query));
+    // The caseload panels refresh on the same slower rhythm — see providers.
+    ref.invalidate(bpControlProvider(BpControlCard.days));
+    ref.invalidate(followUpsProvider(FollowUpsDueCard.days));
+    ref.invalidate(conditionRegisterProvider);
+    ref.invalidate(heartRateFlagsProvider(HeartRateFlagsCard.days));
   }
 
   @override

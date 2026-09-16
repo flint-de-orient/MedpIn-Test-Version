@@ -17,6 +17,7 @@ import '../domain/patient_summary.dart';
 import '../../../shared/widgets/notification_list_sheet.dart';
 import '../domain/prescription_scan.dart';
 import '../domain/chat_summary.dart';
+import '../domain/caseload_panels.dart';
 import '../../../core/network/submission_keys.dart';
 
 /// Talks to `/doctor/*` — the clinician (doctor + staff) API: dashboard
@@ -707,6 +708,26 @@ class ClinicianRepository {
     );
     return ChatSummaryDay.fromJson(json);
   }
+
+  // ---- Caseload panels (GET /doctor/panels/*) -------------------------------
+
+  /// Each patient's latest blood pressure band, over [days] days.
+  Future<BpControl> bpControl({int days = 90}) async =>
+      BpControl.fromJson(await _client.getJson('/doctor/panels/blood-pressure', query: {'days': days}));
+
+  /// Follow-ups due in the next [days] days, and those overdue.
+  Future<FollowUps> followUps({int days = 7}) async =>
+      FollowUps.fromJson(await _client.getJson('/doctor/panels/follow-ups', query: {'days': days}));
+
+  /// Diagnosed conditions across the caseload, named in [language].
+  Future<ConditionRegister> conditionRegister({String language = 'en'}) async =>
+      ConditionRegister.fromJson(
+        await _client.getJson('/doctor/panels/conditions', query: {'language': language}),
+      );
+
+  /// Latest pulses outside the triage limits, over [days] days.
+  Future<HeartRateFlags> heartRateFlags({int days = 30}) async =>
+      HeartRateFlags.fromJson(await _client.getJson('/doctor/panels/heart-rate', query: {'days': days}));
 
   /// "I have read this day." Per person; the server clears it when the patient
   /// writes again.

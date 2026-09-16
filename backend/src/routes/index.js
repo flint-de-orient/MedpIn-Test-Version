@@ -22,6 +22,7 @@ import brandRoutes from './brand.js';
 import appVersionRoutes from './appVersion.js';
 import dashboardRoutes from './dashboard.js';
 import doctorRoutes from './doctor.js';
+import panelRoutes from './panels.js';
 import chatSummaryRoutes from './chatSummaries.js';
 import departmentRoutes from './departments.js';
 import teamRoutes from './team.js';
@@ -108,6 +109,9 @@ router.use('/chat', chatRoutes);
 router.use('/appointments', appointmentRoutes);
 router.use('/clinics', clinicRoutes);
 router.use('/messages', messageRoutes);
+// Before /doctor, so a panel request is not first walked through the doctor
+// router's own guards and handlers on its way here.
+router.use('/doctor/panels', panelRoutes);
 router.use('/doctor', doctorRoutes);
 // A day of each patient's conversation, for the clinicians it did not interrupt.
 router.use('/chat-summaries', chatSummaryRoutes);

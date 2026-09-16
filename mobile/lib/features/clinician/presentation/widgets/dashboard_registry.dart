@@ -6,6 +6,7 @@ import '../../../../core/theme/tokens.dart';
 import '../../domain/clinician_models.dart';
 import '../../domain/lab_overview.dart';
 
+import 'caseload_panels.dart';
 import 'chat_summary_card.dart';
 import 'dashboard_sections.dart';
 import 'lab_panels.dart';
@@ -118,6 +119,13 @@ final Map<String, WidgetBuilderFn> dashboardWidgets = {
 
   // Its own request rather than the shared poll — see ChatSummaryCard.
   'CHAT_SUMMARIES': (d) => const ChatSummaryCard(),
+
+  // ---- the caseload: routes/panels.js ---------------------------------------
+  // Their own requests, like the conversations above. See caseload_panels.dart.
+  'BP_CONTROL': (d) => const BpControlCard(),
+  'FOLLOW_UPS_DUE': (d) => const FollowUpsDueCard(),
+  'CONDITION_REGISTRY': (d) => const ConditionRegisterCard(),
+  'HEART_RATE_FLAGS': (d) => const HeartRateFlagsCard(),
 
   // ---- what the practice has bought ---------------------------------------
   'ANALYTICS_SUMMARY': (d) => d.analytics == null

@@ -96,6 +96,24 @@ export const WIDGETS = Object.freeze({
   /// rest of the day's messages said.
   CHAT_SUMMARIES: { needs: { permission: P.VIEW_PATIENT } },
 
+  /*
+   * ---- the caseload, from routes/panels.js -------------------------------
+   *
+   * What a general physician and a cardiologist read across their patients,
+   * from records the platform already holds and nothing it would have to
+   * invent: each patient's latest blood pressure band, the follow-up date the
+   * doctor wrote, the conditions a clinician diagnosed, the pulse that was
+   * measured. All name patients, so all need VIEW_PATIENT.
+   */
+  /// GET /doctor/panels/blood-pressure — latest band per patient, crises first.
+  BP_CONTROL: { needs: { permission: P.VIEW_PATIENT } },
+  /// GET /doctor/panels/follow-ups — due this week, and overdue.
+  FOLLOW_UPS_DUE: { needs: { permission: P.VIEW_PATIENT } },
+  /// GET /doctor/panels/conditions — diagnosed conditions, counted.
+  CONDITION_REGISTRY: { needs: { permission: P.VIEW_PATIENT } },
+  /// GET /doctor/panels/heart-rate — latest pulse outside the triage limits.
+  HEART_RATE_FLAGS: { needs: { permission: P.VIEW_PATIENT } },
+
   // ---- what the practice has bought --------------------------------------
   /// GET /doctor/analytics — trends over a window the reader chooses.
   ANALYTICS_SUMMARY: { needs: { capability: C.ADVANCED_ANALYTICS } },
@@ -205,6 +223,11 @@ const GENERAL = {
     'ANALYTICS_SUMMARY',
     'TRIAGE_QUEUE',
     'TODAYS_CLINIC',
+    // A general physician's caseload, read across it: who is out of control,
+    // who is due back, and what they are being treated for.
+    'BP_CONTROL',
+    'FOLLOW_UPS_DUE',
+    'CONDITION_REGISTRY',
     'ACTION_QUEUE',
     'NUTRITION_REVIEWS',
     'OPEN_ALERTS',
@@ -293,6 +316,11 @@ export const DEPARTMENT_DEFAULTS = Object.freeze({
     widgets: [
       'TRIAGE_QUEUE',
       'TODAYS_CLINIC',
+      // What a cardiology caseload is measured by, from the vitals the platform
+      // records: blood pressure control and heart rate outside its limits.
+      'BP_CONTROL',
+      'HEART_RATE_FLAGS',
+      'FOLLOW_UPS_DUE',
       'RECENT_LAB_REPORTS',
       'ACTION_QUEUE',
       'OPEN_ALERTS',

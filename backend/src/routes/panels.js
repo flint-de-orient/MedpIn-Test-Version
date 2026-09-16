@@ -1,0 +1,353 @@
+import { Router } from 'express';
+import { z } from 'zod';
+
+import { requireAuth, requireRole } from '../middleware/auth.js';
+import { requireRecordAccess } from '../middleware/authorise.js';
+import { validate, q } from '../middleware/validate.js';
+import { asyncHandler } from '../middleware/errors.js';
+import { audit } from '../middleware/audit.js';
+import { practiceOf } from '../middleware/practiceScope.js';
+import { Enrollment, ENROLLMENT_STATUS } from '../models/Enrollment.js';
+import { VitalRecord } from '../models/VitalRecord.js';
+import { Prescription } from '../models/Prescription.js';
+import { PatientCondition, CONDITION_STATUS } from '../models/PatientCondition.js';
+import { User, ROLES, CLINICIAN_ROLES } from '../models/User.js';
+import { bloodPressureBand } from '../services/clinicalReadings.js';
+import { VITALS } from '../services/triage/thresholds.js';
+import { RECORD_STATE } from '../models/plugins/clinicalRecord.js';
+
+/**
+ * The caseload panels a general physician and a cardiologist open onto.
+ *
+ * ---- Every panel reads data the platform already holds -------------------
+ *
+ * The rule uiConfig.js was rewritten to obey: a panel names something the API
+ * answers, never something a specialty ought to have. So there is no cardiac
+ * risk score here — Framingham, QRISK and the WHO charts are instruments, not
+ * arithmetic, and a number labelled that way would be read as validated. What
+ * is here is what the record already says: the band of each patient's latest
+ * blood pressure, the follow-up date the doctor wrote on the prescription, the
+ * conditions a clinician diagnosed, and the pulse that was measured.
+ *
+ * ---- Bounded twice ----------------------------------------------------------
+ *
+ * By the practice — only its active enrolments — and by each patient's own
+ * enrolment date. A practice that enrolled a patient in September may not read
+ * the blood pressure another practice recorded in May, and a caseload panel is
+ * no exception: "latest reading" means the latest one this practice is allowed
+ * to see, not the latest one there is.
+ *
+ * ---- Who may open them -----------------------------------------------------
+ *
+ * The doctor's panel's rule: the clinical roles other than the dietician, whose
+ * caseload is their assigned patients and whose panel is /dietician, holding
+ * VIEW_PATIENT — these return patients by name.
+ */
+const router = Router();
+
+const PANEL_ROLES = CLINICIAN_ROLES.filter((role) => role !== ROLES.DIETICIAN);
+router.use(requireAuth, requireRole(...PANEL_ROLES), requireRecordAccess());
+
+/** How many named patients a panel returns before it only counts. */
+const NAMED = 10;
+
+/**
+ * This practice's active caseload: patient id → the date this practice's
+ * access to their record begins.
+ */
+async function caseload(req) {
+  const practice = await practiceOf(req);
+  if (!practice) return new Map();
+
+  const rows = await Enrollment.find({
+    practice,
+    status: ENROLLMENT_STATUS.ACTIVE,
+    revokedAt: null,
+  })
+    .select('patient enrolledOn')
+    .lean();
+
+  return new Map(rows.map((r) => [String(r.patient), r.enrolledOn ? new Date(r.enrolledOn) : null]));
+}
+
+/** Names for the patients a panel is about to show. */
+async function namesFor(ids) {
+  if (!ids.length) return new Map();
+  const users = await User.find({ _id: { $in: ids } }).select('name').lean();
+  return new Map(users.map((u) => [String(u._id), u.name]));
+}
+
+/** Whether a record dated `at` is inside this practice's window for the patient. */
+function visible(patients, patientId, at) {
+  const enrolledOn = patients.get(String(patientId));
+  return !enrolledOn || new Date(at) >= enrolledOn;
+}
+
+/**
+ * The latest record per patient from rows sorted newest first, keeping only
+ * the ones this practice may read.
+ */
+function latestPerPatient(rows, patients, dateField) {
+  const latest = new Map();
+  for (const row of rows) {
+    const key = String(row.patient);
+    if (latest.has(key)) continue;
+    if (!visible(patients, key, row[dateField])) continue;
+    latest.set(key, row);
+  }
+  return latest;
+}
+
+// ---------------------------------------------------------------------------
+// Blood pressure control
+// ---------------------------------------------------------------------------
+
+/**
+ * Most urgent first when the list is cut short: a crisis before a low reading
+ * before a stage 2, and the newest first within each.
+ */
+const ATTENTION_ORDER = ['hypertensive_crisis', 'hypotension', 'stage2'];
+
+router.get(
+  '/blood-pressure',
+  validate({ query: z.object({ days: z.coerce.number().int().min(7).max(365).default(90) }) }),
+  audit('read', 'VitalRecord'),
+  asyncHandler(async (req, res) => {
+    const { days } = q(req);
+    const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+    const patients = await caseload(req);
+
+    const rows = patients.size
+      ? await VitalRecord.find({
+          patient: { $in: [...patients.keys()] },
+          systolic: { $ne: null },
+          diastolic: { $ne: null },
+          // The window here; each patient's enrolment date is applied below.
+          recordedAt: { $gte: since },
+        })
+          .select('patient systolic diastolic flag recordedAt')
+          .sort({ recordedAt: -1 })
+          .lean()
+      : [];
+
+    const latest = latestPerPatient(rows, patients, 'recordedAt');
+
+    const bands = {
+      normal: 0,
+      elevated: 0,
+      stage1: 0,
+      stage2: 0,
+      hypertensive_crisis: 0,
+      hypotension: 0,
+    };
+    const attention = [];
+
+    for (const [patientId, r] of latest) {
+      // The stored band, or the same thresholds applied now to a reading
+      // written before clinic readings were banded — see backfillReadingBands.js.
+      const band = r.flag ?? bloodPressureBand(r.systolic, r.diastolic);
+      if (!band || !(band in bands)) continue;
+      bands[band] += 1;
+      if (ATTENTION_ORDER.includes(band)) {
+        attention.push({ patientId, systolic: r.systolic, diastolic: r.diastolic, band, recordedAt: r.recordedAt });
+      }
+    }
+
+    attention.sort(
+      (a, b) =>
+        ATTENTION_ORDER.indexOf(a.band) - ATTENTION_ORDER.indexOf(b.band) ||
+        new Date(b.recordedAt) - new Date(a.recordedAt),
+    );
+    const named = attention.slice(0, NAMED);
+    const names = await namesFor(named.map((a) => a.patientId));
+
+    res.json({
+      days,
+      caseload: patients.size,
+      withReading: latest.size,
+      // Not folded into "normal": a patient nobody has measured is a gap in
+      // care, and a panel that hid them would read as a controlled caseload.
+      withoutReading: patients.size - latest.size,
+      bands,
+      attention: named.map((a) => ({ ...a, name: names.get(a.patientId) ?? null })),
+      attentionTotal: attention.length,
+    });
+  }),
+);
+
+// ---------------------------------------------------------------------------
+// Follow-ups due
+// ---------------------------------------------------------------------------
+
+router.get(
+  '/follow-ups',
+  validate({ query: z.object({ days: z.coerce.number().int().min(1).max(60).default(7) }) }),
+  audit('read', 'Prescription'),
+  asyncHandler(async (req, res) => {
+    const { days } = q(req);
+    const patients = await caseload(req);
+    const now = new Date();
+    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const horizon = new Date(startOfToday.getTime() + (days + 1) * 24 * 60 * 60 * 1000);
+    // Overdue is bounded too, or a follow-up missed two years ago would sit at
+    // the top of this panel forever.
+    const overdueFrom = new Date(startOfToday.getTime() - 30 * 24 * 60 * 60 * 1000);
+
+    // The follow-up that counts is the one on the patient's latest prescription
+    // still in force: a newer visit answers an older follow-up date.
+    const rows = patients.size
+      ? await Prescription.find({
+          patient: { $in: [...patients.keys()] },
+          recordState: { $in: [RECORD_STATE.CURRENT, null] },
+          // Switched off the old way, before backfillPrescriptionRecordState.js
+          // has given it a state: ended all the same.
+          isActive: { $ne: false },
+        })
+          .select('patient followUpOn issuedOn referenceNo doctor')
+          .populate('doctor', 'name')
+          .sort({ issuedOn: -1 })
+          .lean()
+      : [];
+
+    const latest = latestPerPatient(rows, patients, 'issuedOn');
+
+    const overdue = [];
+    const due = [];
+    for (const [patientId, rx] of latest) {
+      if (!rx.followUpOn) continue;
+      const on = new Date(rx.followUpOn);
+      const entry = {
+        patientId,
+        followUpOn: rx.followUpOn,
+        referenceNo: rx.referenceNo,
+        doctorName: rx.doctor?.name ?? null,
+      };
+      if (on >= overdueFrom && on < startOfToday) overdue.push(entry);
+      else if (on >= startOfToday && on < horizon) due.push(entry);
+    }
+
+    overdue.sort((a, b) => new Date(a.followUpOn) - new Date(b.followUpOn));
+    due.sort((a, b) => new Date(a.followUpOn) - new Date(b.followUpOn));
+
+    const names = await namesFor([...overdue, ...due].map((e) => e.patientId));
+    const withName = (e) => ({ ...e, name: names.get(e.patientId) ?? null });
+
+    res.json({
+      days,
+      overdue: overdue.slice(0, NAMED).map(withName),
+      overdueTotal: overdue.length,
+      due: due.slice(0, NAMED).map(withName),
+      dueTotal: due.length,
+    });
+  }),
+);
+
+// ---------------------------------------------------------------------------
+// Condition register
+// ---------------------------------------------------------------------------
+
+router.get(
+  '/conditions',
+  validate({ query: z.object({ language: z.enum(['en', 'bn', 'hi']).default('en') }) }),
+  audit('read', 'PatientCondition'),
+  asyncHandler(async (req, res) => {
+    const { language } = q(req);
+    const patients = await caseload(req);
+
+    // Diagnosed and being treated. Suspected is noted, not confirmed, and a
+    // register that counted suspicions would read as a caseload of diagnoses.
+    const rows = patients.size
+      ? await PatientCondition.find({
+          patient: { $in: [...patients.keys()] },
+          status: CONDITION_STATUS.ACTIVE,
+        })
+          .select('patient condition')
+          .populate('condition', 'key names')
+          .lean()
+      : [];
+
+    const byCondition = new Map();
+    for (const row of rows) {
+      if (!row.condition) continue;
+      const key = row.condition.key ?? String(row.condition._id);
+      const entry = byCondition.get(key) ?? {
+        key,
+        name: row.condition.names?.[language] || row.condition.names?.en || key,
+        patients: new Set(),
+      };
+      entry.patients.add(String(row.patient));
+      byCondition.set(key, entry);
+    }
+
+    const conditions = [...byCondition.values()]
+      .map((c) => ({ key: c.key, name: c.name, count: c.patients.size }))
+      .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
+
+    const withAny = new Set(rows.map((r) => String(r.patient)));
+
+    res.json({
+      caseload: patients.size,
+      conditions,
+      // Stated, so an empty register reads as "nothing recorded" rather than
+      // as a caseload with no chronic illness.
+      withoutCondition: patients.size - withAny.size,
+    });
+  }),
+);
+
+// ---------------------------------------------------------------------------
+// Heart rate
+// ---------------------------------------------------------------------------
+
+router.get(
+  '/heart-rate',
+  validate({ query: z.object({ days: z.coerce.number().int().min(7).max(365).default(30) }) }),
+  audit('read', 'VitalRecord'),
+  asyncHandler(async (req, res) => {
+    const { days } = q(req);
+    const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+    const patients = await caseload(req);
+
+    const rows = patients.size
+      ? await VitalRecord.find({
+          patient: { $in: [...patients.keys()] },
+          pulse: { $ne: null },
+          recordedAt: { $gte: since },
+        })
+          .select('patient pulse recordedAt')
+          .sort({ recordedAt: -1 })
+          .lean()
+      : [];
+
+    const latest = latestPerPatient(rows, patients, 'recordedAt');
+
+    // The triage engine's own limits, so this panel and an alert can never
+    // disagree about what is outside the expected range.
+    const low = [];
+    const high = [];
+    for (const [patientId, r] of latest) {
+      const entry = { patientId, pulse: r.pulse, recordedAt: r.recordedAt };
+      if (r.pulse < VITALS.PULSE_LOW) low.push(entry);
+      else if (r.pulse > VITALS.PULSE_HIGH) high.push(entry);
+    }
+    const byRecency = (a, b) => new Date(b.recordedAt) - new Date(a.recordedAt);
+    low.sort(byRecency);
+    high.sort(byRecency);
+
+    const names = await namesFor([...low, ...high].map((e) => e.patientId));
+    const withName = (e) => ({ ...e, name: names.get(e.patientId) ?? null });
+
+    res.json({
+      days,
+      limits: { low: VITALS.PULSE_LOW, high: VITALS.PULSE_HIGH },
+      withReading: latest.size,
+      withoutReading: patients.size - latest.size,
+      low: low.slice(0, NAMED).map(withName),
+      lowTotal: low.length,
+      high: high.slice(0, NAMED).map(withName),
+      highTotal: high.length,
+    });
+  }),
+);
+
+export default router;
