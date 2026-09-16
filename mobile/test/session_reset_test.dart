@@ -3,7 +3,7 @@ import 'dart:io';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:akd_care/core/session/session_reset.dart';
+import 'package:medpin/core/session/session_reset.dart';
 
 /// One patient's data must not survive into another patient's session.
 ///

@@ -1,10 +1,10 @@
-import 'package:akd_care/core/theme/app_theme.dart';
-import 'package:akd_care/features/chat/presentation/widgets/emergency_card.dart';
-import 'package:akd_care/features/profile/presentation/widgets/theme_selector.dart';
-import 'package:akd_care/l10n/gen/app_localizations.dart';
-import 'package:akd_care/shared/data/care_contact.dart';
-import 'package:akd_care/shared/providers/core_providers.dart';
-import 'package:akd_care/shared/providers/theme_provider.dart';
+import 'package:medpin/core/theme/app_theme.dart';
+import 'package:medpin/features/chat/presentation/widgets/emergency_card.dart';
+import 'package:medpin/features/profile/presentation/widgets/theme_selector.dart';
+import 'package:medpin/l10n/gen/app_localizations.dart';
+import 'package:medpin/shared/data/care_contact.dart';
+import 'package:medpin/shared/providers/core_providers.dart';
+import 'package:medpin/shared/providers/theme_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';

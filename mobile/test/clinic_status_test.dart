@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:akd_care/features/appointments/domain/clinic.dart';
-import 'package:akd_care/features/appointments/domain/clinic_status.dart';
+import 'package:medpin/features/appointments/domain/clinic.dart';
+import 'package:medpin/features/appointments/domain/clinic_status.dart';
 
 /// The front desk header says "Open · Closes 8:00 PM", and a receptionist reads
 /// it before telling somebody on the phone whether to come in. These are the

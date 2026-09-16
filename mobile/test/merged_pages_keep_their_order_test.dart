@@ -1,9 +1,9 @@
 import 'dart:async';
 
-import 'package:akd_care/features/clinician/data/clinician_repository.dart';
-import 'package:akd_care/features/clinician/domain/clinician_models.dart';
-import 'package:akd_care/features/clinician/presentation/clinician_providers.dart';
-import 'package:akd_care/shared/models/paged.dart';
+import 'package:medpin/features/clinician/data/clinician_repository.dart';
+import 'package:medpin/features/clinician/domain/clinician_models.dart';
+import 'package:medpin/features/clinician/presentation/clinician_providers.dart';
+import 'package:medpin/shared/models/paged.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 

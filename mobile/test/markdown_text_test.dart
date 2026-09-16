@@ -1,4 +1,4 @@
-import 'package:akd_care/shared/widgets/markdown_text.dart';
+import 'package:medpin/shared/widgets/markdown_text.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 

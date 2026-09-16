@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:akd_care/features/chat/domain/thread_group.dart';
+import 'package:medpin/features/chat/domain/thread_group.dart';
 
 /// Grouping conversations by practice, and the rule that matters most.
 ///

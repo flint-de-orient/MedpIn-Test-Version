@@ -2,9 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:akd_care/features/clinician/domain/clinician_models.dart';
-import 'package:akd_care/features/clinician/presentation/widgets/dashboard_sections.dart';
-import 'package:akd_care/features/clinician/presentation/widgets/triage_queue.dart';
+import 'package:medpin/features/clinician/domain/clinician_models.dart';
+import 'package:medpin/features/clinician/presentation/widgets/dashboard_sections.dart';
+import 'package:medpin/features/clinician/presentation/widgets/triage_queue.dart';
 
 /// The doctor's home stopped rendering everything below Live Triage, and the
 /// blank was silent — no crash, no message, just background where four sections

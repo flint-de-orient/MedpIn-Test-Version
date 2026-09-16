@@ -1,4 +1,4 @@
-import 'package:akd_care/shared/providers/locale_provider.dart';
+import 'package:medpin/shared/providers/locale_provider.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 /// Regression guard for the reported bug: an English UI, an English question,

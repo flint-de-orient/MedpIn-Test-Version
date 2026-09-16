@@ -89,11 +89,11 @@ BEGIN
     BEGIN
         BLOCK "040904e4"
         BEGIN
-            VALUE "CompanyName", "com.akdcare" "\0"
+            VALUE "CompanyName", "MedPin" "\0"
             VALUE "FileDescription", "akd_care" "\0"
             VALUE "FileVersion", VERSION_AS_STRING "\0"
             VALUE "InternalName", "akd_care" "\0"
-            VALUE "LegalCopyright", "Copyright (C) 2026 com.akdcare. All rights reserved." "\0"
+            VALUE "LegalCopyright", "Copyright (C) 2026 MedPin. All rights reserved." "\0"
             VALUE "OriginalFilename", "akd_care.exe" "\0"
             VALUE "ProductName", "akd_care" "\0"
             VALUE "ProductVersion", VERSION_AS_STRING "\0"

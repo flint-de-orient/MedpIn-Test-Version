@@ -1,6 +1,6 @@
-import 'package:akd_care/features/chat/presentation/widgets/chat_empty_state.dart';
-import 'package:akd_care/l10n/gen/app_localizations.dart';
-import 'package:akd_care/shared/widgets/notification_list_sheet.dart';
+import 'package:medpin/features/chat/presentation/widgets/chat_empty_state.dart';
+import 'package:medpin/l10n/gen/app_localizations.dart';
+import 'package:medpin/shared/widgets/notification_list_sheet.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';

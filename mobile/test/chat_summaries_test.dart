@@ -4,10 +4,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:akd_care/features/clinician/domain/chat_summary.dart';
-import 'package:akd_care/features/clinician/presentation/chat_summaries_screen.dart';
-import 'package:akd_care/features/clinician/presentation/clinician_providers.dart';
-import 'package:akd_care/features/clinician/presentation/widgets/chat_summary_card.dart';
+import 'package:medpin/features/clinician/domain/chat_summary.dart';
+import 'package:medpin/features/clinician/presentation/chat_summaries_screen.dart';
+import 'package:medpin/features/clinician/presentation/clinician_providers.dart';
+import 'package:medpin/features/clinician/presentation/widgets/chat_summary_card.dart';
 
 /// The day's patient conversations, as the doctor they did not interrupt sees
 /// them.

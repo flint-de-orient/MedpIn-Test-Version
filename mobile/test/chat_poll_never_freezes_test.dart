@@ -1,11 +1,11 @@
-import 'package:akd_care/core/network/api_client.dart';
-import 'package:akd_care/core/storage/secure_store.dart';
-import 'package:akd_care/features/chat/data/chat_repository.dart';
-import 'package:akd_care/features/chat/domain/chat_message.dart';
-import 'package:akd_care/features/chat/domain/send_message_result.dart';
-import 'package:akd_care/features/chat/presentation/chat_controller.dart';
-import 'package:akd_care/shared/models/paged.dart';
-import 'package:akd_care/shared/data/upload_repository.dart';
+import 'package:medpin/core/network/api_client.dart';
+import 'package:medpin/core/storage/secure_store.dart';
+import 'package:medpin/features/chat/data/chat_repository.dart';
+import 'package:medpin/features/chat/domain/chat_message.dart';
+import 'package:medpin/features/chat/domain/send_message_result.dart';
+import 'package:medpin/features/chat/presentation/chat_controller.dart';
+import 'package:medpin/shared/models/paged.dart';
+import 'package:medpin/shared/data/upload_repository.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 /// The patient's chat must keep polling, whatever a send did.

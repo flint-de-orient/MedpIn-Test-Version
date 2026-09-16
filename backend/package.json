@@ -1,9 +1,9 @@
 {
-  "name": "akd-care-backend",
+  "name": "medpin-backend",
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "Dr. Amit Kumar Dey AI Patient Care — API server",
+  "description": "MedPin — care connected. API server",
   "engines": {
     "node": ">=20.0.0"
   },

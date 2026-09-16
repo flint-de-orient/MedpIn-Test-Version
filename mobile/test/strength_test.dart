@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:akd_care/features/medications/domain/strength.dart';
+import 'package:medpin/features/medications/domain/strength.dart';
 
 void main() {
   test('adds a unit only to bare numbers', () {

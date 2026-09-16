@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:akd_care/features/home/domain/care_summary.dart';
+import 'package:medpin/features/home/domain/care_summary.dart';
 
 /// Which cards a patient's Home shows, and the household it belongs to.
 ///

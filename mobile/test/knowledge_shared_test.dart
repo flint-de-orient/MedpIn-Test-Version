@@ -1,5 +1,5 @@
-import 'package:akd_care/features/clinician/domain/knowledge_chunk.dart';
-import 'package:akd_care/features/clinician/presentation/knowledge_edit_screen.dart';
+import 'package:medpin/features/clinician/domain/knowledge_chunk.dart';
+import 'package:medpin/features/clinician/presentation/knowledge_edit_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';

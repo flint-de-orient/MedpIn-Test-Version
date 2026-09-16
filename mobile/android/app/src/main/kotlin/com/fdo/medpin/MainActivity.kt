@@ -1,4 +1,4 @@
-package com.akdcare.akd_care
+package com.fdo.medpin
 
 import android.annotation.SuppressLint
 import android.content.Context
@@ -67,7 +67,7 @@ class MainActivity : FlutterFragmentActivity() {
             packageManager
                 .getApplicationInfo(packageName, PackageManager.GET_META_DATA)
                 .metaData
-                ?.get("com.akdcare.akd_care.PUBSPEC_BUILD")
+                ?.get("com.fdo.medpin.PUBSPEC_BUILD")
                 ?.toString()
                 ?.toIntOrNull()
         } catch (_: Exception) {

@@ -1,16 +1,16 @@
 import 'dart:async';
 
-import 'package:akd_care/core/storage/secure_store.dart';
-import 'package:akd_care/core/theme/app_theme.dart';
-import 'package:akd_care/core/theme/tokens.dart';
-import 'package:akd_care/features/clinician/domain/clinician_models.dart';
-import 'package:akd_care/features/clinician/domain/patient_registration.dart';
-import 'package:akd_care/features/clinician/presentation/clinician_providers.dart';
-import 'package:akd_care/features/clinician/presentation/patients_screen.dart';
-import 'package:akd_care/l10n/gen/app_localizations.dart';
-import 'package:akd_care/shared/models/paged.dart';
-import 'package:akd_care/shared/providers/core_providers.dart';
-import 'package:akd_care/shared/widgets/clinic_brand.dart';
+import 'package:medpin/core/storage/secure_store.dart';
+import 'package:medpin/core/theme/app_theme.dart';
+import 'package:medpin/core/theme/tokens.dart';
+import 'package:medpin/features/clinician/domain/clinician_models.dart';
+import 'package:medpin/features/clinician/domain/patient_registration.dart';
+import 'package:medpin/features/clinician/presentation/clinician_providers.dart';
+import 'package:medpin/features/clinician/presentation/patients_screen.dart';
+import 'package:medpin/l10n/gen/app_localizations.dart';
+import 'package:medpin/shared/models/paged.dart';
+import 'package:medpin/shared/providers/core_providers.dart';
+import 'package:medpin/shared/widgets/clinic_brand.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';

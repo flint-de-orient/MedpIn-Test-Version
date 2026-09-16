@@ -8,7 +8,7 @@
 PRODUCT_NAME = akd_care
 
 // The application's bundle identifier
-PRODUCT_BUNDLE_IDENTIFIER = com.akdcare.akdCare
+PRODUCT_BUNDLE_IDENTIFIER = com.fdo.medpin
 
 // The copyright displayed in application information
-PRODUCT_COPYRIGHT = Copyright © 2026 com.akdcare. All rights reserved.
+PRODUCT_COPYRIGHT = Copyright © 2026 MedPin. All rights reserved.

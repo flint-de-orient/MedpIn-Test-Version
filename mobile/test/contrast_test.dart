@@ -3,8 +3,8 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:akd_care/core/theme/tokens.dart';
-import 'package:akd_care/core/theme/app_colors.dart';
+import 'package:medpin/core/theme/tokens.dart';
+import 'package:medpin/core/theme/app_colors.dart';
 
 /// Contrast, measured rather than eyeballed.
 ///

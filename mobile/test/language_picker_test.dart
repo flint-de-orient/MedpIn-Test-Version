@@ -1,5 +1,5 @@
-import 'package:akd_care/features/onboarding/presentation/language_picker_screen.dart';
-import 'package:akd_care/l10n/gen/app_localizations.dart';
+import 'package:medpin/features/onboarding/presentation/language_picker_screen.dart';
+import 'package:medpin/l10n/gen/app_localizations.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';

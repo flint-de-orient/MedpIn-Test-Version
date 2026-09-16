@@ -2,9 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:akd_care/features/clinician/data/billing_repository.dart';
-import 'package:akd_care/features/clinician/domain/billing.dart';
-import 'package:akd_care/features/clinician/presentation/widgets/billing_history_panel.dart';
+import 'package:medpin/features/clinician/data/billing_repository.dart';
+import 'package:medpin/features/clinician/domain/billing.dart';
+import 'package:medpin/features/clinician/presentation/widgets/billing_history_panel.dart';
 
 /// What a practice is shown about money it has already spent.
 ///

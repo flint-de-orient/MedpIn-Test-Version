@@ -1,12 +1,12 @@
-name: akd_care
-description: "MedPin — care connected. Clinical app for Dr. Amit Kumar Dey, Consultant Physician & Diabetologist."
+name: medpin
+description: "MedPin — care connected. Clinical app for practices and their patients."
 publish_to: 'none'
 
 # Bump the build number on every release you hand to a phone. Android refuses
 # to install over a higher versionCode, and a split build adds an ABI offset on
 # top of this number (armeabi-v7a +1000, arm64-v8a +2000) — so a plain
 # universal build always ranks below a split one of the same version.
-version: 1.0.23+8138
+version: 1.0.24+8139
 
 environment:
   sdk: ^3.7.2

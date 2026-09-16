@@ -130,7 +130,7 @@ the contract *does* fully specify — models were written directly against
 ## Commands run
 
 ```bash
-flutter create --org com.akdcare --project-name akd_care mobile
+flutter create --org com.fdo --project-name medpin mobile
 flutter pub get              # resolves deps + regenerates l10n
 flutter analyze              # 0 issues
 flutter test                 # 1/1 passed (smoke test)

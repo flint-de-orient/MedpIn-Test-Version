@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:akd_care/features/appointments/domain/appointment.dart';
+import 'package:medpin/features/appointments/domain/appointment.dart';
 
 /// A request the clinic turned down must remain findable in the app.
 ///

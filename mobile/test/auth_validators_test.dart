@@ -1,4 +1,4 @@
-import 'package:akd_care/core/utils/auth_validators.dart';
+import 'package:medpin/core/utils/auth_validators.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 /// These cases mirror `registerSchema` in `backend/src/routes/auth.js`. If the

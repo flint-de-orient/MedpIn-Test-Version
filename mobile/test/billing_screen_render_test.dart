@@ -2,10 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:akd_care/core/capabilities/capabilities.dart';
-import 'package:akd_care/features/clinician/data/billing_repository.dart';
-import 'package:akd_care/features/clinician/domain/billing.dart';
-import 'package:akd_care/features/clinician/presentation/billing_screen.dart';
+import 'package:medpin/core/capabilities/capabilities.dart';
+import 'package:medpin/features/clinician/data/billing_repository.dart';
+import 'package:medpin/features/clinician/domain/billing.dart';
+import 'package:medpin/features/clinician/presentation/billing_screen.dart';
 
 /// What the billing screen actually puts on glass.
 ///

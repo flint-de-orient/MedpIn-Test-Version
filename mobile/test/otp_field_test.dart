@@ -1,5 +1,5 @@
-import 'package:akd_care/core/theme/app_theme.dart';
-import 'package:akd_care/shared/widgets/otp_field.dart';
+import 'package:medpin/core/theme/app_theme.dart';
+import 'package:medpin/shared/widgets/otp_field.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 

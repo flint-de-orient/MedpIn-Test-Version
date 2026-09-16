@@ -44,7 +44,7 @@ if (hasReleaseKey) {
 }
 
 android {
-    namespace = "com.akdcare.akd_care"
+    namespace = "com.fdo.medpin"
     compileSdk = flutter.compileSdkVersion
     // Pinned rather than `flutter.ndkVersion` (26.3.11579264), which is
     // present on this machine but missing its cmake toolchain files and fails
@@ -66,7 +66,7 @@ android {
 
     defaultConfig {
         // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
-        applicationId = "com.akdcare.akd_care"
+        applicationId = "com.fdo.medpin"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
         // Jitsi Meet (jitsi_meet_flutter_sdk 11.x) requires API 26+.

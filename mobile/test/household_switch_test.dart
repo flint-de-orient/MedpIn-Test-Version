@@ -1,7 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:akd_care/shared/providers/active_patient.dart';
+import 'package:medpin/shared/providers/active_patient.dart';
 
 /// Switching whose record the app is showing.
 ///

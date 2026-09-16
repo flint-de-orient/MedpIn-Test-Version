@@ -7,14 +7,14 @@
 /// than here. A section heading that outgrows its Row, a Spacer that leaves
 /// nothing for the text beside it, a chip rail wider than the phone — all of
 /// them throw in here before anyone has to look at a screenshot.
-import 'package:akd_care/core/theme/app_theme.dart';
-import 'package:akd_care/features/clinician/domain/patient_summary.dart';
-import 'package:akd_care/features/dietician/domain/diet_models.dart';
-import 'package:akd_care/features/dietician/presentation/dietician_patient_screen.dart';
-import 'package:akd_care/features/dietician/presentation/dietician_providers.dart';
-import 'package:akd_care/features/foodlog/domain/food_log.dart';
-import 'package:akd_care/l10n/gen/app_localizations.dart';
-import 'package:akd_care/shared/providers/core_providers.dart';
+import 'package:medpin/core/theme/app_theme.dart';
+import 'package:medpin/features/clinician/domain/patient_summary.dart';
+import 'package:medpin/features/dietician/domain/diet_models.dart';
+import 'package:medpin/features/dietician/presentation/dietician_patient_screen.dart';
+import 'package:medpin/features/dietician/presentation/dietician_providers.dart';
+import 'package:medpin/features/foodlog/domain/food_log.dart';
+import 'package:medpin/l10n/gen/app_localizations.dart';
+import 'package:medpin/shared/providers/core_providers.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';

@@ -1,6 +1,6 @@
-import 'package:akd_care/core/network/api_exception.dart';
-import 'package:akd_care/l10n/gen/app_localizations.dart';
-import 'package:akd_care/shared/widgets/error_view.dart';
+import 'package:medpin/core/network/api_exception.dart';
+import 'package:medpin/l10n/gen/app_localizations.dart';
+import 'package:medpin/shared/widgets/error_view.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';

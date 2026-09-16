@@ -1,4 +1,4 @@
-import 'package:akd_care/app.dart';
+import 'package:medpin/app.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 

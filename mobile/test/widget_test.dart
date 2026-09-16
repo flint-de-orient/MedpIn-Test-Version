@@ -4,8 +4,8 @@
 // should settle on the language-picker screen without making any network
 // calls.
 
-import 'package:akd_care/app.dart';
-import 'package:akd_care/shared/providers/core_providers.dart';
+import 'package:medpin/app.dart';
+import 'package:medpin/shared/providers/core_providers.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';

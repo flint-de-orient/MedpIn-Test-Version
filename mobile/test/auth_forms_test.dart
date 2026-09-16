@@ -1,10 +1,10 @@
-import 'package:akd_care/core/theme/app_theme.dart';
-import 'package:akd_care/core/utils/auth_validators.dart';
-import 'package:akd_care/features/auth/presentation/doctor_password_login_screen.dart';
-import 'package:akd_care/features/auth/presentation/login_screen.dart';
-import 'package:akd_care/features/auth/presentation/register_screen.dart';
-import 'package:akd_care/l10n/gen/app_localizations.dart';
-import 'package:akd_care/shared/widgets/auth_kit.dart';
+import 'package:medpin/core/theme/app_theme.dart';
+import 'package:medpin/core/utils/auth_validators.dart';
+import 'package:medpin/features/auth/presentation/doctor_password_login_screen.dart';
+import 'package:medpin/features/auth/presentation/login_screen.dart';
+import 'package:medpin/features/auth/presentation/register_screen.dart';
+import 'package:medpin/l10n/gen/app_localizations.dart';
+import 'package:medpin/shared/widgets/auth_kit.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';

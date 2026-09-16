@@ -1,5 +1,5 @@
-import 'package:akd_care/shared/providers/core_providers.dart';
-import 'package:akd_care/shared/providers/theme_provider.dart';
+import 'package:medpin/shared/providers/core_providers.dart';
+import 'package:medpin/shared/providers/theme_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';

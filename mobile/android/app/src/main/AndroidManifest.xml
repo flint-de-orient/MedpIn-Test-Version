@@ -87,7 +87,7 @@
              split-per-abi adds to it. Read back by MainActivity, so the app
              knows which build it is however the APK was compiled. -->
         <meta-data
-            android:name="com.akdcare.akd_care.PUBSPEC_BUILD"
+            android:name="com.fdo.medpin.PUBSPEC_BUILD"
             android:value="${pubspecBuild}" />
         <!-- Channel FCM falls back to when it builds the notification itself
              (app backgrounded or killed). Without this, a background call ring

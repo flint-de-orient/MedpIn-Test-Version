@@ -1,11 +1,11 @@
 {
-    "name": "akd_care",
-    "short_name": "akd_care",
+    "name": "MedPin",
+    "short_name": "MedPin",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",
     "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
+    "description": "MedPin — care connected.",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [

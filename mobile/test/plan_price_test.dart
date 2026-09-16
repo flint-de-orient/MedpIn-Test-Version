@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:akd_care/features/clinician/domain/billing.dart';
+import 'package:medpin/features/clinician/domain/billing.dart';
 
 /// The numbers on a payment confirmation.
 ///

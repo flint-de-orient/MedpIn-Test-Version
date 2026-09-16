@@ -1,7 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:akd_care/core/capabilities/capabilities.dart';
-import 'package:akd_care/features/clinician/presentation/clinician_tabs.dart';
+import 'package:medpin/core/capabilities/capabilities.dart';
+import 'package:medpin/features/clinician/presentation/clinician_tabs.dart';
 
 /// The bar's indices and the router's branch indices are different numbers.
 ///
