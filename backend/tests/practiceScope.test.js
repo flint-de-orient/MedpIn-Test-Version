@@ -26,16 +26,28 @@ const scope = readFileSync(
 const auth = readFileSync(new URL('../src/middleware/auth.js', import.meta.url), 'utf8');
 
 describe('missing data permits', () => {
-  test('an unknown practice on either side is not a mismatch', () => {
-    // The line this whole file exists to protect.
-    assert.match(scope, /if \(!mine \|\| !theirs\) return;/);
+  test('a caller with no practice is not a mismatch', () => {
+    // The line this whole file exists to protect. `unplacedStaff` has already
+    // refused anybody who should be refused for having no practice; what is
+    // left here is a deployment with no memberships at all.
+    assert.match(scope, /if \(!mine\) return;/);
   });
 
-  test('the permit comes before the refusal', () => {
+  test('and a patient nobody has enrolled is left to the gate', () => {
+    /*
+     * `enrollmentGate` runs immediately after this and answers "not connected
+     * to any practice yet", which tells a clinician what to do. Refusing here
+     * would answer with "belongs to a different practice", which is false and
+     * sends them looking for a practice that does not exist.
+     */
+    assert.match(scope, /if \(here \|\| !anywhere\) return;/);
+  });
+
+  test('the permits come before the refusal', () => {
     // Order matters as much as presence: a refusal evaluated first would
-    // throw on the null case before the guard clause could let it through.
+    // throw on the unknown case before the guard clause could let it through.
     const body = scope.slice(scope.indexOf('export async function assertSamePractice'));
-    const permit = body.indexOf('if (!mine || !theirs) return;');
+    const permit = body.indexOf('if (here || !anywhere) return;');
     const refuse = body.indexOf('throw forbidden');
     assert.ok(permit > -1 && refuse > permit, 'the refusal is reachable before the permit');
   });
@@ -49,8 +61,16 @@ describe('missing data permits', () => {
 });
 
 describe('a proven mismatch refuses', () => {
-  test('different practices are forbidden', () => {
-    assert.match(scope, /if \(mine !== theirs\)/);
+  test('a patient enrolled elsewhere and not here is forbidden', () => {
+    /*
+     * Asked of the enrolment rather than of `assignedDoctor`, which is one
+     * field naming one doctor at one practice: for a patient properly enrolled
+     * at two it returned the first and refused the second, telling a clinician
+     * at a clinic the patient had consented to that this was somebody else's
+     * patient.
+     */
+    assert.match(scope, /Enrollment\.exists\(\{ patient: patientId, practice: mine \}\)/);
+    assert.match(scope, /Enrollment\.exists\(\{ patient: patientId \}\)/);
     assert.match(scope, /That patient belongs to a different practice/);
   });
 
@@ -61,14 +81,29 @@ describe('a proven mismatch refuses', () => {
     // condition, which is what this did before — and which failed the moment
     // the three hand-rolled copies were consolidated into one. A test that
     // pins an implementation blocks the tidy-up it should have encouraged.
-    const lookups = [...scope.matchAll(/Membership\.findOne\(/g)];
-    const filtered = [...scope.matchAll(/Membership\.currentFilter\(/g)];
+    /*
+     * `find` as well as `findOne`, because resolving the caller's practices
+     * reads all of them — one person may work at two.
+     *
+     * And "current" rather than "currentFilter": `memberIdsOf` looks up a
+     * practice's members rather than a person's memberships, so it cannot use
+     * a filter keyed on a user, and it spells the same two conditions out.
+     * Requiring the helper by name would fail a lookup that is correct, which
+     * is how a ratchet teaches people to work around it.
+     */
+    const lookups = [...scope.matchAll(/Membership\.find(One)?\(/g)];
     assert.ok(lookups.length >= 2, 'the membership lookups have moved');
-    assert.equal(
-      filtered.length,
-      lookups.length,
-      'a membership lookup here does not go through currentFilter',
-    );
+
+    for (const m of lookups) {
+      const call = scope.slice(m.index, m.index + 300);
+      const viaHelper = call.includes('Membership.currentFilter(');
+      const spelledOut =
+        call.includes('status: MEMBERSHIP_STATUS.ACTIVE') && call.includes('endedOn: null');
+      assert.ok(
+        viaHelper || spelledOut,
+        `a membership lookup here counts rows that are not current:\n${call.slice(0, 120)}`,
+      );
+    }
   });
 });
 

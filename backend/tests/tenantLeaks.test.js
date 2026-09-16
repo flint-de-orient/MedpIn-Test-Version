@@ -310,7 +310,7 @@ describe('the assistant answers about this practice’s doctor', () => {
   });
 });
 
-describe('and none of it can lock out a clinic that is running', () => {
+describe('the membership migration still cannot lock out a running clinic', () => {
   const scope = read('middleware/practiceScope.js');
 
   test('an unknown practice restricts nothing', () => {
@@ -324,9 +324,25 @@ describe('and none of it can lock out a clinic that is running', () => {
     assert.match(scope, /async function membershipsExist\(\)/);
   });
 
-  test('and neither does an unlinked set of locations', () => {
-    assert.match(scope, /async function clinicsAreLinked\(\)/);
-    assert.match(scope, /if \(!practiceId \|\| !\(await clinicsAreLinked\(\)\)\) return \{\};/);
+  test('but a caller with no practice has no buildings', () => {
+    /*
+     * This permitted, alongside the two above, on a database where no location
+     * had been linked to a practice yet. What it returned was `{}` — every
+     * location on the platform, with its address and phone number — for any
+     * caller whose practice could not be read. Locations have been linked since
+     * practices existed and `POST /clinics` stamps every new one, so the escape
+     * protected nothing and exposed everything.
+     *
+     * The two above stay as they are: they answer for the *membership*
+     * migration, inside `memberIdsOf`, where an empty collection genuinely
+     * cannot be told apart from a practice with no staff. The filter builders
+     * that consume them no longer turn that null into "everybody".
+     */
+    const clinics = scope.slice(scope.indexOf('export async function practiceClinics'));
+    assert.match(clinics.slice(0, 500), /if \(!practiceId\) return \{ \[field\]: \{ \$in: \[\] \} \};/);
+
+    const members = scope.slice(scope.indexOf('export async function practiceMembers'));
+    assert.match(members.slice(0, 400), /\{ \[field\]: \{ \$in: ids \?\? \[\] \} \}/);
   });
 });
 

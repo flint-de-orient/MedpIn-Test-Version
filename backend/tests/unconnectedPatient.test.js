@@ -81,9 +81,14 @@ describe('a patient nobody has taken on', () => {
 
   test('and the refusal distinguishes them from somebody else’s patient', async () => {
     /*
-     * "Not enrolled here" tells a clinician another practice has this person;
-     * "not connected to any practice" says nobody does, and the answer is to
-     * enrol them. Same refusal, different next action.
+     * Two refusals, two next actions. "Belongs to a different practice" says
+     * another clinic has this person; "not connected to any practice yet" says
+     * nobody does, and the answer is to enrol them.
+     *
+     * They come from different guards — the cross-practice one from
+     * `assertSamePractice`, which now asks the enrolment rather than the
+     * assigned doctor, and the other from `enrollmentGate` immediately after.
+     * What matters is that a clinician can tell them apart.
      */
     const elsewhere = await makePractice('Behala');
     const theirs = await makePatient({ name: 'Their Patient', practices: [elsewhere] });
@@ -91,7 +96,8 @@ describe('a patient nobody has taken on', () => {
     const res = await as(doctor.token).get(`/patients/${theirs.user._id}/prescriptions`);
 
     assert.equal(res.status, 403);
-    assert.match(res.body.error.message, /not enrolled at this practice/i);
+    assert.match(res.body.error.message, /belongs to a different practice/i);
+    assert.doesNotMatch(res.body.error.message, /not connected/i);
   });
 
   test('can still read their own record', async () => {

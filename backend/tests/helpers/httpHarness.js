@@ -85,12 +85,16 @@ export async function wipe() {
  * refused" into a test error.
  */
 export function as(token) {
-  const call = async (method, path, body) => {
+  const call = async (method, path, body, headers = {}) => {
     const res = await fetch(origin + path, {
       method,
       headers: {
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
         ...(body === undefined ? {} : { 'Content-Type': 'application/json' }),
+        // Whatever else the request needs to say — which practice this is for,
+        // above all. A harness that cannot send a header is a header nothing
+        // in the suite has ever exercised.
+        ...headers,
       },
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     });
@@ -106,14 +110,14 @@ export function as(token) {
   };
 
   return {
-    get: (path) => call('GET', path),
-    post: (path, body) => call('POST', path, body),
-    patch: (path, body) => call('PATCH', path, body),
+    get: (path, headers) => call('GET', path, undefined, headers),
+    post: (path, body, headers) => call('POST', path, body, headers),
+    patch: (path, body, headers) => call('PATCH', path, body, headers),
     // Four routes use PUT and this helper had no verb for them, so nothing in
     // the suite had ever sent one. A harness that cannot express a request is
     // a set of routes nobody tests.
-    put: (path, body) => call('PUT', path, body),
-    del: (path) => call('DELETE', path),
+    put: (path, body, headers) => call('PUT', path, body, headers),
+    del: (path, headers) => call('DELETE', path, undefined, headers),
   };
 }
 

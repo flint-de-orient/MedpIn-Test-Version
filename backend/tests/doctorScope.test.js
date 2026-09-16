@@ -109,22 +109,39 @@ describe('the clinician router asks which practice', () => {
   });
 });
 
-describe('the guards still permit when the practice is unknown', () => {
-  test('an unknown practice yields no filter, not an empty result', () => {
-    // The whole reason nine migrations landed on a live clinic without a
-    // maintenance window. A caller with no membership must be unrestricted, and
-    // a database with no enrolments at all means the backfill has not run —
-    // where an empty `$in` would look exactly like data loss.
+describe('an unknown practice sees nobody, not everybody', () => {
+  test('a caller with no practice gets an empty list rather than no filter', () => {
+    /*
+     * This asserted the opposite, and it was the reason nine migrations landed
+     * on a live clinic without a maintenance window: a caller with no
+     * membership was unrestricted, and a database with no enrolments meant the
+     * backfill had not run — where an empty `$in` would have looked exactly
+     * like data loss.
+     *
+     * The migrations have run. What reaches here with no practice now is an
+     * account that has none, and an unrestricted answer handed it the
+     * platform's register. `null` and `[]` mean "everyone" and "nobody", and
+     * the only safe one to default to is nobody.
+     */
     const scope = readFileSync(new URL('../src/middleware/practiceScope.js', import.meta.url), 'utf8');
-    const ids = scope.slice(scope.indexOf('export async function practicePatientIds'));
+    const start = scope.indexOf('export async function practicePatientIds');
+    // The function alone, to its closing brace — the helper defined after it
+    // is allowed to exist, it just must not be what this one asks.
+    const ids = scope.slice(start, scope.indexOf('\n}\n', start));
 
-    assert.match(
-      ids.slice(0, 500),
-      /if \(!practiceId \|\| !\(await enrolmentsExist\(\)\)\) \{\s*\n\s*req\._practicePatientIds = null;/,
+    assert.match(ids, /if \(!practiceId\) \{\s*\n\s*req\._practicePatientIds = \[\];/);
+    assert.doesNotMatch(
+      ids.replace(/^\s*(\/\/|\*|\/\*).*$/gm, ''),
+      /enrolmentsExist/,
+      'the list still opens up when no enrolment exists anywhere',
     );
-    // `null` and `[]` mean opposite things here — "everyone" and "nobody" — and
-    // the filter builder has to tell them apart.
-    assert.match(scope, /return ids \? \{ \[field\]: \{ \$in: ids \} \} : \{\};/);
+
+    const filter = scope.slice(scope.indexOf('export async function practicePatients('));
+    assert.doesNotMatch(
+      filter.slice(0, 200),
+      /: \{\};/,
+      'practicePatients can still answer with no filter at all',
+    );
   });
 
   test('the analytics cache is keyed by practice', () => {

@@ -9,45 +9,124 @@ import { recordDenial } from './recordDenial.js';
 /**
  * Keeping one practice's clinicians out of another practice's records.
  *
- * ---- The rule that makes this safe to ship ------------------------------
+ * ---- The rule, and how it changed ---------------------------------------
  *
- * It denies only on positive evidence of a mismatch. Never on missing data.
+ * Unknown is nobody. A caller whose practice cannot be read, a list with no
+ * practice to bound it and a patient with no enrolment all resolve to an empty
+ * set — never to `{}`, which in a Mongo filter means everything.
  *
- * That is not caution for its own sake, it is the difference between a guard
- * and an outage. Today there are no membership rows at all — the backfill has
- * not run — so a check written the obvious way ("the caller must belong to the
- * patient's practice") would refuse every request the moment it deployed, and
- * the clinic that is seeing patients right now would be locked out of its own
- * records on a Monday morning.
+ * It was the opposite for as long as the migrations were running, and the
+ * reasoning was sound then: before any membership or enrolment row existed, a
+ * guard that denied on missing data would have locked the working clinic out
+ * of its own records the hour it deployed. So every helper here permitted on
+ * unknown, and started protecting the moment rows existed.
  *
- * So: if either side's practice is unknown, this permits and gets out of the
- * way. It starts protecting the instant memberships exist, without a flag day,
- * and it cannot protect anything before then — which is honest, because before
- * then there is only one practice and nothing to protect it from.
+ * The migrations have run, desk registration writes an enrolment, and the
+ * deploy is gated on every active patient having one. What reaches these
+ * helpers with nothing to go on now is an account that genuinely has no
+ * practice — and the permissive answer handed it the platform.
+ *
+ * One escape remains, deliberately: `membershipsExist`, for a database with no
+ * membership rows at all. That is a fresh install with no staff to protect
+ * from each other, and it is asked only where "no rows" could otherwise not be
+ * told apart from "a practice with no colleagues".
+ *
+ * ---- Which practice, when somebody works at two --------------------------
+ *
+ * `practiceOf` answers once per request and never guesses: one membership is
+ * that practice; several need the caller to name one in `x-medpin-practice`,
+ * and are refused with PRACTICE_REQUIRED until they do.
  *
  * ---- How a patient has a practice at all --------------------------------
  *
- * Patients have no membership; they are not staff. Their practice is inferred
- * from the doctor they are assigned to. That is a proxy rather than a fact, and
- * it is the right proxy until Enrollment exists — a patient with no assigned
- * doctor is one nobody has taken on yet, and this permits rather than guessing.
+ * Patients have no membership; they are not staff. Their practices are the
+ * ones they are enrolled at, which is a fact rather than a proxy.
+ * `practiceOfPatient` still answers through the assigned doctor for the few
+ * callers that want one conservative answer; the tenant guard does not use it.
  */
 
 /**
- * The practice this caller belongs to, or null.
+ * The header a caller who works at more than one practice says which with.
  *
- * Cached on the request: several guards may ask on one call, and this is a
- * database round trip on a chat app that polls.
+ * A header rather than a query parameter or a body field: it applies to every
+ * request the app makes, including the ones with no body, and it does not have
+ * to be threaded through forty call sites that each build their own URL.
+ */
+export const PRACTICE_HEADER = 'x-medpin-practice';
+
+/**
+ * Every practice this caller currently works at.
+ *
+ * The plural is the honest shape. One person may consult at a polyclinic on
+ * Tuesdays and run their own evening clinic, which is the case `Membership`
+ * exists for; a function that can only answer with one of those is a function
+ * that has to choose, and choosing is not its job.
+ */
+export async function practicesOf(req) {
+  if (req._practiceIds !== undefined) return req._practiceIds;
+
+  const rows = await Membership.find(Membership.currentFilter(req.user?._id))
+    .select('practice')
+    .lean();
+
+  req._practiceIds = rows.map((r) => String(r.practice));
+  return req._practiceIds;
+}
+
+/**
+ * The practice this request is about, or null.
+ *
+ * ---- One answer per request, and never a guess ---------------------------
+ *
+ * This used to be `findOne`, which takes whichever membership the database
+ * returns first. With one practice per person that is correct every time, and
+ * it stays correct right up to the first person who works at two — and then it
+ * silently picks one. Not an error, not a log line: their patients, their
+ * diary and their colleagues would simply be somebody else's, on whichever
+ * request the index happened to order differently.
+ *
+ * So:
+ *
+ *   none    → null, and the guards above this refuse (see unplacedStaff)
+ *   one     → that one, without anybody being asked anything
+ *   several → the caller says which, in the `x-medpin-practice` header, and
+ *             is refused with PRACTICE_REQUIRED until they do
+ *
+ * The refusal is deliberate and it is not a fallback: there is no safe default
+ * between two practices, and defaulting is how one clinic's work lands in
+ * another's records. A named practice the caller does not currently work at is
+ * refused for the same reason.
+ *
+ * Cached on the request: several guards ask on one call, and this is a
+ * database round trip on an app that polls.
  */
 export async function practiceOf(req) {
   if (req._practiceId !== undefined) return req._practiceId;
 
-  const row = await Membership.findOne(Membership.currentFilter(req.user?._id))
-    .select('practice')
-    .lean();
+  const mine = await practicesOf(req);
 
-  req._practiceId = row?.practice ? String(row.practice) : null;
-  return req._practiceId;
+  if (mine.length === 0) {
+    req._practiceId = null;
+    return null;
+  }
+
+  if (mine.length === 1) {
+    req._practiceId = mine[0];
+    return req._practiceId;
+  }
+
+  const named = req.get?.(PRACTICE_HEADER)?.trim();
+  if (named && mine.includes(named)) {
+    req._practiceId = named;
+    return req._practiceId;
+  }
+
+  recordDenial(req, { reason: named ? 'practice_not_yours' : 'practice_ambiguous' });
+  throw new AppError(
+    409,
+    'PRACTICE_REQUIRED',
+    'You work at more than one practice. Choose which one this request is for.',
+  );
 }
 
 /**
@@ -140,23 +219,51 @@ export async function practiceOfAppointment(appointment) {
 
 /**
  * Refuse when the caller and the patient are demonstrably in different
- * practices. Permit in every other case, including every case where either
- * answer is unknown — see the note at the top.
+ * practices.
+ *
+ * ---- Asked of the enrolment, not of the assigned doctor ------------------
+ *
+ * This compared `practiceOf(req)` with `practiceOfPatient`, which answers
+ * through `assignedDoctor` — a single field naming one doctor at one practice.
+ * For a patient properly enrolled at two, it returned the first practice and
+ * refused the second: a clinician at a clinic the patient had consented to,
+ * told that patient belongs to somebody else. The desk enrolment path assigns
+ * no doctor at all, so those patients answered null and this permitted
+ * everybody instead.
+ *
+ * Enrolment is the fact. A patient is at a practice because they were enrolled
+ * there, and that is what this asks.
+ *
+ * ---- Why any enrolment counts, including a pending one -------------------
+ *
+ * A patient the desk registered this morning has a pending enrolment until
+ * they answer the code. They are at that practice — that is precisely what
+ * pending means — and refusing here would answer with the wrong sentence.
+ * `enrollmentGate` runs immediately after and says "has not yet consented",
+ * which is the true one.
+ *
+ * A patient with no enrolment anywhere is left to the gate too, for the same
+ * reason: "not connected to any practice yet" tells a clinician what to do,
+ * and "belongs to a different practice" does not.
  */
 export async function assertSamePractice(req, patientId) {
-  const [mine, theirs] = await Promise.all([practiceOf(req), practiceOfPatient(patientId)]);
+  const mine = await practiceOf(req);
+  // No practice on the caller is the pre-membership state; unplacedStaff has
+  // already refused anybody it should refuse. See the note at the top.
+  if (!mine) return;
 
-  // Unknown on either side is not a mismatch. This is the whole safety
-  // argument and it should stay the first thing this function says.
-  if (!mine || !theirs) return;
+  const [here, anywhere] = await Promise.all([
+    Enrollment.exists({ patient: patientId, practice: mine }),
+    Enrollment.exists({ patient: patientId }),
+  ]);
 
-  if (mine !== theirs) {
-    // Recorded before it is thrown. A refusal that leaves no trace is the one
-    // entry an audit trail most needs and the one it usually lacks, because
-    // the request never reached the handler that would have logged it.
-    recordDenial(req, { reason: 'cross_practice', patientId, practiceId: mine });
-    throw forbidden('That patient belongs to a different practice');
-  }
+  if (here || !anywhere) return;
+
+  // Recorded before it is thrown. A refusal that leaves no trace is the one
+  // entry an audit trail most needs and the one it usually lacks, because
+  // the request never reached the handler that would have logged it.
+  recordDenial(req, { reason: 'cross_practice', patientId, practiceId: mine });
+  throw forbidden('That patient belongs to a different practice');
 }
 
 /**
@@ -183,8 +290,7 @@ export async function assertSamePractice(req, patientId) {
  * second practice on its first day.
  */
 export async function practicePatients(req, field = '_id') {
-  const ids = await practicePatientIds(req);
-  return ids ? { [field]: { $in: ids } } : {};
+  return { [field]: { $in: await practicePatientIds(req) } };
 }
 
 /**
@@ -202,10 +308,21 @@ export async function practicePatients(req, field = '_id') {
 export async function practicePatientIds(req) {
   if (req._practicePatientIds !== undefined) return req._practicePatientIds;
 
+  /*
+   * No practice is nobody, not everybody.
+   *
+   * This returned null — read by every caller as "unknown, so unrestricted" —
+   * both for a caller with no practice and for a database with no enrolments
+   * at all. Both were the migration's escape hatch, and both expand access by
+   * default: a list built for a practice became the platform's register for
+   * anybody whose practice could not be read. The migration has run; what
+   * reaches here with no practice is an account that has none, and its answer
+   * is an empty list.
+   */
   const practiceId = await practiceOf(req);
-  if (!practiceId || !(await enrolmentsExist())) {
-    req._practicePatientIds = null;
-    return null;
+  if (!practiceId) {
+    req._practicePatientIds = [];
+    return req._practicePatientIds;
   }
 
   req._practicePatientIds = await Enrollment.distinct('patient', {
@@ -213,21 +330,6 @@ export async function practicePatientIds(req) {
     status: ENROLLMENT_STATUS.ACTIVE,
   });
   return req._practicePatientIds;
-}
-
-/**
- * Has the enrolment backfill run at all?
- *
- * Cached once true, because a collection that has rows does not go back to
- * having none, and this is asked on every list request. Not cached while
- * false: the migration is followed by a restart, but a developer running it
- * against a live process should not have to guess why nothing changed.
- */
-let _enrolmentsExist = false;
-async function enrolmentsExist() {
-  if (_enrolmentsExist) return true;
-  _enrolmentsExist = (await Enrollment.estimatedDocumentCount()) > 0;
-  return _enrolmentsExist;
 }
 
 /** The same question about memberships, cached the same way and for the same reason. */
@@ -266,14 +368,6 @@ export function noPractice() {
     'NO_PRACTICE',
     'This account is not part of a practice any more. Ask the practice to add you back.',
   );
-}
-
-/** And about locations: has anything been linked to a practice yet? */
-let _clinicsLinked = false;
-async function clinicsAreLinked() {
-  if (_clinicsLinked) return true;
-  _clinicsLinked = (await Clinic.countDocuments({ practice: { $ne: null } })) > 0;
-  return _clinicsLinked;
 }
 
 /* ------------------------------------------------------------- the staff */
@@ -326,8 +420,10 @@ export async function memberIdsOf(practiceId, roles = null) {
  * `roles` is one role or several. Omit it for everybody in the practice.
  */
 export async function practiceMembers(req, roles = null, field = '_id') {
+  // Unknown is an empty set of colleagues rather than the platform's staff.
+  // See practicePatientIds for why the permissive answer had to go.
   const ids = await memberIdsOf(await practiceOf(req), roles);
-  return ids ? { [field]: { $in: ids } } : {};
+  return { [field]: { $in: ids ?? [] } };
 }
 
 /* ---------------------------------------------------------- the buildings */
@@ -423,8 +519,10 @@ export async function memberLocation(req) {
  * of the way rather than emptying the screen.
  */
 export async function practiceClinics(req, field = 'practice') {
+  // A caller with no practice has no buildings. `{}` here was every location
+  // on the platform — names, addresses and phone numbers — for whoever asked.
   const practiceId = await practiceOf(req);
-  if (!practiceId || !(await clinicsAreLinked())) return {};
+  if (!practiceId) return { [field]: { $in: [] } };
   return { [field]: practiceId };
 }
 
@@ -466,9 +564,11 @@ export async function patientPracticeIds(patientId) {
 
 /** `practiceClinics` for a patient: the locations of the practices they are enrolled at. */
 export async function patientClinics(patientId, field = 'practice') {
-  if (!(await clinicsAreLinked())) return {};
+  // The locations of the practices they are enrolled at, and none beyond. It
+  // answered `{}` — every location on the platform — while no location had
+  // been linked to a practice; every location has been since practices existed.
   const ids = await patientPracticeIds(patientId);
-  return ids ? { [field]: { $in: ids } } : {};
+  return { [field]: { $in: ids ?? [] } };
 }
 
 /**
