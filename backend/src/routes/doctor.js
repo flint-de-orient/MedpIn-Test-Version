@@ -1,13 +1,13 @@
 import { Router } from 'express';
 import dayjs from 'dayjs';
 import { z } from 'zod';
-import { requireAuth, requireClinician, requireDoctor } from '../middleware/auth.js';
-import { requirePermission } from '../middleware/authorise.js';
+import { requireAuth, requireClinician, requireDoctor, requireRole } from '../middleware/auth.js';
+import { requirePermission, requireRecordAccess } from '../middleware/authorise.js';
 import { PERMISSIONS } from '../models/Membership.js';
 import { validate, q } from '../middleware/validate.js';
 import { asyncHandler, notFound, conflict, badRequest, forbidden } from '../middleware/errors.js';
 import { audit } from '../middleware/audit.js';
-import { User, ROLES } from '../models/User.js';
+import { User, ROLES, CLINICIAN_ROLES } from '../models/User.js';
 import { PatientProfile } from '../models/PatientProfile.js';
 import { ClinicalAlert, ALERT_SEVERITY } from '../models/ClinicalAlert.js';
 import { Appointment } from '../models/Appointment.js';
@@ -65,7 +65,33 @@ import { attachableAssetIds } from '../services/mediaAccess.js';
 import { quotableMessageId, quotePreview, QUOTE_FIELDS } from '../services/quotedMessage.js';
 
 const router = Router();
-router.use(requireAuth, requireClinician);
+
+/*
+ * Who may open the doctor's panel, and what they may do in it.
+ *
+ * ---- It admitted everybody in CLINICIAN_ROLES, and asked nothing else ------
+ *
+ * `requireClinician` — seven roles, the dietician and the practice manager
+ * among them — and no permission on the routes that return patients. So a
+ * practice manager, whose preset "reads no clinical record", read the register,
+ * a patient's summary and adherence, the alerts, the worklist and the bell. The
+ * app routes them into this area on exactly the understanding that "the patient
+ * screens in this area refuse them at the server rather than merely hiding";
+ * the server did not.
+ *
+ * And a dietician, whose caseload C1 narrowed to the patients assigned to them,
+ * could open `/doctor/patients` and read the practice's whole register instead.
+ * Their panel is `/dietician`, the app calls nothing here on their behalf, and
+ * their preset carries VIEW_PATIENT — so no permission would have stopped them.
+ * They are refused by role.
+ *
+ * Then the grant, by what the request does: a GET needs VIEW_PATIENT, a write
+ * needs EDIT_RECORD. Every route here either returns patients or is
+ * doctor-only already, so nobody who belongs in this panel loses anything.
+ */
+const PANEL_ROLES = CLINICIAN_ROLES.filter((role) => role !== ROLES.DIETICIAN);
+
+router.use(requireAuth, requireRole(...PANEL_ROLES), requireRecordAccess());
 
 // Clinic-wide analytics are recomputed at most this often. The dashboard polls
 // every ~20s, but this aggregation over every reading changes slowly, so it is
