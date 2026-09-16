@@ -316,29 +316,48 @@ export async function sendLabUploadNudgePush({ patient, tests }) {
  * enrolling a patient by phone assigns none: for exactly the patients a second
  * practice brings, the answer was "unknown", and unknown woke everybody.
  *
- * ---- Permissive on unknown, like every other guard here ----------------
+ * ---- Nobody, never everybody ----------------------------------------------
  *
- * A patient no practice is caring for — enrolled nowhere, no doctor assigned —
- * still falls back to everyone, which is today's behaviour for today's single
- * clinic. Who should be woken about a patient nobody has taken on is a decision
- * about the clinic, not a default to change quietly here.
+ * A patient no practice is caring for — someone who signed up in the app and
+ * has not been enrolled anywhere — reaches nobody. This used to fall back to
+ * every doctor and front-desk account on the platform, and the push carries the
+ * patient's name and the first 180 characters of what is wrong: the exact
+ * people with no relationship to the patient were the ones woken. Nothing is
+ * sent, and the gap is logged so an operator can see it.
+ *
+ * The same holds when a practice's memberships cannot be read at all (a
+ * database that was never migrated): nobody, loudly — not the whole platform.
  *
  * Exported so that whose phones ring can be asked directly.
  */
 export async function staffFor(patientId, roles) {
   const wanted = [].concat(roles);
   const practices = patientId ? await practicesOfPatient(patientId) : [];
-  // `memberIdsOf(null)` is the unknown answer, and any null means "do not
-  // restrict" — a practice whose memberships have not been backfilled.
-  const lists = await Promise.all(
-    (practices.length ? practices : [null]).map((practiceId) => memberIdsOf(practiceId, wanted)),
-  );
-  const ids = lists.some((list) => list === null) ? null : lists.flat();
+
+  if (!practices.length) {
+    logger.warn(
+      { patientId: patientId ? String(patientId) : null, roles: wanted },
+      'notification has no practice to go to; nobody was notified',
+    );
+    return [];
+  }
+
+  const lists = await Promise.all(practices.map((practiceId) => memberIdsOf(practiceId, wanted)));
+  if (lists.some((list) => list === null)) {
+    logger.error(
+      { patientId: String(patientId), practices: practices.map(String) },
+      'practice memberships could not be read; nobody was notified',
+    );
+    return [];
+  }
+
+  const ids = [...new Set(lists.flat().map(String))];
+  if (!ids.length) return [];
 
   return User.find({
+    _id: { $in: ids },
     role: { $in: wanted },
     isActive: true,
-    ...(ids ? { _id: { $in: ids } } : {}),
   })
     .select('_id deviceTokens name')
     .lean();
@@ -350,14 +369,22 @@ export async function notifyClinicStaff(alert) {
   const staff = await staffFor(alert.patient, [ROLES.DOCTOR, ROLES.STAFF]);
 
   const tokens = staff.flatMap((s) => s.deviceTokens ?? []);
-  await deliver({
+  const { delivered } = await deliver({
     tokens,
     title: `${alert.severity === 'emergency' ? '🚨 EMERGENCY' : '⚠️ Urgent'}: ${alert.title}`,
     body: alert.detail?.slice(0, 180) ?? '',
     data: { alertId: alert._id.toString(), patientId: alert.patient.toString(), type: alert.type },
   });
 
-  await ClinicalAlert.findByIdAndUpdate(alert._id, { notifiedStaffAt: new Date() });
+  // "Notified" only when somebody's phone was actually reached. The attempt is
+  // kept either way, so zero delivered is on the record rather than invisible.
+  const now = new Date();
+  await ClinicalAlert.findByIdAndUpdate(alert._id, {
+    $set: {
+      staffNotification: { attemptedAt: now, recipients: staff.length, delivered },
+      ...(delivered > 0 ? { notifiedStaffAt: now } : {}),
+    },
+  });
 }
 
 /**

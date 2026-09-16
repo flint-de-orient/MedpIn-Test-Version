@@ -62,13 +62,48 @@ const clinicalAlertSchema = new mongoose.Schema(
     resolvedAt: Date,
     resolutionNotes: { type: String, maxlength: 2000 },
 
+    /// When staff were actually reached — set only when a push was delivered.
+    /// It used to be stamped after every attempt, so an alert nobody's phone
+    /// ever showed was recorded as one the clinic had been told about.
     notifiedStaffAt: Date,
     notifiedPatientAt: Date,
+
+    /// The last attempt to reach staff, whatever came of it: how many people
+    /// were eligible and how many deliveries succeeded. Zero delivered is a
+    /// fact worth keeping, not a silence.
+    staffNotification: {
+      attemptedAt: Date,
+      recipients: { type: Number, default: 0 },
+      delivered: { type: Number, default: 0 },
+    },
+
+    /// Each time this episode got worse. An emergency arriving while a warning
+    /// of the same kind is open raises the alert in place — one item in the
+    /// queue — and pages as if it were new.
+    escalations: [
+      {
+        _id: false,
+        from: { type: String, enum: ALERT_SEVERITY },
+        to: { type: String, enum: ALERT_SEVERITY },
+        at: Date,
+        previousTitle: { type: String, maxlength: 200 },
+      },
+    ],
+
+    /// patient | type | severity | window. Two identical alerts raised in the
+    /// same instant both pass the "anything open?" look-up; this refuses the
+    /// second, so one emergency pages once. Null for alerts that are never
+    /// de-duplicated.
+    dedupeKey: { type: String, default: null },
   },
   { timestamps: true },
 );
 
 clinicalAlertSchema.index({ status: 1, severity: 1, createdAt: -1 });
 clinicalAlertSchema.index({ patient: 1, createdAt: -1 });
+clinicalAlertSchema.index(
+  { dedupeKey: 1 },
+  { unique: true, partialFilterExpression: { dedupeKey: { $type: 'string' } } },
+);
 
 export const ClinicalAlert = mongoose.model('ClinicalAlert', clinicalAlertSchema);
