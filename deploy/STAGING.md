@@ -333,27 +333,28 @@ second run changes nothing.
 Before that change, `POST /doctor/patients` with a number MedPin had not seen
 made an account and no enrolment. Every list scoped to a practice's enrolled
 patients left those people out, so the desk that had just added somebody could
-not find them. This enrols each at the practice whose desk added them, dated
-from when the account was made, with a consent event saying how it came to be:
+not find them.
+
+**This is no longer a bulk backfill.** The script used to enrol every patient it
+matched, ACTIVE, in one `--apply`. Patients are now enrolled one at a time, with
+their consent (C8, §26), so the script only reports — it has no write path and
+`--apply` does nothing but say so:
 
 ```bash
 cd /var/www/clinq-staging/backend     # then /var/www/clinq/backend for production
-node scripts/backfillDeskRegistrations.js                                    # report
-mongodump --db medpin_staging --collection enrollments --out ~/dumps/desk-before-backfill
-mongodump --db medpin_staging --collection consentevents --out ~/dumps/desk-before-backfill
-node scripts/backfillDeskRegistrations.js --apply
+node scripts/backfillDeskRegistrations.js                                    # report only
 ```
 
-**Read the report before applying.** A patient with no enrolment anywhere is
-either one of these or a self sign-up, and a self sign-up is unaffiliated by
-decision — enrolling one hands a stranger's record to a practice. The two are
-told apart by the desk route's audit row, matched to the account by time
-because those rows did not record the account's id. Anything the script cannot
-match to exactly one row is listed as skipped and left for a person: that list
-is the part worth reading, and the right answer for an ambiguous row is to
-enrol that patient from the app, with their code, rather than by script.
+The report lists, per practice, each patient its desk added and cannot see,
+with the number they were registered under. Hand each practice its list. The
+desk registers each person again from the app: the number already has an
+account, so the patient is texted a code and is enrolled when they read it back
+— and is then asked, once, in their own app, whether that practice may see
+their earlier records. Rows the script cannot match to one practice are listed
+as unresolved; ask the practices, and enrol through the same route.
 
-A second run enrols nobody. The rollback is the dump above.
+If this ran with `--apply` on a deployment before C8, the enrolments it wrote
+stand — nothing here removes them.
 
 ### Once, after deploying per-practice emergency numbers
 
