@@ -5,6 +5,8 @@ import { z } from 'zod';
 import { inClinicTz, clinicDateTime } from '../utils/clinicTime.js';
 import { requireAuth, resolvePatientScope } from '../middleware/auth.js';
 import { validate, q } from '../middleware/validate.js';
+import { requireRecordAccess, requirePermission } from '../middleware/authorise.js';
+import { PERMISSIONS } from '../models/Membership.js';
 import { asyncHandler, notFound, badRequest } from '../middleware/errors.js';
 import { audit } from '../middleware/audit.js';
 import { Medication, MED_FORMS } from '../models/Medication.js';
@@ -20,7 +22,10 @@ import { notifyPatientOfMedicineChange } from '../services/notifications.js';
 import { practiceOfPatient } from '../middleware/practiceScope.js';
 
 const router = Router({ mergeParams: true });
-router.use(requireAuth, resolvePatientScope);
+// Whose patient this is, then what this person may do with them: the medicine list and its doses.
+// `resolvePatientScope` answers the first and was, until now, the only thing
+// asked — so EDIT_RECORD was granted by every preset and enforced by nothing.
+router.use(requireAuth, resolvePatientScope, requireRecordAccess());
 
 /**
  * True when a clinician is acting on a patient's record rather than the
@@ -81,6 +86,16 @@ router.get(
 
 router.post(
   '/',
+  /*
+   * Changing what somebody takes is a prescribing act, whoever types it.
+   *
+   * EDIT_RECORD comes from the router and is right for noting a weight or
+   * logging a dose; it is not the grant for adding a drug, changing a dose or
+   * stopping a course. A patient acting on their own list has no membership
+   * and passes, as everywhere else — their own stop is their own to make, and
+   * C3 splits it from the doctor's properly.
+   */
+  requirePermission(PERMISSIONS.PRESCRIBE),
   validate({ body: medicationSchema }),
   audit('create', 'Medication'),
   asyncHandler(async (req, res) => {
@@ -294,6 +309,7 @@ router.post(
 
 router.patch(
   '/:id',
+  requirePermission(PERMISSIONS.PRESCRIBE),
   validate({ body: medicationSchema.partial().extend({ isActive: z.boolean().optional() }) }),
   audit('update', 'Medication'),
   asyncHandler(async (req, res) => {
@@ -317,6 +333,7 @@ router.patch(
 
 router.delete(
   '/:id',
+  requirePermission(PERMISSIONS.PRESCRIBE),
   audit('update', 'Medication'),
   asyncHandler(async (req, res) => {
     // Soft delete: adherence history for past doses must remain interpretable.

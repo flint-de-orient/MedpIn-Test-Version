@@ -15,13 +15,16 @@ import { raiseAlert } from '../services/alerts.js';
 import { glucoseTrends, recomputePatientRisk } from '../services/analytics.js';
 import { paged, pageParams, dateRange } from '../utils/pagination.js';
 import { logger } from '../config/logger.js';
-import { recordWindow } from '../middleware/authorise.js';
+import { recordWindow, requireRecordAccess } from '../middleware/authorise.js';
 import { attachableAssetId } from '../services/mediaAccess.js';
 
 // mergeParams so :patientId from the parent mount is visible here.
 const router = Router({ mergeParams: true });
 
-router.use(requireAuth, resolvePatientScope);
+// Whose patient this is, then what this person may do with them: readings a patient logs and a clinician reviews.
+// `resolvePatientScope` answers the first and was, until now, the only thing
+// asked — so EDIT_RECORD was granted by every preset and enforced by nothing.
+router.use(requireAuth, resolvePatientScope, requireRecordAccess());
 
 async function targetsFor(patientId) {
   const profile = await PatientProfile.findOne({ user: patientId }).select('targets').lean();

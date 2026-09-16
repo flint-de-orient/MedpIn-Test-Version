@@ -126,16 +126,35 @@ describe('the guard is wired where it matters', () => {
     // The permission is the practice's grant; the role guard is the platform's.
     // A route that dropped requireDoctor and kept only the permission would
     // admit anyone whose membership row happened to carry it.
+    /*
+     * What counts as the role guard.
+     *
+     * `requireDietician` names a platform role exactly as the other three do.
+     * `resolvePatientScope` is one too, and a stricter one: it refuses every
+     * role outside DIRECT_PATIENT_ACCESS before it so much as looks the
+     * patient up. Leaving either out made this report a guarded route as
+     * unguarded, which is how a ratchet stops being believed.
+     */
+    const GUARD = /require(Doctor|Clinician|Role|Dietician)|resolvePatientScope/;
+
     for (const f of readdirSync(ROUTES).filter((n) => n.endsWith('.js'))) {
       const src = routeSrc(f);
+
+      /*
+       * A guard on the router covers every route in the file, and cannot be
+       * forgotten on the one added next Friday — which is more than can be
+       * said for one repeated per route. Where the file has one, the routes
+       * below it need not repeat it.
+       */
+      const onTheRouter = src
+        .split('\n')
+        .some((line) => line.startsWith('router.use(') && GUARD.test(line));
+
       for (const m of src.matchAll(/requirePermission\(PERMISSIONS\.(\w+)\)/g)) {
+        if (onTheRouter) continue;
         const before = src.slice(Math.max(0, m.index - 400), m.index);
         assert.ok(
-          // `requireDietician` belongs here for the same reason as the rest:
-          // it names a platform role, and the dietician routes carry the chat
-          // grants. Leaving it out made the ratchet report a guarded route as
-          // unguarded, which is how a ratchet stops being believed.
-          /require(Doctor|Clinician|Role|Dietician)/.test(before),
+          GUARD.test(before),
           `${f}: requirePermission(${m[1]}) has no role guard above it`,
         );
       }

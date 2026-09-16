@@ -18,7 +18,7 @@ import { buildPatientContext } from '../services/patientContext.js';
 import { raiseAlert } from '../services/alerts.js';
 import { recomputePatientRisk } from '../services/analytics.js';
 import { paged, pageParams } from '../utils/pagination.js';
-import { recordWindow } from '../middleware/authorise.js';
+import { recordWindow, requireRecordAccess } from '../middleware/authorise.js';
 import { requireCapability } from '../middleware/requireCapability.js';
 import { CAPABILITIES } from '../services/capabilities.js';
 import { practiceForPatient, practicesOfPatient, practiceOf } from '../middleware/practiceScope.js';
@@ -26,7 +26,10 @@ import { attachableAssetIds } from '../services/mediaAccess.js';
 import { ROLES } from '../models/User.js';
 
 const router = Router({ mergeParams: true });
-router.use(requireAuth, resolvePatientScope);
+// Whose patient this is, then what this person may do with them: foot assessments, eye reports and lab reports.
+// `resolvePatientScope` answers the first and was, until now, the only thing
+// asked — so EDIT_RECORD was granted by every preset and enforced by nothing.
+router.use(requireAuth, resolvePatientScope, requireRecordAccess());
 
 const RISK_ORDER = ['low', 'moderate', 'high', 'urgent'];
 const higherRisk = (a, b) => (RISK_ORDER.indexOf(a ?? 'low') >= RISK_ORDER.indexOf(b ?? 'low') ? a : b);

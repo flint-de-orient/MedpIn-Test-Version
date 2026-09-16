@@ -12,7 +12,7 @@ import { Hba1cRecord } from '../models/Hba1cRecord.js';
 import { GlucoseReading } from '../models/GlucoseReading.js';
 import { recomputePatientRisk } from '../services/analytics.js';
 import { reportedNames, isReported } from '../utils/testNames.js';
-import { recordWindow } from '../middleware/authorise.js';
+import { recordWindow, requireRecordAccess } from '../middleware/authorise.js';
 import { attachableAssetId } from '../services/mediaAccess.js';
 
 /**
@@ -21,7 +21,10 @@ import { attachableAssetId } from '../services/mediaAccess.js';
  * Mounted at /patients/:patientId/lab-tests.
  */
 const router = Router({ mergeParams: true });
-router.use(requireAuth, resolvePatientScope);
+// Whose patient this is, then what this person may do with them: lab results and HbA1c.
+// `resolvePatientScope` answers the first and was, until now, the only thing
+// asked — so EDIT_RECORD was granted by every preset and enforced by nothing.
+router.use(requireAuth, resolvePatientScope, requireRecordAccess());
 
 function serialiseResult(r) {
   // `photo` is populated, so a report that is a PDF can say so. The field name

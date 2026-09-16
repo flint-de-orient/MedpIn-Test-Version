@@ -5,7 +5,7 @@ import { validate } from '../middleware/validate.js';
 import { asyncHandler, notFound } from '../middleware/errors.js';
 import { audit } from '../middleware/audit.js';
 import { FoodLog, MEAL_TYPES } from '../models/FoodLog.js';
-import { recordWindow } from '../middleware/authorise.js';
+import { recordWindow, requireRecordAccess } from '../middleware/authorise.js';
 import { attachableAssetId } from '../services/mediaAccess.js';
 
 /**
@@ -14,7 +14,10 @@ import { attachableAssetId } from '../services/mediaAccess.js';
  * uses `me`, a clinician a real id.
  */
 const router = Router({ mergeParams: true });
-router.use(requireAuth, resolvePatientScope);
+// Whose patient this is, then what this person may do with them: the food log.
+// `resolvePatientScope` answers the first and was, until now, the only thing
+// asked — so EDIT_RECORD was granted by every preset and enforced by nothing.
+router.use(requireAuth, resolvePatientScope, requireRecordAccess());
 
 export function serialiseFoodLog(f) {
   // f.photo may arrive populated ({_id, mimeType}) or as a raw id (on create).

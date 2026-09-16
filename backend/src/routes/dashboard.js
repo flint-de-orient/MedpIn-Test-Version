@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import dayjs from 'dayjs';
 import { requireAuth, resolvePatientScope } from '../middleware/auth.js';
+import { requireRecordAccess } from '../middleware/authorise.js';
 import { asyncHandler } from '../middleware/errors.js';
 import { audit } from '../middleware/audit.js';
 import { computeHealthScore, computeAdherence, glucoseTrends } from '../services/analytics.js';
@@ -20,7 +21,10 @@ import { conditionsFor } from '../services/patientConditions.js';
 import { patientsForLogin } from '../services/patientsForLogin.js';
 
 const router = Router({ mergeParams: true });
-router.use(requireAuth, resolvePatientScope);
+// Whose patient this is, then what this person may do with them: the patient's own dashboard.
+// `resolvePatientScope` answers the first and was, until now, the only thing
+// asked — so EDIT_RECORD was granted by every preset and enforced by nothing.
+router.use(requireAuth, resolvePatientScope, requireRecordAccess());
 
 /**
  * One call powers the entire home screen. Everything fans out in parallel —

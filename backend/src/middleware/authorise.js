@@ -1,4 +1,4 @@
-import { Membership, MEMBERSHIP_STATUS } from '../models/Membership.js';
+import { Membership, MEMBERSHIP_STATUS, PERMISSIONS } from '../models/Membership.js';
 import { forbidden } from './errors.js';
 import { practiceOf, assertSamePractice, unplacedStaff, noPractice } from './practiceScope.js';
 import { practiceMaySee } from '../services/enrollments.js';
@@ -188,3 +188,41 @@ export function recordWindow(req, field = 'createdAt') {
   if (!from) return {};
   return { [field]: { $gte: new Date(from) } };
 }
+
+/**
+ * The grant a patient-scoped clinical route needs, decided by what it does.
+ *
+ * ---- The gap this closes -------------------------------------------------
+ *
+ * `EDIT_RECORD` was granted by every preset that touches a patient and checked
+ * by nothing. It appeared in the presets, in the capability payload the app
+ * reads, and in the console's permission list — so a practice could see it
+ * ticked beside somebody's name, untick it, and change nothing at all.
+ *
+ * `VIEW_PATIENT` was barely better: a handful of routes asked for it while the
+ * clinical routers — readings, medicines, food logs, lab results, foot and eye
+ * records — asked only `resolvePatientScope`, which answers "whose patient is
+ * this" and not "what may this person do with them".
+ *
+ * ---- Why one middleware rather than forty ---------------------------------
+ *
+ * Because the alternative decays. Forty-one routes across six routers, each
+ * needing the right one of two grants, is forty-one chances to forget — and
+ * the one that gets forgotten is the one added next Friday. Mounted on the
+ * router, a new route inherits the rule by existing.
+ *
+ * The method is the question: a GET asks to see the record, anything else
+ * writes to it. Routes that need more than this say so themselves — medicine
+ * changes add PRESCRIBE beside it, because changing somebody's regimen is not
+ * the same act as noting their weight.
+ *
+ * A patient calling about their own record has no membership and passes, which
+ * is `requirePermission`'s existing rule and the right one here: permissions
+ * describe what a practice's staff may do, and a patient is not staff.
+ */
+export const requireRecordAccess = () => {
+  const read = requirePermission(PERMISSIONS.VIEW_PATIENT);
+  const write = requirePermission(PERMISSIONS.EDIT_RECORD);
+  return (req, res, next) =>
+    (req.method === 'GET' || req.method === 'HEAD' ? read : write)(req, res, next);
+};
