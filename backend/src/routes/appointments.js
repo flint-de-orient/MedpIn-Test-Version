@@ -20,7 +20,7 @@ import {
   notifyPatientOfAppointmentChange,
   notifyWaitlistOfFreedSlot,
 } from '../services/notifications.js';
-import { ACTIVE_STATUSES, isSlotBookable } from '../services/scheduling.js';
+import { ACTIVE_STATUSES, isSlotBookable, doctorCommitments } from '../services/scheduling.js';
 import { paged, pageParams, dateRange } from '../utils/pagination.js';
 import { postCareThreadNote } from '../services/careThreadNote.js';
 import { resolveDoctor } from '../services/doctorContext.js';
@@ -341,18 +341,17 @@ router.post(
       }
     }
 
-    // Second guard against a race — two patients validating the same free slot
-    // in the same instant. The unique-ish window catches the loser.
+    // Second guard, for the doctor rather than the building: a teleconsult has
+    // no slot list to have checked, and a doctor booked at another location in
+    // the moments since is not in either. See doctorCommitments.
     const slotStart = dayjs(scheduledFor);
-    const clash = await Appointment.findOne({
-      ...(clinic ? { clinic: clinic._id } : { doctor: doctor._id, clinic: null }),
-      status: { $in: ACTIVE_STATUSES },
-      scheduledFor: {
-        $gte: slotStart.toDate(),
-        $lt: slotStart.add(clinic?.slotMinutes ?? DEFAULT_SLOT_MINUTES, 'minute').toDate(),
-      },
-    });
-    if (clash) throw badRequest('That time slot has just been taken. Please choose another.');
+    const length = clinic?.slotMinutes ?? DEFAULT_SLOT_MINUTES;
+    const clash = await doctorCommitments(
+      doctor._id,
+      slotStart.toDate(),
+      slotStart.add(length, 'minute').toDate(),
+    );
+    if (clash.length) throw badRequest('That time slot has just been taken. Please choose another.');
 
     const appointment = await Appointment.create({
       patient: patientId,
@@ -688,17 +687,15 @@ router.patch(
       throw badRequest('That time is not free. Please choose another.');
     }
 
+    // The doctor's diary, not the building's — the same rule as booking.
     const slotStart = dayjs(scheduledFor);
-    const clash = await Appointment.findOne({
-      _id: { $ne: appointment._id },
-      clinic: clinic._id,
-      status: { $in: ACTIVE_STATUSES },
-      scheduledFor: {
-        $gte: slotStart.toDate(),
-        $lt: slotStart.add(clinic.slotMinutes ?? DEFAULT_SLOT_MINUTES, 'minute').toDate(),
-      },
-    });
-    if (clash) throw badRequest('That time has just been taken. Please choose another.');
+    const clash = await doctorCommitments(
+      appointment.doctor,
+      slotStart.toDate(),
+      slotStart.add(clinic.slotMinutes ?? DEFAULT_SLOT_MINUTES, 'minute').toDate(),
+      { exclude: appointment._id },
+    );
+    if (clash.length) throw badRequest('That time has just been taken. Please choose another.');
 
     // The same patient, twice on one day.
     //
@@ -804,7 +801,9 @@ router.patch(
     if (existing.clinic) {
       const clinic = await Clinic.findOne({ _id: existing.clinic, isActive: true });
       if (!clinic) throw badRequest('That clinic is not available');
-      if (!(await isSlotBookable(clinic, req.body.scheduledFor, { doctorId: existing.doctor }))) {
+      // The appointment being moved is still in the diary until it is
+      // cancelled below, and must not count as the thing it clashes with.
+      if (!(await isSlotBookable(clinic, req.body.scheduledFor, { doctorId: existing.doctor, exclude: existing._id }))) {
         throw badRequest('That time slot is not available. Please choose another.');
       }
     }
