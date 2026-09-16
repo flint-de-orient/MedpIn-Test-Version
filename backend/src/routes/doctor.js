@@ -91,7 +91,26 @@ const router = Router();
  */
 const PANEL_ROLES = CLINICIAN_ROLES.filter((role) => role !== ROLES.DIETICIAN);
 
-router.use(requireAuth, requireRole(...PANEL_ROLES), requireRecordAccess());
+/*
+ * The reads that return no patient at all, only figures about the practice.
+ *
+ * `/analytics` answers with counts per day — readings in range, patients
+ * engaged, check-ins overdue — and no name, phone number or record. It is the
+ * practice manager's whole dashboard: their preset withholds VIEW_PATIENT
+ * precisely so that figures like these are what they see instead of patients.
+ * Behind the record grant, that screen was a refusal.
+ *
+ * Named one by one rather than matched by pattern, so a route added later that
+ * does return patients cannot fall in here by the shape of its path. Anything
+ * listed must stay aggregate — see doctorRouterGrants.test.js, which reads the
+ * payload for names.
+ */
+const AGGREGATE_ONLY = new Set(['/analytics']);
+const recordAccess = requireRecordAccess();
+
+router.use(requireAuth, requireRole(...PANEL_ROLES), (req, res, next) =>
+  req.method === 'GET' && AGGREGATE_ONLY.has(req.path) ? next() : recordAccess(req, res, next),
+);
 
 // Clinic-wide analytics are recomputed at most this often. The dashboard polls
 // every ~20s, but this aggregation over every reading changes slowly, so it is

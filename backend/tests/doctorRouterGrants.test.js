@@ -17,9 +17,10 @@ import { PLAN, PRACTICE_TYPE } from '../src/models/Practice.js';
  * The sweep put VIEW_PATIENT and EDIT_RECORD on the six routers mounted under
  * `/patients/:patientId`. The doctor router is not one of them. It is guarded by
  * `requireClinician`, which admits every role in CLINICIAN_ROLES — the dietician
- * and the practice manager included — and nine of its reads return patients:
+ * and the practice manager included — and eight of its reads return patients:
  * the register, a patient's summary, adherence, alerts, the worklist, the
- * overview, analytics, the lab overview and the notification bell.
+ * overview, the lab overview and the notification bell. (Analytics returns
+ * figures only and stays open to the practice manager — see the last suite.)
  *
  * So a practice manager, whose preset says it "reads no clinical record", could
  * read all of them. And a dietician, whose caseload C1 had just narrowed to the
@@ -106,5 +107,42 @@ describe('the doctor’s panel reads patients for the people allowed to', () => 
 
     assert.equal(res.status, 403, 'EDIT_RECORD was revoked and vitals were written');
     assert.equal(await VitalRecord.countDocuments({ patient: patient.user._id }), 0);
+  });
+});
+
+describe('the practice manager still sees the practice’s figures', () => {
+  before(boot);
+  after(shutdown);
+  beforeEach(async () => {
+    await wipe();
+    practice = await makePractice('Salt Lake', {
+      practiceType: PRACTICE_TYPE.CLINIC,
+      plan: PLAN.PROFESSIONAL,
+    });
+    doctor = await makeMember(practice, { name: 'Dr Sen', isOwner: true });
+    manager = await makeMember(practice, { name: 'Practice Manager', role: ROLES.PRACTICE_MANAGER });
+    patient = await makePatient({ name: 'Rahul Bose', practices: [practice] });
+    await PatientProfile.create({ user: patient.user._id, assignedDoctor: doctor.user._id });
+  });
+
+  test('their dashboard’s one panel answers, and names nobody', async () => {
+    /*
+     * Their preset withholds VIEW_PATIENT so that counts are what they see
+     * instead of patients — and the counts are exactly this route. Putting the
+     * record grant in front of the whole panel turned their whole dashboard
+     * into a refusal; the exemption is only safe while the answer stays
+     * figures, which is what the second assertion holds it to.
+     */
+    const res = await as(manager.token).get('/doctor/analytics?days=30');
+
+    assert.equal(res.status, 200, 'the practice manager’s dashboard was refused');
+    const text = JSON.stringify(res.body);
+    assert.ok(!text.includes('Rahul Bose'), 'the aggregate figures carried a patient’s name');
+    assert.ok(!text.includes(String(patient.user.phone)), 'the aggregate figures carried a phone number');
+  });
+
+  test('and the exemption does not reach anything that returns patients', async () => {
+    const res = await as(manager.token).get('/doctor/patients');
+    assert.equal(res.status, 403);
   });
 });
