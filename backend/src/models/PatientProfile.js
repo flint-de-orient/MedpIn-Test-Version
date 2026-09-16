@@ -87,6 +87,10 @@ const patientProfileSchema = new mongoose.Schema(
     // analytics service rather than trusted as a source of truth.
     riskScore: { type: Number, min: 0, max: 100, default: 0, index: true },
     riskBand: { type: String, enum: ['low', 'moderate', 'high', 'critical'], default: 'low', index: true },
+    /// Why the score is what it is, as computed with it. The reasons were
+    /// worked out and thrown away, so a doctor saw "high" with nothing to say
+    /// what made it high — or whether it still does.
+    riskReasons: { type: [String], default: [] },
     lastRiskComputedAt: Date,
 
     assignedDoctor: { type: mongoose.Schema.Types.ObjectId, ref: 'User', index: true },

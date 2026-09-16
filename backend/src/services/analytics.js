@@ -560,6 +560,7 @@ export async function recomputePatientRisk(patientId) {
   if (profile) {
     profile.riskScore = risk;
     profile.riskBand = band;
+    profile.riskReasons = reasons;
     profile.lastRiskComputedAt = new Date();
     await profile.save();
   }

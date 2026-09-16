@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+import { clinicalRecord } from './plugins/clinicalRecord.js';
 
 const hba1cSchema = new mongoose.Schema(
   {
@@ -7,6 +8,8 @@ const hba1cSchema = new mongoose.Schema(
     testedOn: { type: Date, required: true, index: true },
     labName: { type: String, trim: true, maxlength: 160 },
     reportFile: { type: mongoose.Schema.Types.ObjectId, ref: 'MediaAsset' },
+    /// The lab report it was read off, when it came from one.
+    labResult: { type: mongoose.Schema.Types.ObjectId, ref: 'LabResult', default: null, index: true },
     notes: { type: String, maxlength: 500 },
   },
   { timestamps: true },
@@ -20,5 +23,7 @@ hba1cSchema.virtual('estimatedAverageGlucose').get(function eag() {
 });
 
 hba1cSchema.set('toJSON', { virtuals: true });
+
+hba1cSchema.plugin(clinicalRecord, { hideVoided: true });
 
 export const Hba1cRecord = mongoose.model('Hba1cRecord', hba1cSchema);

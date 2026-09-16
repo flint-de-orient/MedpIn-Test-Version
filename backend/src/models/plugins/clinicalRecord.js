@@ -35,7 +35,29 @@ import mongoose from 'mongoose';
  *
  * It adds the fields, an index, `isCurrent()`, and `void`/`correct`/`supersede`
  * helpers. It deliberately does **not** add a `remove` of any kind.
+ *
+ * ---- Readings: `{ hideVoided: true }` ------------------------------------------
+ *
+ * A glucose reading typed with a wrong digit, or a lab report uploaded for the
+ * wrong person, has to stop counting — in the trend, the risk score, the panels,
+ * the assistant's context — without disappearing. They used to be deleted, and
+ * a lab report's deletion took with it every clinic glucose reading that
+ * happened to share its value and date.
+ *
+ * With this option every find, count, distinct and aggregate on the model leaves
+ * voided entries out, so the forty places that read readings do not each have
+ * to remember to. A query that names `recordState` itself is left alone: that
+ * is how the history and audit views ask for everything (see WITH_VOIDED).
+ * Prescriptions do not use it — a superseded prescription is history the lists
+ * show on purpose.
  */
+
+/**
+ * Filter fragment that includes voided entries on a model that hides them.
+ * `$nin: []` matches every document, including those written before
+ * `recordState` existed, and naming the field turns the hiding off.
+ */
+export const WITH_VOIDED = Object.freeze({ recordState: { $nin: [] } });
 export const RECORD_STATE = Object.freeze({
   /// In force.
   CURRENT: 'current',
@@ -50,7 +72,7 @@ export const RECORD_STATE = Object.freeze({
 /** The states in which a record no longer stands. */
 const ENDED = [RECORD_STATE.VOIDED, RECORD_STATE.CORRECTED, RECORD_STATE.SUPERSEDED];
 
-export function clinicalRecord(schema) {
+export function clinicalRecord(schema, { hideVoided = false } = {}) {
   schema.add({
     recordState: {
       type: String,
@@ -63,6 +85,9 @@ export function clinicalRecord(schema) {
     /// happened" and none of the questions that follow it.
     endedAt: { type: Date, default: null },
     endedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+    /// In what capacity — the patient correcting their own log is a different
+    /// act from a clinician withdrawing a result.
+    endedByRole: { type: String, default: null },
     endedReason: { type: String, trim: true, maxlength: 500, default: null },
 
     /// The record that replaced this one, for a correction or a supersession.
@@ -84,7 +109,20 @@ export function clinicalRecord(schema) {
    * name which of the three happened, and cannot end a record without saying
    * why.
    */
-  schema.methods.endAs = function endAs(state, { by = null, reason, replacedBy = null } = {}) {
+  if (hideVoided) {
+    const leavesOutVoided = function leavesOutVoided() {
+      if (Object.prototype.hasOwnProperty.call(this.getFilter(), 'recordState')) return;
+      this.where({ recordState: { $ne: RECORD_STATE.VOIDED } });
+    };
+    schema.pre(['find', 'findOne', 'countDocuments', 'distinct'], leavesOutVoided);
+    schema.pre('aggregate', function leavesOutVoidedAggregate() {
+      const first = this.pipeline()[0];
+      if (first?.$match && Object.prototype.hasOwnProperty.call(first.$match, 'recordState')) return;
+      this.pipeline().unshift({ $match: { recordState: { $ne: RECORD_STATE.VOIDED } } });
+    });
+  }
+
+  schema.methods.endAs = function endAs(state, { by = null, byRole = null, reason, replacedBy = null } = {}) {
     if (!ENDED.includes(state)) {
       throw new Error(`endAs expects one of ${ENDED.join(', ')}, got ${state}`);
     }
@@ -98,6 +136,7 @@ export function clinicalRecord(schema) {
     this.recordState = state;
     this.endedAt = new Date();
     this.endedBy = by;
+    this.endedByRole = byRole;
     this.endedReason = String(reason).trim();
     this.replacedBy = replacedBy;
 

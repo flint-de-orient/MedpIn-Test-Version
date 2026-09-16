@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+import { clinicalRecord } from './plugins/clinicalRecord.js';
 
 /**
  * A test report the patient uploaded against a lab test the doctor advised
@@ -50,5 +51,9 @@ const labResultSchema = new mongoose.Schema(
 );
 
 labResultSchema.index({ patient: 1, createdAt: -1 });
+
+// Withdrawn, not deleted: a report the patient uploaded, that the doctor may
+// have read and acted on, stays on the record with who withdrew it and why.
+labResultSchema.plugin(clinicalRecord, { hideVoided: true });
 
 export const LabResult = mongoose.model('LabResult', labResultSchema);

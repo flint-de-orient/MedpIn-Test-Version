@@ -241,6 +241,7 @@ async function fileValues(doc, testedOn) {
         testedOn,
         reportFile: doc.photo,
         notes: `Read automatically from ${doc.testName}`,
+        labResult: doc._id,
       });
     }
   }
@@ -279,6 +280,7 @@ async function fileValues(doc, testedOn) {
       source: 'clinic',
       flag: assessment.flag,
       notes: `From ${doc.testName} report`,
+      labResult: doc._id,
     });
 
     if (assessment.urgency === 'emergency' || assessment.urgency === 'urgent') {

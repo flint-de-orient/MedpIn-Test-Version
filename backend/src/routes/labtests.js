@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import mongoose from 'mongoose';
 import { z } from 'zod';
 import { requireAuth, resolvePatientScope } from '../middleware/auth.js';
 import { validate } from '../middleware/validate.js';
@@ -8,8 +9,8 @@ import { LabResult } from '../models/LabResult.js';
 import { Prescription } from '../models/Prescription.js';
 import { analyseLabResult } from '../services/ai/labReport.js';
 import { buildAnalytes } from '../services/analyteCatalog.js';
-import { Hba1cRecord } from '../models/Hba1cRecord.js';
-import { GlucoseReading } from '../models/GlucoseReading.js';
+import { withdrawLabResult } from '../services/readingCorrections.js';
+import { RECORD_STATE } from '../models/plugins/clinicalRecord.js';
 import { recomputePatientRisk } from '../services/analytics.js';
 import { reportedNames, isReported } from '../utils/testNames.js';
 import { recordWindow, requireRecordAccess } from '../middleware/authorise.js';
@@ -157,50 +158,41 @@ router.post(
 );
 
 /**
- * Removes a report the patient uploaded by mistake.
+ * Withdraws a report uploaded by mistake.
  *
  * The values read off it go too. A wrong report that has already been
  * transcribed has moved this patient's HbA1c history, their glucose trend and
- * therefore their risk band — deleting only the row would leave the numbers
- * behind, still driving what all three panels show, with nothing on screen to
- * explain where they came from.
+ * therefore their risk band — withdrawing only the report would leave the
+ * numbers behind, still driving what all three panels show.
+ *
+ * Withdrawn, not deleted, and only what this report created: the old delete
+ * removed every clinic glucose reading sharing its value and date, including
+ * one the desk typed from the same printout. See services/readingCorrections.js.
  */
 router.delete(
   '/:id',
-  audit('delete', 'LabResult'),
+  validate({ body: z.object({ reason: z.string().trim().min(3).max(300).optional() }).optional() }),
+  audit('update', 'LabResult'),
   asyncHandler(async (req, res) => {
-    const entry = await LabResult.findOne({
-      _id: req.params.id,
-      patient: req.patientId,
-      ...recordWindow(req, 'createdAt'),
+    if (!mongoose.isValidObjectId(req.params.id)) throw notFound('Report not found');
+    const inReach = { _id: req.params.id, patient: req.patientId, ...recordWindow(req, 'createdAt') };
+    const entry = await LabResult.findOne(inReach);
+    if (!entry) {
+      // Already withdrawn: a retry of the same removal gets the same answer.
+      const withdrawn = await LabResult.exists({ ...inReach, recordState: RECORD_STATE.VOIDED });
+      if (withdrawn) return res.status(204).end();
+      throw notFound('Report not found');
+    }
+
+    await withdrawLabResult({
+      entry,
+      by: req.user._id,
+      byRole: req.user.role,
+      reason: req.body?.reason ?? (req.user.role === 'patient' ? 'Removed by the patient.' : 'Removed by the clinic.'),
     });
-    if (!entry) throw notFound('Report not found');
-
-    const a = entry.analysis ?? {};
-
-    // Keyed the same way they were written, so this can only ever remove what
-    // this report created.
-    if (entry.photo) {
-      await Hba1cRecord.deleteMany({ patient: req.patientId, reportFile: entry.photo });
-    }
-    for (const [context, valueMgDl] of [
-      ['fasting', a.fastingGlucoseMgDl],
-      ['post_meal', a.postPrandialGlucoseMgDl],
-    ]) {
-      if (valueMgDl == null || a.testedOn == null) continue;
-      await GlucoseReading.deleteMany({
-        patient: req.patientId,
-        valueMgDl,
-        context,
-        measuredAt: a.testedOn,
-        source: 'clinic',
-      });
-    }
-
-    await entry.deleteOne();
 
     // The record this fed has changed, so the band computed from it must be
-    // recomputed — otherwise a deleted report leaves the patient sitting in a
+    // recomputed — otherwise a withdrawn report leaves the patient sitting in a
     // risk band nothing on their record supports any more.
     recomputePatientRisk(req.patientId).catch(() => {});
 

@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import mongoose from 'mongoose';
 import dayjs from 'dayjs';
 import { z } from 'zod';
 import { requireAuth, resolvePatientScope } from '../middleware/auth.js';
@@ -18,6 +19,8 @@ import { paged, pageParams, dateRange } from '../utils/pagination.js';
 import { logger } from '../config/logger.js';
 import { recordWindow, requireRecordAccess } from '../middleware/authorise.js';
 import { attachableAssetId } from '../services/mediaAccess.js';
+import { voidGlucoseReading, removalOf } from '../services/readingCorrections.js';
+import { RECORD_STATE, WITH_VOIDED } from '../models/plugins/clinicalRecord.js';
 
 // mergeParams so :patientId from the parent mount is visible here.
 const router = Router({ mergeParams: true });
@@ -89,15 +92,26 @@ router.post(
 
 router.get(
   '/glucose',
-  validate({ query: pageParams.and(z.object({ context: z.enum(GLUCOSE_CONTEXTS).optional() })) }),
+  validate({
+    query: pageParams.and(
+      z.object({
+        context: z.enum(GLUCOSE_CONTEXTS).optional(),
+        // A clinician reading the full history, removed entries included and
+        // marked. Patients see their record as it stands.
+        includeRemoved: z.enum(['true', 'false']).optional(),
+      }),
+    ),
+  }),
   audit('read', 'GlucoseReading'),
   asyncHandler(async (req, res) => {
-    const { page, limit, skip, from, to, context } = q(req);
+    const { page, limit, skip, from, to, context, includeRemoved } = q(req);
+    const withRemoved = includeRemoved === 'true' && req.user.role !== 'patient';
     const filter = {
       patient: req.patientId,
       ...recordWindow(req, 'measuredAt'),
       ...dateRange('measuredAt', { from, to }),
       ...(context ? { context } : {}),
+      ...(withRemoved ? WITH_VOIDED : {}),
     };
     const [items, total] = await Promise.all([
       GlucoseReading.find(filter).sort({ measuredAt: -1 }).skip(skip).limit(limit).lean(),
@@ -115,12 +129,41 @@ router.get(
   }),
 );
 
+/**
+ * Takes a reading off the record — a typo, a meter used by somebody else.
+ *
+ * Voided with who, in what capacity and why, never deleted: it may already have
+ * raised an alert or been read by a doctor who acted on it. Every ordinary read
+ * leaves it out from now on, and the risk score is worked out again without it.
+ * Within the caller's reach only — this patient, and the practice's record
+ * window, which the old delete did not ask about.
+ */
 router.delete(
   '/glucose/:id',
+  validate({ body: z.object({ reason: z.string().trim().min(3).max(300).optional() }).optional() }),
   audit('update', 'GlucoseReading'),
   asyncHandler(async (req, res) => {
-    const deleted = await GlucoseReading.findOneAndDelete({ _id: req.params.id, patient: req.patientId });
-    if (!deleted) throw notFound('Reading not found');
+    if (!mongoose.isValidObjectId(req.params.id)) throw notFound('Reading not found');
+    const inReach = { _id: req.params.id, patient: req.patientId, ...recordWindow(req, 'measuredAt') };
+    const reading = await GlucoseReading.findOne(inReach).select('_id').lean();
+    if (!reading) {
+      // Already removed: a retry of the same removal gets the same answer.
+      const removed = await GlucoseReading.exists({ ...inReach, recordState: RECORD_STATE.VOIDED });
+      if (!removed) throw notFound('Reading not found');
+      return res.status(204).end();
+    }
+
+    // Conditional on it still being current, so two removals at once void it once.
+    const voided = await voidGlucoseReading({
+      readingId: reading._id,
+      scope: inReach,
+      by: req.user._id,
+      byRole: req.user.role,
+      reason: req.body?.reason ?? (req.user.role === 'patient' ? 'Removed by the patient.' : 'Removed by the clinic.'),
+    });
+    if (voided) {
+      recomputePatientRisk(req.patientId).catch((err) => logger.error({ err }, 'risk recompute failed'));
+    }
     res.status(204).end();
   }),
 );
@@ -417,6 +460,9 @@ const serialiseGlucose = (r) => ({
   source: r.source,
   flag: r.flag,
   notes: r.notes ?? null,
+  // Present only in a clinician's full history: when, by whom and why it was
+  // taken off the record.
+  removed: removalOf(r),
 });
 
 const serialiseHba1c = (r) => ({

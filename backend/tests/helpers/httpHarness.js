@@ -117,7 +117,9 @@ export function as(token) {
     // the suite had ever sent one. A harness that cannot express a request is
     // a set of routes nobody tests.
     put: (path, body, headers) => call('PUT', path, body, headers),
-    del: (path, headers) => call('DELETE', path, undefined, headers),
+    // A body is optional: a removal can carry its reason, which belongs in the
+    // body rather than in a URL that access logs keep.
+    del: (path, headers, body) => call('DELETE', path, body, headers),
   };
 }
 

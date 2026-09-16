@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+import { clinicalRecord } from './plugins/clinicalRecord.js';
 
 export const GLUCOSE_CONTEXTS = Object.freeze([
   'fasting',
@@ -30,6 +31,10 @@ const glucoseReadingSchema = new mongoose.Schema(
       index: true,
     },
     triggeredAlert: { type: mongoose.Schema.Types.ObjectId, ref: 'ClinicalAlert' },
+    /// The lab report this reading was read off, when it came from one — so
+    /// withdrawing the report withdraws exactly its readings, and never a
+    /// reading somebody typed with the same value on the same day.
+    labResult: { type: mongoose.Schema.Types.ObjectId, ref: 'LabResult', default: null, index: true },
 
     /**
      * The request that wrote this, for a client retrying it.
@@ -59,5 +64,9 @@ glucoseReadingSchema.index(
   { patient: 1, idempotencyKey: 1 },
   { unique: true, partialFilterExpression: { idempotencyKey: { $type: 'string' } } },
 );
+
+// Removed readings are voided, with who and why, never deleted — and every
+// read leaves them out. See plugins/clinicalRecord.js.
+glucoseReadingSchema.plugin(clinicalRecord, { hideVoided: true });
 
 export const GlucoseReading = mongoose.model('GlucoseReading', glucoseReadingSchema);
