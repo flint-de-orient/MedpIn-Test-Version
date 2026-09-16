@@ -26,7 +26,6 @@ import { getClinicSettings } from '../models/ClinicSettings.js';
 import { Medication } from '../models/Medication.js';
 import { recomputeSchedule } from '../services/medicationSchedule.js';
 import { toE164 } from '../utils/phone.js';
-import { resolveDoctor } from '../services/doctorContext.js';
 import { capabilityContext } from '../middleware/requireCapability.js';
 import { describeCapabilities, effectiveCapabilities } from '../services/capabilities.js';
 import { Department } from '../models/Department.js';
@@ -373,16 +372,25 @@ router.post(
     // Only patients get a clinical profile. Neither a dietician nor a
     // receptionist has a diabetes record.
     if (role === ROLES.PATIENT) {
-      // Assignment, not attribution: `assignedDoctor` is optional, and a
-      // patient with none is one the desk assigns later. So this asks without
-      // `required` — an ambiguous answer leaves the field unset rather than
-      // failing a registration.
-      const doctor = await resolveDoctor({});
+      /*
+       * Nobody's patient until a practice takes them on.
+       *
+       * This used to call `resolveDoctor({})` with no context at all, which
+       * falls through to "the only active doctor" — so on a deployment with
+       * one doctor, every person who downloaded the app and signed up was
+       * attached to him. Attached, and then treated as his: `assignedDoctor`
+       * is what several routes read to decide which practice a patient
+       * belongs to.
+       *
+       * Somebody signing up has asked for an account, not for a doctor. The
+       * field is filled when a practice enrols them, by the desk or by the
+       * patient answering a code — which is the moment there is an answer, and
+       * the moment consent exists to support it.
+       */
       const { heightCm, weightKg, systolic, diastolic, pulse, spo2, glucoseMgDl, complaints } = req.body;
       await PatientProfile.create({
         user: user._id,
         diabetesType,
-        assignedDoctor: doctor?._id,
         ...(address ? { address } : {}),
         ...(heightCm != null ? { heightCm } : {}),
         ...(weightKg != null ? { baselineWeightKg: weightKg } : {}),

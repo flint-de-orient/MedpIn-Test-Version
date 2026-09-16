@@ -173,17 +173,33 @@ describe('a patient books at their own practice’s locations', () => {
     assert.equal(await Appointment.countDocuments({ clinic: a.clinic._id }), 1);
   });
 
-  test('a patient enrolled nowhere still sees locations and can book — absence permits', async () => {
+  test('a patient enrolled nowhere sees no locations, and books nowhere', async () => {
+    /*
+     * This asserted the opposite, and the reasoning held while the migration
+     * was running: a patient with no enrolment row had no clinic *recorded*
+     * rather than no clinic, and refusing them would have left the whole
+     * deployment unable to book.
+     *
+     * What it actually produced was every active location on the platform —
+     * each one's name, address and phone number — listed to somebody no
+     * practice had taken on, who could then book into any of them. A patient
+     * with no enrolment belongs nowhere, and nowhere is the honest list.
+     */
     const walkIn = await makePatient({ name: 'Walk-in Patient' });
+
     const list = await as(walkIn.token).get('/clinics');
     assert.equal(list.status, 200);
-    assert.ok(list.body.items.length > 0, 'a patient nobody has taken on yet was shown no locations');
+    assert.equal(
+      list.body.items.length,
+      0,
+      'a patient nobody has taken on was shown other practices’ locations',
+    );
 
     const booked = await as(walkIn.token).post('/appointments', {
       clinicId: String(a.clinic._id),
       scheduledFor: slot(),
     });
-    assert.equal(booked.status, 201);
+    assert.equal(booked.status, 400, 'an unenrolled patient booked into a practice’s diary');
   });
 });
 

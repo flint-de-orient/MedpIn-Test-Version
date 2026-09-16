@@ -100,6 +100,10 @@ export async function enrollmentGate(req, patientId, { recordDate = null } = {})
   throw forbidden(
     {
       not_enrolled: 'That patient is not enrolled at this practice',
+      // Distinct from the one above on purpose. "Not enrolled here" tells a
+      // clinician somebody else has this patient; this one says nobody has
+      // them yet, and the answer is to enrol them rather than to ask around.
+      not_connected: 'That patient is not connected to any practice yet. Add them to enrol them.',
       consent_pending: 'That patient has not yet consented to share their record here',
       revoked: 'That patient has withdrawn this practice’s access',
       before_enrolment: 'That record predates this practice’s access to the patient',

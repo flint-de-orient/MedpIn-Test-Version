@@ -71,13 +71,28 @@ export async function hasAnyEnrollment(patientId) {
 /**
  * May this practice see this patient's record, and this part of it?
  *
- * Answers question 4 of the authorisation middleware. Three outcomes, and the
- * middle one is the one that matters:
+ * Answers question 4 of the authorisation middleware:
  *
- *   - no enrollments at all for this patient → unknown, permit (pre-migration)
- *   - enrollments exist but none here        → deny
- *   - enrolled here                          → permit, if the record is inside
- *                                              the window
+ *   - enrolled here                    → permit, if the record is in the window
+ *   - enrollments exist but none here  → deny
+ *   - no enrollments at all            → deny
+ *
+ * ---- Why the last one changed -------------------------------------------
+ *
+ * It used to permit. The reasoning was migration: before this patient had been
+ * enrolled anywhere, absence meant "the backfill has not reached them" rather
+ * than "nobody has taken them on", and denying would have locked the working
+ * clinic out of its own records the day it deployed.
+ *
+ * That window has closed. Every patient the migration covered has an
+ * enrolment, the desk registration path creates one, and `checkRecordWindow.js`
+ * gates the deploy on there being no active patient without one. So a patient
+ * with no enrolment anywhere is no longer an un-migrated record — they are
+ * somebody who signed up and has not been taken on by a practice, and the
+ * permissive answer handed them to whichever practice asked first.
+ *
+ * A patient with no enrolment is nobody's patient. That is a real state, and
+ * the honest answer to "may we see them" is no.
  */
 export async function practiceMaySee(practiceId, patientId, { recordDate = null } = {}) {
   if (!practiceId || !patientId) return { allowed: true, reason: 'unknown' };
@@ -85,11 +100,13 @@ export async function practiceMaySee(practiceId, patientId, { recordDate = null 
   const enrollment = await enrollmentFor(patientId, practiceId);
 
   if (!enrollment) {
-    // Absence is only evidence once this patient has been enrolled somewhere.
-    const migrated = await hasAnyEnrollment(patientId);
-    return migrated
+    // Which of the two it is, because they read very differently in a log and
+    // in the message the clinician is shown: one is somebody else's patient,
+    // the other is nobody's yet.
+    const elsewhere = await hasAnyEnrollment(patientId);
+    return elsewhere
       ? { allowed: false, reason: 'not_enrolled' }
-      : { allowed: true, reason: 'unknown' };
+      : { allowed: false, reason: 'not_connected' };
   }
 
   if (!enrollment.isCurrent()) {

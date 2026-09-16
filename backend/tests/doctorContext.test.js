@@ -43,14 +43,22 @@ describe('no route guesses at the doctor any more', () => {
     assert.deepEqual(offenders, [], `\n  ${offenders.join('\n  ')}\n`);
   });
 
-  test('the six call sites go through the resolver', () => {
-    for (const name of [
-      'appointments.js',
-      'clinics.js',
-      'auth.js',
-      'doctor.js',
-      'prescriptions.js',
-    ]) {
+  test('the call sites that resolve a doctor go through the resolver', () => {
+    /*
+     * `auth.js` was on this list and is not any more.
+     *
+     * Registration used to ask the resolver with no context at all, which
+     * falls through to "the only active doctor" — so every self sign-up on a
+     * one-doctor deployment was attached to him, and `assignedDoctor` is what
+     * several routes read to decide whose patient somebody is. Signing up asks
+     * for an account, not for a doctor: the field is filled when a practice
+     * enrols them, which is the moment there is both an answer and consent.
+     *
+     * A file that resolves no doctor cannot guess at one, and the test above
+     * still holds it to that — the unfiltered `User.findOne({ role: DOCTOR })`
+     * is checked across every route, this file included.
+     */
+    for (const name of ['appointments.js', 'clinics.js', 'doctor.js', 'prescriptions.js']) {
       const src = readFileSync(path.join(ROUTES, name), 'utf8');
       assert.match(src, /resolveDoctor\(/, `${name} does not use the resolver`);
       assert.match(

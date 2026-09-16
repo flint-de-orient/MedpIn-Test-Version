@@ -438,18 +438,25 @@ export async function practiceClinics(req, field = 'practice') {
  * active location on the platform. The test pinning that list checked the call
  * was made, which it was.
  *
- * ---- Absence permits, per patient ----------------------------------------
+ * ---- Nowhere, not everywhere ---------------------------------------------
  *
- * The same switch as `hasAnyEnrollment`: a patient with no enrolment rows at
- * all is one no practice has taken on yet — somebody who registered in the app
- * before their first visit — and restricting them would leave them nowhere to
- * book. Once they have one, the absence of an enrolment somewhere means that
- * practice is not theirs, and a patient whose only enrolment was withdrawn has
- * nowhere to book.
+ * A patient with no enrolment at all used to answer `null`, which every caller
+ * reads as "unknown, so permit". It was the same migration-era rule as
+ * `practiceMaySee`: before the backfill, no enrolment meant no data rather
+ * than no clinic, and restricting those patients would have left the whole
+ * deployment unable to book.
+ *
+ * What it produced was a booking screen listing every active location on the
+ * platform — every other clinic's name, address and phone number — to somebody
+ * no practice had taken on. That is the opposite of the answer: a patient with
+ * no enrolment can book nowhere, because there is nowhere they belong.
+ *
+ * `null` now means only "no patient was named". An empty list is a real
+ * answer, and it means nowhere: also the right answer for a patient whose only
+ * enrolment was withdrawn.
  */
 export async function patientPracticeIds(patientId) {
   if (!patientId) return null;
-  if (!(await Enrollment.exists({ patient: patientId }))) return null;
   return Enrollment.distinct('practice', {
     patient: patientId,
     status: ENROLLMENT_STATUS.ACTIVE,

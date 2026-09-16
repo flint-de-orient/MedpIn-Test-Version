@@ -104,24 +104,44 @@ describe('the model', () => {
   });
 });
 
-describe('absence denies only once it means something', () => {
-  test('a patient with no enrollments at all permits', () => {
-    // Every patient until the backfill runs. A guard that denied here would
-    // lock the working clinic out of its own records the hour it shipped.
-    assert.match(service, /export async function hasAnyEnrollment/);
-    assert.match(service, /migrated\s*\n?\s*\? \{ allowed: false, reason: 'not_enrolled' \}/);
-    assert.match(service, /: \{ allowed: true, reason: 'unknown' \}/);
+describe('absence denies', () => {
+  test('a patient with no enrollments at all is refused, not permitted', () => {
+    /*
+     * This asserted the opposite until the migration finished.
+     *
+     * The rule was: before a patient has been enrolled anywhere, absence means
+     * "the backfill has not reached them" rather than "nobody has taken them
+     * on", and a guard that denied would have locked the working clinic out of
+     * its own records the hour it shipped.
+     *
+     * The backfill has run, desk registration creates an enrolment, and
+     * `checkRecordWindow.js` gates the deploy on no active patient being
+     * without one. What is left with no enrolment is somebody who signed up
+     * and has not been taken on — and permitting handed them to whichever
+     * practice asked first.
+     */
+    assert.match(service, /reason: 'not_connected'/);
+    assert.match(service, /elsewhere\s*\n?\s*\? \{ allowed: false, reason: 'not_enrolled' \}/);
+    assert.doesNotMatch(service, /\{ allowed: true, reason: 'unknown' \}\s*;?\s*\n\s*\}/);
   });
 
-  test('the switch is per patient, not global', () => {
-    // So the migration can run in batches without a window where some patients
-    // are enforced and others silently are not.
+  test('and still says which of the two it is', () => {
+    // "Somebody else has this patient" and "nobody has them yet" lead a
+    // clinician to different next actions: one is a wall, the other is an
+    // invitation to enrol them.
+    assert.match(service, /export async function hasAnyEnrollment/);
     assert.match(service, /Enrollment\.exists\(\{ patient: patientId \}\)/);
   });
 
-  test('each refusal says which of the four things went wrong', () => {
+  test('each refusal says which of the five things went wrong', () => {
     const auth = readFileSync(new URL('../src/middleware/authorise.js', import.meta.url), 'utf8');
-    for (const reason of ['not_enrolled', 'consent_pending', 'revoked', 'before_enrolment']) {
+    for (const reason of [
+      'not_enrolled',
+      'not_connected',
+      'consent_pending',
+      'revoked',
+      'before_enrolment',
+    ]) {
       assert.match(auth, new RegExp(reason), `no message for ${reason}`);
     }
   });

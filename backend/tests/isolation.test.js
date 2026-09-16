@@ -153,15 +153,36 @@ describe('consent is the gate, and it swings both ways', () => {
     ));
 });
 
-describe('the rule that let this ship before the migration', () => {
-  test('a patient enrolled nowhere is permitted, not denied', () =>
+describe('a patient nobody has taken on', () => {
+  test('is nobody’s patient, and is refused to everybody', () =>
     withWorld([], async () => {
-      // Every patient on the live deployment until the backfill ran. A guard
-      // that denied on absence would have locked the working clinic out of its
-      // own records the hour it deployed.
+      /*
+       * This permitted until the migration was done.
+       *
+       * The reasoning was sound while it lasted: every patient on the live
+       * deployment had no enrolment until the backfill ran, and a guard that
+       * denied on absence would have locked the working clinic out of its own
+       * records the hour it deployed. So absence meant "not migrated yet".
+       *
+       * It cannot mean that any more. The backfill has run, desk registration
+       * creates an enrolment, and `checkRecordWindow.js` gates the deploy on
+       * no active patient being without one. What is left with no enrolment is
+       * somebody who signed up and has not been taken on — and the permissive
+       * answer handed them to whichever practice asked for them first.
+       */
       const v = await practiceMaySee(DEY, RAHUL);
-      assert.equal(v.allowed, true);
-      assert.equal(v.reason, 'unknown');
+      assert.equal(v.allowed, false);
+      assert.equal(v.reason, 'not_connected');
+    }));
+
+  test('and the refusal says which of the two it is', () =>
+    withWorld([enrolment({ practice: SEN, enrolledOn: MARCH })], async () => {
+      // "Somebody else has this patient" and "nobody has them yet" read very
+      // differently to a clinician: one is a wall, the other is an invitation
+      // to enrol them.
+      const v = await practiceMaySee(DEY, RAHUL);
+      assert.equal(v.allowed, false);
+      assert.equal(v.reason, 'not_enrolled');
     }));
 
   test('but the moment they are enrolled anywhere, absence denies', () =>
