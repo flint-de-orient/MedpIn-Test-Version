@@ -46,6 +46,18 @@ const DEFAULT_SLOT_MINUTES = 15;
 const isPatient = (req) => req.user.role === ROLES.PATIENT;
 
 /**
+ * Today's date where the clinic is: the day a waiting room's numbers belong to.
+ *
+ * It was `dayjs().format('YYYY-MM-DD')` — the *server's* date. On a laptop in
+ * Kolkata the two agree. On a server in UTC the date turns over at half past
+ * five in the morning here, so somebody checked in shortly after midnight was
+ * filed under yesterday's queue, the room's counter restarted at 05:30 and
+ * handed out a second number one, and the waiting-room screen spent the small
+ * hours showing the previous evening's patients.
+ */
+const clinicToday = () => inClinicTz(new Date()).format('YYYY-MM-DD');
+
+/**
  * Whose appointments this caller may see, and it returned `{}` for a clinician.
  *
  * ---- Every appointment on the platform ---------------------------------
@@ -710,7 +722,9 @@ router.patch(
     // morning review and an evening procedure — so the desk is told and may go
     // ahead, rather than being refused something the clinic is allowed to do.
     if (!req.body.allowSameDay) {
-      const dayStart = slotStart.startOf('day');
+      // The clinic's calendar day. Cut at the server's midnight, a server in
+      // UTC began "that day" at half past five in the morning here.
+      const dayStart = inClinicTz(scheduledFor).startOf('day');
       /*
        * This practice's day, not the patient's.
        *
@@ -1055,7 +1069,8 @@ router.patch(
 router.get(
   '/queue/today',
   asyncHandler(async (req, res) => {
-    const today = dayjs().format('YYYY-MM-DD');
+    // The clinic's date, not the server's — see clinicToday.
+    const today = clinicToday();
 
     // The names on a waiting-room display. Unscoped, this listed every
     // patient checked in anywhere on the platform, by name.
@@ -1123,7 +1138,9 @@ router.post(
       throw badRequest('This appointment cannot be checked in');
     }
 
-    const today = dayjs().format('YYYY-MM-DD');
+    // The clinic's date, not the server's — see clinicToday. It names the
+    // counter as well as the row, so the two can never disagree about the day.
+    const today = clinicToday();
     const queue = await queueOf(appt);
 
     /*
