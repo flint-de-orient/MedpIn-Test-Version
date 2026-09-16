@@ -90,7 +90,7 @@ Two things worth knowing before you worry about a number:
 - A single abnormal TSH is often repeated before anything changes. Illness, pregnancy, some medicines and even the time of day shift it.
 - The aim of treatment is a TSH in range AND you feeling well. Neither one alone.
 
-Bring the printed report to your next appointment. Dr. Dey will interpret it alongside your symptoms, your other medicines and your history — which is what a number on its own cannot tell you.`,
+Bring the printed report to your next appointment. Your doctor will interpret it alongside your symptoms, your other medicines and your history — which is what a number on its own cannot tell you.`,
   },
   {
     docId: 'thyroid-hyper-basics',
@@ -163,7 +163,7 @@ How to sit:
 What to record:
 - Take two readings a minute apart and note both. If they differ a lot, take a third.
 - Measure at the same times each day, usually morning before medicines and evening.
-- Bring the whole set of readings, not just the highest one. Dr. Dey looks at the pattern.
+- Bring the whole set of readings, not just the highest one. Your doctor looks at the pattern.
 
 Most people with diabetes are aimed at a blood pressure below 130/80 mmHg, but your own target may differ depending on age, kidney function and other conditions.
 
@@ -591,7 +591,7 @@ Two things that confuse people:
 - A sensor reads the fluid under the skin, not blood, so it lags behind a finger-prick by several minutes. When glucose is changing fast — after a meal, during exercise, or during a low — the two will disagree. That is expected.
 - Treat a suspected low based on how you feel, and confirm with a finger-prick if the reading and the symptoms do not match.
 
-Bring your CGM report, or share the app, at your appointment. The pattern over two weeks tells Dr. Dey far more than any single reading.`,
+Bring your CGM report, or share the app, at your appointment. The pattern over two weeks tells your doctor far more than any single reading.`,
   },
   {
     docId: 'device-troubleshooting',
@@ -858,7 +858,7 @@ Please tell someone today, and go to the nearest hospital, if you are having tho
     language: 'en',
     tags: ['erectile', 'sexual', 'libido', 'dryness', 'testosterone'],
     sourceCitation: 'ADA Standards of Care 2026; Endocrine Society',
-    content: `Sexual difficulties are common with diabetes and are hardly ever raised at appointments. They are medical problems with medical answers, and Dr. Dey has heard them many times before.
+    content: `Sexual difficulties are common with diabetes and are hardly ever raised at appointments. They are medical problems with medical answers, and your doctor will have heard them many times before.
 
 In men, erectile difficulty is the commonest. Diabetes affects both the nerves and the small blood vessels involved. It is worth mentioning for two reasons: it is treatable, and because those same small vessels supply the heart, erectile difficulty is sometimes the earliest warning of heart disease. It is a reason to have your heart risk assessed, not only a quality-of-life issue.
 
@@ -916,7 +916,7 @@ Do not skip meals to compensate for a high reading. It usually causes a low late
     language: 'en',
     tags: ['scope', 'limits', 'assistant', 'disclaimer'],
     sourceCitation: 'Clinic protocol',
-    content: `This assistant shares guidance that Dr. Dey has reviewed and approved. It is useful between visits, and it is deliberately limited.
+    content: `This assistant shares guidance that has been clinically reviewed and approved. It is useful between visits, and it is deliberately limited.
 
 It can:
 - Explain what your condition, medicines, tests and reports mean in plain language
@@ -926,8 +926,8 @@ It can:
 
 It cannot, and will not:
 - Diagnose a new condition
-- Start, stop or change the dose of any medicine, including insulin — only Dr. Dey can do that
-- Interpret a scan or report that Dr. Dey has not yet discussed with you
+- Start, stop or change the dose of any medicine, including insulin — only your doctor can do that
+- Interpret a scan or report that your doctor has not yet discussed with you
 - Replace an examination
 
 If you ask it to change a dose, it will decline and offer you an appointment. That is not the assistant being unhelpful. A dose change needs your full history, your other medicines, your kidney function and an examination — things a message cannot provide.
