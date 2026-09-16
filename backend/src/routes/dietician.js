@@ -225,22 +225,28 @@ async function recentActivity(ids, byId, limit = 6, sessionScope = {}) {
  */
 async function scopeFilter(req) {
   /*
-   * Within the dietician's own practice, before anything else.
+   * The patients assigned to this dietician, at this practice. Nothing else.
    *
-   * "Covers everyone" was written when there was one clinic, and `{}` then
-   * meant every patient on the platform: a dietician with no assignments
-   * opened any practice's records. `practicePatients` is `{}` only where the
-   * enrolment backfill has not run, which is the one-clinic case this default
-   * was written for.
+   * It used to fall back to the whole practice when nobody had been assigned,
+   * which read as "the clinic's dietician covers everyone" — true of the
+   * clinic it was written for, and a default that widens access in every
+   * clinic it was not. A second dietician, a locum, or somebody who has
+   * finished with a patient all inherited the practice until a person
+   * remembered to restrict them, and nothing in the record said who was
+   * supposed to be looking after whom.
    *
-   * Assignments are counted inside the practice too, so one that reached
-   * outside it restricts nothing and grants nothing.
+   * The default now lives where it can be recorded: a practice with exactly
+   * one dietician assigns them to each patient as the patient joins, so the
+   * caseload is what the assignments say. See services/dieticianAssignment.js,
+   * and scripts/backfillDieticianAssignments.js for the ones that predate it.
+   *
+   * Still intersected with the practice, so an assignment that reaches outside
+   * it grants nothing.
    */
   const practice = await practicePatients(req, 'user');
   const assigned = await PatientProfile.find({ assignedDietician: req.user._id, ...practice })
     .select('user')
     .lean();
-  if (assigned.length === 0) return practice;
   return { user: { $in: assigned.map((p) => p.user) } };
 }
 

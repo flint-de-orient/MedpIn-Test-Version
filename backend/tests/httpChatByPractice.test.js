@@ -251,12 +251,28 @@ describe('chat review stays inside the practice', () => {
 describe('a dietician reads and writes their own practice’s nutrition conversation', () => {
   lifecycle();
 
+  /**
+   * Hand the patient to one practice's dietician.
+   *
+   * A dietician now sees the patients assigned to them and nobody else, and
+   * `assignedDietician` is a single field on the profile — so a patient
+   * enrolled at two practices can be held by one practice's dietician at a
+   * time. That is a real limitation of where the field lives rather than
+   * anything this suite is testing; it belongs on the enrolment, beside the
+   * other per-practice facts. Until it moves, each half of this test assigns
+   * the dietician whose isolation it is checking.
+   */
+  const handTo = (dietician) =>
+    PatientProfile.updateOne({ user: w.pid }, { assignedDietician: dietician.user._id });
+
   test('each dietician’s thread holds only their practice’s conversation', async () => {
+    await handTo(w.a.dietician);
     const saltLake = await as(w.a.dietician.token).get(`/dietician/patients/${w.pid}/thread`);
     assert.equal(saltLake.status, 200);
     assert.ok(allText(saltLake.body).includes('Salt Lake dietician'), 'Salt Lake’s nutrition conversation is missing');
     assert.ok(!allText(saltLake.body).includes('Behala dietician'), 'Salt Lake’s dietician read Behala’s');
 
+    await handTo(w.b.dietician);
     const behala = await as(w.b.dietician.token).get(`/dietician/patients/${w.pid}/thread`);
     assert.equal(behala.status, 200);
     assert.ok(allText(behala.body).includes('Behala dietician'));
@@ -264,6 +280,7 @@ describe('a dietician reads and writes their own practice’s nutrition conversa
   });
 
   test('and a dietician’s message goes into their practice’s conversation', async () => {
+    await handTo(w.a.dietician);
     const sent = await as(w.a.dietician.token).post(`/dietician/patients/${w.pid}/message`, {
       content: 'Salt Lake dietician again',
     });
@@ -500,6 +517,13 @@ describe('a conversation from before this change is not handed to another practi
   });
 
   test('each practice’s dietician writes into that practice’s own nutrition conversation', async () => {
+    // Held by Behala's dietician for this one — see the note on `handTo`
+    // above: the assignment is a single field on the profile, so one practice
+    // at a time can hold a shared patient.
+    await PatientProfile.updateOne(
+      { user: w.pid },
+      { assignedDietician: w.b.dietician.user._id },
+    );
     const sent = await as(w.b.dietician.token).post(`/dietician/patients/${w.pid}/message`, {
       content: 'Behala dietician again',
     });

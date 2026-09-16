@@ -9,6 +9,7 @@ import { billingBlocks } from './billing/lapse.js';
 import { noticeUsage } from './billing/usageNotice.js';
 import { activePatientCount } from './practiceUsage.js';
 import { ConsentEvent, CONSENT_ACTION, CONSENT_METHOD } from '../models/ConsentEvent.js';
+import { autoAssignDietician } from './dieticianAssignment.js';
 
 /** The consent text currently shown at the desk. Bump when the wording changes. */
 export const CONSENT_WORDING = 'desk-v1';
@@ -173,6 +174,14 @@ export async function enrolByPhone({
     primaryDoctor,
   });
 
+  // A practice with exactly one dietician looks after everybody's nutrition,
+  // and now says so on the record rather than leaving it to a read scope that
+  // widened by default. Only on an active enrolment: a pending one has not
+  // been consented to yet, and it is assigned when the code comes back.
+  if (enrollment.status === ENROLLMENT_STATUS.ACTIVE) {
+    await autoAssignDietician(patient._id, practiceId);
+  }
+
   if (consentRequired) {
     // The patient's own handset, not the one at the counter. A typo produces no
     // code rather than silently attaching a practice to a stranger's record.
@@ -235,6 +244,10 @@ export async function confirmEnrolment({ enrollmentId, code, confirmedBy = null 
   enrollment.enrolledOn = new Date();
   enrollment.enrolledBy = enrollment.enrolledBy ?? confirmedBy;
   await enrollment.save();
+
+  // Consent is the moment this practice's care of them starts, so it is also
+  // the moment its only dietician takes them on.
+  await autoAssignDietician(enrollment.patient, enrollment.practice);
 
   await ConsentEvent.record({
     enrollment: enrollment._id,

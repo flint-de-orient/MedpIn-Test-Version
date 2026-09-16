@@ -554,6 +554,12 @@ describe('a reply quotes only a message from its own conversation', () => {
       content: 'crafted',
       replyTo: quoted._id,
     });
+    // A dietician sees the patients assigned to them, so this one has to hold
+    // the patient before their thread can be read at all.
+    await PatientProfile.updateOne(
+      { user: a.patient.user._id },
+      { assignedDietician: a.dietician.user._id },
+    );
     const dietician = await as(a.dietician.token).get(`/dietician/patients/${a.patient.user._id}/thread`);
     assert.equal(dietician.status, 200);
     assert.ok(

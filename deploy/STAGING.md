@@ -160,6 +160,34 @@ author, so it cannot tell which practice wrote one: where more than one practice
 has written knowledge, read the dry run before applying. A second run adopts
 nothing.
 
+### Once, after deploying the dietician caseload
+
+A dietician's caseload was "everyone at the practice, unless somebody has been
+assigned to me". Assignment was a restriction rather than a grant, so a
+practice with one dietician needed no assignments at all — and a second
+dietician, or a locum, inherited the whole practice the day they were hired.
+
+The caseload is now exactly what the assignments say, and a practice with one
+dietician assigns them as each patient joins. Without this, the dietician at a
+practice that never assigned anybody opens the app to an empty list on the
+morning this deploys — same people, same work, no way to see any of it:
+
+```bash
+cd /var/www/clinq-staging/backend     # then /var/www/clinq/backend for production
+node scripts/backfillDieticianAssignments.js                                 # report
+mongodump --db medpin_staging --collection patientprofiles --out ~/dumps/diet-before-backfill
+node scripts/backfillDieticianAssignments.js --apply
+```
+
+It covers only practices with exactly one active dietician — precisely the set
+the old default served — and never overwrites an assignment a doctor made. A
+practice with two or more is reported and left alone: the old default gave
+both of them everybody, so there is no arrangement to write down faithfully,
+and the doctor assigns those patients on each profile.
+
+**Run this in the same maintenance window as the deploy.** Between the restart
+and this script, a one-dietician practice's dietician sees nobody.
+
 ### Once, after deploying appointment isolation
 
 An appointment carried a patient, a doctor and sometimes a clinic, and no

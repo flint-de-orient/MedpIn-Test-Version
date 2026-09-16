@@ -107,9 +107,31 @@ describe('a dietician reaches their own practice’s patients and nobody else’
     assert.equal(res.status, 404, 'a dietician with no assignments opened another practice’s record');
   });
 
-  test('and their own practice’s patients are still theirs — the clinic-wide default', async () => {
+  test('and with no assignments, their own practice’s patient is refused too', async () => {
+    /*
+     * This asserted 200, under the clinic-wide default: a dietician with no
+     * assignments covered everyone at their practice.
+     *
+     * That default widened access every time somebody new was hired — a second
+     * dietician, or a locum for a fortnight, inherited the whole practice
+     * until a person remembered to restrict them. The caseload is now exactly
+     * what the assignments say, and the default moved to where it can be
+     * recorded: a practice with one dietician assigns them as each patient
+     * joins. See services/dieticianAssignment.js.
+     */
     const res = await as(a.dietician.token).get(`/dietician/patients/${a.patient.user._id}/overview`);
-    assert.equal(res.status, 200, 'a dietician lost their own practice’s patients');
+    assert.equal(res.status, 404, 'an unassigned patient was readable');
+  });
+
+  test('and once assigned, their own practice’s patient opens', async () => {
+    // The half that has to keep working, and the state the backfill puts a
+    // one-dietician practice into.
+    await PatientProfile.updateOne(
+      { user: a.patient.user._id },
+      { assignedDietician: a.dietician.user._id },
+    );
+    const res = await as(a.dietician.token).get(`/dietician/patients/${a.patient.user._id}/overview`);
+    assert.equal(res.status, 200, 'a dietician lost the patient they were given');
   });
 
   test('with assignments, an unassigned patient is refused — the requested id is not replaced', async () => {
