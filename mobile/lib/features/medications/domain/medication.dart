@@ -21,7 +21,45 @@ class Medication {
     this.asNeeded = false,
     this.stat = false,
     this.dayInterval = 1,
+    this.prescriptionState = 'active',
+    this.takingState = 'taking',
+    this.ownedBy = 'practice',
+    this.completedAt,
+    this.stoppedByDoctor,
+    this.cancelled,
+    this.stoppedTaking,
+    this.alsoOnList = const [],
+    this.changeableByYou,
   });
+
+  /// The doctor's side: active | completed | stopped_by_doctor | cancelled |
+  /// ended_legacy (ended before anybody recorded who ended it).
+  final String prescriptionState;
+
+  /// The patient's side: taking | stopped_by_patient | not_started.
+  final String takingState;
+
+  /// `practice` — a clinician prescribed it; `patient` — the patient added it.
+  final String ownedBy;
+
+  final DateTime? completedAt;
+  final MedicineStop? stoppedByDoctor;
+  final MedicineStop? cancelled;
+
+  /// When and why the patient stopped taking it, while they have.
+  final MedicineStop? stoppedTaking;
+
+  /// Other prescriptions on this list for the same medicine — another strength,
+  /// or another practice's. Never merged: which to keep is a clinical decision.
+  final List<SameMedicine> alsoOnList;
+
+  /// For a clinician: whether their practice may change this medicine. Null for
+  /// the patient, who is told by [ownedBy] instead.
+  final bool? changeableByYou;
+
+  bool get prescriptionStands => prescriptionState == 'active';
+  bool get stoppedByPatient => takingState == 'stopped_by_patient';
+  bool get patientOwned => ownedBy == 'patient';
 
   final String id;
   final String name;
@@ -94,8 +132,53 @@ class Medication {
       asNeeded: json['asNeeded'] as bool? ?? false,
       stat: json['stat'] as bool? ?? false,
       dayInterval: (json['dayInterval'] as num?)?.toInt() ?? 1,
+      // A build older than the states reads every medicine it is sent as
+      // active and taken, which is what `isActive` meant to it.
+      prescriptionState: json['prescriptionState']?.toString() ?? 'active',
+      takingState: json['takingState']?.toString() ?? 'taking',
+      ownedBy: json['ownedBy']?.toString() ?? 'practice',
+      completedAt: DateTime.tryParse(json['completedAt']?.toString() ?? '')?.toLocal(),
+      stoppedByDoctor: MedicineStop.fromJson(json['stoppedByDoctor']),
+      cancelled: MedicineStop.fromJson(json['cancelled']),
+      stoppedTaking: MedicineStop.fromJson(json['stoppedTaking']),
+      alsoOnList: [
+        for (final o in (json['alsoOnList'] as List?) ?? const [])
+          if (o is Map<String, dynamic>) SameMedicine.fromJson(o),
+      ],
+      changeableByYou: json['changeableByYou'] as bool?,
     );
   }
+}
+
+/// When a medicine was stopped, and the reason given.
+class MedicineStop {
+  const MedicineStop({required this.at, this.reason});
+
+  final DateTime? at;
+  final String? reason;
+
+  static MedicineStop? fromJson(Object? json) {
+    if (json is! Map<String, dynamic>) return null;
+    return MedicineStop(
+      at: DateTime.tryParse(json['at']?.toString() ?? '')?.toLocal(),
+      reason: json['reason']?.toString(),
+    );
+  }
+}
+
+/// Another prescription on the list for the same medicine.
+class SameMedicine {
+  const SameMedicine({required this.id, this.strength, required this.samePractice});
+
+  final String id;
+  final String? strength;
+  final bool samePractice;
+
+  factory SameMedicine.fromJson(Map<String, dynamic> j) => SameMedicine(
+    id: j['id']?.toString() ?? '',
+    strength: j['strength']?.toString(),
+    samePractice: j['samePractice'] as bool? ?? false,
+  );
 }
 
 /// Result of `POST /medications/scan` — the medicines read from a prescription
@@ -252,6 +335,8 @@ class MedicationScheduleSlot {
     required this.relationToMeal,
     required this.status,
     this.logId,
+    this.late = false,
+    this.scheduledFor,
   });
 
   final String medicationId;
@@ -260,9 +345,18 @@ class MedicationScheduleSlot {
   final String time;
   final String relationToMeal;
 
+  /// The exact instant of this dose, as the server built it in the clinic's
+  /// timezone. Sent back as-is when the dose is logged: rebuilt from the
+  /// phone's clock, a phone in another timezone logged a time that is not
+  /// one of the medicine's doses.
+  final DateTime? scheduledFor;
+
   /// pending | taken | skipped | missed.
   final String status;
   final String? logId;
+
+  /// Taken, but more than two hours after it was due.
+  final bool late;
 
   factory MedicationScheduleSlot.fromJson(Map<String, dynamic> json) {
     return MedicationScheduleSlot(
@@ -273,6 +367,8 @@ class MedicationScheduleSlot {
       relationToMeal: json['relationToMeal']?.toString() ?? 'anytime',
       status: json['status']?.toString() ?? 'pending',
       logId: json['logId']?.toString(),
+      late: json['late'] as bool? ?? false,
+      scheduledFor: DateTime.tryParse(json['scheduledFor']?.toString() ?? ''),
     );
   }
 
@@ -285,6 +381,8 @@ class MedicationScheduleSlot {
       relationToMeal: relationToMeal,
       status: status ?? this.status,
       logId: logId ?? this.logId,
+      late: late,
+      scheduledFor: scheduledFor,
     );
   }
 }
@@ -321,6 +419,7 @@ class DoseHistoryEntry {
     this.relationToMeal,
     this.scheduledFor,
     this.takenAt,
+    this.late = false,
   });
 
   final String medicationId;
@@ -331,6 +430,9 @@ class DoseHistoryEntry {
   final String? relationToMeal;
   final DateTime? scheduledFor;
   final DateTime? takenAt;
+
+  /// Taken, but more than two hours after it was due.
+  final bool late;
 
   /// taken | skipped | missed.
   final String status;
@@ -346,6 +448,7 @@ class DoseHistoryEntry {
         DateTime.tryParse(j['scheduledFor']?.toString() ?? '')?.toLocal(),
     takenAt: DateTime.tryParse(j['takenAt']?.toString() ?? '')?.toLocal(),
     status: j['status']?.toString() ?? 'missed',
+    late: j['late'] as bool? ?? false,
   );
 }
 

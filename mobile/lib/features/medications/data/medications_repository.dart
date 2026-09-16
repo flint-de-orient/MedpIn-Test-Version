@@ -78,6 +78,33 @@ class MedicationsRepository {
     await _client.delete('$_base/$id');
   }
 
+  /// The patient stops taking a medicine. Their doctor's prescription is left
+  /// as it was written, and the doctor is told.
+  Future<Medication> stopTaking(String id, {String? reason}) async {
+    final json = await _client.postJson(
+      '$_base/$id/stop-taking',
+      body: {if (reason != null && reason.trim().isNotEmpty) 'reason': reason.trim()},
+    );
+    return Medication.fromJson(json['medication'] as Map<String, dynamic>);
+  }
+
+  /// The patient starts taking it again, while the prescription still stands.
+  Future<Medication> resumeTaking(String id) async {
+    final json = await _client.postJson('$_base/$id/resume-taking');
+    return Medication.fromJson(json['medication'] as Map<String, dynamic>);
+  }
+
+  /// Every prescription on the list — being taken, stopped by the patient,
+  /// finished, stopped by the doctor. For the sections below today's medicines.
+  Future<List<Medication>> getAllMedications() async {
+    final json = await _client.getJson(_base, query: {'view': 'all'});
+    final items = (json['items'] as List<dynamic>? ?? const []);
+    return items
+        .whereType<Map<String, dynamic>>()
+        .map(Medication.fromJson)
+        .toList();
+  }
+
   /// Overrides a medicine's reminder times by hand. Each entry is
   /// `{time: "HH:mm", relationToMeal}`. The server marks it customised so a later
   /// meal-time change won't move it.

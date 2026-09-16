@@ -16,12 +16,13 @@ void medicationActionHandler(NotificationResponse response) {
   NotificationService.scheduleSnoozeFromBackground(payload);
 }
 
-/// One concrete dose to remind about: a specific medicine at a specific instant
-/// on a specific day, with a deterministic notification [id]. The medications
-/// feature expands each `Medication.schedule` slot across a rolling window into
-/// these, so the service stays unaware of the API model — and so a re-sync
-/// replaces rather than duplicates, and a server push for the same dose collapses
-/// onto the same [id].
+/// One dose to remind about, with a deterministic notification [id].
+///
+/// Either a daily repeat ([repeatsDaily]: one alarm per medicine and time, for a
+/// medicine taken every day with no end) or a single alarm for one dose on one
+/// date (everything else — see `buildUpcomingDoses`). The service stays
+/// unaware of the API model, a re-sync replaces rather than duplicates, and a
+/// server push for the same dose collapses onto the same [id].
 class ScheduledDose {
   const ScheduledDose({
     required this.id,
@@ -30,7 +31,12 @@ class ScheduledDose {
     required this.when,
     this.dose,
     this.relationToMeal,
+    this.repeatsDaily = true,
   });
+
+  /// True: [when] is the first time, and the alarm repeats at that clock time
+  /// every day. False: [when] is the one dose this alarm is for.
+  final bool repeatsDaily;
 
   /// Deterministic notification id in the medication reserved range, stable for
   /// a given (medicine, slot time, day) — see `medReminderNotificationId`.
@@ -60,6 +66,26 @@ int medReminderNotificationId(String medId, String hhmm, DateTime day) {
   }
   return NotificationService.medIdBase +
       (hash % NotificationService.medIdWindow);
+}
+
+/// The id for ONE dose on ONE date — a single alarm rather than a daily repeat.
+///
+/// Identical to `medOccurrenceNotificationId` in backend/src/utils/medReminderId.js
+/// (pinned by the same fixtures on both sides), so the server's push for this
+/// dose collapses onto this alarm. Its own wide range: a fortnight of single
+/// alarms folded into the daily range's 90 000 would collide — one alarm
+/// silently replacing another — about one time in three.
+int medOccurrenceReminderId(String medId, String hhmm, DateTime day) {
+  final dateStr =
+      '${day.year.toString().padLeft(4, '0')}-${day.month.toString().padLeft(2, '0')}-${day.day.toString().padLeft(2, '0')}';
+  final key = '$medId|$hhmm|$dateStr';
+  var hash = 0x811c9dc5;
+  for (final c in key.codeUnits) {
+    hash ^= c;
+    hash = (hash * 0x01000193) & 0xFFFFFFFF;
+  }
+  return NotificationService.medOccurrenceIdBase +
+      (hash % NotificationService.medOccurrenceIdSpan);
 }
 
 /// A stable per-(medicine, slot-time) id for a DAILY-repeating reminder — no
@@ -146,6 +172,18 @@ class NotificationService {
   /// Hashing modulo for a dose's deterministic id — kept below [_medIdSpan] so a
   /// hashed id can never leave the reserved medication range.
   static const int medIdWindow = 90000;
+
+  /// Single-dose alarms: see [medOccurrenceReminderId]. Far above every other
+  /// id this app uses, and below the 32-bit limit Android ids live in.
+  static const int medOccurrenceIdBase = 10000000;
+  static const int medOccurrenceIdSpan = 1000000000;
+
+  /// Whether [id] is a medication reminder of either kind — what a re-sync
+  /// cancels and what the health check counts.
+  static bool isMedicationReminderId(int id) =>
+      (id >= medIdBase && id < medIdBase + _medIdSpan) ||
+      (id >= medOccurrenceIdBase &&
+          id < medOccurrenceIdBase + medOccurrenceIdSpan);
 
   /// Snoozes sit outside the daily range so re-syncing the schedule (which
   /// cancels that whole range) does not silently drop a dose the patient just
@@ -276,7 +314,7 @@ class NotificationService {
     var armed = 0;
     try {
       for (final p in await _plugin.pendingNotificationRequests()) {
-        if (p.id >= medIdBase && p.id < medIdBase + _medIdSpan) armed++;
+        if (isMedicationReminderId(p.id)) armed++;
       }
     } catch (_) {
       // Reading the pending list can throw on some OEM builds. An unknown
@@ -362,9 +400,10 @@ class NotificationService {
   Future<int> scheduleMedicationReminders(List<ScheduledDose> doses) async {
     await init();
 
-    // Drop the previous medication set (reserved id range only).
+    // Drop the previous medication set — both kinds, and nothing else. A
+    // stopped or finished medicine's alarms go here, which is how they stop.
     for (final p in await _plugin.pendingNotificationRequests()) {
-      if (p.id >= medIdBase && p.id < medIdBase + _medIdSpan) {
+      if (isMedicationReminderId(p.id)) {
         await _plugin.cancel(p.id);
       }
     }
@@ -373,16 +412,26 @@ class NotificationService {
     final details = alarmDetails();
     var armed = 0;
     for (final d in doses) {
-      if (d.id < medIdBase || d.id >= medIdBase + _medIdSpan)
-        continue; // stay in range
-      // Anchor the daily repeat at the next occurrence of this dose's clock time,
-      // [leadTime] early. `_armDose` repeats it every day, so it keeps firing
-      // each morning without the app having to re-arm overnight.
-      var fireAt = _nextInstanceOf(
-        d.when.hour,
-        d.when.minute,
-      ).subtract(leadTime);
-      if (!fireAt.isAfter(now)) fireAt = fireAt.add(const Duration(days: 1));
+      if (!isMedicationReminderId(d.id)) continue; // stay in range
+
+      tz.TZDateTime fireAt;
+      if (d.repeatsDaily) {
+        // Anchor the daily repeat at the next occurrence of this dose's clock
+        // time, [leadTime] early — or at its first dose, for a medicine that
+        // starts later. `_armDose` repeats it every day, so it keeps firing
+        // each morning without the app having to re-arm overnight.
+        final first = tz.TZDateTime.from(d.when, tz.local).subtract(leadTime);
+        fireAt = _nextInstanceOf(d.when.hour, d.when.minute).subtract(leadTime);
+        if (!fireAt.isAfter(now)) fireAt = fireAt.add(const Duration(days: 1));
+        if (first.isAfter(fireAt)) fireAt = first;
+      } else {
+        // One dose. Early by [leadTime] where there is still time for that; a
+        // dose due in three minutes is reminded about now rather than never.
+        final due = tz.TZDateTime.from(d.when, tz.local);
+        if (!due.isAfter(now)) continue;
+        fireAt = due.subtract(leadTime);
+        if (!fireAt.isAfter(now)) fireAt = now.add(const Duration(seconds: 5));
+      }
       if (await _armDose(d, fireAt, details)) armed++;
     }
 
@@ -419,8 +468,11 @@ class NotificationService {
           uiLocalNotificationDateInterpretation:
               UILocalNotificationDateInterpretation.absoluteTime,
           // Repeat every day at this clock time — survives reboot (boot receiver)
-          // and needs no re-arming, so a morning dose fires every morning.
-          matchDateTimeComponents: DateTimeComponents.time,
+          // and needs no re-arming, so a morning dose fires every morning. A
+          // single dose does not repeat: a weekly tablet repeated daily is a
+          // daily reminder to take it.
+          matchDateTimeComponents:
+              d.repeatsDaily ? DateTimeComponents.time : null,
           payload: 'med:${d.medId}',
         );
         return true;
@@ -474,7 +526,7 @@ class NotificationService {
   Future<void> cancelMedicationReminders() async {
     await init();
     for (final p in await _plugin.pendingNotificationRequests()) {
-      if (p.id >= medIdBase && p.id < medIdBase + _medIdSpan) {
+      if (isMedicationReminderId(p.id)) {
         await _plugin.cancel(p.id);
       }
     }

@@ -25,6 +25,8 @@ import 'widgets/medication_slot_tile.dart';
 import '../domain/strength.dart';
 import '../../../shared/widgets/clinic_brand.dart';
 import 'widgets/reminder_health_card.dart';
+import 'widgets/medicine_lifecycle.dart';
+import '../../../core/network/api_exception.dart';
 
 /// The patient's medicines: the windows their reminders fire in, what they are
 /// currently prescribed, and today's outstanding doses.
@@ -79,6 +81,7 @@ class _MedicationsScreenState extends ConsumerState<MedicationsScreen>
     ref.invalidate(todayScheduleProvider);
     ref.invalidate(medicationAdherenceProvider);
     ref.invalidate(medicationsListProvider);
+    ref.invalidate(allMedicationsProvider);
   }
 
   /// Patients add medicines by scanning Dr.'s prescription only — typing them
@@ -102,17 +105,29 @@ class _MedicationsScreenState extends ConsumerState<MedicationsScreen>
         schedule.date.isNotEmpty
             ? schedule.date
             : DateTime.now().toIso8601String().substring(0, 10);
+    // The server's instant for this dose where it sent one; the phone's
+    // reconstruction only for a server that does not.
     final scheduledFor =
-        DateTime.tryParse('${datePart}T${slot.time}:00') ?? DateTime.now();
+        slot.scheduledFor ??
+        DateTime.tryParse('${datePart}T${slot.time}:00') ??
+        DateTime.now();
 
-    await ref
-        .read(medicationsRepositoryProvider)
-        .logDose(
-          medicationId: slot.medicationId,
-          scheduledFor: scheduledFor,
-          status: result.status,
-          skipReason: result.skipReason,
-        );
+    if (!context.mounted) return;
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      await ref
+          .read(medicationsRepositoryProvider)
+          .logDose(
+            medicationId: slot.medicationId,
+            scheduledFor: scheduledFor,
+            status: result.status,
+            skipReason: result.skipReason,
+          );
+    } on ApiException catch (e) {
+      // Said, not swallowed: a dose the patient believes they recorded, and
+      // did not, is a dose the doctor sees as missed.
+      messenger.showSnackBar(SnackBar(content: Text('That dose was not recorded. ${e.message}')));
+    }
     ref.invalidate(todayScheduleProvider);
     ref.invalidate(medicationAdherenceProvider);
   }
@@ -307,6 +322,48 @@ class _MedicationsScreenState extends ConsumerState<MedicationsScreen>
                                   _PrescriptionCard(
                                     medication: med,
                                     meals: meals,
+                                    onStopTaking:
+                                        () => stopTakingFlow(context, ref, med),
+                                  ),
+
+                              // Stopped by the patient, and ended. Both read
+                              // the whole list; each is hidden when empty, and
+                              // a failure to load them hides them rather than
+                              // saying there are none.
+                              ...ref
+                                  .watch(allMedicationsProvider)
+                                  .maybeWhen(
+                                    data: (all) {
+                                      final stopped =
+                                          all
+                                              .where(
+                                                (m) =>
+                                                    m.prescriptionStands &&
+                                                    m.stoppedByPatient,
+                                              )
+                                              .toList();
+                                      final past =
+                                          all
+                                              .where(
+                                                (m) => !m.prescriptionStands,
+                                              )
+                                              .toList();
+                                      return [
+                                        if (stopped.isNotEmpty) ...[
+                                          const SizedBox(height: T.s6),
+                                          const _MicroLabel('Stopped by you'),
+                                          const SizedBox(height: T.s3),
+                                          StoppedByYouList(medicines: stopped),
+                                        ],
+                                        if (past.isNotEmpty) ...[
+                                          const SizedBox(height: T.s6),
+                                          const _MicroLabel('Past medicines'),
+                                          const SizedBox(height: T.s3),
+                                          PastMedicinesList(medicines: past),
+                                        ],
+                                      ];
+                                    },
+                                    orElse: () => const <Widget>[],
                                   ),
 
                               // Kept below the design's content rather than dropped:
@@ -563,10 +620,17 @@ class _WindowCard extends StatelessWidget {
 // ---- Prescription card ----------------------------------------------------
 
 class _PrescriptionCard extends StatelessWidget {
-  const _PrescriptionCard({required this.medication, required this.meals});
+  const _PrescriptionCard({
+    required this.medication,
+    required this.meals,
+    this.onStopTaking,
+  });
 
   final Medication medication;
   final ({String breakfast, String lunch, String dinner})? meals;
+
+  /// The patient's own stop. Their doctor's prescription is not changed by it.
+  final VoidCallback? onStopTaking;
 
   /// Splits "500 mg" into the number and its unit, so the amount can carry
   /// the weight and the unit sit quietly beside it.
@@ -771,6 +835,20 @@ class _PrescriptionCard extends StatelessWidget {
                 ),
               ],
             ),
+            // Another prescription for the same medicine on this list.
+            AlsoOnListNote(medication: medication),
+            if (onStopTaking != null)
+              Align(
+                alignment: Alignment.centerRight,
+                child: TextButton(
+                  style: TextButton.styleFrom(
+                    foregroundColor: T.danger,
+                    minimumSize: const Size(T.tap, T.tap),
+                  ),
+                  onPressed: onStopTaking,
+                  child: const Text('Stop taking'),
+                ),
+              ),
           ],
         ),
       ),

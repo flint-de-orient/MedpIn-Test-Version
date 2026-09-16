@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/network/api_client.dart';
+import '../../../core/network/api_exception.dart';
 import '../../../shared/models/paged.dart';
 import '../../../shared/providers/core_providers.dart';
 import '../../chat/domain/chat_message.dart';
@@ -676,7 +677,12 @@ class ClinicianRepository {
   /// without being shown the running list, which is how a drug gets duplicated
   /// or prescribed against something already there.
   Future<List<Medication>> patientMedications(String patientId) async {
-    final json = await _client.getJson('/patients/$patientId/medications');
+    // Every prescription that stands, including the ones the patient has
+    // stopped taking — the doctor needs to see those most of all.
+    final json = await _client.getJson(
+      '/patients/$patientId/medications',
+      query: {'view': 'current'},
+    );
     final items =
         (json['items'] as List?) ?? (json['medications'] as List?) ?? const [];
     return items
@@ -690,6 +696,24 @@ class ClinicianRepository {
   /// stay interpretable.
   Future<void> stopMedication(String patientId, String medicationId) async {
     await _client.delete('/patients/$patientId/medications/$medicationId');
+  }
+
+  /// Stops a prescription, recording why. Falls back to the plain stop on a
+  /// server from before reasons were recorded.
+  Future<void> stopPrescribedMedicine(
+    String patientId,
+    String medicationId, {
+    required String reason,
+  }) async {
+    try {
+      await _client.postJson(
+        '/patients/$patientId/medications/$medicationId/stop',
+        body: {'reason': reason},
+      );
+    } on ApiException catch (e) {
+      if (e.statusCode != 404) rethrow;
+      await stopMedication(patientId, medicationId);
+    }
   }
 
   // ---- Conversation summaries ---------------------------------------------

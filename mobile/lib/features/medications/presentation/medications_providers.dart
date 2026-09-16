@@ -38,6 +38,14 @@ final FutureProvider<List<Medication>> medicationsListProvider =
       (ref) => ref.watch(medicationsRepositoryProvider).getMedications(),
     );
 
+/// Every medicine on the list, ended ones included — for "Stopped by you" and
+/// "Past medicines". Separate from [medicationsListProvider], which the
+/// reminders are built from and must only ever hold what is being taken.
+final FutureProvider<List<Medication>> allMedicationsProvider =
+    FutureProvider<List<Medication>>(
+      (ref) => ref.watch(medicationsRepositoryProvider).getAllMedications(),
+    );
+
 /// The patient's dose history over [days] days (newest first) — the medicine-
 /// taking history screen. Family so the range toggle re-fetches.
 final doseHistoryProvider = FutureProvider.autoDispose
@@ -46,30 +54,81 @@ final doseHistoryProvider = FutureProvider.autoDispose
           ref.watch(medicationsRepositoryProvider).getDoseHistory(days: days),
     );
 
-/// Expands active medications into their DAILY-REPEATING dose reminders — one
-/// alarm per (medicine, slot time), which the OS then fires every day at that
-/// time (see NotificationService: matchDateTimeComponents + exactAllowWhileIdle).
+/// How far ahead single-dose alarms are armed. Re-armed on every open, resume,
+/// sign-in and medicine change; if the app is not opened for longer than this,
+/// the server's push (medicationReminderCron.js) is what remains.
+const Duration reminderHorizon = Duration(days: 14);
+
+/// A ceiling on single-dose alarms, well inside Android's per-app alarm limit,
+/// soonest first.
+const int maxSingleDoseAlarms = 300;
+
+/// Whether a medicine is reminded about with one alarm repeating daily.
 ///
-/// This is deliberately a daily repeat rather than a rolling window of one-shots:
-/// the one-shot scheme silently stopped firing when the app wasn't reopened
-/// overnight, which is exactly why a morning dose stopped alarming. A daily
-/// repeat survives reboot and needs no re-arming.
+/// The same rule as `remindsDaily` in backend/src/utils/medReminderId.js — both
+/// ends must choose alike, or the alarm and the push for one dose carry
+/// different ids and the patient is reminded twice.
 ///
-/// PRN/Stat carry no reminders. Every-other-day / day-of-week nuances aren't
-/// expressible as a plain daily repeat, so they fire daily — an occasional extra
-/// reminder (safe) rather than a missed morning one. [today] is accepted for
-/// call-site compatibility but no longer used.
+/// A daily repeat cannot skip a day or stop on a date. It used to be the only
+/// kind: days of the week and every-other-day "fired daily — an occasional
+/// extra reminder (safe)". It is not safe. A weekly methotrexate on a daily
+/// repeat is a daily reminder to take methotrexate, and a finished antibiotic
+/// course kept ringing until the app happened to be opened.
+bool remindsDaily(Medication m) =>
+    m.daysOfWeek.isEmpty && m.dayInterval <= 1 && m.endDate == null;
+
+/// Whether a dose of [m] falls on local calendar date [day]: its weekdays, and
+/// its interval counted in calendar days from its start. The same calendar as
+/// `occursOn` in backend/src/services/medicationLifecycle.js.
+bool occursOnDate(Medication m, DateTime day) {
+  if (m.asNeeded || m.stat) return false;
+  if (m.daysOfWeek.isNotEmpty && !m.daysOfWeek.contains('${day.weekday % 7}')) {
+    return false;
+  }
+  if (m.dayInterval > 1) {
+    final start = m.startDate?.toLocal();
+    if (start == null) return false;
+    final diff =
+        DateTime.utc(day.year, day.month, day.day)
+            .difference(DateTime.utc(start.year, start.month, start.day))
+            .inDays;
+    if (diff < 0 || diff % m.dayInterval != 0) return false;
+  }
+  return true;
+}
+
+/// Expands the medicines being taken into their reminders.
+///
+/// An everyday medicine with no end keeps one daily-repeating alarm per time —
+/// it survives a reboot and needs no re-arming, which is why it replaced a
+/// rolling window that went silent overnight. Everything else — days of the
+/// week, every other day, a course with an end — is armed dose by dose across
+/// [reminderHorizon]: only on the days it is due, never past its end, and not
+/// for a dose already taken today.
+///
+/// Only medicines being taken: `isActive` is false for one the doctor stopped,
+/// one whose course completed, and one the patient stopped taking.
 List<ScheduledDose> buildUpcomingDoses(
   List<Medication> meds, {
   TodaySchedule? today,
+  DateTime? now,
 }) {
-  final now = DateTime.now();
-  final doses = <ScheduledDose>[];
+  final at = now ?? DateTime.now();
+  final daily = <ScheduledDose>[];
+  final single = <ScheduledDose>[];
   final seen = <int>{};
+
+  final handled = <String>{
+    for (final s in today?.slots ?? const <MedicationScheduleSlot>[])
+      if (s.status == 'taken' || s.status == 'skipped') '${s.medicationId}|${s.time}',
+  };
+
   for (final m in meds) {
     if (!m.isActive || m.asNeeded || m.stat) continue;
-    if (m.endDate != null && _dateOnly(m.endDate!).isBefore(_dateOnly(now)))
-      continue;
+    final end = m.endDate?.toLocal();
+    if (end != null && !end.isAfter(at)) continue;
+    final start = m.startDate?.toLocal();
+
     for (final s in m.schedule) {
       if (s.time.isEmpty) continue;
       final parts = s.time.split(':');
@@ -77,24 +136,56 @@ List<ScheduledDose> buildUpcomingDoses(
       final hh = int.tryParse(parts[0]);
       final mm = int.tryParse(parts[1]);
       if (hh == null || mm == null || hh > 23 || mm > 59) continue;
-      final id = medDailyReminderId(m.id, s.time);
-      if (!seen.add(id)) continue; // one alarm per distinct slot time
-      doses.add(
-        ScheduledDose(
-          id: id,
-          medId: m.id,
-          name: m.name,
-          when: DateTime(now.year, now.month, now.day, hh, mm),
-          dose: m.dose.isNotEmpty ? m.dose : null,
-          relationToMeal: s.relationToMeal,
-        ),
-      );
+
+      if (remindsDaily(m)) {
+        final id = medDailyReminderId(m.id, s.time);
+        if (!seen.add(id)) continue; // one alarm per distinct slot time
+        var first = DateTime(at.year, at.month, at.day, hh, mm);
+        if (start != null && start.isAfter(first)) {
+          first = DateTime(start.year, start.month, start.day, hh, mm);
+          if (first.isBefore(start)) first = first.add(const Duration(days: 1));
+        }
+        daily.add(
+          ScheduledDose(
+            id: id,
+            medId: m.id,
+            name: m.name,
+            when: first,
+            dose: m.dose.isNotEmpty ? m.dose : null,
+            relationToMeal: s.relationToMeal,
+          ),
+        );
+        continue;
+      }
+
+      for (var i = 0; i <= reminderHorizon.inDays; i++) {
+        final day = DateTime(at.year, at.month, at.day + i);
+        if (!occursOnDate(m, day)) continue;
+        final when = DateTime(day.year, day.month, day.day, hh, mm);
+        if (!when.isAfter(at)) continue;
+        if (start != null && when.isBefore(start)) continue;
+        if (end != null && when.isAfter(end)) continue;
+        if (i == 0 && handled.contains('${m.id}|${s.time}')) continue;
+        final id = medOccurrenceReminderId(m.id, s.time, day);
+        if (!seen.add(id)) continue;
+        single.add(
+          ScheduledDose(
+            id: id,
+            medId: m.id,
+            name: m.name,
+            when: when,
+            dose: m.dose.isNotEmpty ? m.dose : null,
+            relationToMeal: s.relationToMeal,
+            repeatsDaily: false,
+          ),
+        );
+      }
     }
   }
-  return doses;
-}
 
-DateTime _dateOnly(DateTime d) => DateTime(d.year, d.month, d.day);
+  single.sort((a, b) => a.when.compareTo(b.when));
+  return [...daily, ...single.take(maxSingleDoseAlarms)];
+}
 
 /// (Re)builds and arms the device reminders from [meds] and today's [today]
 /// statuses. Returns how many alarms armed.

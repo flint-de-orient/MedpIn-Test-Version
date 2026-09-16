@@ -28,6 +28,7 @@ import 'patient_detail_screen.dart' show PatientRecordSections;
 import '../../medications/domain/strength.dart';
 import '../../../shared/widgets/strength_field.dart';
 import '../../../shared/widgets/surfaces.dart';
+import '../../../core/theme/tokens.dart';
 import '../domain/clinician_models.dart';
 import '../../../shared/widgets/disclosure_tile.dart';
 
@@ -1627,37 +1628,17 @@ class _CurrentMedicines extends ConsumerWidget {
     WidgetRef ref,
     Medication med,
   ) async {
-    final confirmed = await showDialog<bool>(
+    final reason = await showDialog<String>(
       context: context,
-      builder:
-          (ctx) => AlertDialog(
-            title: Text('Stop ${med.name}?'),
-            content: const Text(
-              'The patient stops being reminded about it from now on. Doses already '
-              'recorded are kept.',
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(ctx, false),
-                child: const Text('Cancel'),
-              ),
-              FilledButton(
-                style: FilledButton.styleFrom(
-                  backgroundColor: AppColors.danger,
-                ),
-                onPressed: () => Navigator.pop(ctx, true),
-                child: const Text('Stop it'),
-              ),
-            ],
-          ),
+      builder: (ctx) => _StopPrescriptionDialog(medication: med),
     );
-    if (confirmed != true || !context.mounted) return;
+    if (reason == null || !context.mounted) return;
 
     final messenger = ScaffoldMessenger.of(context);
     try {
       await ref
           .read(clinicianRepositoryProvider)
-          .stopMedication(patientId, med.id);
+          .stopPrescribedMedicine(patientId, med.id, reason: reason);
       ref.invalidate(patientMedicationsProvider(patientId));
       messenger.showSnackBar(SnackBar(content: Text('${med.name} stopped')));
     } on ApiException catch (e) {
@@ -1709,6 +1690,13 @@ class _CurrentMedicines extends ConsumerWidget {
           ),
       data: (meds) {
         final active = meds.where((m) => m.isActive).toList();
+        // Still prescribed, and the patient has stopped taking them. Listed
+        // apart, with the patient's reason: the prescription says one thing and
+        // the patient is doing another, which is the conversation to have.
+        final stoppedByPatient =
+            meds
+                .where((m) => m.prescriptionStands && m.stoppedByPatient)
+                .toList();
         return Padding(
           padding: const EdgeInsets.only(bottom: AppSpacing.md),
           child: Column(
@@ -1836,24 +1824,170 @@ class _CurrentMedicines extends ConsumerWidget {
                             ],
                           ),
                         ),
-                        TextButton(
-                          style: TextButton.styleFrom(
-                            foregroundColor: AppColors.dangerOn(context),
-                            visualDensity: VisualDensity.compact,
+                        // Offered only where the server would allow it: this
+                        // practice's prescription. Anyone else's says whose.
+                        if (med.changeableByYou != false)
+                          TextButton(
+                            style: TextButton.styleFrom(
+                              foregroundColor: AppColors.dangerOn(context),
+                              visualDensity: VisualDensity.compact,
+                            ),
+                            onPressed: () => _stop(context, ref, med),
+                            child: const Text(
+                              'Stop',
+                              style: TextStyle(fontWeight: FontWeight.w700),
+                            ),
+                          )
+                        else
+                          Padding(
+                            padding: const EdgeInsets.only(right: T.s2),
+                            child: Text(
+                              med.patientOwned
+                                  ? 'Added by\nthe patient'
+                                  : 'Another\npractice',
+                              textAlign: TextAlign.end,
+                              style: T.label.copyWith(color: T.inkMuted),
+                            ),
                           ),
-                          onPressed: () => _stop(context, ref, med),
-                          child: const Text(
-                            'Stop',
-                            style: TextStyle(fontWeight: FontWeight.w700),
-                          ),
-                        ),
                       ],
                     ),
                   ),
+              for (final med in active)
+                if (med.alsoOnList.isNotEmpty)
+                  _SameMedicineNote(medication: med),
+              if (stoppedByPatient.isNotEmpty) ...[
+                const SizedBox(height: T.s3),
+                Text(
+                  'STOPPED BY THE PATIENT ${stoppedByPatient.length}',
+                  style: T.label.copyWith(color: T.warning),
+                ),
+                const SizedBox(height: T.s2),
+                for (final med in stoppedByPatient)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: T.s2),
+                    child: InnerTile(
+                      tone: T.warningTint,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            [
+                              med.name,
+                              formatStrength(med.strength),
+                            ].where((s) => s.isNotEmpty).join(' '),
+                            style: T.bodyStrong,
+                          ),
+                          Text(
+                            [
+                              'Patient stopped taking it'
+                                  '${med.stoppedTaking?.at == null ? '' : ' on ${DateFormat('d MMM').format(med.stoppedTaking!.at!)}'}.',
+                              if ((med.stoppedTaking?.reason ?? '').isNotEmpty)
+                                'Reason: ${med.stoppedTaking!.reason}',
+                            ].join(' '),
+                            style: T.small.copyWith(color: T.ink),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+              ],
             ],
           ),
         );
       },
+    );
+  }
+}
+
+/// Asks the doctor why, before a prescription is stopped. The reason is the
+/// record's: "stopped" alone tells the next reader nothing.
+class _StopPrescriptionDialog extends StatefulWidget {
+  const _StopPrescriptionDialog({required this.medication});
+
+  final Medication medication;
+
+  @override
+  State<_StopPrescriptionDialog> createState() => _StopPrescriptionDialogState();
+}
+
+class _StopPrescriptionDialogState extends State<_StopPrescriptionDialog> {
+  final _reason = TextEditingController();
+
+  @override
+  void dispose() {
+    _reason.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final ready = _reason.text.trim().length >= 5;
+    return AlertDialog(
+      title: Text('Stop ${widget.medication.name}?'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'The patient stops being reminded about it from now on. Doses already '
+            'recorded are kept, and the prescription is recorded as stopped by you.',
+          ),
+          const SizedBox(height: T.s3),
+          TextField(
+            controller: _reason,
+            autofocus: true,
+            maxLength: 500,
+            textCapitalization: TextCapitalization.sentences,
+            onChanged: (_) => setState(() {}),
+            decoration: const InputDecoration(
+              labelText: 'Why is it being stopped?',
+            ),
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          style: FilledButton.styleFrom(backgroundColor: T.danger),
+          onPressed: ready ? () => Navigator.pop(context, _reason.text.trim()) : null,
+          child: const Text('Stop it'),
+        ),
+      ],
+    );
+  }
+}
+
+/// A doctor's note that another prescription for the same medicine stands.
+class _SameMedicineNote extends StatelessWidget {
+  const _SameMedicineNote({required this.medication});
+
+  final Medication medication;
+
+  @override
+  Widget build(BuildContext context) {
+    final others = [
+      for (final o in medication.alsoOnList)
+        [
+          formatStrength(o.strength),
+          o.samePractice ? '(this practice)' : '(another practice)',
+        ].where((s) => s.isNotEmpty).join(' '),
+    ];
+    final label = [
+      medication.name,
+      formatStrength(medication.strength),
+    ].where((s) => s.isNotEmpty).join(' ');
+    return Padding(
+      padding: const EdgeInsets.only(bottom: T.s2),
+      child: InnerTile(
+        tone: T.warningTint,
+        child: Text(
+          '$label is also prescribed as ${others.join('; ')}. Both are on the patient’s list and both remind them.',
+          style: T.small.copyWith(color: T.ink),
+        ),
+      ),
     );
   }
 }
