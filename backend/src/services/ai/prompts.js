@@ -1,5 +1,5 @@
-import { env } from '../../config/env.js';
 import { orCallClinic, clinicEmergencyPhone } from '../clinicContact.js';
+import { doctorNameOr, clinicNameOr } from '../clinicIdentity.js';
 
 /**
  * The number to offer this patient: their practice's, from the identity.
@@ -109,10 +109,11 @@ export function buildSystemPrompt({
   // environment, because one process can hold one env var and the whole point
   // of a second practice is that its patients meet their own doctor here.
   //
-  // `||` so an empty saved value falls through rather than introducing the
-  // assistant as working for nobody.
-  const doctorName = identity?.doctorName || env.DOCTOR_DISPLAY_NAME;
-  const clinicName = identity?.clinicName || env.CLINIC_NAME;
+  // With no practice, or a practice with no name saved, it is "your doctor" at
+  // "your clinic" — never a name borrowed from another practice. The prompt is
+  // written in English whatever the reply language, so the English words.
+  const doctorName = doctorNameOr(identity, 'en');
+  const clinicName = clinicNameOr(identity, 'en');
   // The clause naming the number to ring — this patient's practice's.
   const orCall = orCallClinic('en', emergencyPhoneOf(identity));
 
@@ -213,7 +214,7 @@ ${
       ? `${careTeamNotes}
 
 These are the real words of ${doctorName} or the clinic's dietician, sent to this patient in this same conversation. Treat them as settled instructions:
-- If the patient asks about something covered here, answer with what was actually said, and say who said it ("Dr. Dey told you...", "Your dietician asked you to...").
+- If the patient asks about something covered here, answer with what was actually said, and say who said it ("Your doctor told you...", "Your dietician asked you to...").
 - Repeat them faithfully. Do NOT reword an instruction into different numbers, timings or amounts, and do NOT extend one to a situation it did not cover.
 - Never contradict them, and never present general guidance as if it overrides them. If the knowledge base and a care-team instruction disagree, the care-team instruction wins and you say so.
 - These do NOT give you permission to change a dose yourself. A dose change is theirs to state and yours only to repeat. If the patient wants something changed beyond what is written here, that is still a question for the clinic.
@@ -362,8 +363,10 @@ export function fallbackReply(kind, language = 'en', identity = null) {
   // The doctor and the number are placeholders in the stored strings rather
   // than baked in at module load, because the module loads once and a practice
   // is per request. The number was baked in, and so was the founding clinic's
-  // for every practice on the platform.
+  // for every practice on the platform. No doctor is "your doctor", in the
+  // language the reply is written in.
+  const replyLanguage = set[language] ? language : 'en';
   return text
-    .replaceAll('{{doctor}}', identity?.doctorName || env.DOCTOR_DISPLAY_NAME)
+    .replaceAll('{{doctor}}', doctorNameOr(identity, replyLanguage))
     .replaceAll('{{orCall}}', orCallClinic(set[language] ? language : 'en', emergencyPhoneOf(identity)));
 }

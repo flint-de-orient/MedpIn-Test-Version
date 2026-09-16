@@ -17,15 +17,12 @@ import mongoose from 'mongoose';
  *
  * ---- Nothing is taken away from Clinic ----------------------------------
  *
- * The backfill *copies* the brand fields up; it does not clear them. A location
- * that sets its own name or phone keeps winning over the practice's — see
- * [services/clinicIdentity.js], where the resolution order is location, then
- * practice, then the environment.
- *
- * That order is not an accident. The settings screen the clinic uses today
- * writes to the Clinic row. If the practice won, saving that screen would look
- * like it had done nothing. Beneath that, it is also the semantics a polyclinic
- * wants: the practice brand is the default and a branch may override it.
+ * The backfill *copies* the brand fields up; it does not clear them. Identity
+ * resolves Practice → Location → Head Doctor — see [services/clinicIdentity.js]:
+ * the name is the practice's, a branch may still set its own tagline, logo and
+ * registration, the address and phone are the branch's alone, and the doctor
+ * named is the practice's printed name, then the head doctor's. There is no
+ * environment beneath any of it; no practice is the neutral identity.
  *
  * ---- Verification is not access -----------------------------------------
  *

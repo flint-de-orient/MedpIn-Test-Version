@@ -74,7 +74,20 @@ const schema = z.object({
   UPLOAD_DIR: z.string().default('uploads'),
   MAX_UPLOAD_MB: z.coerce.number().default(12),
 
-  CLINIC_NAME: z.string().default('Dr. Amit Kumar Dey Clinic'),
+  /*
+   * Read by nothing at runtime, and empty unless set.
+   *
+   * These two were the clinic's name and the doctor's printed name for the
+   * whole deployment, defaulting to Dr. Amit Kumar Dey's — so every practice on
+   * the platform, and every caller that did not say whose patient it was, was
+   * introduced as his clinic. Identity now comes from the practice (see
+   * services/clinicIdentity.js), and a context with no practice is neutral.
+   *
+   * They survive only for `scripts/backfillPractices.js`, which ran once to
+   * create the founding practice from the single-clinic deployment and reads
+   * them as that operator's explicit input. Nothing else may.
+   */
+  CLINIC_NAME: z.string().default(''),
 
   // What build of the app the server expects to be talking to.
   //
@@ -102,7 +115,8 @@ const schema = z.object({
   // Empty by default now, and `clinicEmergencyPhone()` refuses to speak one
   // that has not been set. Production is checked at boot besides.
   CLINIC_EMERGENCY_PHONE: z.string().default(''),
-  DOCTOR_DISPLAY_NAME: z.string().default('Dr. Amit Kumar Dey'),
+  // See CLINIC_NAME above: read only by the founding-practice backfill.
+  DOCTOR_DISPLAY_NAME: z.string().default(''),
 
   // Anyone who registers with this exact code becomes a dietician instead of a
   // patient. Change it per clinic; keep it private (shared only with dieticians

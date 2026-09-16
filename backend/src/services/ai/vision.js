@@ -1,7 +1,6 @@
 import { generateFromImage, generate, AiUnavailableError } from './gemini.js';
 import { retrieve, formatContext } from './rag.js';
-import { env } from '../../config/env.js';
-import { clinicIdentity } from '../clinicIdentity.js';
+import { clinicIdentity, doctorNameOr } from '../clinicIdentity.js';
 import { logger } from '../../config/logger.js';
 import { countAiCall } from './allowance.js';
 
@@ -38,8 +37,10 @@ export async function assessFootImages({ images, symptoms, language = 'en', pati
     limit: 4,
   }).catch(() => []);
 
-  const doctorName = (await clinicIdentity(null, { practiceId })).doctorName || env.DOCTOR_DISPLAY_NAME;
-  const system = `You are a clinical triage assistant supporting ${doctorName}, a Consultant Diabetologist, in reviewing diabetic foot photographs submitted by patients.
+  // The practice's doctor, or "the patient's doctor". Not a credential either:
+  // "a Consultant Diabetologist" was printed after every practice's doctor.
+  const doctorName = doctorNameOr(await clinicIdentity(null, { practiceId }), 'en');
+  const system = `You are a clinical triage assistant supporting ${doctorName} in reviewing diabetic foot photographs submitted by patients.
 
 Your role is strictly limited:
 - Describe only what is actually visible in the photograph. Do not speculate about what might be underneath.
@@ -127,8 +128,8 @@ export async function explainEyeReport({ reportText, images, reportedGrade, lang
     limit: 4,
   }).catch(() => []);
 
-  const doctorName = (await clinicIdentity(null, { practiceId })).doctorName || env.DOCTOR_DISPLAY_NAME;
-  const system = `You explain eye examination reports to patients of ${doctorName}, a Consultant Diabetologist. Many of these patients have diabetic retinopathy.
+  const doctorName = doctorNameOr(await clinicIdentity(null, { practiceId }), 'en');
+  const system = `You explain eye examination reports to patients of ${doctorName}. Many of these patients have diabetic retinopathy.
 
 Rules:
 - You are explaining a report that an eye specialist has ALREADY produced. You are not examining the eye or making a diagnosis yourself.

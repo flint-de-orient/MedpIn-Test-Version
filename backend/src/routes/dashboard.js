@@ -336,7 +336,9 @@ function buildRecommendations({ healthScore, trends, adherence, reminders, lates
     recs.push({
       code: 'LOW_TIME_IN_RANGE',
       title: 'Your sugar is often above target',
-      body: `Only ${trends.stats.timeInRangePercent}% of your recent readings were in range. Discuss this with Dr. Dey at your next visit.`,
+      // "your doctor": these lines are the same for every practice's patients,
+      // and they named the founding clinic's doctor to all of them.
+      body: `Only ${trends.stats.timeInRangePercent}% of your recent readings were in range. Discuss this with your doctor at your next visit.`,
       priority: 'high',
     });
   }
@@ -354,7 +356,7 @@ function buildRecommendations({ healthScore, trends, adherence, reminders, lates
     recs.push({
       code: 'LOG_MORE',
       title: 'Record a blood sugar reading',
-      body: 'It has been a few days since your last reading. Regular readings help Dr. Dey adjust your treatment.',
+      body: 'It has been a few days since your last reading. Regular readings help your doctor adjust your treatment.',
       priority: 'medium',
     });
   }

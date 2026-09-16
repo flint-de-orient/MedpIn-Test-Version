@@ -274,7 +274,8 @@ describe('the letterhead dialog describes the letterhead', () => {
   test('the doctor name and registration really are fallbacks', () => {
     // If these ever became the first choice, the hints below would be wrong in
     // the other direction and this test should fail so they get rewritten.
-    assert.match(pdf, /doctor\?\.name \?\? identity\?\.doctorName/);
+    // `||` or `??`: an empty name on the account falls through as well now.
+    assert.match(pdf, /doctor\?\.name (\?\?|\|\|) identity\?\.doctorName/);
     assert.match(pdf, /doctor\?\.registrationNo \|\| identity\?\.registrationNo/);
   });
 

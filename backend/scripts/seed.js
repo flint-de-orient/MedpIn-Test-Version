@@ -73,7 +73,9 @@ async function main() {
 
   // ---- Clinic staff -------------------------------------------------------
   const doctor = await upsertUser({
-    name: env.DOCTOR_DISPLAY_NAME,
+    // An invented demo doctor. This took the configured doctor's name, which
+    // defaulted to a real one.
+    name: 'Dr. Demo Doctor',
     phone: '+919830000001',
     password: 'Doctor@1234',
     role: ROLES.DOCTOR,

@@ -38,7 +38,9 @@ const PATIENT = {
   age: arg('--age', '54'),
   sex: arg('--sex', 'Male'),
   id: arg('--id', 'MP-2026-04871'),
-  referredBy: arg('--doctor', 'Dr. Amit Kumar Dey, MD (Medicine)'),
+  // An invented doctor, like the invented lab below. A real doctor's name on a
+  // document this convincing is a claim nobody made.
+  referredBy: arg('--doctor', 'Dr. Sample Referrer, MD (Medicine)'),
 };
 
 const OUT_DIR = path.resolve(process.cwd(), arg('--out', 'sample-reports'));

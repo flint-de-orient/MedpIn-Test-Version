@@ -69,15 +69,21 @@ export function buildPrescriptionPdf({ prescription: p, patient, doctor, profile
     const contentW = doc.page.width - M * 2;
 
     // --- Header -----------------------------------------------------------
-    // The identity this prescription was issued under. `identity` is the
-    // snapshot taken at issue; the env vars remain the last resort for rows
-    // written before either existed.
-    const clinicName = identity?.clinicName || env.CLINIC_NAME;
-    doc.fillColor(TEAL).font('Helvetica-Bold').fontSize(20).text(clinicName, M, M, { width: contentW });
+    // The identity this prescription was issued under — the snapshot taken at
+    // issue, or the issuing practice's. There is no configured fallback: the
+    // environment's clinic and doctor names were the founding clinic's, and a
+    // prescription whose practice cannot be told was printed under them. It is
+    // headed by the prescribing doctor instead, and failing that by what it is.
+    const doctorName = doctor?.name || identity?.doctorName || null;
+    const clinicName = identity?.clinicName || null;
+    doc
+      .fillColor(TEAL)
+      .font('Helvetica-Bold')
+      .fontSize(20)
+      .text(clinicName || doctorName || 'Prescription', M, M, { width: contentW });
     if (identity?.tagline) {
       doc.fillColor(SLATE).font('Helvetica').fontSize(9.5).text(identity.tagline, { width: contentW });
     }
-    const doctorName = doctor?.name ?? identity?.doctorName ?? env.DOCTOR_DISPLAY_NAME;
     /*
      * The doctor's own credentials, or none.
      *
@@ -92,9 +98,11 @@ export function buildPrescriptionPdf({ prescription: p, patient, doctor, profile
      * about somebody's qualifications that nobody made.
      */
     const credentials = [doctor?.qualifications, doctor?.specialty].filter(Boolean).join(', ');
-    doc.fillColor(SLATE).font('Helvetica').fontSize(10.5).text(`${doctorName}${credentials ? ` — ${credentials}` : ''}`, {
-      width: contentW,
-    });
+    // Not repeated when the doctor's name is already the heading.
+    const doctorLine = [clinicName ? doctorName : null, credentials || null].filter(Boolean).join(' — ');
+    if (doctorLine) {
+      doc.fillColor(SLATE).font('Helvetica').fontSize(10.5).text(doctorLine, { width: contentW });
+    }
     // This practice's number when the identity resolved one — `null` included,
     // which prints no number rather than another practice's. A letterhead
     // stamped before practices had numbers carries none, and reads the
@@ -226,9 +234,15 @@ export function buildPrescriptionPdf({ prescription: p, patient, doctor, profile
     }
     const lineY = y + 46;
     doc.moveTo(sigX, lineY).lineTo(sigX + sigW, lineY).lineWidth(1).strokeColor(INK).stroke();
-    doc.font('Helvetica-Bold').fontSize(10.5).fillColor(INK).text(doctorName, sigX, lineY + 4, { width: sigW, align: 'center' });
+    if (doctorName) {
+      doc.font('Helvetica-Bold').fontSize(10.5).fillColor(INK).text(doctorName, sigX, lineY + 4, { width: sigW, align: 'center' });
+    }
     if (credentials) {
-      doc.font('Helvetica').fontSize(8).fillColor(SLATE).text(credentials, sigX, doc.y, { width: sigW, align: 'center' });
+      doc
+        .font('Helvetica')
+        .fontSize(8)
+        .fillColor(SLATE)
+        .text(credentials, sigX, doctorName ? doc.y : lineY + 4, { width: sigW, align: 'center' });
     }
 
     // Footer note on the left, level with the signature line.
@@ -330,10 +344,18 @@ function ensureSpace(doc, y, need, x, onNewPage) {
  * The identity a prescription is lettered with.
  *
  * A letterhead already stamped is kept — a prescription prints what it was
- * issued under. Otherwise it is the prescribing doctor's practice, or the
- * patient's when that doctor has since left one. Never the first clinic on the
- * platform, which is what `identitySnapshot(null)` answered for every
- * prescription a second practice issued — and, being stamped, kept answering.
+ * issued under. Otherwise it is the practice that issued it: the practice the
+ * prescription itself records, which every prescription written since the
+ * medicine lifecycle work carries. A row older than that falls back to the
+ * prescribing doctor's practice, then the patient's when that doctor has since
+ * left one — and with none of them, to nobody's letterhead rather than the
+ * first clinic on the platform, which is what `identitySnapshot(null)` answered
+ * for every prescription a second practice issued and, being stamped, kept
+ * answering.
+ *
+ * The recorded practice comes first because the doctor's may be ambiguous: a
+ * doctor who works at two practices has two memberships, and the first one the
+ * database returns is not a decision about whose letterhead this is.
  *
  * A prescription does not record the location it was written at, so this is
  * the practice's primary one. When it does, that id belongs in the first
@@ -343,7 +365,9 @@ export async function letterheadIdentityFor(prescription) {
   if (prescription.letterhead?.clinicName) return prescription.letterhead;
 
   const practiceId =
-    (await practiceOfMember(prescription.doctor)) ?? (await practiceForPatient(prescription.patient));
+    prescription.practice ??
+    (await practiceOfMember(prescription.doctor)) ??
+    (await practiceForPatient(prescription.patient));
   return identitySnapshot(null, { practiceId });
 }
 
