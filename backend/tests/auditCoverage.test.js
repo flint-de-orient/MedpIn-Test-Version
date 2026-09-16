@@ -262,7 +262,7 @@ describe('the clinical log and the platform log stay apart', () => {
    * is why extending this list is safe rather than a way of quietly widening
    * what counts as "the platform".
    */
-  const PLATFORM = new Set(['admin.js', 'adminBilling.js', 'adminApplications.js']);
+  const PLATFORM = new Set(['admin.js', 'adminBilling.js', 'adminApplications.js', 'adminFeedback.js']);
 
   test('the admin namespace writes only to its own', () => {
     // Sharing AuditLog would mean a practice-scoped viewer has to remember to

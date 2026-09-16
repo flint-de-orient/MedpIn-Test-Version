@@ -356,6 +356,44 @@ as unresolved; ask the practices, and enrol through the same route.
 If this ran with `--apply` on a deployment before C8, the enrolments it wrote
 stand — nothing here removes them.
 
+### Once, after deploying patient-controlled sharing and feedback routing (C8)
+
+Feedback used to store the patient and nothing else, and every practice that
+patient was enrolled at read all of it — about any clinic, and about the app.
+New feedback records where it went: one practice (and the enrolment it went
+through), or MedPin. Nothing on the old rows says which clinic they were about,
+so they are marked `legacy_unattributed` and stay private to the patient who
+wrote them. Every inbox already ignores them, so this changes what the data
+says, not what anybody sees:
+
+```bash
+cd /var/www/clinq-staging/backend     # then /var/www/clinq/backend for production
+mongodump --db medpin_staging --collection feedbacks --out ~/dumps/feedback-before-routing   # 1. back up
+node scripts/backfillFeedbackRouting.js                                                       # 2. dry run
+mongosh --quiet --eval 'db.getSiblingDB("medpin_staging").feedbacks.countDocuments({ origin: { $exists: false } })'  # 3. matches the report
+node scripts/backfillFeedbackRouting.js --apply                                               # 4. apply
+node scripts/backfillFeedbackRouting.js                                                       # 5. verify: 0 rows
+```
+
+- **Tell the live practice before deploying.** Old feedback leaves every
+  practice's inbox with this release — it was never attributable to one
+  practice, and could not stay in a list that now means "written to us". The
+  patients who wrote it still see it in the app, marked private.
+- Nothing is deleted; the old practice-wide "reviewed" mark stays on the rows
+  that have it. A second run changes nothing. The rollback is the dump above.
+- Nothing to run for sharing. `ShareGrant` had no rows (nothing wrote to it), the
+  new consent-log fields are optional, and the new unique indexes (one answer
+  per consent, one open request per patient per practice, the idempotency keys)
+  build themselves at startup over collections that cannot already break them.
+- **Admin console**: platform feedback is served at `/admin/feedback`, without
+  the patient's identity. Until the console has a screen for it, it is readable
+  with an operator's bearer token.
+- **The app**: builds from before this keep sending feedback (a patient with
+  one practice is routed to it; with two, the old form is told to choose, which
+  it cannot, and says so) and keep working at the desk — an existing number
+  now always asks for the patient's code, and the older build opens the patient
+  list afterwards rather than the record.
+
 ### Once, after deploying per-practice emergency numbers
 
 The number patients ring — "Call clinic", the emergency card, and the number the
