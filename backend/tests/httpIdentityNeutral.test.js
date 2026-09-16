@@ -82,13 +82,9 @@ describe('a second practice is never introduced as the founding one', () => {
     );
     assert.match(text, /Lake Town Heart Centre/);
     assert.match(text, /Dr\. Meera Iyer/);
-    // The page text, not the reference line: references issued before the
-    // prefix change are tested in prescriptionReferencePrefix.test.js.
-    const withoutReference = text.replace(/^Ref: .*$/m, '');
-    assert.ok(
-      !FOUNDING_NAMES.test(withoutReference),
-      `the second practice's prescription names the founding clinic:\n${text}`,
-    );
+    // The reference line included: it carried the founding doctor's initials
+    // on every practice's prescriptions. See prescriptionReferencePrefix.test.js.
+    assert.ok(!FOUNDING_NAMES.test(text), `the second practice's prescription names the founding clinic:\n${text}`);
 
     // And the letterhead stamped on first render is its own, so the next copy is too.
     const stamped = await Prescription.findById(issued.body.prescription.id).lean();

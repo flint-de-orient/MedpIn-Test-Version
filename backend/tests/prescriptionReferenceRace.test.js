@@ -17,6 +17,8 @@ import { PLAN, PRACTICE_TYPE } from '../src/models/Practice.js';
  *
  *     countDocuments({ referenceNo: /^AKD-2026-/ }) + 1
  *
+ * (with the founding doctor's initials as its prefix, since replaced)
+ *
  * against a field with a unique index. Two requests in the same instant both
  * count 411 and both write 000412. The second is refused by the index, the
  * error handler turns the duplicate key into 409 "An account with that
@@ -85,13 +87,15 @@ describe('prescriptions issued at the same moment', () => {
     /*
      * The counter is new and the references are not. Starting it at one would
      * collide with the first prescription this clinic ever wrote — so it starts
-     * from the highest reference already printed this year.
+     * from the highest reference already printed this year with the same
+     * prefix. (The prefix itself stopped being the founding doctor's initials;
+     * see prescriptionReferencePrefix.test.js.)
      */
     const year = dayjs().year();
     await Prescription.create({
       patient: patients[0].user._id,
       doctor: doctors[0].user._id,
-      referenceNo: `AKD-${year}-000412`,
+      referenceNo: `RX-${year}-000412`,
       issuedOn: new Date(),
       items: [item(0)],
     });
@@ -102,6 +106,6 @@ describe('prescriptions issued at the same moment', () => {
     });
 
     assert.equal(res.status, 201);
-    assert.equal(res.body.prescription.referenceNo, `AKD-${year}-000413`);
+    assert.equal(res.body.prescription.referenceNo, `RX-${year}-000413`);
   });
 });

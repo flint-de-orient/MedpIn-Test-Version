@@ -17,7 +17,10 @@ const prescriptionSchema = new mongoose.Schema(
     practice: { type: mongoose.Schema.Types.ObjectId, ref: 'Practice', default: null, index: true },
     appointment: { type: mongoose.Schema.Types.ObjectId, ref: 'Appointment' },
 
-    // Human-readable, printed on the PDF. e.g. "AKD-2026-000412"
+    // Human-readable, printed on the PDF: "RX-2026-000412", or the practice's
+    // own prefix — "MHC-2026-000057". Never rewritten once issued, which is why
+    // references issued before practices had prefixes still read "AKD-…". See
+    // nextReference in routes/prescriptions.js.
     referenceNo: { type: String, required: true, unique: true },
     issuedOn: { type: Date, required: true, default: Date.now, index: true },
     validUntil: Date,

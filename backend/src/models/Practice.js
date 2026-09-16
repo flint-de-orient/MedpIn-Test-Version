@@ -198,6 +198,24 @@ export const PRACTICE_TYPE_ORDER = Object.freeze([
  * responsible person is not a doctor at all in the sense the word implies. The
  * onboarding wizard asks for one human either way; only the label changes.
  */
+/**
+ * The prefix a prescription reference carries when its practice has not chosen
+ * one: `RX-2026-000412`.
+ *
+ * Every reference used to start `AKD-` — the founding doctor's initials, on
+ * every practice's legal prescription. A practice may choose its own prefix;
+ * until it does, its references say only what they are. Reserved, so no
+ * practice can take it and make the neutral series look like theirs.
+ */
+export const NEUTRAL_PRESCRIPTION_PREFIX = 'RX';
+
+/**
+ * What a practice's own prefix may look like: two to eight capitals and
+ * digits, starting with a letter. Short enough to read out over a phone, and
+ * nothing that could be confused with the year or the number after it.
+ */
+export const PRESCRIPTION_PREFIX_RE = /^[A-Z][A-Z0-9]{1,7}$/;
+
 export const RESPONSIBLE_LABEL = Object.freeze({
   [PRACTICE_TYPE.CLINIC]: 'Head doctor',
   [PRACTICE_TYPE.SPECIALTY_CENTRE]: 'Lead consultant',
@@ -223,6 +241,27 @@ const practiceSchema = new mongoose.Schema(
 
     /// Printed under the signature on a prescription.
     registrationNo: { type: String, trim: true, maxlength: 60 },
+
+    /**
+     * What this practice's prescription references start with: "MHC" makes
+     * `MHC-2026-000057`. Null is the neutral `RX`.
+     *
+     * Set by an operator, not by the practice's own settings: a reference is
+     * printed on a legal document and a practice that changed it mid-year
+     * would have two series in its patients' hands. Unique across practices,
+     * so no two practices' references can be told apart only by their numbers.
+     * References already issued are never rewritten when it changes.
+     */
+    prescriptionPrefix: {
+      type: String,
+      trim: true,
+      uppercase: true,
+      default: null,
+      validate: {
+        validator: (v) => v == null || (PRESCRIPTION_PREFIX_RE.test(v) && v !== NEUTRAL_PRESCRIPTION_PREFIX),
+        message: 'A prefix is two to eight capital letters or digits, starting with a letter, and not RX',
+      },
+    },
 
     /**
      * The number this practice's patients ring: the emergency card's "Call
@@ -402,6 +441,22 @@ const practiceSchema = new mongoose.Schema(
 /// "Which practices does this doctor head" — the admin surface's first query.
 practiceSchema.index({ headDoctor: 1, status: 1 });
 
+/**
+ * One practice per prescription prefix.
+ *
+ * Partial on the prefix being a string, so the practices with none — every
+ * one of them today — never collide on null. Not also `sparse`: MongoDB refuses
+ * the two together, and an index it refuses is never built at all.
+ */
+practiceSchema.index(
+  { prescriptionPrefix: 1 },
+  {
+    unique: true,
+    partialFilterExpression: { prescriptionPrefix: { $type: 'string' } },
+    name: 'one_practice_per_prescription_prefix',
+  },
+);
+
 practiceSchema.methods.toPublic = function toPublic() {
   return {
     id: String(this._id),
@@ -409,6 +464,7 @@ practiceSchema.methods.toPublic = function toPublic() {
     tagline: this.tagline ?? null,
     doctorDisplayName: this.doctorDisplayName ?? null,
     registrationNo: this.registrationNo ?? null,
+    prescriptionPrefix: this.prescriptionPrefix ?? null,
     emergencyPhone: this.emergencyPhone ?? null,
     logoLightUrl: this.logoLightAssetId ? `/api/v1/uploads/${this.logoLightAssetId}/raw` : null,
     logoDarkUrl: this.logoDarkAssetId ? `/api/v1/uploads/${this.logoDarkAssetId}/raw` : null,

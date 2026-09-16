@@ -7,7 +7,7 @@ import { requireAdmin } from '../middleware/requireAdmin.js';
 import adminBillingRoutes from './adminBilling.js';
 import adminApplicationRoutes from './adminApplications.js';
 import { validate, q } from '../middleware/validate.js';
-import { asyncHandler, unauthorized, notFound, badRequest } from '../middleware/errors.js';
+import { asyncHandler, unauthorized, notFound, badRequest, conflict } from '../middleware/errors.js';
 import { PlatformAdmin } from '../models/PlatformAdmin.js';
 import { AdminAuditLog } from '../models/AdminAuditLog.js';
 import {
@@ -51,6 +51,8 @@ import {
 import { mailConfigured } from '../services/mailer.js';
 import { joinByPhone, membersOf } from '../services/memberships.js';
 import { provisionPractice } from '../services/provisionPractice.js';
+import { prefixAvailability, PREFIX_REFUSAL } from '../services/prescriptionPrefix.js';
+import { forgetClinicIdentity } from '../services/clinicIdentity.js';
 import { requestOtp, verifyOtp, signPhoneToken, phoneFromToken } from '../services/otp.js';
 import { toE164 } from '../utils/phone.js';
 import { ROLES } from '../models/User.js';
@@ -1653,11 +1655,31 @@ router.patch(
       notes: z.string().trim().max(2000).optional(),
       practiceType: z.enum(Object.values(PRACTICE_TYPE)).nullable().optional(),
       specialty: z.string().trim().max(80).nullable().optional(),
+      /**
+       * What this practice's prescription references start with. Null or empty
+       * goes back to the neutral RX. References already issued keep theirs.
+       */
+      prescriptionPrefix: z.string().trim().toUpperCase().max(8).nullable().optional(),
     }),
   }),
   asyncHandler(async (req, res) => {
     const practice = await Practice.findById(req.params.id);
     if (!practice) throw notFound('Practice not found');
+
+    // Checked before anything is written, so a refused prefix saves nothing
+    // else from the same form either.
+    if (req.body.prescriptionPrefix) {
+      const verdict = await prefixAvailability(req.body.prescriptionPrefix, practice._id);
+      if (!verdict.ok) {
+        throw verdict.reason === 'taken' || verdict.reason === 'issued'
+          ? conflict(
+              verdict.holder
+                ? `${req.body.prescriptionPrefix} is ${verdict.holder}'s prefix.`
+                : PREFIX_REFUSAL[verdict.reason],
+            )
+          : badRequest(PREFIX_REFUSAL[verdict.reason]);
+      }
+    }
 
     const fields = [
       'name',
@@ -1667,6 +1689,7 @@ router.patch(
       'notes',
       'practiceType',
       'specialty',
+      'prescriptionPrefix',
     ];
     const before = {};
     const after = {};
@@ -1683,7 +1706,18 @@ router.patch(
     }
     if (!Object.keys(after).length) return res.json({ practice: practice.toPublic() });
 
-    await practice.save();
+    try {
+      await practice.save();
+    } catch (err) {
+      // Two operators giving two practices one prefix in the same second: the
+      // unique index refuses the second, and it is told so in words.
+      if (err?.code === 11000 && err.keyPattern?.prescriptionPrefix) {
+        throw conflict(PREFIX_REFUSAL.taken);
+      }
+      throw err;
+    }
+    // The letterhead and the assistant read the practice through a cache.
+    forgetClinicIdentity();
     await AdminAuditLog.record({
       admin: req.admin,
       action: 'admin.practice.edit',
