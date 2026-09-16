@@ -5,6 +5,7 @@ import { Clinic } from '../models/Clinic.js';
 import { ROLES, CLINICIAN_ROLES } from '../models/User.js';
 import { AppError, forbidden } from './errors.js';
 import { recordDenial } from './recordDenial.js';
+import { suspendedAmong, practiceSuspended } from './practiceStatus.js';
 
 /**
  * Keeping one practice's clinicians out of another practice's records.
@@ -68,8 +69,13 @@ export async function practicesOf(req) {
   const rows = await Membership.find(Membership.currentFilter(req.user?._id))
     .select('practice')
     .lean();
+  const all = rows.map((r) => String(r.practice));
 
-  req._practiceIds = rows.map((r) => String(r.practice));
+  // A practice the platform has suspended is not somewhere anybody currently
+  // works. Kept apart rather than dropped, so `practiceOf` can say "suspended"
+  // instead of "no practice". See middleware/practiceStatus.js.
+  req._suspendedPracticeIds = await suspendedAmong(all);
+  req._practiceIds = all.filter((id) => !req._suspendedPracticeIds.includes(id));
   return req._practiceIds;
 }
 
@@ -104,6 +110,16 @@ export async function practiceOf(req) {
   if (req._practiceId !== undefined) return req._practiceId;
 
   const mine = await practicesOf(req);
+  const named = req.get?.(PRACTICE_HEADER)?.trim();
+
+  // Suspended, and said so: when the caller names the suspended practice, or
+  // it is the only one they work at. Never cached — a reinstatement takes
+  // effect on the next request.
+  const suspended = req._suspendedPracticeIds ?? [];
+  if ((named && suspended.includes(named)) || (mine.length === 0 && suspended.length)) {
+    recordDenial(req, { reason: 'practice_suspended', practiceId: named || suspended[0] });
+    throw practiceSuspended();
+  }
 
   if (mine.length === 0) {
     req._practiceId = null;
@@ -115,7 +131,6 @@ export async function practiceOf(req) {
     return req._practiceId;
   }
 
-  const named = req.get?.(PRACTICE_HEADER)?.trim();
   if (named && mine.includes(named)) {
     req._practiceId = named;
     return req._practiceId;

@@ -79,8 +79,10 @@ import {
  *
  * ---- Suspension stops the practice, not the patient ---------------------
  *
- * A suspended practice's staff cannot log in. Its patients keep their records,
- * their prescriptions and their dose reminders — a suspension that silenced a
+ * A suspended practice's staff are refused every route in it with
+ * PRACTICE_SUSPENDED (middleware/practiceStatus.js); they can sign in only to
+ * see that it is suspended. Its patients keep their records, their
+ * prescriptions and their dose reminders — a suspension that silenced a
  * diabetic's insulin alarm would punish the person who did nothing wrong.
  */
 const router = Router();
@@ -1233,6 +1235,19 @@ router.post(
  * Separate from verification on purpose — see the note above. A practice can be
  * active and unverified, which is the honest state of one that is working while
  * its papers are read.
+ *
+ * ---- What suspension does, now that something reads it -------------------
+ *
+ * Its staff are refused every practice route with PRACTICE_SUSPENDED from their
+ * next request (middleware/practiceStatus.js). They can still sign in and see
+ * that the practice is suspended. Its patients keep their own records,
+ * prescriptions and reminders. Nothing is deleted, and reinstating restores
+ * access at once.
+ *
+ * Both directions need a reason. Stopping a clinic working is the decision a
+ * review reads six months later; letting it work again is the other half of
+ * the same story, and "reinstated" with nothing beside it cannot say whether
+ * whatever caused the suspension was resolved or simply forgotten.
  */
 router.post(
   '/practices/:id/status',
@@ -1246,10 +1261,14 @@ router.post(
     const practice = await Practice.findById(req.params.id);
     if (!practice) throw notFound('Practice not found');
 
-    // Suspending a practice stops people working. It should not be possible to
-    // do silently, and the reason is what a review reads six months later.
+    // Nothing to decide, and nothing to record as though something had been.
+    if (practice.status === req.body.status) return res.json({ practice: practice.toPublic() });
+
     if (req.body.status === PRACTICE_STATUS.SUSPENDED && !req.body.reason) {
       throw badRequest('A suspension needs a reason.');
+    }
+    if (practice.status === PRACTICE_STATUS.SUSPENDED && !req.body.reason) {
+      throw badRequest('Reinstating a suspended practice needs a reason.');
     }
 
     const before = { status: practice.status };

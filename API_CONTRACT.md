@@ -23,6 +23,8 @@ Practice sign-up adds four, each because a client has to do something different 
 
 `NO_PRACTICE` (403) — a member of staff whose membership has ended, or who was never placed at a practice, on a platform that has practices. Every staff route returns it except `GET /practices/mine` and `GET /billing`, which answer "no practice" instead. A client should say the account is no longer part of a practice rather than retry. A patient never receives it.
 
+`PRACTICE_SUSPENDED` (403) — the platform has suspended the practice this request is for: the caller's only practice, or the one named in `x-medpin-practice`. Every route that works inside a practice returns it, `GET /billing` included. `GET /practices/mine` still answers, with `practice.status: "suspended"`, and sign-in and `GET /auth/me` still work, so a client can say what has happened. A member of staff who also works at an active practice is served there without naming it. Retrying does not help; reinstatement by an operator restores access on the next request. A patient never receives it — their own records, prescriptions and reminders are unaffected.
+
 **Paged list shape:**
 ```json
 { "items": [ ... ], "page": 1, "limit": 50, "total": 137, "hasMore": true }

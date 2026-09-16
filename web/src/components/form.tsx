@@ -271,6 +271,7 @@ export function ReasonDialog({
   onCancel,
   onConfirm,
   busy,
+  destructive = true,
 }: {
   open: boolean;
   title: string;
@@ -279,6 +280,12 @@ export function ReasonDialog({
   onCancel: () => void;
   onConfirm: (reason: string) => void;
   busy?: boolean;
+  /**
+   * Whether the decision takes something away. Most that need a reason do; a
+   * reinstatement needs one too and gives something back, and a red button on
+   * it reads as the opposite of what it does.
+   */
+  destructive?: boolean;
 }) {
   const ref = useRef<HTMLTextAreaElement>(null);
   const [error, setError] = useState<string | null>(null);
@@ -295,7 +302,7 @@ export function ReasonDialog({
       onClose={onCancel}
       title={title}
       description={why}
-      destructive
+      destructive={destructive}
       busy={busy}
       error={error}
       confirmLabel={confirmLabel}
