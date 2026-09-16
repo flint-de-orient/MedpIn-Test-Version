@@ -2,7 +2,7 @@ import { Router } from 'express';
 import dayjs from 'dayjs';
 import crypto from 'node:crypto';
 import { z } from 'zod';
-import { requireAuth, resolvePatientScope } from '../middleware/auth.js';
+import { requireAuth, resolvePatientScope, requireClinician } from '../middleware/auth.js';
 import { validate, q } from '../middleware/validate.js';
 import { asyncHandler, notFound } from '../middleware/errors.js';
 import { audit } from '../middleware/audit.js';
@@ -24,6 +24,8 @@ import { CAPABILITIES } from '../services/capabilities.js';
 import { practiceForPatient, practicesOfPatient, practiceOf } from '../middleware/practiceScope.js';
 import { attachableAssetIds } from '../services/mediaAccess.js';
 import { ROLES } from '../models/User.js';
+import { EcgReport, ECG_RHYTHMS, ECG_IMPRESSIONS } from '../models/EcgReport.js';
+import { idempotencyKey, isReplayOf, isKeyCollision } from '../middleware/idempotency.js';
 
 const router = Router({ mergeParams: true });
 // Whose patient this is, then what this person may do with them: foot assessments, eye reports and lab reports.
@@ -514,5 +516,150 @@ const serialiseLab = (r) => ({
   values: r.values ?? [],
   aiSummary: r.aiSummary ?? null,
 });
+
+// ---------------------------------------------------------------------------
+// ECG
+// ---------------------------------------------------------------------------
+
+/**
+ * File an electrocardiogram and what a clinician read in it.
+ *
+ * Clinicians only. The findings are a reading of the tracing, and a reading is a
+ * clinical act; a patient may share the file in their conversation, where a
+ * clinician can file it here. Nothing on this record is inferred by the
+ * platform — see models/EcgReport.js.
+ *
+ * No alert is raised for an abnormal impression. The person entering it is the
+ * one who read it; whether an abnormal ECG filed by one clinician should page
+ * another is a clinical decision this does not make. The cardiology panel lists
+ * abnormal and borderline tracings instead.
+ */
+/** Clock drift between a phone and the server, and nothing more. */
+const ECG_FUTURE_SKEW_MS = 5 * 60 * 1000;
+
+router.post(
+  '/ecg/reports',
+  requireClinician,
+  // Before validation, so the key is checked against what was sent rather
+  // than what defaults filled in — see middleware/idempotency.js.
+  idempotencyKey(),
+  validate({
+    body: z.object({
+      recordedOn: z.coerce
+        .date()
+        .refine((d) => d.getTime() <= Date.now() + ECG_FUTURE_SKEW_MS, 'An ECG cannot be dated in the future'),
+      files: z.array(z.string()).max(5).default([]),
+      rhythm: z.enum(ECG_RHYTHMS).default('unknown'),
+      heartRate: z.coerce.number().min(20).max(300).optional(),
+      prIntervalMs: z.coerce.number().min(40).max(600).optional(),
+      qrsDurationMs: z.coerce.number().min(20).max(300).optional(),
+      qtcMs: z.coerce.number().min(200).max(800).optional(),
+      impression: z.enum(ECG_IMPRESSIONS).default('unknown'),
+      findings: z.string().trim().max(2000).optional(),
+      readBy: z.string().trim().max(160).optional(),
+    }),
+  }),
+  audit('create', 'EcgReport'),
+  asyncHandler(async (req, res) => {
+    // The same ECG again: the form retrying after a timeout. Answered with the
+    // one already filed, never a second copy of it.
+    //
+    // Found by who filed it and their key, as a prescription is — not by
+    // patient, which would be a read of this patient's ECGs outside the record
+    // window. A key sent for another patient hashes differently and is refused.
+    const filedBefore = async () => {
+      if (!req.idempotency) return null;
+      const existing = await EcgReport.findOne({ recordedBy: req.user._id, idempotencyKey: req.idempotency.key })
+        .populate('files', 'mimeType')
+        .lean();
+      return isReplayOf(req, existing) ? existing : null;
+    };
+    const prior = await filedBefore();
+    if (prior) return res.status(201).set('Idempotent-Replayed', 'true').json({ report: serialiseEcg(prior) });
+
+    // A file this patient owns or this caller uploaded — the rule every record
+    // here that carries files follows.
+    const files = await attachableAssetIds(req.body.files, {
+      patientId: req.patientId,
+      uploaderIds: [req.user._id],
+    });
+
+    let report;
+    try {
+      report = await EcgReport.create({
+        ...req.body,
+        files,
+        patient: req.patientId,
+        practice: await practiceOf(req),
+        recordedBy: req.user._id,
+        ...(req.idempotency ? { idempotencyKey: req.idempotency.key, idempotencyHash: req.idempotency.hash } : {}),
+      });
+    } catch (err) {
+      // A copy of this request, in the same instant, wrote first.
+      const winner = isKeyCollision(err) ? await filedBefore() : null;
+      if (!winner) throw err;
+      return res.status(201).set('Idempotent-Replayed', 'true').json({ report: serialiseEcg(winner) });
+    }
+
+    await report.populate('files', 'mimeType');
+    res.status(201).json({ report: serialiseEcg(report) });
+  }),
+);
+
+router.get(
+  '/ecg/reports',
+  audit('read', 'EcgReport'),
+  asyncHandler(async (req, res) => {
+    // Bounded by when the tracing was taken, like every dated clinical record:
+    // a practice reads the tracings from its enrolment of this patient onward.
+    const items = await EcgReport.find({
+      patient: req.patientId,
+      ...recordWindow(req, 'recordedOn'),
+    })
+      .sort({ recordedOn: -1 })
+      .limit(50)
+      .populate('files', 'mimeType')
+      .lean();
+    res.json({ items: items.map(serialiseEcg) });
+  }),
+);
+
+router.get(
+  '/ecg/reports/:id',
+  audit('read', 'EcgReport'),
+  asyncHandler(async (req, res) => {
+    const r = await EcgReport.findOne({
+      _id: req.params.id,
+      patient: req.patientId,
+      ...recordWindow(req, 'recordedOn'),
+    })
+      .populate('files', 'mimeType')
+      .lean();
+    if (!r) throw notFound('ECG not found');
+    res.json({ report: serialiseEcg(r) });
+  }),
+);
+
+function serialiseEcg(r) {
+  return {
+    id: String(r._id),
+    recordedOn: r.recordedOn,
+    // Populated for the type, so the app knows a photograph from a PDF
+    // without downloading either.
+    files: (r.files ?? []).map((f) => {
+      const id = String(f?._id ?? f);
+      return { id, url: `/api/v1/uploads/${id}/raw`, mimeType: f?.mimeType ?? null };
+    }),
+    rhythm: r.rhythm,
+    heartRate: r.heartRate ?? null,
+    prIntervalMs: r.prIntervalMs ?? null,
+    qrsDurationMs: r.qrsDurationMs ?? null,
+    qtcMs: r.qtcMs ?? null,
+    impression: r.impression,
+    findings: r.findings ?? null,
+    readBy: r.readBy ?? null,
+    createdAt: r.createdAt,
+  };
+}
 
 export default router;

@@ -126,6 +126,8 @@ final Map<String, WidgetBuilderFn> dashboardWidgets = {
   'FOLLOW_UPS_DUE': (d) => const FollowUpsDueCard(),
   'CONDITION_REGISTRY': (d) => const ConditionRegisterCard(),
   'HEART_RATE_FLAGS': (d) => const HeartRateFlagsCard(),
+  'RECENT_ECGS': (d) => const RecentEcgsCard(),
+  'LIPID_CONTROL': (d) => const LipidControlCard(),
 
   // ---- what the practice has bought ---------------------------------------
   'ANALYTICS_SUMMARY': (d) => d.analytics == null

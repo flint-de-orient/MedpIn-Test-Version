@@ -22,9 +22,11 @@ import { PERMISSIONS } from '../models/Membership.js';
  * The rule this file was rewritten to obey. The first draft registered ECG, a
  * cardiac risk score, and a four-state sample queue for the laboratory —
  * because those are what a cardiology and a laboratory dashboard *ought* to
- * have. None of them exist in this platform. There is no ECG model, no risk
- * instrument, and no sample workflow at all; `LabReport` is a result document
- * somebody uploads, not a specimen moving through a bench.
+ * have. None of them existed in this platform. There was no ECG model, there
+ * is no risk instrument, and there is no sample workflow at all; `LabReport`
+ * is a result document somebody uploads, not a specimen moving through a bench.
+ * ECG came in later the right way round — the record first (models/EcgReport.js,
+ * read and entered by a clinician), then `RECENT_ECGS` on top of it.
  *
  * A registered widget with nothing behind it is not a placeholder. It is a
  * panel that renders empty forever and reads as a clinic with no data rather
@@ -113,6 +115,10 @@ export const WIDGETS = Object.freeze({
   CONDITION_REGISTRY: { needs: { permission: P.VIEW_PATIENT } },
   /// GET /doctor/panels/heart-rate — latest pulse outside the triage limits.
   HEART_RATE_FLAGS: { needs: { permission: P.VIEW_PATIENT } },
+  /// GET /doctor/panels/lipids — latest LDL against the catalog's upper limit.
+  LIPID_CONTROL: { needs: { permission: P.VIEW_PATIENT } },
+  /// GET /doctor/panels/ecg — latest ECG by the impression its reader gave.
+  RECENT_ECGS: { needs: { permission: P.VIEW_PATIENT } },
 
   // ---- what the practice has bought --------------------------------------
   /// GET /doctor/analytics — trends over a window the reader chooses.
@@ -308,18 +314,23 @@ export const DEPARTMENT_DEFAULTS = Object.freeze({
    * Cardiology, within what the platform actually holds.
    *
    * Vitals carry systolic, diastolic and pulse, so a cardiology caseload is a
-   * real thing to show and the risk banding is already stored per patient. The
-   * ECG panel and the risk score that belong on this screen are not here,
-   * because neither exists — see the note at the top of this file.
+   * real thing to show and the risk banding is already stored per patient. ECGs
+   * are the impressions clinicians filed, and lipids are the LDL values read
+   * from uploaded lab reports. The risk score that belongs on this screen is
+   * still not here, because no instrument exists — see the note at the top of
+   * this file.
    */
   cardiology: {
     widgets: [
       'TRIAGE_QUEUE',
       'TODAYS_CLINIC',
-      // What a cardiology caseload is measured by, from the vitals the platform
-      // records: blood pressure control and heart rate outside its limits.
+      // What a cardiology caseload is measured by, from what the platform
+      // records: blood pressure control and heart rate outside its limits, the
+      // ECGs clinicians read, and LDL from the lab reports patients uploaded.
       'BP_CONTROL',
       'HEART_RATE_FLAGS',
+      'RECENT_ECGS',
+      'LIPID_CONTROL',
       'FOLLOW_UPS_DUE',
       'RECENT_LAB_REPORTS',
       'ACTION_QUEUE',

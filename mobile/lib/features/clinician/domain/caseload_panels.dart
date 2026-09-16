@@ -6,6 +6,8 @@
 /// as "nobody measured" rather than "everybody is fine".
 library;
 
+import 'ecg_report.dart';
+
 DateTime? _date(Object? v) => v is String ? DateTime.tryParse(v)?.toLocal() : null;
 int _int(Object? v) => v is num ? v.toInt() : 0;
 List<Map<String, dynamic>> _rows(Object? v) =>
@@ -202,6 +204,118 @@ class HeartRateFlags {
       lowTotal: _int(j['lowTotal']),
       high: _people(j['high']),
       highTotal: _int(j['highTotal']),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+
+/// A patient whose latest ECG was read as abnormal or borderline.
+class FlaggedEcg {
+  const FlaggedEcg({required this.patient, required this.impression});
+  final PanelPatient patient;
+  final EcgImpression impression;
+}
+
+class EcgPanel {
+  const EcgPanel({
+    required this.days,
+    required this.withEcg,
+    required this.withoutEcg,
+    required this.impressions,
+    required this.flagged,
+    required this.flaggedTotal,
+  });
+
+  final int days;
+  final int withEcg;
+  final int withoutEcg;
+  final Map<EcgImpression, int> impressions;
+  final List<FlaggedEcg> flagged;
+  final int flaggedTotal;
+
+  factory EcgPanel.fromJson(Map<String, dynamic> j) {
+    final raw = j['impressions'] is Map ? j['impressions'] as Map : const {};
+    return EcgPanel(
+      days: _int(j['days']),
+      withEcg: _int(j['withEcg']),
+      withoutEcg: _int(j['withoutEcg']),
+      impressions: {for (final i in EcgImpression.values) i: _int(raw[i.api])},
+      flagged: [
+        for (final r in _rows(j['flagged']))
+          FlaggedEcg(
+            impression: EcgImpression.fromApi(r['impression']),
+            patient: PanelPatient(
+              id: '${r['patientId']}',
+              name: r['name'] as String?,
+              at: _date(r['recordedOn']),
+              detail: [
+                EcgImpression.fromApi(r['impression']).label,
+                ecgRhythmLabel(r['rhythm']),
+                if (r['heartRate'] is num) '${(r['heartRate'] as num).round()} bpm',
+              ].join(' · '),
+            ),
+          ),
+      ],
+      flaggedTotal: _int(j['flaggedTotal']),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+
+/// A lab value as a clinician writes it: whole numbers without a decimal point.
+String labValue(num v) => v == v.roundToDouble() ? '${v.round()}' : v.toStringAsFixed(1);
+
+class LipidControl {
+  const LipidControl({
+    required this.days,
+    required this.unit,
+    required this.high,
+    required this.withResult,
+    required this.withoutResult,
+    required this.atOrBelow,
+    required this.above,
+    required this.aboveTotal,
+  });
+
+  final int days;
+  final String? unit;
+
+  /// The catalog's upper limit for LDL. Null only if the server did not say,
+  /// and then the card names no number rather than inventing one.
+  final num? high;
+  final int withResult;
+  final int withoutResult;
+  final int atOrBelow;
+  final List<PanelPatient> above;
+  final int aboveTotal;
+
+  /// "100 mg/dL", or "target" when the server did not send one.
+  String get limit => high == null ? 'target' : [labValue(high!), if (unit != null) unit].join(' ');
+
+  factory LipidControl.fromJson(Map<String, dynamic> j) {
+    final target = j['target'] is Map ? j['target'] as Map : const {};
+    final unit = target['unit'] as String?;
+    return LipidControl(
+      days: _int(j['days']),
+      unit: unit,
+      high: target['high'] is num ? target['high'] as num : null,
+      withResult: _int(j['withResult']),
+      withoutResult: _int(j['withoutResult']),
+      atOrBelow: _int(j['atOrBelow']),
+      above: [
+        for (final r in _rows(j['above']))
+          PanelPatient(
+            id: '${r['patientId']}',
+            name: r['name'] as String?,
+            at: _date(r['testedOn']),
+            detail: r['ldl'] is num
+                ? ['LDL ${labValue(r['ldl'] as num)}', if (unit != null) unit].join(' ')
+                : null,
+          ),
+      ],
+      aboveTotal: _int(j['aboveTotal']),
     );
   }
 }

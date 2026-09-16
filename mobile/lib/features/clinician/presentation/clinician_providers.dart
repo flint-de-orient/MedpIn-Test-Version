@@ -7,6 +7,7 @@ import '../../medications/domain/medication.dart';
 import '../domain/chat_review.dart';
 import '../domain/chat_summary.dart';
 import '../domain/caseload_panels.dart';
+import '../domain/ecg_report.dart';
 import '../domain/department.dart';
 import '../domain/patient_registration.dart';
 import '../domain/team_member.dart';
@@ -234,6 +235,21 @@ final conditionRegisterProvider =
 /// Latest pulses outside the triage limits over the last [days] days.
 final heartRateFlagsProvider = FutureProvider.autoDispose.family<HeartRateFlags, int>(
   (ref, days) => ref.watch(clinicianRepositoryProvider).heartRateFlags(days: days),
+);
+
+/// Latest ECG per patient by impression, over the last [days] days.
+final ecgPanelProvider = FutureProvider.autoDispose.family<EcgPanel, int>(
+  (ref, days) => ref.watch(clinicianRepositoryProvider).ecgPanel(days: days),
+);
+
+/// Latest LDL per patient against the catalog's limit, over the last [days] days.
+final lipidControlProvider = FutureProvider.autoDispose.family<LipidControl, int>(
+  (ref, days) => ref.watch(clinicianRepositoryProvider).lipidControl(days: days),
+);
+
+/// The ECGs this practice may read for one patient.
+final patientEcgsProvider = FutureProvider.autoDispose.family<List<EcgReport>, String>(
+  (ref, patientId) => ref.watch(clinicianRepositoryProvider).ecgReports(patientId),
 );
 
 // ---- Knowledge base -----------------------------------------------------

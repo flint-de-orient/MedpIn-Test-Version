@@ -215,7 +215,14 @@ describe('who may open the panels', () => {
     a = await practice('Salt Lake');
   });
 
-  for (const path of ['/doctor/panels/blood-pressure', '/doctor/panels/follow-ups', '/doctor/panels/conditions', '/doctor/panels/heart-rate']) {
+  for (const path of [
+    '/doctor/panels/blood-pressure',
+    '/doctor/panels/follow-ups',
+    '/doctor/panels/conditions',
+    '/doctor/panels/heart-rate',
+    '/doctor/panels/ecg',
+    '/doctor/panels/lipids',
+  ]) {
     test(`${path}: the desk yes; the practice manager and the dietician no`, async () => {
       assert.equal((await as(a.desk.token).get(path)).status, 200);
       assert.equal((await as(a.manager.token).get(path)).status, 403, 'a practice manager read patients by name');

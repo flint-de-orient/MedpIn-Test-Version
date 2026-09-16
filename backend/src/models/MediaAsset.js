@@ -29,6 +29,9 @@ const mediaAssetSchema = new mongoose.Schema(
         // A recording the patient spoke instead of typing. Kept as uploaded so
         // the clinic hears exactly what was said, tone included.
         'voice_note',
+        // A photograph or PDF of an electrocardiogram, filed with the reading
+        // a clinician made of it (models/EcgReport.js).
+        'ecg_tracing',
         'other',
       ],
       required: true,

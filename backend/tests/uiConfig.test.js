@@ -159,6 +159,11 @@ describe('two departments, two different applications', () => {
     assert.ok(ui.widgets.includes('TRIAGE_QUEUE'));
     assert.ok(ui.widgets.includes('TODAYS_CLINIC'));
     assert.ok(ui.quickActions.includes('START_CONSULTATION'));
+    // What the record holds: the ECGs a clinician read and filed, and LDL from
+    // uploaded reports. And never a risk score no instrument produced.
+    assert.ok(ui.widgets.includes('RECENT_ECGS'));
+    assert.ok(ui.widgets.includes('LIPID_CONTROL'));
+    assert.ok(!Object.keys(WIDGETS).some((id) => /RISK/.test(id)), 'a risk score was registered');
   });
 
   test('a laboratory is a set of results', () => {

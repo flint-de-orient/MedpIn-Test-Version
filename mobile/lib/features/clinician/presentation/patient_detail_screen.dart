@@ -20,6 +20,7 @@ import '../domain/patient_summary.dart';
 import 'clinician_providers.dart';
 import 'widgets/clinician_visuals.dart';
 import 'widgets/sparkline.dart';
+import 'widgets/ecg_section.dart';
 import '../../../core/theme/tokens.dart';
 import '../../../core/router/area.dart';
 import '../../../shared/widgets/disclosure_tile.dart';
@@ -94,6 +95,10 @@ class PatientRecordSections extends ConsumerWidget {
           // from a quarter of the data would be a different trend.
           _AnalyteTrends(reports: p.labResults),
         ],
+        // ECGs, read and filed by a clinician. Its own request, and it hides
+        // itself when empty for somebody who could not file one.
+        const SizedBox(height: AppSpacing.lg),
+        EcgSection(patientId: patientId),
         if (p.alerts.isNotEmpty) ...[
           const SizedBox(height: AppSpacing.lg),
           const _SectionTitle('Recent alerts'),

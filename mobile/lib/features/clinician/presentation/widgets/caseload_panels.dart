@@ -5,10 +5,11 @@ import 'package:go_router/go_router.dart';
 import '../../../../core/theme/tokens.dart';
 import '../../../../shared/widgets/surfaces.dart';
 import '../../domain/caseload_panels.dart';
+import '../../domain/ecg_report.dart';
 import '../clinician_providers.dart';
 
 /// The caseload panels: blood pressure control, follow-ups due, the condition
-/// register and heart rate.
+/// register, heart rate, ECGs and lipids.
 ///
 /// ---- Three states, never two ------------------------------------------------
 ///
@@ -327,6 +328,114 @@ class HeartRateFlagsCard extends ConsumerWidget {
         _more(d.highTotal, _shown.clamp(0, d.high.length), 'above $range'),
       ],
       if (d.withoutReading > 0) _note('${d.withoutReading} patients have no pulse recorded in ${d.days} days.'),
+    ];
+  }
+}
+
+// ---------------------------------------------------------------------------
+// ECGs
+// ---------------------------------------------------------------------------
+
+class RecentEcgsCard extends ConsumerWidget {
+  const RecentEcgsCard({super.key});
+
+  static const int days = 180;
+
+  static Color? toneFor(EcgImpression impression) => switch (impression) {
+        EcgImpression.abnormal => T.dangerTint,
+        EcgImpression.borderline => T.warningTint,
+        _ => null,
+      };
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final async = ref.watch(ecgPanelProvider(days));
+    final data = async.valueOrNull;
+
+    return _PanelShell(
+      icon: Icons.ssid_chart,
+      title: 'ECGs',
+      loading: data == null,
+      failed: data == null && async.hasError,
+      failedText: 'Could not load ECGs. Pull down to try again.',
+      children: data == null ? const [] : _body(data),
+    );
+  }
+
+  static List<Widget> _body(EcgPanel d) {
+    final caseload = d.withEcg + d.withoutEcg;
+    if (caseload == 0) return [_note('No patients are enrolled at this practice yet.')];
+    if (d.withEcg == 0) return [_note('No ECGs filed for this practice’s patients in the last ${d.days} days.')];
+    final unread = d.impressions[EcgImpression.unknown] ?? 0;
+    return [
+      _note('${d.withEcg} of $caseload patients have an ECG from the last ${d.days} days, by the latest one’s reading.'),
+      Padding(
+        padding: const EdgeInsets.only(top: T.s2),
+        child: Wrap(
+          spacing: T.s2,
+          runSpacing: T.s2,
+          children: [
+            for (final impression in EcgImpression.values)
+              if ((d.impressions[impression] ?? 0) > 0)
+                InnerTile(
+                  tone: toneFor(impression),
+                  padding: const EdgeInsets.symmetric(horizontal: T.s3, vertical: T.s2),
+                  child: Text('${impression.label} ${d.impressions[impression]}', style: T.small.copyWith(color: T.ink)),
+                ),
+          ],
+        ),
+      ),
+      if (unread > 0) _note('$unread filed without a reading yet.', color: T.warning, weight: FontWeight.w600),
+      if (d.flagged.isEmpty)
+        _note('No latest ECG was read as abnormal or borderline.')
+      else ...[
+        for (final f in d.flagged.take(_shown)) _PatientRow(patient: f.patient, tone: toneFor(f.impression)),
+        _more(d.flaggedTotal, _shown.clamp(0, d.flagged.length), 'abnormal or borderline'),
+      ],
+    ];
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Lipids
+// ---------------------------------------------------------------------------
+
+class LipidControlCard extends ConsumerWidget {
+  const LipidControlCard({super.key});
+
+  static const int days = 365;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final async = ref.watch(lipidControlProvider(days));
+    final data = async.valueOrNull;
+
+    return _PanelShell(
+      icon: Icons.water_drop_outlined,
+      title: 'LDL cholesterol',
+      loading: data == null,
+      failed: data == null && async.hasError,
+      failedText: 'Could not load LDL results. Pull down to try again.',
+      children: data == null ? const [] : _body(data),
+    );
+  }
+
+  static List<Widget> _body(LipidControl d) {
+    final caseload = d.withResult + d.withoutResult;
+    if (caseload == 0) return [_note('No patients are enrolled at this practice yet.')];
+    return [
+      // Where the numbers came from, every time. They were read off uploaded
+      // reports automatically, and a value misread from a photograph is still
+      // a value — the report is what to act on.
+      _note('Read automatically from uploaded lab reports. Open the report before acting on a value.'),
+      _note('${d.withResult} of $caseload patients have an LDL result from the last ${d.days} days.'),
+      if (d.withResult > 0 && d.aboveTotal == 0) _note('No latest LDL is above ${d.limit}.'),
+      if (d.aboveTotal > 0) ...[
+        _note('${d.aboveTotal} above ${d.limit}', color: T.warning, weight: FontWeight.w600),
+        for (final p in d.above.take(_shown)) _PatientRow(patient: p, tone: T.warningTint),
+        _more(d.aboveTotal, _shown.clamp(0, d.above.length), 'above ${d.limit}'),
+      ],
+      if (d.atOrBelow > 0) _note('${d.atOrBelow} at or below ${d.limit}.'),
     ];
   }
 }

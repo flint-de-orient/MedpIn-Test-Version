@@ -18,6 +18,7 @@ import '../../../shared/widgets/notification_list_sheet.dart';
 import '../domain/prescription_scan.dart';
 import '../domain/chat_summary.dart';
 import '../domain/caseload_panels.dart';
+import '../domain/ecg_report.dart';
 import '../../../core/network/submission_keys.dart';
 
 /// Talks to `/doctor/*` — the clinician (doctor + staff) API: dashboard
@@ -728,6 +729,35 @@ class ClinicianRepository {
   /// Latest pulses outside the triage limits, over [days] days.
   Future<HeartRateFlags> heartRateFlags({int days = 30}) async =>
       HeartRateFlags.fromJson(await _client.getJson('/doctor/panels/heart-rate', query: {'days': days}));
+
+  /// Each patient's latest ECG by the impression its reader gave, over [days] days.
+  Future<EcgPanel> ecgPanel({int days = 180}) async =>
+      EcgPanel.fromJson(await _client.getJson('/doctor/panels/ecg', query: {'days': days}));
+
+  /// Each patient's latest LDL against the catalog's limit, over [days] days.
+  Future<LipidControl> lipidControl({int days = 365}) async =>
+      LipidControl.fromJson(await _client.getJson('/doctor/panels/lipids', query: {'days': days}));
+
+  // ---- ECGs (/patients/:id/ecg/reports) -------------------------------------
+
+  /// The ECGs this practice may read for [patientId], newest first.
+  Future<List<EcgReport>> ecgReports(String patientId) async {
+    final json = await _client.getJson('/patients/$patientId/ecg/reports');
+    final items = json['items'] is List ? json['items'] as List : const [];
+    return items.whereType<Map<String, dynamic>>().map(EcgReport.fromJson).toList(growable: false);
+  }
+
+  /// Files an ECG. Sent again with the same [submission] and the same values —
+  /// a retry after a timeout — it is answered with the ECG already filed.
+  Future<EcgReport> fileEcg(String patientId, EcgDraft draft, {SubmissionKeys? submission}) async {
+    final body = draft.toJson();
+    final json = await _client.postJson(
+      '/patients/$patientId/ecg/reports',
+      body: body,
+      headers: submission == null ? null : {'Idempotency-Key': submission.keyFor('ecg', body)},
+    );
+    return EcgReport.fromJson(json['report'] as Map<String, dynamic>);
+  }
 
   /// "I have read this day." Per person; the server clears it when the patient
   /// writes again.

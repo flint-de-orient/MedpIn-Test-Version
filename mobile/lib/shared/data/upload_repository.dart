@@ -70,6 +70,9 @@ class UploadKind {
   static const String signature = 'signature';
   static const String clinicLogo = 'clinic_logo';
   static const String voiceNote = 'voice_note';
+
+  /// A photograph or PDF of an electrocardiogram, filed with its reading.
+  static const String ecgTracing = 'ecg_tracing';
   static const String other = 'other';
 }
 

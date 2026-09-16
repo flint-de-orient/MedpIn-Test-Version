@@ -15,6 +15,9 @@ import { User, ROLES, CLINICIAN_ROLES } from '../models/User.js';
 import { bloodPressureBand } from '../services/clinicalReadings.js';
 import { VITALS } from '../services/triage/thresholds.js';
 import { RECORD_STATE } from '../models/plugins/clinicalRecord.js';
+import { LabResult } from '../models/LabResult.js';
+import { EcgReport } from '../models/EcgReport.js';
+import { ANALYTES } from '../services/analyteCatalog.js';
 
 /**
  * The caseload panels a general physician and a cardiologist open onto.
@@ -346,6 +349,142 @@ router.get(
       lowTotal: low.length,
       high: high.slice(0, NAMED).map(withName),
       highTotal: high.length,
+    });
+  }),
+);
+
+// ---------------------------------------------------------------------------
+// Lipid control
+// ---------------------------------------------------------------------------
+
+/**
+ * Each patient's latest LDL against the catalog's own upper limit.
+ *
+ * The one threshold, from services/analyteCatalog.js, so the panel and the
+ * patient's lab record can never disagree about "above target". The values are
+ * the ones the platform read from uploaded lab reports — the same ones the
+ * patient's record already shows — which the response says, so nobody reads
+ * them as a laboratory's own feed.
+ */
+router.get(
+  '/lipids',
+  validate({ query: z.object({ days: z.coerce.number().int().min(30).max(730).default(365) }) }),
+  audit('read', 'LabResult'),
+  asyncHandler(async (req, res) => {
+    const { days } = q(req);
+    const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+    const patients = await caseload(req);
+    const ldl = ANALYTES.find((a) => a.code === 'ldl');
+
+    const rows = patients.size
+      ? await LabResult.find({
+          patient: { $in: [...patients.keys()] },
+          'analysis.status': 'done',
+          'analysis.ldl': { $ne: null },
+          createdAt: { $gte: since },
+        })
+          .select('patient analysis.ldl analysis.testedOn createdAt')
+          .lean()
+      : [];
+
+    // Dated by when the test was done where the report says, and by when it was
+    // filed where it does not — newest first. Whether this practice may read it
+    // is decided by when it was filed, the date the patient's lab record is
+    // windowed by (routes/labtests.js), so the panel and the record agree.
+    const dated = rows
+      .map((r) => ({ ...r, at: r.analysis?.testedOn ?? r.createdAt }))
+      .sort((a, b) => new Date(b.at) - new Date(a.at));
+    const visibleLatest = latestPerPatient(dated, patients, 'createdAt');
+    // Filed in the window is not tested in it: a two-year-old report uploaded
+    // last week is not a result from inside the window.
+    const latest = new Map([...visibleLatest].filter(([, r]) => new Date(r.at) >= since));
+
+    const above = [];
+    let atOrBelow = 0;
+    for (const [patientId, r] of latest) {
+      if (r.analysis.ldl > ldl.high) above.push({ patientId, ldl: r.analysis.ldl, testedOn: r.at });
+      else atOrBelow += 1;
+    }
+    above.sort((a, b) => b.ldl - a.ldl);
+
+    const named = above.slice(0, NAMED);
+    const names = await namesFor(named.map((a) => a.patientId));
+
+    res.json({
+      days,
+      source: 'uploaded lab reports',
+      target: { analyte: 'LDL', unit: ldl.unit, high: ldl.high },
+      withResult: latest.size,
+      withoutResult: patients.size - latest.size,
+      atOrBelow,
+      above: named.map((a) => ({ ...a, name: names.get(a.patientId) ?? null })),
+      aboveTotal: above.length,
+    });
+  }),
+);
+
+// ---------------------------------------------------------------------------
+// ECGs
+// ---------------------------------------------------------------------------
+
+/** Abnormal before borderline when the list is cut short. */
+const ECG_ORDER = ['abnormal', 'borderline'];
+
+/**
+ * Each patient's latest ECG, by the impression the clinician who read it gave.
+ * Nothing here is interpreted by the platform — see models/EcgReport.js.
+ */
+router.get(
+  '/ecg',
+  validate({ query: z.object({ days: z.coerce.number().int().min(30).max(730).default(180) }) }),
+  audit('read', 'EcgReport'),
+  asyncHandler(async (req, res) => {
+    const { days } = q(req);
+    const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+    const patients = await caseload(req);
+
+    const rows = patients.size
+      ? await EcgReport.find({
+          patient: { $in: [...patients.keys()] },
+          recordedOn: { $gte: since },
+        })
+          .select('patient recordedOn impression rhythm heartRate')
+          .sort({ recordedOn: -1 })
+          .lean()
+      : [];
+
+    const latest = latestPerPatient(rows, patients, 'recordedOn');
+
+    const impressions = { normal: 0, borderline: 0, abnormal: 0, unknown: 0 };
+    const flagged = [];
+    for (const [patientId, r] of latest) {
+      impressions[r.impression] = (impressions[r.impression] ?? 0) + 1;
+      if (ECG_ORDER.includes(r.impression)) {
+        flagged.push({
+          patientId,
+          impression: r.impression,
+          rhythm: r.rhythm,
+          heartRate: r.heartRate ?? null,
+          recordedOn: r.recordedOn,
+        });
+      }
+    }
+    flagged.sort(
+      (a, b) =>
+        ECG_ORDER.indexOf(a.impression) - ECG_ORDER.indexOf(b.impression) ||
+        new Date(b.recordedOn) - new Date(a.recordedOn),
+    );
+
+    const named = flagged.slice(0, NAMED);
+    const names = await namesFor(named.map((f) => f.patientId));
+
+    res.json({
+      days,
+      withEcg: latest.size,
+      withoutEcg: patients.size - latest.size,
+      impressions,
+      flagged: named.map((f) => ({ ...f, name: names.get(f.patientId) ?? null })),
+      flaggedTotal: flagged.length,
     });
   }),
 );

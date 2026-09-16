@@ -143,6 +143,7 @@ router.post(
         'signature',
         'clinic_logo',
         'voice_note',
+        'ecg_tracing',
         'other',
       ]),
       patientId: z.string().optional(),

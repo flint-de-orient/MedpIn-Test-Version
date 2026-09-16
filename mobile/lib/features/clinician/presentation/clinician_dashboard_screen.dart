@@ -114,6 +114,8 @@ class _ClinicianDashboardScreenState
     ref.invalidate(followUpsProvider(FollowUpsDueCard.days));
     ref.invalidate(conditionRegisterProvider);
     ref.invalidate(heartRateFlagsProvider(HeartRateFlagsCard.days));
+    ref.invalidate(ecgPanelProvider(RecentEcgsCard.days));
+    ref.invalidate(lipidControlProvider(LipidControlCard.days));
   }
 
   @override
