@@ -44,14 +44,19 @@ describe('an existing number is a link, not an error', () => {
 });
 
 describe('consent is asked when a practice reaches, not when it starts', () => {
-  test('the first practice for a person needs no code', () => {
-    // There is no history to reach for. The record about to exist is the one
-    // they are writing, and asking the patient to approve the clinic they are
-    // standing in adds a step and protects nothing.
-    assert.match(src, /const consentRequired = !isNewLogin && elsewhere > 0;/);
+  test('a number with no account needs no code; every account that exists does', () => {
+    // There is no history to reach for when the desk makes the account. The
+    // record about to exist is the one they are writing, and asking the
+    // patient to approve the clinic they are standing in protects nothing.
+    //
+    // This was `!isNewLogin && elsewhere > 0`, so an account nobody else held —
+    // somebody who signed themselves up and kept their readings in the app —
+    // was joined to whichever desk typed the number, with no code. See
+    // deskConsent.test.js for the behaviour over HTTP.
+    assert.match(src, /const consentRequired = !isNewLogin;/);
   });
 
-  test('a second practice does', () => {
+  test('an account that exists is sent a code', () => {
     // A typo at the counter must not silently attach a practice to a stranger.
     assert.match(src, /if \(consentRequired\) \{[\s\S]{0,300}requestOtp\(\{ phone: e164, purpose: ENROL_PURPOSE \}\)/);
   });
@@ -60,16 +65,25 @@ describe('consent is asked when a practice reaches, not when it starts', () => {
     assert.match(src, /status: consentRequired \? ENROLLMENT_STATUS\.PENDING : ENROLLMENT_STATUS\.ACTIVE/);
   });
 
-  test('the code is checked against the login, never a supplied number', () => {
-    // Taking both and trusting them to match would let a desk verify one
-    // number and enrol another.
-    assert.match(src, /const login = await User\.findById\(patient\?\.login\)\.select\('phone'\)/);
-    assert.match(src, /verifyOtp\(\{ phone: login\.phone, purpose: ENROL_PURPOSE, code \}\)/);
+  test('the code is checked against a number on the login, never a supplied one', () => {
+    // Taking a number and a code together and trusting them to match would let
+    // a desk verify one number and enrol another. The number checked is the
+    // one the latest request texted — only if the account still signs in with
+    // it — and otherwise the account's own.
+    assert.match(src, /const login = await User\.findById\(patient\?\.login\)\.select\('phone altPhones'\)/);
+    assert.match(src, /signsInWith\.includes\(lastRequest\?\.requestedPhone\) \? lastRequest\.requestedPhone : login\.phone/);
+    assert.match(src, /verifyOtp\(\{ phone: sentTo, purpose: ENROL_PURPOSE, code \}\)/);
+    assert.doesNotMatch(
+      src.slice(src.indexOf('export async function confirmEnrolment')).split('\n')[0],
+      /phone/,
+      'the confirmation accepts a phone number from its caller',
+    );
   });
 
-  test('the window opens at consent, not at creation', () => {
-    // The practice's access begins when the patient says so.
-    assert.match(src, /enrollment\.enrolledOn = new Date\(\);/);
+  test('the window opens at consent, unless the patient is returning', () => {
+    // The practice's access begins when the patient says so. A patient coming
+    // back keeps the original date — see wasActiveBefore.
+    assert.match(src, /if \(!\(await wasActiveBefore\(enrollment\._id\)\)\) set\.enrolledOn = new Date\(\);/);
   });
 
   test('enrol is its own OTP purpose', () => {
@@ -90,8 +104,9 @@ describe('consent is asked when a practice reaches, not when it starts', () => {
 
 describe('consent is a log, not a field', () => {
   test('every transition writes an event', () => {
-    // Request, first-practice grant, confirmation. Three.
-    assert.equal((src.match(/ConsentEvent\.record\(/g) ?? []).length, 3);
+    // A request or a new desk-made account, a re-request after a withdrawal,
+    // a fresh code sent to a request still waiting, and the confirmation. Four.
+    assert.equal((src.match(/ConsentEvent\.record\(/g) ?? []).length, 4);
   });
 
   test('a first-practice enrolment is logged too', () => {

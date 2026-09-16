@@ -2,6 +2,7 @@ import { Membership, MEMBERSHIP_STATUS, PERMISSIONS } from '../models/Membership
 import { forbidden } from './errors.js';
 import { practiceOf, assertSamePractice, unplacedStaff, noPractice } from './practiceScope.js';
 import { practiceMaySee } from '../services/enrollments.js';
+import { grantsForRead, sharedHistoryCovers } from '../services/sharing.js';
 import { recordDenial } from './recordDenial.js';
 
 /**
@@ -90,6 +91,11 @@ export async function enrollmentGate(req, patientId, { recordDate = null } = {})
     // this patient"; a list still has to answer "which of these rows", and
     // without the enrolment in hand every route would look it up again.
     req.enrollment = verdict.enrollment ?? null;
+    // What the patient has chosen to share with this practice beyond that
+    // window, for `recordWindow` to consult. Loaded only here — after the
+    // enrolment has been found current — so a grant can widen what an
+    // enrolled practice reads and can never stand in for the enrolment.
+    req.shareGrants = await grantsForRead(req, patientId, practiceId);
     return true;
   }
 
@@ -179,13 +185,26 @@ export async function authorise(req, { permission, patientId } = {}) {
  *
  *   const filter = { patient: req.patientId, ...recordWindow(req, 'issuedOn') };
  *
- * Returns `{}` when there is no enrolment to bound by — a patient the migration
- * has not reached, or a caller with no practice. Unknown never restricts, for
- * the same reason unknown never denies.
+ * Returns `{}` when there is no enrolment to bound by — a patient reading their
+ * own record, or a caller with no practice (whom the gate has already refused
+ * any patient that is not theirs).
+ *
+ * ---- And the one thing that lifts it -------------------------------------
+ *
+ * The patient. A current share grant for this practice (or for the doctor
+ * asking), covering the category this read belongs to, removes the lower bound
+ * for this read — and only for a read, and only where services/sharing.js can
+ * say which category the read is. Every read it lifts is written to the audit
+ * log with the grant's id. See `sharedHistoryCovers`.
+ *
+ * Spread it on its own, or inside `$and` beside another condition on the same
+ * field. `{ ...recordWindow(req, 'measuredAt'), measuredAt: {...} }` replaces
+ * the bound with whatever follows it, which is the same as not having one.
  */
 export function recordWindow(req, field = 'createdAt') {
   const from = req.enrollment?.enrolledOn;
   if (!from) return {};
+  if (sharedHistoryCovers(req, field)) return {};
   return { [field]: { $gte: new Date(from) } };
 }
 

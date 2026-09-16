@@ -1,84 +1,178 @@
 import mongoose from 'mongoose';
 
+import { ROLES } from './User.js';
+
 /**
- * One practice seeing another practice's records for a patient — the shape,
- * not the feature.
+ * A patient letting one of their practices see more of their record than its
+ * enrolment does.
  *
- * ---- Why this exists before anything uses it ----------------------------
+ * ---- What an enrolment already gives, and what this adds ----------------
  *
- * Whether Dr. Sen may read Dr. Dey's prescriptions for Rahul is an open
- * decision, and the default is no. But the *shape* of the answer is fixed, and
- * writing it now costs a file while retrofitting it later means unpicking
- * whatever ad-hoc thing gets built when somebody first asks.
+ * A practice reads a patient's dated records from `enrolledOn` forward (see
+ * `recordWindow` in middleware/authorise.js). Rahul joining a second clinic
+ * today does not hand them four years of the first clinic's notes.
  *
- * Nothing reads this model. It is deliberately inert.
+ * A grant is how he hands some of them over on purpose. It names:
+ *
+ *   - the practice that may read      (always one of his current practices)
+ *   - optionally one doctor there     (nobody else at that practice benefits)
+ *   - which categories of record      (prescriptions, readings, …)
+ *   - optionally when it ends         (and it can be revoked at any moment)
+ *
+ * and widens nothing else. It lets that practice read those categories from
+ * before its enrolment; it never lets anybody write, never opens a patient the
+ * practice is not enrolled with, and gives nothing once it has expired or been
+ * revoked — checked at the moment of every read, not by a sweep.
  *
  * ---- The one rule the shape has to encode -------------------------------
  *
  * The patient grants it, and the patient revokes it. Never the practice that
  * wants the access, and never the practice that holds the records.
  *
- * That is not a preference. A clinic able to grant itself access to another
- * clinic's notes has an enrollment that means something quite different from
- * what the patient agreed to, and a clinic able to *refuse* to share is a clinic
- * holding a record hostage. Both directions belong to the person the record is
- * about.
+ * A practice may *ask* — a row in state `requested`, created by a clinician
+ * holding SHARE_RECORDS — and asking grants nothing. It becomes a grant only
+ * when the patient approves it in their own app, and `grantedBy` then names
+ * them. A clinic able to grant itself access would have an enrolment meaning
+ * something quite different from what the patient agreed to; a clinic able to
+ * refuse to share would be holding a record hostage. Both directions belong to
+ * the person the record is about.
  *
- * ---- And why it expires --------------------------------------------------
+ * ---- Why categories are a list and not "everything" ---------------------
  *
- * A grant with no end is one nobody revisits. A second opinion needs a month,
- * not permanent standing access, and an expiry that has to be renewed is a
- * decision made twice rather than once and forgotten.
+ * The first sketch of this model had a `full` scope. A grant of "everything"
+ * silently widens the day a new kind of record is added, which is a default
+ * expanding access that nobody chose. A list of named categories means exactly
+ * what the patient saw when they said yes.
  */
-export const SHARE_SCOPE = Object.freeze({
-  /// Prescriptions only — enough for a second opinion on a treatment plan.
+export const SHARE_CATEGORY = Object.freeze({
+  /// Prescriptions, and the tests they advised.
   PRESCRIPTIONS: 'prescriptions',
-  /// Readings and lab results.
-  RESULTS: 'results',
-  /// Everything the sharing practice holds from `enrolledOn` forward.
-  FULL: 'full',
+  /// Blood sugar, blood pressure and weight.
+  READINGS: 'readings',
+  /// HbA1c, uploaded lab reports and ECGs.
+  LAB_RESULTS: 'lab_results',
+  /// Eye and foot examinations.
+  EXAMINATIONS: 'examinations',
+  /// Food photos and lifestyle logs.
+  LIFESTYLE: 'lifestyle',
+});
+
+export const GRANT_STATE = Object.freeze({
+  /// A practice asked. Grants nothing until the patient approves.
+  REQUESTED: 'requested',
+  /// In force — unless `expiresAt` has passed, which is read at every check
+  /// rather than written by a job.
+  ACTIVE: 'active',
+  /// The patient said no to a request.
+  DECLINED: 'declined',
+  /// Ended: by the patient, or because the enrolment it widened ended.
+  REVOKED: 'revoked',
+});
+
+/// Where the row came from — provenance, so a grant can always say how it
+/// came to exist without anybody inferring it.
+export const GRANT_ORIGIN = Object.freeze({
+  /// The patient chose it from "Who can see my records?".
+  PATIENT_APP: 'patient_app',
+  /// The patient answered the one-time question asked after a desk connected
+  /// an existing account to a new practice.
+  HISTORY_PROMPT: 'history_prompt',
+  /// A practice asked and the patient approved.
+  PRACTICE_REQUEST: 'practice_request',
+});
+
+export const REVOKE_REASON = Object.freeze({
+  /// The patient withdrew it.
+  PATIENT: 'patient',
+  /// The practice's enrolment ended, so the grant went with it — otherwise a
+  /// later re-enrolment would quietly bring back history the patient shared
+  /// under a relationship that had ended.
+  ENROLMENT_ENDED: 'enrolment_ended',
 });
 
 const shareGrantSchema = new mongoose.Schema(
   {
+    /// The body, not the login: a mother sharing her child's record grants on
+    /// the child's row.
     patient: { type: mongoose.Schema.Types.ObjectId, ref: 'Patient', required: true, index: true },
 
-    /// Whose records are being shared.
-    fromPractice: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'Practice',
-      required: true,
-      index: true,
+    /// Who may read.
+    practice: { type: mongoose.Schema.Types.ObjectId, ref: 'Practice', required: true, index: true },
+
+    /// The relationship this widens. A grant is meaningless without one, and
+    /// a grant pointing at an enrolment other than the one a read is made under
+    /// is ignored by that read.
+    enrollment: { type: mongoose.Schema.Types.ObjectId, ref: 'Enrollment', required: true },
+
+    /// One doctor at that practice, or null for anybody there who may already
+    /// open the patient.
+    doctor: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+
+    categories: {
+      type: [{ type: String, enum: Object.values(SHARE_CATEGORY) }],
+      validate: {
+        validator: (v) => Array.isArray(v) && v.length > 0,
+        message: 'A grant names at least one category of record.',
+      },
     },
 
-    /// Who may read them.
-    toPractice: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'Practice',
-      required: true,
-      index: true,
-    },
+    state: { type: String, enum: Object.values(GRANT_STATE), required: true, index: true },
+    origin: { type: String, enum: Object.values(GRANT_ORIGIN), required: true },
 
-    scope: { type: String, enum: Object.values(SHARE_SCOPE), required: true },
+    /// Who wrote the row: the patient (or their guardian) for a grant, the
+    /// clinician for a request.
+    createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+    createdByRole: { type: String, enum: Object.values(ROLES), required: true },
 
-    /// Always the patient. Recorded rather than assumed, so the row can be
-    /// audited without inferring who must have acted.
-    grantedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
-    grantedAt: { type: Date, default: Date.now },
+    /// What the practice said when it asked. Shown to the patient verbatim.
+    requestNote: { type: String, trim: true, maxlength: 300, default: null },
 
-    /// Required. See the note above on why a grant without an end is one
-    /// nobody revisits.
-    expiresAt: { type: Date, required: true },
+    /// Always the patient's login. Recorded rather than assumed, so the row can
+    /// be audited without inferring who must have acted.
+    grantedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+    grantedAt: { type: Date, default: null },
+
+    /// Null means until revoked. The patient chooses; a grant with no end is
+    /// allowed because a patient moving their care wants their history to stay
+    /// with the practice now treating them, and "Who can see my records?"
+    /// lists every open-ended grant so none of them is forgotten.
+    expiresAt: { type: Date, default: null },
 
     revokedAt: { type: Date, default: null },
     revokedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+    revokeReason: { type: String, enum: [...Object.values(REVOKE_REASON), null], default: null },
+
+    declinedAt: { type: Date, default: null },
+    declinedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+
+    /// The answer to the history question this grant came from, when it did.
+    consentEvent: { type: mongoose.Schema.Types.ObjectId, ref: 'ConsentEvent', default: null },
+
+    /// A retried request — see middleware/idempotency.js. A patient tapping
+    /// "Share" twice on a slow network should find one grant to revoke, not
+    /// two, one of which they will never notice.
+    idempotencyKey: { type: String, default: null },
+    idempotencyHash: { type: String, default: null },
   },
   { timestamps: true },
 );
 
-/// "May this practice read that one's records for this patient" — the query
-/// this exists to answer, once anything asks it.
-shareGrantSchema.index({ patient: 1, toPractice: 1, revokedAt: 1 });
+/// "What has this patient shared with this practice" — asked on every read a
+/// clinician makes of a patient, so it is the index that matters.
+shareGrantSchema.index({ patient: 1, practice: 1, state: 1 });
+
+/// One open request per patient per practice. A practice asking again while
+/// the patient has not answered is nagging, and two open requests would have
+/// the patient approve one and find the other still waiting.
+shareGrantSchema.index(
+  { patient: 1, practice: 1 },
+  { unique: true, partialFilterExpression: { state: GRANT_STATE.REQUESTED } },
+);
+
+shareGrantSchema.index(
+  { createdBy: 1, idempotencyKey: 1 },
+  { unique: true, partialFilterExpression: { idempotencyKey: { $type: 'string' } } },
+);
 
 /**
  * Whether this grant is in force right now.
@@ -87,58 +181,58 @@ shareGrantSchema.index({ patient: 1, toPractice: 1, revokedAt: 1 });
  * expired an hour ago must stop working an hour ago, not whenever the sweep
  * next runs.
  */
-shareGrantSchema.methods.isCurrent = function isCurrent() {
-  return this.revokedAt == null && this.expiresAt > new Date();
+shareGrantSchema.methods.isCurrent = function isCurrent(now = new Date()) {
+  return (
+    this.state === GRANT_STATE.ACTIVE &&
+    this.revokedAt == null &&
+    (this.expiresAt == null || new Date(this.expiresAt) > now)
+  );
+};
+
+/**
+ * Whether this grant lets `userId` read `category` right now.
+ *
+ * A static over plain objects as well as a method, because the reads that ask
+ * it hold lean rows and a hydrated document per grant per request would be
+ * spent on nothing.
+ */
+export function grantCovers(grant, { category, userId, now = new Date() }) {
+  if (!grant) return false;
+  if (grant.state !== GRANT_STATE.ACTIVE || grant.revokedAt != null) return false;
+  if (grant.expiresAt != null && new Date(grant.expiresAt) <= now) return false;
+  if (!category || !(grant.categories ?? []).includes(category)) return false;
+  // Narrowed to one doctor: everybody else at the practice reads only what the
+  // enrolment gives them.
+  if (grant.doctor && String(grant.doctor) !== String(userId)) return false;
+  return true;
+}
+
+/** What a grant is called on screen and in the history: its state, with expiry read in. */
+export function grantStatus(grant, now = new Date()) {
+  if (grant.state === GRANT_STATE.ACTIVE && grant.expiresAt && new Date(grant.expiresAt) <= now) {
+    return 'expired';
+  }
+  return grant.state;
+}
+
+shareGrantSchema.methods.toPublic = function toPublic() {
+  return {
+    id: String(this._id),
+    patient: String(this.patient),
+    practice: String(this.practice),
+    doctor: this.doctor ? String(this.doctor) : null,
+    categories: [...(this.categories ?? [])],
+    state: this.state,
+    status: grantStatus(this),
+    origin: this.origin,
+    requestNote: this.requestNote ?? null,
+    grantedAt: this.grantedAt,
+    expiresAt: this.expiresAt,
+    revokedAt: this.revokedAt,
+    revokeReason: this.revokeReason ?? null,
+    declinedAt: this.declinedAt,
+    createdAt: this.createdAt,
+  };
 };
 
 export const ShareGrant = mongoose.model('ShareGrant', shareGrantSchema);
-
-/**
- * Break-glass: an unconscious patient and a doctor who is not theirs.
- *
- * ---- Designed, deliberately not built -----------------------------------
- *
- * Real, and rare enough that building it now would be speculation about a
- * workflow nobody has walked through. What is fixed here is the shape, so it
- * can be added without redesigning anything around it.
- *
- * Four properties, and the last is the one that makes it safe:
- *
- *   - a reason is mandatory, typed at the time, not chosen from a list
- *   - access expires by itself, in hours
- *   - every read under it is logged, not just the opening
- *   - **the patient is told it happened**
- *
- * Access that notifies the person accessed is access nobody abuses twice. A
- * break-glass that is silent is simply a back door with paperwork.
- */
-const breakGlassSchema = new mongoose.Schema(
-  {
-    patient: { type: mongoose.Schema.Types.ObjectId, ref: 'Patient', required: true, index: true },
-    practice: { type: mongoose.Schema.Types.ObjectId, ref: 'Practice', required: true },
-    clinician: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, index: true },
-
-    /// Typed, not selected. A dropdown of reasons is a dropdown of excuses, and
-    /// the sentence somebody wrote at 3am is the one a review can weigh.
-    reason: { type: String, required: true, trim: true, minlength: 20, maxlength: 1000 },
-
-    openedAt: { type: Date, default: Date.now },
-    /// Hours, not days. Long enough for an emergency, short enough that it
-    /// cannot quietly become a standing arrangement.
-    expiresAt: { type: Date, required: true },
-
-    /// When the patient was told, and how. Null means they have not been —
-    /// which is a state that should never persist, and is visible because it is
-    /// a column rather than an absence.
-    patientNotifiedAt: { type: Date, default: null },
-  },
-  { timestamps: true },
-);
-
-breakGlassSchema.index({ patient: 1, openedAt: -1 });
-
-breakGlassSchema.methods.isCurrent = function isCurrent() {
-  return this.expiresAt > new Date();
-};
-
-export const BreakGlassAccess = mongoose.model('BreakGlassAccess', breakGlassSchema);
