@@ -231,6 +231,15 @@ abstract final class Perm {
   static const manageDepartment = 'MANAGE_DEPARTMENT';
   static const viewAudit = 'VIEW_AUDIT';
   static const shareRecords = 'SHARE_RECORDS';
+
+  /// Reading the patient's own conversation, and answering it as the clinic.
+  ///
+  /// Separate from [viewPatient] because they are different acts on different
+  /// things: the record is what the clinic wrote down, the thread is what the
+  /// patient said. The laboratory files results against a patient and has no
+  /// business in either half of the conversation.
+  static const chatRead = 'CHAT_READ';
+  static const chatReply = 'CHAT_REPLY';
 }
 
 /// The capability names the app checks. Mirrors `services/capabilities.js`.

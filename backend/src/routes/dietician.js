@@ -24,6 +24,8 @@ import { getClinicSettings } from '../models/ClinicSettings.js';
 import { buildAttention } from '../services/nutritionAttention.js';
 import { normaliseTestName } from '../utils/testNames.js';
 import { practicePatients, practiceOfMember } from '../middleware/practiceScope.js';
+import { requirePermission } from '../middleware/authorise.js';
+import { PERMISSIONS } from '../models/Membership.js';
 import { attachableAssetIds } from '../services/mediaAccess.js';
 import { quotableMessageId, quotePreview, QUOTE_FIELDS } from '../services/quotedMessage.js';
 import {
@@ -1092,6 +1094,10 @@ router.post(
 /** The care conversation with the patient (shared with the assistant/doctor). */
 router.get(
   '/patients/:id/thread',
+  // The nutrition conversation is still the patient's own words. Its own
+  // grant, like every other thread — see PERMISSIONS.CHAT_READ.
+  requireDietician,
+  requirePermission(PERMISSIONS.CHAT_READ),
   asyncHandler(async (req, res) => {
     await requireAssigned(req);
     // This practice's nutrition conversation with the patient, not the newest
@@ -1268,6 +1274,8 @@ router.post(
 
 router.post(
   '/patients/:id/message',
+  requireDietician,
+  requirePermission(PERMISSIONS.CHAT_REPLY),
   validate({
     body: z
       .object({

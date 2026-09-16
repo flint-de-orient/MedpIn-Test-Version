@@ -2,6 +2,8 @@
 import rateLimit from 'express-rate-limit';
 import { z } from 'zod';
 import { requireAuth, requireClinician, requireRole, resolvePatientScope } from '../middleware/auth.js';
+import { requirePermission } from '../middleware/authorise.js';
+import { PERMISSIONS } from '../models/Membership.js';
 import { validate, q } from '../middleware/validate.js';
 import { asyncHandler, notFound, badRequest } from '../middleware/errors.js';
 import { ROLES } from '../models/User.js';
@@ -410,6 +412,10 @@ router.get(
   '/patients/:patientId/thread',
   requireAuth,
   requireClinician,
+  // The care thread is its own grant. `requireClinician` alone let every
+  // clinical role at the practice read a patient's account of their symptoms,
+  // the bench technician included.
+  requirePermission(PERMISSIONS.CHAT_READ),
   resolvePatientScope,
   validate({ query: pageParams }),
   audit('read', 'ChatMessage'),
@@ -542,6 +548,9 @@ router.post(
   '/patients/:patientId/clinician-message',
   requireAuth,
   requireClinician,
+  // Answering, which is not the same act as reading: a reply here carries the
+  // clinic's authority whoever typed it.
+  requirePermission(PERMISSIONS.CHAT_REPLY),
   resolvePatientScope,
   validate({
     body: z
@@ -1117,6 +1126,7 @@ router.get(
   '/patients/:patientId/assistant',
   requireAuth,
   requireRole(ROLES.DOCTOR, ROLES.STAFF, ROLES.DIETICIAN),
+  requirePermission(PERMISSIONS.CHAT_READ),
   validate({ query: threadKind }),
   asyncHandler(async (req, res) => {
     const session = await threadFor(req, req.params.patientId, req.query.kind);
@@ -1143,6 +1153,9 @@ router.patch(
   '/patients/:patientId/assistant',
   requireAuth,
   requireRole(ROLES.DOCTOR, ROLES.STAFF, ROLES.DIETICIAN),
+  // Turning the assistant off changes what the patient is answered by, which
+  // is a decision about the conversation rather than a look at it.
+  requirePermission(PERMISSIONS.CHAT_REPLY),
   validate({ body: threadKind.extend({ enabled: z.boolean() }) }),
   audit('update', 'ChatSession'),
   asyncHandler(async (req, res) => {
@@ -1170,6 +1183,7 @@ router.post(
   '/patients/:patientId/presence',
   requireAuth,
   requireRole(ROLES.DOCTOR, ROLES.STAFF, ROLES.DIETICIAN),
+  requirePermission(PERMISSIONS.CHAT_READ),
   validate({ body: threadKind }),
   asyncHandler(async (req, res) => {
     const session = await threadFor(req, req.params.patientId, req.body.kind);

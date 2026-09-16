@@ -246,6 +246,10 @@ export type LoginResult = {
  */
 export const PERMISSION_LABELS: Record<string, string> = {
   VIEW_PATIENT: "Open a patient record",
+  // Separate from opening the record, because they are different things: the
+  // record is what the clinic wrote down, the thread is what the patient said.
+  CHAT_READ: "Read the patient's messages",
+  CHAT_REPLY: "Answer the patient as the clinic",
   EDIT_RECORD: "Write clinical notes and readings",
   PRESCRIBE: "Issue prescriptions",
   MANAGE_DEPARTMENT: "Configure departments",

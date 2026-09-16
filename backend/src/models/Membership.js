@@ -53,6 +53,26 @@ export const PERMISSIONS = Object.freeze({
   MANAGE_DEPARTMENT: 'MANAGE_DEPARTMENT',
   VIEW_AUDIT: 'VIEW_AUDIT',
   SHARE_RECORDS: 'SHARE_RECORDS',
+
+  /*
+   * Reading and answering the patient's own conversation.
+   *
+   * Its own grant rather than part of VIEW_PATIENT, because the care thread is
+   * not the same kind of thing as the record. It is where a patient describes
+   * a symptom in their own words, asks something they would not put in a form,
+   * and is answered by somebody they take to be their clinician — and a reply
+   * in it carries the clinic's authority whoever typed it.
+   *
+   * Guarded only by `requireClinician` before this, it was open to every
+   * clinical role at a practice: the bench technician who processes a sample
+   * could read a patient's account of their symptoms, and answer it.
+   *
+   * Two, not one, because reading and replying are genuinely different. An
+   * assistant may need to read the thread to prepare a consultation while
+   * answering stays with the people who carry the clinical answer.
+   */
+  CHAT_READ: 'CHAT_READ',
+  CHAT_REPLY: 'CHAT_REPLY',
 });
 
 /**
@@ -78,11 +98,13 @@ export const PRESETS = Object.freeze({
     P.MANAGE_DEPARTMENT,
     P.VIEW_AUDIT,
     P.SHARE_RECORDS,
+    P.CHAT_READ,
+    P.CHAT_REPLY,
   ],
-  clinician: [P.VIEW_PATIENT, P.EDIT_RECORD, P.PRESCRIBE],
+  clinician: [P.VIEW_PATIENT, P.EDIT_RECORD, P.PRESCRIBE, P.CHAT_READ, P.CHAT_REPLY],
   // The desk registers people, books them and takes their weight. It does not
   // prescribe, and it does not read the audit log of who looked at whom.
-  desk: [P.VIEW_PATIENT, P.EDIT_RECORD],
+  desk: [P.VIEW_PATIENT, P.EDIT_RECORD, P.CHAT_READ, P.CHAT_REPLY],
 
   /*
    * Works on the record beside a doctor and does not sign.
@@ -93,7 +115,7 @@ export const PRESETS = Object.freeze({
    * differ is the capability exclusions — see ROLE_EXCLUDES — and the screen
    * they open onto.
    */
-  assistant: [P.VIEW_PATIENT, P.EDIT_RECORD],
+  assistant: [P.VIEW_PATIENT, P.EDIT_RECORD, P.CHAT_READ, P.CHAT_REPLY],
 
   /*
    * Runs the laboratory: the work, the results, and the people.

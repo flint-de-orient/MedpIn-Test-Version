@@ -116,6 +116,10 @@ router.get(
   '/',
   requireClinician,
   requirePermission(PERMISSIONS.VIEW_PATIENT),
+  // Both, because a summary is two things at once: it names a patient, and it
+  // is made of what that patient wrote. Somebody who may see patients but not
+  // read their conversations has no business in either half of it.
+  requirePermission(PERMISSIONS.CHAT_READ),
   validate({
     query: z.object({
       day: z.string().regex(DATE_RE).optional(),
@@ -216,6 +220,10 @@ router.get(
   '/patients/:patientId',
   requireClinician,
   requirePermission(PERMISSIONS.VIEW_PATIENT),
+  // Both, because a summary is two things at once: it names a patient, and it
+  // is made of what that patient wrote. Somebody who may see patients but not
+  // read their conversations has no business in either half of it.
+  requirePermission(PERMISSIONS.CHAT_READ),
   validate({
     query: z.object({
       days: z.coerce.number().int().min(1).max(14).default(1),
@@ -261,6 +269,10 @@ router.post(
   '/:id/reviewed',
   requireClinician,
   requirePermission(PERMISSIONS.VIEW_PATIENT),
+  // Both, because a summary is two things at once: it names a patient, and it
+  // is made of what that patient wrote. Somebody who may see patients but not
+  // read their conversations has no business in either half of it.
+  requirePermission(PERMISSIONS.CHAT_READ),
   audit('update', 'ConversationSummary'),
   asyncHandler(async (req, res) => {
     const practiceId = await practiceOf(req);

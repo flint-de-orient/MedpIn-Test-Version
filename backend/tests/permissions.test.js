@@ -131,7 +131,11 @@ describe('the guard is wired where it matters', () => {
       for (const m of src.matchAll(/requirePermission\(PERMISSIONS\.(\w+)\)/g)) {
         const before = src.slice(Math.max(0, m.index - 400), m.index);
         assert.ok(
-          /require(Doctor|Clinician|Role)/.test(before),
+          // `requireDietician` belongs here for the same reason as the rest:
+          // it names a platform role, and the dietician routes carry the chat
+          // grants. Leaving it out made the ratchet report a guarded route as
+          // unguarded, which is how a ratchet stops being believed.
+          /require(Doctor|Clinician|Role|Dietician)/.test(before),
           `${f}: requirePermission(${m[1]}) has no role guard above it`,
         );
       }

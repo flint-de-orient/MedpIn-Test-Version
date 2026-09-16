@@ -1691,6 +1691,11 @@ router.post(
 
 router.get(
   '/chat-review',
+  // Reading patients' own words is its own grant — see PERMISSIONS.CHAT_READ.
+  // The file-level guard is requireClinician, which admits every clinical role
+  // the practice employs, the laboratory included.
+  requireClinician,
+  requirePermission(PERMISSIONS.CHAT_READ),
   validate({
     query: pageParams.and(
       z.object({
@@ -1851,6 +1856,8 @@ router.get(
 
 router.get(
   '/chat-review/:sessionId',
+  requireClinician,
+  requirePermission(PERMISSIONS.CHAT_READ),
   audit('read', 'ChatMessage'),
   asyncHandler(async (req, res) => {
     const session = await ChatSession.findById(req.params.sessionId).populate('patient', 'name phone').lean();
@@ -2003,6 +2010,7 @@ router.post(
   // arriving under the doctor's name is not a permission slip, it is a
   // false record of who gave the advice.
   requireDoctor,
+  requirePermission(PERMISSIONS.CHAT_REPLY),
   validate({
     body: z
       .object({
