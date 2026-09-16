@@ -23,6 +23,7 @@ import appVersionRoutes from './appVersion.js';
 import dashboardRoutes from './dashboard.js';
 import doctorRoutes from './doctor.js';
 import panelRoutes from './panels.js';
+import reportRoutes from './reports.js';
 import chatSummaryRoutes from './chatSummaries.js';
 import departmentRoutes from './departments.js';
 import teamRoutes from './team.js';
@@ -112,6 +113,9 @@ router.use('/messages', messageRoutes);
 // Before /doctor, so a panel request is not first walked through the doctor
 // router's own guards and handlers on its way here.
 router.use('/doctor/panels', panelRoutes);
+// The doctor's own daily summary, as a PDF or a preview. Before /doctor for the
+// same reason as the panels.
+router.use('/doctor/reports', reportRoutes);
 router.use('/doctor', doctorRoutes);
 // A day of each patient's conversation, for the clinicians it did not interrupt.
 router.use('/chat-summaries', chatSummaryRoutes);
