@@ -69,12 +69,19 @@ async function practice(name) {
     items: [{ name: 'Metformin', strength: '500mg', frequency: '1-0-1' }],
   });
 
+  // This practice's prescription on the patient's list — prescribed by its
+  // doctor, from the prescription above. A medicine with no prescriber is one
+  // the patient added themselves, and no practice's to stop.
   const medication = await Medication.create({
     patient: patient.user._id,
     name: 'Metformin',
     strength: '500mg',
     isActive: true,
     schedule: [{ time: '08:00' }],
+    prescribedBy: doctor.user._id,
+    prescription: prescription._id,
+    practice: p._id,
+    source: 'clinic',
   });
 
   const session = await ChatSession.create({ patient: patient.user._id, kind: 'care', language: 'en' });
@@ -135,6 +142,23 @@ const ACTIONS = [
   {
     name: 'stop their medicine',
     run: (who) => as(who.token).del(`/patients/${A.patient.user._id}/medications/${A.medication._id}`),
+    unchanged: async () => (await Medication.findById(A.medication._id).lean()).isActive === true,
+  },
+  {
+    name: 'stop their prescription, giving a reason',
+    run: (who) =>
+      as(who.token).post(`/patients/${A.patient.user._id}/medications/${A.medication._id}/stop`, {
+        reason: 'Behala says so',
+      }),
+    unchanged: async () => {
+      const med = await Medication.findById(A.medication._id).lean();
+      return med.isActive === true && (med.prescriptionState ?? 'active') === 'active';
+    },
+  },
+  {
+    name: 'switch their medicine off by editing it',
+    run: (who) =>
+      as(who.token).patch(`/patients/${A.patient.user._id}/medications/${A.medication._id}`, { isActive: false }),
     unchanged: async () => (await Medication.findById(A.medication._id).lean()).isActive === true,
   },
   {

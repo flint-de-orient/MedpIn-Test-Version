@@ -9,6 +9,7 @@ import { audit } from '../middleware/audit.js';
 import { practiceOf, practicePatients } from '../middleware/practiceScope.js';
 import { PERMISSIONS } from '../models/Membership.js';
 import { Prescription } from '../models/Prescription.js';
+import { endMedicinesOfPrescription } from '../services/medicationLifecycle.js';
 import { RECORD_STATE } from '../models/plugins/clinicalRecord.js';
 import { Patient } from '../models/Patient.js';
 import { User, ROLES } from '../models/User.js';
@@ -103,6 +104,17 @@ router.post(
       replacedBy: req.body.replacedBy ?? null,
     });
     await prescription.save();
+
+    // What it put on the patient's list ends with it — or the prescription is
+    // voided and its reminders keep ringing. Voided: cancelled, it should never
+    // have been taken. Corrected or superseded: stopped, unless the replacement
+    // carried the medicine over, in which case it already points there.
+    await endMedicinesOfPrescription({
+      prescriptionId: prescription._id,
+      voided: req.body.state === RECORD_STATE.VOIDED,
+      by: req.user._id,
+      reason: req.body.reason,
+    });
 
     res.json({
       id: String(prescription._id),

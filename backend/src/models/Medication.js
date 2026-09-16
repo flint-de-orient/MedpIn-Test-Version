@@ -12,8 +12,54 @@ export const MED_FORMS = Object.freeze([
 ]);
 
 /**
+ * Whether the prescription for this medicine stands — the doctor's side.
+ *
+ * Only a clinician moves it, and only through services/medicationLifecycle.js:
+ *
+ *   active             in force
+ *   completed          the course ran to its end date
+ *   stopped_by_doctor  a clinician stopped it, or replaced the prescription
+ *                      without carrying it over
+ *   cancelled          the prescription it came from was voided — issued in
+ *                      error, and the patient should never have been on it
+ *   ended_legacy       ended before any of this was recorded. Who ended it is
+ *                      not known, and the record does not pretend otherwise.
+ */
+export const PRESCRIPTION_STATE = Object.freeze({
+  ACTIVE: 'active',
+  COMPLETED: 'completed',
+  STOPPED_BY_DOCTOR: 'stopped_by_doctor',
+  CANCELLED: 'cancelled',
+  ENDED_LEGACY: 'ended_legacy',
+});
+
+/**
+ * Whether the patient is taking it — the patient's side.
+ *
+ * Stored: `taking` or `stopped_by_patient`. `not_started` is never stored; it
+ * is what `taking` reads as before the start date (see takingStateOf).
+ *
+ * The two sides are separate fields on purpose. A patient pressing "Stop
+ * taking" used to write the same `isActive: false` a doctor's stop wrote, so
+ * the record could not say which had happened, and the patient's choice
+ * rewrote the doctor's prescription.
+ */
+export const TAKING_STATE = Object.freeze({
+  TAKING: 'taking',
+  STOPPED_BY_PATIENT: 'stopped_by_patient',
+  NOT_STARTED: 'not_started',
+});
+
+/**
  * A medication the patient is currently expected to take. Insulin is modelled
  * here too (form: 'insulin') so adherence and dose logging share one pipeline.
+ *
+ * ---- isActive ----------------------------------------------------------------
+ *
+ * Kept, and kept exact: prescription active AND patient taking. It is what every
+ * reminder, today's schedule and every build of the app already read to decide
+ * whether a dose is due, so a patient's stop and a doctor's stop both silence
+ * the reminders without either of them being the other.
  */
 const medicationSchema = new mongoose.Schema(
   {
@@ -74,6 +120,57 @@ const medicationSchema = new mongoose.Schema(
     prescribedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     prescription: { type: mongoose.Schema.Types.ObjectId, ref: 'Prescription' },
 
+    /// The practice whose prescription this is. Null for a medicine the patient
+    /// added or photographed themselves, which is theirs and no practice's.
+    practice: { type: mongoose.Schema.Types.ObjectId, ref: 'Practice', default: null, index: true },
+
+    /// Earlier prescriptions this same medicine was continued from, oldest
+    /// first. A renewal updates the row in place — its dose history stays on
+    /// one medicine — and this keeps the trail the `prescription` field alone
+    /// would overwrite.
+    prescriptionHistory: [
+      {
+        _id: false,
+        prescription: { type: mongoose.Schema.Types.ObjectId, ref: 'Prescription' },
+        until: Date,
+      },
+    ],
+
+    prescriptionState: {
+      type: String,
+      enum: Object.values(PRESCRIPTION_STATE),
+      default: PRESCRIPTION_STATE.ACTIVE,
+      index: true,
+    },
+    takingState: {
+      type: String,
+      enum: [TAKING_STATE.TAKING, TAKING_STATE.STOPPED_BY_PATIENT],
+      default: TAKING_STATE.TAKING,
+    },
+    /// When the course ran out — its end date, recorded once it passed.
+    completedAt: { type: Date, default: null },
+    stoppedByDoctor: {
+      at: Date,
+      by: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+      reason: { type: String, trim: true, maxlength: 500 },
+    },
+    cancelled: {
+      at: Date,
+      by: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+      reason: { type: String, trim: true, maxlength: 500 },
+    },
+    /// Every time the patient stopped taking it, and when they started again.
+    /// The patient's own history, in fields the doctor's side never reads as
+    /// its own — nothing here changes what was prescribed.
+    patientStops: [
+      {
+        _id: false,
+        at: { type: Date, required: true },
+        reason: { type: String, trim: true, maxlength: 300 },
+        resumedAt: { type: Date, default: null },
+      },
+    ],
+
     /// How this medicine got here.
     ///
     /// `clinic` means a clinician issued it through the app, and prescribedBy
@@ -105,5 +202,7 @@ const medicationSchema = new mongoose.Schema(
 );
 
 medicationSchema.index({ patient: 1, isActive: 1 });
+// The completion sweep: standing prescriptions whose end date has passed.
+medicationSchema.index({ prescriptionState: 1, endDate: 1 });
 
 export const Medication = mongoose.model('Medication', medicationSchema);

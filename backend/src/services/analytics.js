@@ -5,6 +5,7 @@ import { User, ROLES } from '../models/User.js';
 import { GlucoseReading } from '../models/GlucoseReading.js';
 import { MedicationLog } from '../models/MedicationLog.js';
 import { Medication } from '../models/Medication.js';
+import { effectiveEnd, occursOn, doseExpected, prescriptionStateOf } from './medicationLifecycle.js';
 import { Hba1cRecord } from '../models/Hba1cRecord.js';
 import { VitalRecord } from '../models/VitalRecord.js';
 import { LifestyleLog } from '../models/LifestyleLog.js';
@@ -160,13 +161,26 @@ export async function computeAdherence(patientId, { days = 30 } = {}) {
   const since = dayjs().subtract(days, 'day').startOf('day');
   const now = dayjs();
 
-  const meds = await Medication.find({
-    patient: patientId,
-    isActive: true,
-    startDate: { $lte: now.toDate() },
-  })
-    .select('schedule daysOfWeek startDate endDate name')
-    .lean();
+  // Every medicine prescribed at some point in the window, not only today's
+  // list. `isActive: true` here meant a course that completed on Tuesday took
+  // its whole month of doses out of the figure on Wednesday — and a stopped
+  // medicine's missed doses vanished the moment it was stopped.
+  const meds = (
+    await Medication.find({
+      patient: patientId,
+      startDate: { $lte: now.toDate() },
+    })
+      .select(
+        'schedule daysOfWeek dayInterval asNeeded stat startDate endDate stoppedByDoctor cancelled patientStops prescriptionState takingState isActive name',
+      )
+      .lean()
+  ).filter((m) => {
+    const end = effectiveEnd(m);
+    // Ended before any of this was recorded, with no date to say when: its
+    // doses cannot be placed, so they are not counted either way.
+    if (!end && prescriptionStateOf(m) === 'ended_legacy') return false;
+    return !end || end >= since.toDate();
+  });
 
   if (!meds.length) return { expected: 0, taken: 0, missed: 0, percentage: null, perMedication: [] };
 
@@ -193,10 +207,13 @@ export async function computeAdherence(patientId, { days = 30 } = {}) {
     let medTaken = 0;
 
     const start = dayjs.max ? dayjs.max(since, dayjs(med.startDate)) : (dayjs(med.startDate).isAfter(since) ? dayjs(med.startDate) : since);
-    const end = med.endDate && dayjs(med.endDate).isBefore(now) ? dayjs(med.endDate) : now;
+    const ended = effectiveEnd(med);
+    const end = ended && dayjs(ended).isBefore(now) ? dayjs(ended) : now;
 
     for (let d = inClinicTz(start.toDate()).startOf('day'); d.isBefore(end); d = d.add(1, 'day')) {
-      if (med.daysOfWeek?.length && !med.daysOfWeek.includes(d.day())) continue;
+      // The interval as well as the weekday: an every-other-day tablet taken
+      // perfectly scored fifty per cent.
+      if (!occursOn(med, d)) continue;
 
       for (const slot of med.schedule) {
         const slotTime = clinicDateTime(d.format('YYYY-MM-DD'), slot.time);
@@ -204,6 +221,9 @@ export async function computeAdherence(patientId, { days = 30 } = {}) {
         // not yet missed.
         if (slotTime.isAfter(now)) continue;
         if (slotTime.isBefore(since)) continue;
+        // Inside the prescription's life and not while the patient had stopped
+        // taking it: a dose nobody was meant to take is not a missed one.
+        if (!doseExpected(med, slotTime.toDate())) continue;
 
         medExpected += 1;
         if (logMap.get(logKey(med._id, slotTime.toDate())) === 'taken') medTaken += 1;

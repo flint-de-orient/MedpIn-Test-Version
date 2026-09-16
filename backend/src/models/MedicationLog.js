@@ -13,6 +13,10 @@ const medicationLogSchema = new mongoose.Schema(
     scheduledFor: { type: Date, required: true, index: true },
     status: { type: String, enum: ['taken', 'skipped', 'missed'], required: true },
     takenAt: Date,
+    /// Taken, but more than the grace period after it was due. Kept beside
+    /// `status` rather than as a fourth status, so a build that knows only
+    /// taken / skipped / missed still reads the dose as taken.
+    takenLate: { type: Boolean, default: false },
 
     // Insulin doses vary per administration, so the actual units are captured
     // here rather than assumed from the medication record.

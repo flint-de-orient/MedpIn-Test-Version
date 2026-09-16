@@ -2,7 +2,8 @@ import { inClinicTz, clinicDateTime } from '../utils/clinicTime.js';
 import { Medication } from '../models/Medication.js';
 import { MedicationLog } from '../models/MedicationLog.js';
 import { sendMedicationReminderPush } from './notifications.js';
-import { medReminderNotificationId } from '../utils/medReminderId.js';
+import { reminderIdFor } from '../utils/medReminderId.js';
+import { completeEndedCourses, doseExpected } from './medicationLifecycle.js';
 import { logger } from '../config/logger.js';
 
 /**
@@ -28,12 +29,14 @@ async function tick() {
   const now = inClinicTz(new Date());
   const hhmm = now.format('HH:mm');
   const today = now.format('YYYY-MM-DD');
-  const dow = now.day(); // 0=Sun..6=Sat, matching Medication.daysOfWeek
 
   const minuteKey = `${today} ${hhmm}`;
   if (minuteKey !== currentMinute) {
     currentMinute = minuteKey;
     sentThisMinute.clear();
+    // Courses that ran out end here as well, once a minute — not only when the
+    // patient next opens their list, which for a finished course may be never.
+    await completeEndedCourses().catch((err) => logger.error({ err }, 'course completion sweep failed'));
   }
 
   const startOfToday = clinicDateTime(today, '00:00').toDate();
@@ -44,19 +47,24 @@ async function tick() {
     startDate: { $lte: new Date() },
     $or: [{ endDate: null }, { endDate: { $gte: startOfToday } }],
   })
-    .select('patient name dose schedule daysOfWeek')
+    .select('patient name dose schedule daysOfWeek dayInterval asNeeded stat startDate endDate stoppedByDoctor cancelled patientStops')
     .lean();
 
   for (const med of meds) {
-    if (med.daysOfWeek?.length && !med.daysOfWeek.includes(dow)) continue;
     for (const slot of med.schedule ?? []) {
       if (slot.time !== hhmm) continue;
 
-      const notifId = medReminderNotificationId(String(med._id), slot.time);
+      // The dose calendar every schedule reads: the weekday and the
+      // every-other-day interval (never asked here, so an alternate-day tablet
+      // was pushed daily), the start, and the end of the course to the minute
+      // (a course ending at ten was still pushed at eight that evening).
+      const scheduledFor = clinicDateTime(today, slot.time).toDate();
+      if (!doseExpected(med, scheduledFor)) continue;
+
+      const notifId = reminderIdFor(med, slot.time, today);
       if (sentThisMinute.has(notifId)) continue;
 
       // Already taken or skipped today → don't nag.
-      const scheduledFor = clinicDateTime(today, slot.time).toDate();
       // eslint-disable-next-line no-await-in-loop
       const log = await MedicationLog.findOne({ medication: med._id, scheduledFor }).select('status').lean();
       if (log && (log.status === 'taken' || log.status === 'skipped')) continue;

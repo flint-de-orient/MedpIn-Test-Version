@@ -6,7 +6,8 @@ import { validate, q } from '../middleware/validate.js';
 import { asyncHandler, notFound, badRequest } from '../middleware/errors.js';
 import { audit } from '../middleware/audit.js';
 import { Prescription } from '../models/Prescription.js';
-import { Medication } from '../models/Medication.js';
+import { Medication, PRESCRIPTION_STATE, TAKING_STATE } from '../models/Medication.js';
+import { PRESCRIPTION_STANDS, endMedicinesOfPrescription } from '../services/medicationLifecycle.js';
 import { notifyPatientOfPrescription } from '../services/notifications.js';
 import { buildSchedule, scheduleText, relationFromText } from '../services/medicationSchedule.js';
 import { PatientProfile } from '../models/PatientProfile.js';
@@ -24,7 +25,7 @@ import { PERMISSIONS } from '../models/Membership.js';
 import { requirePermission, recordWindow } from '../middleware/authorise.js';
 import { requireCapability } from '../middleware/requireCapability.js';
 import { CAPABILITIES } from '../services/capabilities.js';
-import { practiceOfPatient } from '../middleware/practiceScope.js';
+import { practiceOfPatient, practiceOf } from '../middleware/practiceScope.js';
 import { RECORD_STATE } from '../models/plugins/clinicalRecord.js';
 import { nextInSequence } from '../services/sequence.js';
 import { idempotencyKey, isReplayOf, isKeyCollision } from '../middleware/idempotency.js';
@@ -228,6 +229,9 @@ router.post(
         ...body,
         patient: req.patientId,
         doctor: req.user._id,
+        // Whose prescription this is — and so whose medicines it puts on the
+        // patient's list. See services/medicationLifecycle.js.
+        practice: await practiceOf(req),
         appointment: appointmentId,
         referenceNo: await nextReference(),
         idempotencyKey: req.idempotency?.key ?? null,
@@ -271,6 +275,23 @@ router.post(
       await syncMedications(prescription, req.patientId, req.user._id);
     }
 
+    if (superseded) {
+      /*
+       * The replaced prescription's medicines, after the sync — never before.
+       * A medicine the new prescription carries over was re-pointed at it just
+       * now and stays as it is, doses and reminders included. What is still
+       * pointing at the old one is what the doctor left out, and it stops:
+       * switching 500 mg to 1000 mg must not leave the patient reminded to
+       * take both.
+       */
+      await endMedicinesOfPrescription({
+        prescriptionId: superseded._id,
+        voided: false,
+        by: req.user._id,
+        reason: `Not carried over to prescription ${prescription.referenceNo}.`,
+      });
+    }
+
     // Let the patient know at once so their Medicines tab and reminders refresh.
     notifyPatientOfPrescription(req.patientId, req.user).catch(() => {});
 
@@ -288,9 +309,43 @@ function deriveDiabetesType(diagnoses = []) {
   return null;
 }
 
+/**
+ * Put a prescription's medicines on the patient's list.
+ *
+ * ---- What counts as the same medicine ----------------------------------------
+ *
+ * Keyed on patient + name + `isActive`, which was three defects at once:
+ *
+ *   - metformin 1000 mg replaced a running metformin 500 mg, strength and all,
+ *     with nothing recording that the 500 had ever been stopped;
+ *   - one practice's prescription overwrote another practice's metformin, and
+ *     re-pointed it at a doctor who had never prescribed it;
+ *   - a medicine the patient had added themselves became the clinic's.
+ *
+ * So the same medicine is: this patient, this practice, prescribed (not added
+ * or photographed by the patient), the same name and the same strength, and a
+ * prescription that still stands. Anything else is a new row beside it — which
+ * two to keep is a clinical decision, and the list says both are there
+ * (`alsoOnList`).
+ *
+ * ---- A renewal continues the row ------------------------------------------------
+ *
+ * Same medicine again: updated in place, so the doses already taken today stay
+ * on it and no eight o'clock tablet shows as missed because a new row began at
+ * eleven. The previous prescription is kept in `prescriptionHistory`; the start
+ * date is not moved, so the history before the renewal is still this
+ * medicine's; and the end date is the new prescription's — including none,
+ * which the old `$set: undefined` silently kept from the last one.
+ *
+ * A course that completed, or one a doctor stopped, is never reopened: it no
+ * longer stands, so it does not match, and prescribing it again makes a new row.
+ */
 async function syncMedications(prescription, patientId, doctorId) {
   const profile = await PatientProfile.findOne({ user: patientId }).select('mealTimes').lean();
   const mealTimes = profile?.mealTimes;
+  const practice = prescription.practice ?? null;
+  const now = new Date();
+
   for (const item of prescription.items) {
     // Special dosing is carried in the frequency shorthand (PRN/SOS/Stat/EOD);
     // derive the flags so the tracker and the device scheduler treat them right.
@@ -298,34 +353,65 @@ async function syncMedications(prescription, patientId, doctorId) {
     const asNeeded = /\b(prn|sos)\b/.test(f);
     const stat = /\bstat\b/.test(f);
     const dayInterval = /\b(eod|qod)\b/.test(f) ? 2 : 1;
+    const endDate = item.durationDays ? dayjs(prescription.issuedOn).add(item.durationDays, 'day').toDate() : null;
 
-    await Medication.findOneAndUpdate(
-      { patient: patientId, name: item.name, isActive: true },
-      {
-        $set: {
-          patient: patientId,
-          name: item.name,
-          strength: item.strength,
-          dose: item.dose,
-          form: /insulin/i.test(item.name) ? 'insulin' : 'tablet',
-          // PRN/Stat carry no recurring schedule, so they arm no reminders.
-          schedule: asNeeded || stat ? [] : buildSchedule(scheduleText(item), mealTimes, item.relationToMeal ?? relationFromText(scheduleText(item)) ?? 'any'),
-          route: item.route ?? 'oral',
-          asNeeded,
-          stat,
-          dayInterval,
-          startDate: prescription.issuedOn,
-          endDate: item.durationDays
-            ? dayjs(prescription.issuedOn).add(item.durationDays, 'day').toDate()
-            : undefined,
-          instructions: item.instructions,
-          prescribedBy: doctorId,
-          prescription: prescription._id,
-          isActive: true,
-        },
-      },
-      { upsert: true, setDefaultsOnInsert: true },
-    );
+    const same = {
+      patient: patientId,
+      source: 'clinic',
+      name: item.name,
+      strength: item.strength ?? null,
+      $and: [PRESCRIPTION_STANDS],
+    };
+    // Case-insensitive on the name and strength: "Metformin" and "metformin"
+    // are one medicine.
+    const caseless = { locale: 'en', strength: 2 };
+    let existing = await Medication.findOne({ ...same, practice }).collation(caseless);
+    if (!existing && practice) {
+      // Written before medicines carried their practice, by this same doctor:
+      // theirs to continue, so it is adopted rather than duplicated. Nobody
+      // else's row is — see practiceMayChange in routes/medications.js.
+      existing = await Medication.findOne({ ...same, practice: null, prescribedBy: doctorId }).collation(caseless);
+    }
+
+    const fields = {
+      name: item.name,
+      strength: item.strength ?? null,
+      dose: item.dose ?? null,
+      form: /insulin/i.test(item.name) ? 'insulin' : 'tablet',
+      // PRN/Stat carry no recurring schedule, so they arm no reminders.
+      schedule: asNeeded || stat ? [] : buildSchedule(scheduleText(item), mealTimes, item.relationToMeal ?? relationFromText(scheduleText(item)) ?? 'any'),
+      route: item.route ?? 'oral',
+      asNeeded,
+      stat,
+      dayInterval,
+      endDate,
+      instructions: item.instructions ?? null,
+      prescribedBy: doctorId,
+      prescription: prescription._id,
+      practice,
+      // A new prescription is a new instruction to take it.
+      prescriptionState: PRESCRIPTION_STATE.ACTIVE,
+      takingState: TAKING_STATE.TAKING,
+      isActive: true,
+    };
+
+    if (!existing) {
+      await Medication.create({ patient: patientId, source: 'clinic', startDate: prescription.issuedOn, ...fields });
+      continue;
+    }
+
+    const update = { $set: fields };
+    if (existing.prescription && String(existing.prescription) !== String(prescription._id)) {
+      update.$push = { prescriptionHistory: { prescription: existing.prescription, until: now } };
+    }
+    const options = {};
+    if (existing.takingState === TAKING_STATE.STOPPED_BY_PATIENT) {
+      // The patient had stopped; the doctor has prescribed it again. Their stop
+      // stays in the history, closed by this prescription.
+      update.$set['patientStops.$[open].resumedAt'] = now;
+      options.arrayFilters = [{ 'open.resumedAt': null }];
+    }
+    await Medication.updateOne({ _id: existing._id }, update, options);
   }
 }
 
@@ -563,6 +649,7 @@ router.post(
     const created = await Prescription.create({
       patient: req.patientId,
       doctor: doctor._id,
+      practice: await practiceOf(req),
       referenceNo: await nextReference(),
       // The date on the paper, when the desk knows it. A prescription filed a
       // week late and stamped today would put the visit on the wrong day in

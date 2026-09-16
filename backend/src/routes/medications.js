@@ -7,9 +7,28 @@ import { requireAuth, resolvePatientScope } from '../middleware/auth.js';
 import { validate, q } from '../middleware/validate.js';
 import { requireRecordAccess, requirePermission } from '../middleware/authorise.js';
 import { PERMISSIONS } from '../models/Membership.js';
-import { asyncHandler, notFound, badRequest } from '../middleware/errors.js';
+import { asyncHandler, notFound, badRequest, forbidden, AppError } from '../middleware/errors.js';
 import { audit } from '../middleware/audit.js';
-import { Medication, MED_FORMS } from '../models/Medication.js';
+import { Medication, MED_FORMS, PRESCRIPTION_STATE, TAKING_STATE } from '../models/Medication.js';
+import { Membership } from '../models/Membership.js';
+import { ROLES } from '../models/User.js';
+import {
+  PRESCRIPTION_STANDS,
+  prescriptionStateOf,
+  takingStateOf,
+  isPatientOwned,
+  openPatientStop,
+  occursOn,
+  effectiveEnd,
+  doseExpected,
+  LATE_AFTER_MINUTES,
+  completeEndedCourses,
+  stopTaking,
+  resumeTaking,
+  stopByDoctor,
+} from '../services/medicationLifecycle.js';
+import { raiseAlert } from '../services/alerts.js';
+import mongoose from 'mongoose';
 import { MedicationLog } from '../models/MedicationLog.js';
 import { computeAdherence } from '../services/analytics.js';
 import { extractPrescription } from '../services/ai/vision.js';
@@ -19,7 +38,7 @@ import { PatientProfile } from '../models/PatientProfile.js';
 import { AiUnavailableError } from '../services/ai/gemini.js';
 import { MedicineBrand, brandSlug } from '../models/MedicineBrand.js';
 import { notifyPatientOfMedicineChange } from '../services/notifications.js';
-import { practiceOfPatient } from '../middleware/practiceScope.js';
+import { practiceOfPatient, practiceOf, practicesOf } from '../middleware/practiceScope.js';
 
 const router = Router({ mergeParams: true });
 // Whose patient this is, then what this person may do with them: the medicine list and its doses.
@@ -39,6 +58,57 @@ router.use(requireAuth, resolvePatientScope, requireRecordAccess());
 function actingOnBehalf(req) {
   return req.user.role !== 'patient' && String(req.user._id) !== String(req.patientId);
 }
+
+/** The medicine, on this patient's list, or 404. */
+async function findMedicine(req) {
+  if (!mongoose.isValidObjectId(req.params.id)) throw notFound('Medication not found');
+  const med = await Medication.findOne({ _id: req.params.id, patient: req.patientId });
+  if (!med) throw notFound('Medication not found');
+  return med;
+}
+
+/**
+ * Whether this clinician's practice may change this medicine.
+ *
+ * Its own practice's prescriptions only. Another practice reads the whole list
+ * — what a patient is on predates any one practice, see recordWindow.test.js —
+ * and may change none of it: practice B stopping practice A's anticoagulant is
+ * the failure this exists for.
+ *
+ * A medicine the patient added themselves is theirs, and no clinician's to
+ * change. A row written before medicines carried their practice is decided by
+ * whoever prescribed it — the practices they work or worked at — never by
+ * "any practice that can see this patient".
+ */
+async function practiceMayChange(req, med) {
+  if (isPatientOwned(med)) return false;
+  const mine = await practicesOf(req);
+  if (med.practice) return mine.includes(String(med.practice));
+  const theirs = await Membership.find({ user: med.prescribedBy }).select('practice').lean();
+  return theirs.some((m) => mine.includes(String(m.practice)));
+}
+
+/** Refuses a clinician who may not change this medicine, saying which kind of no. */
+async function assertPracticeMayChange(req, med) {
+  if (await practiceMayChange(req, med)) return;
+  if (isPatientOwned(med)) {
+    throw new AppError(
+      403,
+      'PATIENT_OWNED',
+      'The patient added this medicine themselves. Advise them about it; it is theirs to change.',
+    );
+  }
+  // Not this practice's prescription. Said as not found, as every other
+  // practice's record is.
+  throw notFound('Medication not found');
+}
+
+const prescriptionEnded = (med) =>
+  new AppError(
+    409,
+    'PRESCRIPTION_ENDED',
+    `This prescription has already ${prescriptionStateOf(med) === PRESCRIPTION_STATE.COMPLETED ? 'completed' : 'ended'}. Prescribe it again to restart it.`,
+  );
 
 
 // Prescription photo upload for scanning. Kept in memory — the bytes go
@@ -72,17 +142,97 @@ const medicationSchema = z.object({
 
 router.get(
   '/',
-  validate({ query: z.object({ includeInactive: z.coerce.boolean().default(false) }) }),
+  validate({
+    query: z.object({
+      includeInactive: z.coerce.boolean().default(false),
+      /*
+       * active  — being taken now: what reminders are armed for (the default,
+       *           and all that older builds of the app know about)
+       * current — every prescription that stands, including the ones the
+       *           patient has stopped taking: the doctor's list
+       * all     — history too: completed, stopped and cancelled
+       */
+      view: z.enum(['active', 'current', 'all']).optional(),
+    }),
+  }),
   audit('read', 'Medication'),
   asyncHandler(async (req, res) => {
+    // A course that ran out yesterday leaves the list today, whether or not
+    // anything else has looked at it since.
+    await completeEndedCourses({ patient: req.patientId });
+
+    const view = q(req).view ?? (q(req).includeInactive ? 'all' : 'active');
     const filter = { patient: req.patientId };
-    if (!q(req).includeInactive) filter.isActive = true;
-    const items = await Medication.find(filter).sort({ createdAt: -1 }).lean();
+    if (view === 'active') filter.isActive = true;
+    if (view === 'current') filter.$and = [PRESCRIPTION_STANDS];
+
+    const [items, standing] = await Promise.all([
+      Medication.find(filter).sort({ createdAt: -1 }).lean(),
+      Medication.find({ patient: req.patientId, $and: [PRESCRIPTION_STANDS] })
+        .select('name strength practice')
+        .lean(),
+    ]);
     // Checked against the clinic's brand list on the way out, so a doctor
     // opening a record sees a wrong strength without anyone running a script.
-    res.json({ items: (await withBrandCheck(items)).map(serialise) });
+    const shaped = withSameMedicine(items, standing);
+    res.json({
+      items: (await withBrandCheck(actingOnBehalf(req) ? await withChangeable(req, shaped) : shaped)).map(serialise),
+    });
   }),
 );
+
+/**
+ * For a clinician: which of these their practice may change — so the app offers
+ * Stop only where the server would allow it, and says whose each of the rest
+ * is. The same rule as practiceMayChange, asked once for the whole list.
+ */
+async function withChangeable(req, items) {
+  const mine = new Set(await practicesOf(req));
+  const legacy = [...new Set(items.filter((m) => !m.practice && m.prescribedBy).map((m) => String(m.prescribedBy)))];
+  const prescriberPractices = new Map();
+  if (legacy.length) {
+    for (const row of await Membership.find({ user: { $in: legacy } }).select('user practice').lean()) {
+      const key = String(row.user);
+      prescriberPractices.set(key, [...(prescriberPractices.get(key) ?? []), String(row.practice)]);
+    }
+  }
+  return items.map((m) => ({
+    ...m,
+    changeableByYou:
+      !isPatientOwned(m) &&
+      (m.practice
+        ? mine.has(String(m.practice))
+        : (prescriberPractices.get(String(m.prescribedBy)) ?? []).some((p) => mine.has(p))),
+  }));
+}
+
+/** "Metformin", "metformin ", "METFORMIN" — one medicine. */
+const medicineKey = (name) => String(name ?? '').trim().toLowerCase().replace(/\s+/g, ' ');
+
+/**
+ * The other prescriptions on this list for the same medicine.
+ *
+ * Two practices can each prescribe metformin, and a new prescription can add
+ * 1000 mg beside a 500 mg nobody stopped. Neither is merged — which to keep is
+ * a clinical decision, and silently collapsing two prescriptions is how one
+ * practice's disappears — so each row says what else stands beside it.
+ */
+function withSameMedicine(items, standing) {
+  return items.map((m) => {
+    const others = standing.filter(
+      (o) => String(o._id) !== String(m._id) && medicineKey(o.name) === medicineKey(m.name),
+    );
+    if (!others.length) return m;
+    return {
+      ...m,
+      alsoOnList: others.map((o) => ({
+        id: String(o._id),
+        strength: o.strength ?? null,
+        samePractice: Boolean(m.practice && o.practice && String(m.practice) === String(o.practice)),
+      })),
+    };
+  });
+}
 
 router.post(
   '/',
@@ -99,10 +249,15 @@ router.post(
   validate({ body: medicationSchema }),
   audit('create', 'Medication'),
   asyncHandler(async (req, res) => {
+    const clinician = actingOnBehalf(req);
     const med = await Medication.create({
       ...req.body,
       patient: req.patientId,
-      prescribedBy: req.user.role === 'patient' ? undefined : req.user._id,
+      prescribedBy: clinician ? req.user._id : undefined,
+      // The practice whose prescription this is — and none, for a medicine the
+      // patient typed in themselves, which was recorded as a clinic's.
+      practice: clinician ? await practiceOf(req) : null,
+      source: clinician ? 'clinic' : 'manual',
     });
     if (actingOnBehalf(req)) notifyPatientOfMedicineChange(req.patientId, req.user, 'added');
     res.status(201).json({ medication: serialise(med) });
@@ -256,17 +411,28 @@ router.post(
         }
       : undefined;
 
+    const clinician = actingOnBehalf(req);
+    const practice = clinician ? await practiceOf(req) : null;
+
     const created = [];
     for (const item of req.body.items) {
       const med = await Medication.findOneAndUpdate(
         // Strength is part of the key. Metformin 500 and metformin 1000 are
         // different prescriptions, and matching on the name alone let the
         // second silently replace the first.
+        //
+        // So are where it came from and whose it is. Keyed on name, strength
+        // and `isActive` alone, a patient photographing an old paper
+        // prescription matched the clinic's own metformin and rewrote it as a
+        // scan — the doctor's prescription became the patient's, with no
+        // prescriber — and a scan filed at one practice matched another's.
         {
           patient: req.patientId,
           name: item.name,
           strength: item.strength ?? null,
-          isActive: true,
+          source: 'scan',
+          practice,
+          $and: [PRESCRIPTION_STANDS],
         },
         {
           $set: {
@@ -287,7 +453,10 @@ router.post(
             // in the app, and the doctor needs to know a tablet is not his
             // before changing anything about it.
             source: 'scan',
+            practice,
             externalPrescriber: prescriber,
+            prescriptionState: PRESCRIPTION_STATE.ACTIVE,
+            takingState: TAKING_STATE.TAKING,
             isActive: true,
           },
         },
@@ -307,48 +476,218 @@ router.post(
   }),
 );
 
+/**
+ * Change a medicine.
+ *
+ * ---- Whose change it is --------------------------------------------------------
+ *
+ * The patient may re-time the reminders on a medicine their doctor prescribed —
+ * that is when their alarm rings, not what was prescribed — and may stop or
+ * restart taking it. Nothing else: the dose, strength, dates and name are the
+ * prescription, and a patient's edit used to rewrite them in place. On a
+ * medicine the patient added themselves, everything is theirs.
+ *
+ * A clinician changes only their own practice's prescriptions, and only while
+ * they stand. `isActive` is not a field to set: false is a stop, recorded as
+ * whose, and true on a stopped prescription is refused — restarting one is a
+ * new prescription.
+ */
 router.patch(
   '/:id',
   requirePermission(PERMISSIONS.PRESCRIBE),
   validate({ body: medicationSchema.partial().extend({ isActive: z.boolean().optional() }) }),
   audit('update', 'Medication'),
   asyncHandler(async (req, res) => {
-    const update = { ...req.body };
-    // A hand-set schedule is a manual override — stop a later meal-time change
-    // from moving it, and drop the meal-slot anchor on those entries.
-    if (Array.isArray(update.schedule)) {
-      update.timesCustomized = true;
-      update.schedule = update.schedule.map((s) => ({ time: s.time, relationToMeal: s.relationToMeal ?? 'any' }));
+    const med = await findMedicine(req);
+    const clinician = actingOnBehalf(req);
+    const { isActive, ...fields } = req.body;
+
+    if (clinician) {
+      await assertPracticeMayChange(req, med);
+    } else if (!isPatientOwned(med)) {
+      const doctors = Object.keys(fields).filter((k) => k !== 'schedule');
+      if (doctors.length) {
+        throw new AppError(
+          403,
+          'DOCTOR_OWNED',
+          `Your doctor prescribed this medicine, so only they can change its ${doctors.join(', ')}. You can change your reminder times, or stop taking it.`,
+        );
+      }
     }
-    const med = await Medication.findOneAndUpdate(
-      { _id: req.params.id, patient: req.patientId },
-      { $set: update },
-      { new: true, runValidators: true },
-    );
-    if (!med) throw notFound('Medication not found');
-    if (actingOnBehalf(req)) notifyPatientOfMedicineChange(req.patientId, req.user, 'changed');
-    res.json({ medication: serialise(med) });
+
+    let current = med;
+    if (Object.keys(fields).length) {
+      // History is not edited. A completed or stopped prescription stays what
+      // it was; changing it now would change what the record says was taken.
+      if (prescriptionStateOf(med) !== PRESCRIPTION_STATE.ACTIVE) throw prescriptionEnded(med);
+
+      const update = { ...fields };
+      // A hand-set schedule is a manual override — stop a later meal-time change
+      // from moving it, and drop the meal-slot anchor on those entries.
+      if (Array.isArray(update.schedule)) {
+        update.timesCustomized = true;
+        update.schedule = update.schedule.map((s) => ({ time: s.time, relationToMeal: s.relationToMeal ?? 'any' }));
+      }
+      current = await Medication.findOneAndUpdate(
+        { _id: med._id, patient: req.patientId, $and: [PRESCRIPTION_STANDS] },
+        { $set: update },
+        { new: true, runValidators: true },
+      );
+      if (!current) throw prescriptionEnded(med);
+    }
+
+    if (isActive === false) {
+      current = clinician
+        ? ((await stopByDoctor({
+            medicationId: med._id,
+            patientId: req.patientId,
+            by: req.user._id,
+            reason: 'Stopped by the doctor.',
+          })) ?? current)
+        : ((await stopTaking({ medicationId: med._id, patientId: req.patientId })) ?? current);
+    } else if (isActive === true && !current.isActive) {
+      if (clinician) throw prescriptionEnded(current);
+      const resumed = await resumeTaking({ medicationId: med._id, patientId: req.patientId });
+      if (!resumed) throw prescriptionEnded(current);
+      current = resumed;
+    }
+
+    if (clinician) notifyPatientOfMedicineChange(req.patientId, req.user, isActive === false ? 'stopped' : 'changed');
+    res.json({ medication: serialise(current) });
   }),
 );
 
+/**
+ * "Stop" — by whoever presses it, recorded as theirs.
+ *
+ * Older builds of the app send this for both: the patient's Stop button and the
+ * doctor's. A patient's is a stop in taking, and leaves the prescription as it
+ * was written. A clinician's stops the prescription. Idempotent — a retry of a
+ * stop that already happened is answered the same way.
+ */
 router.delete(
   '/:id',
   requirePermission(PERMISSIONS.PRESCRIBE),
   audit('update', 'Medication'),
   asyncHandler(async (req, res) => {
-    // Soft delete: adherence history for past doses must remain interpretable.
-    const med = await Medication.findOneAndUpdate(
-      { _id: req.params.id, patient: req.patientId },
-      { isActive: false, endDate: new Date() },
-    );
-    if (!med) throw notFound('Medication not found');
+    const med = await findMedicine(req);
+
+    if (!actingOnBehalf(req)) {
+      const stopped = await stopTaking({ medicationId: med._id, patientId: req.patientId });
+      if (stopped) await tellTheirDoctor(req, stopped, null);
+      return res.status(204).end();
+    }
+
+    await assertPracticeMayChange(req, med);
+    const stopped = await stopByDoctor({
+      medicationId: med._id,
+      patientId: req.patientId,
+      by: req.user._id,
+      reason: 'Stopped by the doctor.',
+    });
     // Stopping matters more than starting, not less: a patient who keeps
     // taking something the doctor withdrew is the worse outcome, and their
     // reminders for it have just disappeared without explanation.
-    if (actingOnBehalf(req)) notifyPatientOfMedicineChange(req.patientId, req.user, 'stopped');
+    if (stopped) notifyPatientOfMedicineChange(req.patientId, req.user, 'stopped');
     res.status(204).end();
   }),
 );
+
+/**
+ * The patient stops taking a medicine.
+ *
+ * Their prescription is left exactly as the doctor wrote it; the stop is
+ * recorded as the patient's, with their reason, and the reminders stop. The
+ * doctor who owns the prescription is told — see tellTheirDoctor.
+ */
+router.post(
+  '/:id/stop-taking',
+  validate({ body: z.object({ reason: z.string().trim().max(300).optional() }) }),
+  audit('update', 'Medication'),
+  asyncHandler(async (req, res) => {
+    if (actingOnBehalf(req)) {
+      throw forbidden('Only the patient stops taking a medicine. A clinician stops the prescription.');
+    }
+    const med = await findMedicine(req);
+    const stopped = await stopTaking({ medicationId: med._id, patientId: req.patientId, reason: req.body.reason });
+    if (stopped) {
+      await tellTheirDoctor(req, stopped, req.body.reason ?? null);
+      return res.json({ medication: serialise(stopped) });
+    }
+
+    const now = await Medication.findById(med._id).lean();
+    // Pressed twice, or on two phones: already stopped is the answer asked for.
+    if (now.takingState === TAKING_STATE.STOPPED_BY_PATIENT) return res.json({ medication: serialise(now) });
+    throw prescriptionEnded(now);
+  }),
+);
+
+/** The patient starts taking it again, while the prescription still stands. */
+router.post(
+  '/:id/resume-taking',
+  audit('update', 'Medication'),
+  asyncHandler(async (req, res) => {
+    if (actingOnBehalf(req)) throw forbidden('Only the patient starts taking a medicine again.');
+    const med = await findMedicine(req);
+    const resumed = await resumeTaking({ medicationId: med._id, patientId: req.patientId });
+    if (resumed) return res.json({ medication: serialise(resumed) });
+
+    const now = await Medication.findById(med._id).lean();
+    if (now.isActive) return res.json({ medication: serialise(now) });
+    throw prescriptionEnded(now);
+  }),
+);
+
+/** A clinician stops their practice's prescription, and says why. */
+router.post(
+  '/:id/stop',
+  requirePermission(PERMISSIONS.PRESCRIBE),
+  validate({ body: z.object({ reason: z.string().trim().min(5).max(500) }) }),
+  audit('update', 'Medication'),
+  asyncHandler(async (req, res) => {
+    if (!actingOnBehalf(req)) {
+      throw forbidden('A patient stops taking a medicine — see stop-taking. Stopping the prescription is the doctor’s.');
+    }
+    const med = await findMedicine(req);
+    await assertPracticeMayChange(req, med);
+
+    const stopped = await stopByDoctor({
+      medicationId: med._id,
+      patientId: req.patientId,
+      by: req.user._id,
+      reason: req.body.reason,
+    });
+    if (!stopped) throw prescriptionEnded(await Medication.findById(med._id).lean());
+
+    notifyPatientOfMedicineChange(req.patientId, req.user, 'stopped');
+    res.json({ medication: serialise(stopped) });
+  }),
+);
+
+/**
+ * Tell the practice whose prescription it is that the patient stopped taking it.
+ *
+ * An open alert on their dashboard — not a push: a patient stopping a tablet is
+ * something to take up at the next contact, not a page. Never deduplicated
+ * away: two medicines stopped in one sitting are two things the doctor needs to
+ * know. Not raised for a medicine the patient added themselves, which no
+ * practice prescribed.
+ *
+ * Best-effort, as every notification is: the stop is the record.
+ */
+async function tellTheirDoctor(req, med, reason) {
+  if (isPatientOwned(med)) return;
+  const label = [med.name, med.strength].filter(Boolean).join(' ');
+  await raiseAlert({
+    patientId: req.patientId,
+    severity: 'warning',
+    type: 'medication_nonadherence',
+    title: `Stopped taking ${label}`,
+    detail: reason ? `The patient stopped taking ${label}. Reason given: ${reason}` : `The patient stopped taking ${label}. No reason was given.`,
+    source: { kind: 'adherence', ref: med._id },
+    dedupeWindowMinutes: 0,
+  }).catch(() => {});
+}
 
 /**
  * Today's dose slots, expanded from each medication's schedule and joined
@@ -368,6 +707,7 @@ router.get(
     const dayStart = day.startOf('day');
     const dayEnd = day.endOf('day');
 
+    await completeEndedCourses({ patient: req.patientId });
     const meds = await Medication.find({
       patient: req.patientId,
       isActive: true,
@@ -387,10 +727,16 @@ router.get(
     const slots = [];
 
     for (const med of meds) {
-      if (med.daysOfWeek?.length && !med.daysOfWeek.includes(day.day())) continue;
+      // Days of the week and the every-other-day interval, both — the interval
+      // was never asked, so an alternate-day tablet was due, and then missed,
+      // every day.
+      if (!occursOn(med, day)) continue;
 
       for (const slot of med.schedule ?? []) {
         const scheduledFor = clinicDateTime(dayStr, slot.time);
+        // Not before it was prescribed, and not after its course ends: a
+        // prescription written at eleven has no eight o'clock dose that day.
+        if (!doseExpected(med, scheduledFor.toDate())) continue;
         const log = logMap.get(logKey(med._id, scheduledFor.toDate()));
 
         // A dose is only "missed" once a grace period has elapsed, so the UI
@@ -409,7 +755,9 @@ router.get(
           relationToMeal: slot.relationToMeal,
           instructions: med.instructions ?? null,
           status,
+          late: Boolean(log?.takenLate),
           logId: log?._id ?? null,
+          medicationOwnedBy: isPatientOwned(med) ? 'patient' : 'practice',
         });
       }
     }
@@ -451,16 +799,16 @@ router.get(
     const doses = [];
     for (const med of meds) {
       if (!med.schedule?.length) continue;
-      const medStart = dayjs(med.startDate);
-      const medEnd = med.endDate ? dayjs(med.endDate) : null;
       for (let d = start; !d.isAfter(nowClinic); d = d.add(1, 'day')) {
-        if (med.daysOfWeek?.length && !med.daysOfWeek.includes(d.day())) continue;
         const dayStr = d.format('YYYY-MM-DD');
         for (const slot of med.schedule) {
           const scheduledFor = clinicDateTime(dayStr, slot.time);
           if (scheduledFor.isAfter(nowRaw)) continue; // not yet due
-          if (scheduledFor.isBefore(medStart)) continue;
-          if (medEnd && scheduledFor.isAfter(medEnd)) continue;
+          // Inside the prescription's life — its start, and the earliest of its
+          // end date, a doctor's stop or its voiding — on a day it falls, and
+          // not while the patient had stopped taking it. A dose they were not
+          // meant to take is not a dose they missed.
+          if (!doseExpected(med, scheduledFor.toDate())) continue;
           const log = logMap.get(logKey(med._id, scheduledFor.toDate()));
           doses.push({
             medicationId: med._id,
@@ -471,6 +819,7 @@ router.get(
             relationToMeal: slot.relationToMeal,
             scheduledFor: scheduledFor.toDate(),
             status: log ? log.status : 'missed',
+            late: Boolean(log?.takenLate),
             takenAt: log?.takenAt ?? null,
           });
         }
@@ -498,8 +847,34 @@ router.post(
   }),
   audit('create', 'MedicationLog'),
   asyncHandler(async (req, res) => {
-    const med = await Medication.findOne({ _id: req.params.id, patient: req.patientId });
-    if (!med) throw notFound('Medication not found');
+    const med = await findMedicine(req);
+    const at = new Date(req.body.scheduledFor);
+
+    /*
+     * A dose that exists. Anything was accepted: a time the medicine is never
+     * taken, a day it is not due, a date after the doctor stopped it — each one
+     * a row that adherence then counted, and a patient recording "taken" for a
+     * course that had ended was indistinguishable from one still on it.
+     *
+     * An as-needed medicine has no schedule, so any time up to now is a dose.
+     * Late recording is allowed: yesterday's evening tablet, logged this
+     * morning, is still yesterday's evening tablet.
+     */
+    if (at.getTime() > Date.now() + 12 * 60 * 60 * 1000) {
+      throw badRequest('That dose is more than twelve hours away.');
+    }
+    if (!med.asNeeded) {
+      const local = inClinicTz(at);
+      const onSchedule = (med.schedule ?? []).some((s) => s.time === local.format('HH:mm'));
+      const end = effectiveEnd(med);
+      if (!onSchedule || !occursOn(med, local) || (med.startDate && at < new Date(med.startDate)) || (end && at > end)) {
+        throw badRequest('That is not one of this medicine’s doses.');
+      }
+    }
+
+    // Taken, but outside the grace period: recorded as late, not as on time.
+    const takenAt = req.body.status === 'taken' ? (req.body.takenAt ?? new Date()) : undefined;
+    const takenLate = Boolean(takenAt && takenAt.getTime() - at.getTime() > LATE_AFTER_MINUTES * 60 * 1000);
 
     // Upsert on (medication, scheduledFor) so a flaky connection retrying the
     // same tap does not create duplicate doses.
@@ -510,7 +885,8 @@ router.post(
           ...req.body,
           patient: req.patientId,
           medication: med._id,
-          takenAt: req.body.status === 'taken' ? (req.body.takenAt ?? new Date()) : undefined,
+          takenAt,
+          takenLate,
         },
       },
       { new: true, upsert: true, setDefaultsOnInsert: true },
@@ -584,6 +960,23 @@ const serialise = (m) => ({
   startDate: m.startDate,
   endDate: m.endDate ?? null,
   isActive: m.isActive,
+  // The doctor's side and the patient's, separately. isActive above is still
+  // exact — both of these allow it — for every build that reads only that.
+  prescriptionState: prescriptionStateOf(m),
+  takingState: takingStateOf(m),
+  ownedBy: isPatientOwned(m) ? 'patient' : 'practice',
+  completedAt: m.completedAt ?? null,
+  stoppedByDoctor: m.stoppedByDoctor?.at
+    ? { at: m.stoppedByDoctor.at, reason: m.stoppedByDoctor.reason ?? null }
+    : null,
+  cancelled: m.cancelled?.at ? { at: m.cancelled.at, reason: m.cancelled.reason ?? null } : null,
+  stoppedTaking: (() => {
+    const stop = openPatientStop(m);
+    return stop && m.takingState === TAKING_STATE.STOPPED_BY_PATIENT ? { at: stop.at, reason: stop.reason ?? null } : null;
+  })(),
+  alsoOnList: m.alsoOnList ?? [],
+  // Whether the clinician asking may change it. Null when the patient asks.
+  changeableByYou: m.changeableByYou ?? null,
   instructions: m.instructions ?? null,
   // Present only when the brand list disagrees with what is stored.
   strengthExpected: m.strengthExpected ?? null,
@@ -607,6 +1000,7 @@ const serialiseLog = (l) => ({
   medicationId: l.medication,
   scheduledFor: l.scheduledFor,
   status: l.status,
+  late: Boolean(l.takenLate),
   takenAt: l.takenAt ?? null,
   unitsAdministered: l.unitsAdministered ?? null,
   injectionSite: l.injectionSite ?? null,

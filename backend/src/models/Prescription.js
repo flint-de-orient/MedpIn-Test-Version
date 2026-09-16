@@ -11,6 +11,10 @@ const prescriptionSchema = new mongoose.Schema(
   {
     patient: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, index: true },
     doctor: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, index: true },
+    /// The practice that issued it, stamped when it is written. The medicines it
+    /// puts on a patient's list belong to this practice: another practice may
+    /// read them, and may not stop or change them.
+    practice: { type: mongoose.Schema.Types.ObjectId, ref: 'Practice', default: null, index: true },
     appointment: { type: mongoose.Schema.Types.ObjectId, ref: 'Appointment' },
 
     // Human-readable, printed on the PDF. e.g. "AKD-2026-000412"

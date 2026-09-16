@@ -208,6 +208,41 @@ raised** — these are history, and paging a doctor today about a crisis reading
 from March would be noise wearing the look of an emergency. A second run
 changes nothing.
 
+### Once, after deploying the medicine lifecycle (C3)
+
+A patient's "Stop" and a doctor's stop wrote the same `isActive: false`; a
+finished course stayed on the list with its reminders; and a new prescription
+matched the running list by name alone, so metformin 1000 mg replaced 500 mg
+and one practice's prescription overwrote another's. Medicines now carry the
+practice that prescribed them and two separate states — the prescription's
+(active, completed, stopped by the doctor, cancelled) and the patient's
+(taking, stopped). This gives the rows already on record the same:
+
+```bash
+cd /var/www/clinq-staging/backend     # then /var/www/clinq/backend for production
+node scripts/backfillMedicineLifecycle.js                                    # report
+mongodump --db medpin_staging --collection medications --out ~/dumps/medicines-before-lifecycle
+mongodump --db medpin_staging --collection prescriptions --out ~/dumps/medicines-before-lifecycle
+node scripts/backfillMedicineLifecycle.js --apply
+node scripts/backfillMedicineLifecycle.js                                    # report again: all zeros but "ambiguous"
+```
+
+- **Ambiguous rows are listed, not guessed**: a doctor who works at two
+  practices, for a patient enrolled at both. They stay without a practice, and
+  only the practices their prescriber works at may change them. Read the list;
+  set any that matter by hand.
+- Old stopped medicines become `ended_legacy` — ended before anybody recorded
+  whether a doctor or the patient stopped them. Nothing is attributed.
+- Medicines the patient typed in themselves, recorded as the clinic's, are
+  relabelled `manual`.
+- Nothing breaks before it runs: old rows read their state from `isActive`, and
+  a renewal by the same doctor adopts their row rather than duplicating it. Run
+  it in the same window anyway — until it does, a renewal by a *different*
+  doctor at the same practice adds a second row beside the old one.
+- **The app**: builds from before this still work — `isActive` means what it
+  always meant. The new build is what gives patients "Stop taking", and stops
+  weekly, alternate-day and finished medicines ringing daily on the phone.
+
 ### Once, after deploying the dietician caseload
 
 A dietician's caseload was "everyone at the practice, unless somebody has been
