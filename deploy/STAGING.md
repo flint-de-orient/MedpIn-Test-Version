@@ -160,6 +160,32 @@ author, so it cannot tell which practice wrote one: where more than one practice
 has written knowledge, read the dry run before applying. A second run adopts
 nothing.
 
+### Once, after deploying the prescription record state
+
+Creating a prescription that replaced another used to end the old one by
+clearing a boolean: `recordState` stayed `current`, so the row reads as in
+force while every screen treats it as gone, and nothing recorded who ended it,
+why, or what replaced it. The route now goes through the record lifecycle, and
+this gives the older rows the same shape:
+
+```bash
+cd /var/www/clinq-staging/backend     # then /var/www/clinq/backend for production
+node scripts/backfillPrescriptionRecordState.js                              # report
+mongodump --db medpin_staging --collection prescriptions --out ~/dumps/rxstate-before-backfill
+node scripts/backfillPrescriptionRecordState.js --apply
+```
+
+It touches only rows that are `isActive: false` with no state — which can only
+have come from that one line, since every other ending sets both. Where the
+prescription written in its place still names the old one, the two are linked
+and the reason says which; where nothing does, the row is still marked
+superseded and the reason says plainly that the record does not say. `endedBy`
+stays empty throughout: the old line recorded no actor, and naming a doctor who
+may not have done it would be worse than a blank.
+
+A row claimed by more than one prescription is reported and left alone. A
+second run changes nothing.
+
 ### Once, after deploying desk registrations
 
 Before that change, `POST /doctor/patients` with a number MedPin had not seen

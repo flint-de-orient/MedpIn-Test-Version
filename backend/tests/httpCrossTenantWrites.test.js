@@ -9,6 +9,7 @@ import { MediaAsset } from '../src/models/MediaAsset.js';
 import { ChatMessage } from '../src/models/ChatMessage.js';
 import { ChatSession } from '../src/models/ChatSession.js';
 import { Patient } from '../src/models/Patient.js';
+import { Prescription } from '../src/models/Prescription.js';
 import { PLAN, PRACTICE_TYPE } from '../src/models/Practice.js';
 
 /**
@@ -332,5 +333,124 @@ describe('and two more of the same shape, found by finishing the sweep', () => {
 
     const res = await as(a.doctor.token).post(`/feedback/${mine._id}/reviewed`, {});
     assert.equal(res.status, 204);
+  });
+});
+
+describe('a doctor cannot end another practice’s prescription by naming it', () => {
+  before(async () => {
+    origin = await boot();
+  });
+  after(shutdown);
+  beforeEach(async () => {
+    await wipe();
+    await twoPractices();
+  });
+
+  /**
+   * One prescription standing for a practice's own patient.
+   *
+   * Written straight to the collection rather than through the route, because
+   * what is being tested is what happens to a record that already exists —
+   * including one issued before any of this ran.
+   */
+  let seq = 0;
+  async function standingPrescriptionFor(who) {
+    seq += 1;
+    return Prescription.create({
+      patient: who.patient.user._id,
+      doctor: who.doctor.user._id,
+      referenceNo: `TEST-2026-${String(seq).padStart(6, '0')}`,
+      issuedOn: new Date(),
+      items: [{ name: 'Metformin', strength: '500mg', frequency: '1-0-1' }],
+    });
+  }
+
+  test('naming it as superseded leaves it standing, and writes nothing', async () => {
+    /*
+     * `Prescription.updateOne({ _id: body.supersedes }, { isActive: false })`
+     * — no patient, no practice, no record window, on a router where every
+     * read is scoped three ways. The id arrives in the request body, so any
+     * account holding PRESCRIBE could switch off a prescription for a patient
+     * it has never met, at a practice it does not work for. The patient's app
+     * and anybody dispensing against it are told it no longer stands.
+     */
+    const theirs = await standingPrescriptionFor(b);
+
+    const res = await as(a.doctor.token).post(
+      `/patients/${a.patient.user._id}/prescriptions`,
+      {
+        items: [{ name: 'Metformin', strength: '1000mg', frequency: '1-0-1' }],
+        supersedes: String(theirs._id),
+      },
+    );
+
+    assert.equal(res.status, 404, 'a doctor at another practice ended this prescription');
+
+    const after = await Prescription.findById(theirs._id).lean();
+    assert.equal(after.recordState, 'current', 'the foreign prescription was ended');
+    assert.notEqual(after.isActive, false, 'the foreign prescription was deactivated');
+
+    /*
+     * And nothing was created either. The supersede was checked after the new
+     * prescription was written, so a refusal here used to leave a prescription
+     * behind — a half-applied clinical act is worse than a refused one.
+     */
+    assert.equal(
+      await Prescription.countDocuments({ patient: a.patient.user._id }),
+      0,
+      'the new prescription was created despite the refusal',
+    );
+  });
+
+  test('its own practice’s prescription is ended properly, and says why', async () => {
+    // The half that has to keep working — and now records what a bare
+    // `isActive: false` never did: who ended it, why, and what replaced it.
+    const mine = await standingPrescriptionFor(a);
+
+    const res = await as(a.doctor.token).post(
+      `/patients/${a.patient.user._id}/prescriptions`,
+      {
+        items: [{ name: 'Metformin', strength: '1000mg', frequency: '1-0-1' }],
+        supersedes: String(mine._id),
+      },
+    );
+
+    assert.equal(res.status, 201);
+
+    const after = await Prescription.findById(mine._id).lean();
+    assert.equal(after.recordState, 'superseded');
+    assert.equal(after.isActive, false);
+    assert.equal(String(after.endedBy), String(a.doctor.user._id));
+    assert.ok(after.endedReason, 'nothing says why it was ended');
+    assert.equal(
+      String(after.replacedBy),
+      String(res.body.prescription.id),
+      'the replacement is not linked, so a pharmacist cannot follow it',
+    );
+  });
+
+  test('a prescription that has already been ended is not ended twice', async () => {
+    /*
+     * Two doctors pressing the same button, or one retrying on a bad
+     * connection. The second must not overwrite the first's reason and actor,
+     * which is what a blind `updateOne` did.
+     */
+    const mine = await standingPrescriptionFor(a);
+    mine.endAs('voided', { by: a.doctor.user._id, reason: 'Issued to the wrong patient.' });
+    await mine.save();
+
+    const res = await as(a.doctor.token).post(
+      `/patients/${a.patient.user._id}/prescriptions`,
+      {
+        items: [{ name: 'Metformin', strength: '1000mg' }],
+        supersedes: String(mine._id),
+      },
+    );
+
+    assert.equal(res.status, 400);
+
+    const after = await Prescription.findById(mine._id).lean();
+    assert.equal(after.recordState, 'voided', 'a voided prescription was re-ended as superseded');
+    assert.match(after.endedReason, /wrong patient/i);
   });
 });

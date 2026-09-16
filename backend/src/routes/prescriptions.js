@@ -25,6 +25,7 @@ import { requirePermission, recordWindow } from '../middleware/authorise.js';
 import { requireCapability } from '../middleware/requireCapability.js';
 import { CAPABILITIES } from '../services/capabilities.js';
 import { practiceOfPatient } from '../middleware/practiceScope.js';
+import { RECORD_STATE } from '../models/plugins/clinicalRecord.js';
 import { attachableAssetIds } from '../services/mediaAccess.js';
 
 const router = Router({ mergeParams: true });
@@ -124,13 +125,54 @@ router.post(
       generalAdvice: z.string().max(4000).optional(),
       followUpOn: z.coerce.date().optional(),
       supersedes: z.string().optional(),
+      /*
+       * Why the one being replaced was replaced.
+       *
+       * Optional, and that is a deliberate compromise: `endAs` refuses without
+       * a reason, and the consult screen has no field to type one in. Required
+       * here, every doctor on the current app would be unable to re-prescribe
+       * until they updated it. So the route derives an honest default naming
+       * the replacement, and the app can send a better one as soon as it has
+       * somewhere to ask.
+       */
+      supersedeReason: z.string().trim().min(5).max(500).optional(),
       // Mirror the prescribed items into the patient's medication tracker.
       syncToMedications: z.boolean().default(true),
     }),
   }),
   audit('create', 'Prescription'),
   asyncHandler(async (req, res) => {
-    const { syncToMedications, appointmentId, ...body } = req.body;
+    const { syncToMedications, appointmentId, supersedeReason, ...body } = req.body;
+
+    /*
+     * The prescription being replaced, read through the same scope as every
+     * other read on this router — and before anything is written.
+     *
+     * It was `updateOne({ _id: body.supersedes }, { isActive: false })`: no
+     * patient, no practice, no record window, with the id supplied by whoever
+     * sent the request. Any account holding PRESCRIBE could switch off a
+     * prescription for a patient it had never met at a practice it does not
+     * work for, and the patient's app — and anybody dispensing against it —
+     * would be told the prescription no longer stood.
+     *
+     * Checked before the create rather than after it, because a refusal that
+     * leaves the new prescription written and the old one standing is a
+     * half-applied clinical act: two live prescriptions out of one visit.
+     */
+    let superseded = null;
+    if (body.supersedes) {
+      superseded = await Prescription.findOne({
+        _id: body.supersedes,
+        patient: req.patientId,
+        ...recordWindow(req, 'issuedOn'),
+      });
+      if (!superseded) throw notFound('Prescription not found');
+      if (!superseded.isCurrent()) {
+        // Two doctors pressing the same button, or one retrying on a bad
+        // connection. The second must not overwrite the first's reason.
+        throw badRequest(`That prescription is already ${superseded.recordState}.`);
+      }
+    }
 
     const prescription = await Prescription.create({
       ...body,
@@ -140,8 +182,18 @@ router.post(
       referenceNo: await nextReference(),
     });
 
-    if (body.supersedes) {
-      await Prescription.updateOne({ _id: body.supersedes }, { isActive: false });
+    if (superseded) {
+      /*
+       * Through the record lifecycle, not a bare flag. `isActive: false` left
+       * a pharmacist unable to tell a prescription replaced by a better one
+       * from a prescription voided as issued in error, and named nobody.
+       */
+      superseded.endAs(RECORD_STATE.SUPERSEDED, {
+        by: req.user._id,
+        reason: supersedeReason ?? `Replaced by prescription ${prescription.referenceNo}.`,
+        replacedBy: prescription._id,
+      });
+      await superseded.save();
     }
 
     // Keep the patient's diabetes type in step with the doctor's diagnosis, so
