@@ -11,6 +11,7 @@ import { VitalRecord } from '../models/VitalRecord.js';
 import { LifestyleLog, LIFESTYLE_KINDS } from '../models/LifestyleLog.js';
 import { PatientProfile } from '../models/PatientProfile.js';
 import { classifyGlucose, classifyBloodPressure } from '../services/triage/engine.js';
+import { glucoseTargetsFor } from '../services/clinicalReadings.js';
 import { raiseAlert } from '../services/alerts.js';
 import { glucoseTrends, recomputePatientRisk } from '../services/analytics.js';
 import { paged, pageParams, dateRange } from '../utils/pagination.js';
@@ -26,10 +27,8 @@ const router = Router({ mergeParams: true });
 // asked — so EDIT_RECORD was granted by every preset and enforced by nothing.
 router.use(requireAuth, resolvePatientScope, requireRecordAccess());
 
-async function targetsFor(patientId) {
-  const profile = await PatientProfile.findOne({ user: patientId }).select('targets').lean();
-  return profile?.targets ?? {};
-}
+// One definition of a patient's targets, shared with the clinic's own writes.
+const targetsFor = glucoseTargetsFor;
 
 // ---------------------------------------------------------------------------
 // Glucose

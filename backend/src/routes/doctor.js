@@ -39,7 +39,9 @@ import {
   monitoringSignals,
   clinicAnalytics,
   isCheckInOverdue,
+  recomputePatientRisk,
 } from '../services/analytics.js';
+import { bloodPressureBand, glucoseBand } from '../services/clinicalReadings.js';
 import { buildPatientContext } from '../services/patientContext.js';
 import { embed } from '../services/ai/gemini.js';
 import { paged, pageParams } from '../utils/pagination.js';
@@ -1024,8 +1026,14 @@ async function writeIntake(patientId, b, doctor) {
   if (b.pulse != null) vitals.pulse = b.pulse;
   if (b.spo2 != null) vitals.spo2 = b.spo2;
   if (b.weightKg != null) vitals.weightKg = b.weightKg;
+  // Banded like any other reading — see services/clinicalReadings.js. A desk's
+  // intake blood pressure of 150/96 is stage 2 whoever held the cuff.
   if (Object.keys(vitals).length) {
-    await VitalRecord.create({ patient: patientId, ...vitals });
+    await VitalRecord.create({
+      patient: patientId,
+      ...vitals,
+      flag: bloodPressureBand(vitals.systolic, vitals.diastolic),
+    });
   }
   if (b.glucoseMgDl != null) {
     await GlucoseReading.create({
@@ -1033,7 +1041,11 @@ async function writeIntake(patientId, b, doctor) {
       valueMgDl: b.glucoseMgDl,
       context: 'random',
       source: 'clinic',
+      flag: await glucoseBand(patientId, b.glucoseMgDl, 'random'),
     });
+  }
+  if (Object.keys(vitals).length || b.glucoseMgDl != null) {
+    recomputePatientRisk(patientId).catch(() => {});
   }
 }
 
@@ -1108,13 +1120,23 @@ router.post(
     if (b.weightKg != null) vitals.weightKg = b.weightKg;
     if (b.waistCm != null) vitals.waistCm = b.waistCm;
     try {
-      if (Object.keys(vitals).length) await VitalRecord.create({ patient: patient._id, ...vitals, ...keyed });
+      // Banded like any other reading: 190/120 taken in the consulting room is
+      // a crisis on the record, not a pair of numbers nothing else can read.
+      if (Object.keys(vitals).length) {
+        await VitalRecord.create({
+          patient: patient._id,
+          ...vitals,
+          flag: bloodPressureBand(vitals.systolic, vitals.diastolic),
+          ...keyed,
+        });
+      }
       if (b.glucoseMgDl != null) {
         await GlucoseReading.create({
           patient: patient._id,
           valueMgDl: b.glucoseMgDl,
           context: 'random',
           source: 'clinic',
+          flag: await glucoseBand(patient._id, b.glucoseMgDl, 'random'),
           ...keyed,
         });
       }
@@ -1122,6 +1144,12 @@ router.post(
       // A copy of this request, in the same instant, wrote first.
       if (!isKeyCollision(err) || !(await replay())) throw err;
       return res.status(201).set('Idempotent-Replayed', 'true').json({ ok: true });
+    }
+
+    // The risk that orders the waiting list, from what the clinic measured — as
+    // the self-logged path already did. In the background, as there.
+    if (Object.keys(vitals).length || b.glucoseMgDl != null) {
+      recomputePatientRisk(patient._id).catch(() => {});
     }
 
     res.status(201).json({ ok: true });

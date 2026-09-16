@@ -187,6 +187,27 @@ nothing to run — but a prescription reference issued during the deploy window
 by the old process could, in principle, be issued again by the new one. Deploy
 outside clinic hours.
 
+### Once, after deploying banded clinic readings
+
+A blood pressure or sugar a patient logged was stored with its clinical band;
+the same numbers taken in a consultation or at registration were stored with
+none, so anything asking "whose blood pressure is out of control" skipped every
+reading the clinic itself took. New clinic readings are banded; this bands the
+ones already recorded:
+
+```bash
+cd /var/www/clinq-staging/backend     # then /var/www/clinq/backend for production
+node scripts/backfillReadingBands.js                                         # report
+mongodump --db medpin_staging --collection vitalrecords --out ~/dumps/bands-before-backfill
+mongodump --db medpin_staging --collection glucosereadings --out ~/dumps/bands-before-backfill
+node scripts/backfillReadingBands.js --apply
+```
+
+Only unbanded rows are written; a reading with a band keeps it. **No alerts are
+raised** — these are history, and paging a doctor today about a crisis reading
+from March would be noise wearing the look of an emergency. A second run
+changes nothing.
+
 ### Once, after deploying the dietician caseload
 
 A dietician's caseload was "everyone at the practice, unless somebody has been
