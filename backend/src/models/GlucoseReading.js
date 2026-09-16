@@ -30,10 +30,34 @@ const glucoseReadingSchema = new mongoose.Schema(
       index: true,
     },
     triggeredAlert: { type: mongoose.Schema.Types.ObjectId, ref: 'ClinicalAlert' },
+
+    /**
+     * The request that wrote this, for a client retrying it.
+     *
+     * Set only when the request carried an `Idempotency-Key`. The hash is of
+     * what was asked for, so the same key replayed with different values is
+     * refused rather than answered with this record — see
+     * middleware/idempotency.js. Null on every row written without one, which
+     * is every row written before this existed.
+     */
+    idempotencyKey: { type: String, default: null },
+    idempotencyHash: { type: String, default: null },
   },
   { timestamps: true },
 );
 
 glucoseReadingSchema.index({ patient: 1, measuredAt: -1 });
+
+/**
+ * One reading per request key.
+ *
+ * What makes a retry safe rather than merely checked: two identical requests a
+ * few milliseconds apart both find nothing, and this refuses the second write.
+ * Partial on the key being a string, so the rows with none never collide.
+ */
+glucoseReadingSchema.index(
+  { patient: 1, idempotencyKey: 1 },
+  { unique: true, partialFilterExpression: { idempotencyKey: { $type: 'string' } } },
+);
 
 export const GlucoseReading = mongoose.model('GlucoseReading', glucoseReadingSchema);

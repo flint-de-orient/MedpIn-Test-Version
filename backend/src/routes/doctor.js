@@ -63,6 +63,7 @@ import { CAPABILITIES } from '../services/capabilities.js';
 import { LabReport } from '../models/LabReport.js';
 import { attachableAssetIds } from '../services/mediaAccess.js';
 import { quotableMessageId, quotePreview, QUOTE_FIELDS } from '../services/quotedMessage.js';
+import { idempotencyKey, isReplayOf, isKeyCollision } from '../middleware/idempotency.js';
 
 const router = Router();
 
@@ -1044,6 +1045,7 @@ async function writeIntake(patientId, b, doctor) {
  */
 router.post(
   '/patients/:id/vitals',
+  idempotencyKey(),
   validate({
     body: z.object({
       heightCm: z.coerce.number().min(50).max(250).optional(),
@@ -1070,6 +1072,26 @@ router.post(
 
     const b = req.body;
 
+    /*
+     * The same measurements again — the consult screen retrying after a
+     * timeout. Either record this request writes carries its key, and finding
+     * one means it happened: two identical blood-pressure readings from one
+     * cuff would bend the trend line and the risk score that orders the
+     * waiting list.
+     */
+    const replay = async () => {
+      if (!req.idempotency) return false;
+      const by = { patient: patient._id, idempotencyKey: req.idempotency.key };
+      const existing = (await VitalRecord.findOne(by).lean()) ?? (await GlucoseReading.findOne(by).lean());
+      return isReplayOf(req, existing);
+    };
+    if (await replay()) {
+      return res.status(201).set('Idempotent-Replayed', 'true').json({ ok: true });
+    }
+    const keyed = req.idempotency
+      ? { idempotencyKey: req.idempotency.key, idempotencyHash: req.idempotency.hash }
+      : {};
+
     const profileSet = {};
     if (b.heightCm != null) profileSet.heightCm = b.heightCm;
     if (b.weightKg != null) profileSet.baselineWeightKg = b.weightKg;
@@ -1085,14 +1107,21 @@ router.post(
     if (b.spo2 != null) vitals.spo2 = b.spo2;
     if (b.weightKg != null) vitals.weightKg = b.weightKg;
     if (b.waistCm != null) vitals.waistCm = b.waistCm;
-    if (Object.keys(vitals).length) await VitalRecord.create({ patient: patient._id, ...vitals });
-    if (b.glucoseMgDl != null) {
-      await GlucoseReading.create({
-        patient: patient._id,
-        valueMgDl: b.glucoseMgDl,
-        context: 'random',
-        source: 'clinic',
-      });
+    try {
+      if (Object.keys(vitals).length) await VitalRecord.create({ patient: patient._id, ...vitals, ...keyed });
+      if (b.glucoseMgDl != null) {
+        await GlucoseReading.create({
+          patient: patient._id,
+          valueMgDl: b.glucoseMgDl,
+          context: 'random',
+          source: 'clinic',
+          ...keyed,
+        });
+      }
+    } catch (err) {
+      // A copy of this request, in the same instant, wrote first.
+      if (!isKeyCollision(err) || !(await replay())) throw err;
+      return res.status(201).set('Idempotent-Replayed', 'true').json({ ok: true });
     }
 
     res.status(201).json({ ok: true });

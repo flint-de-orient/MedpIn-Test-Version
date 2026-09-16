@@ -106,11 +106,35 @@ const prescriptionSchema = new mongoose.Schema(
 
     supersedes: { type: mongoose.Schema.Types.ObjectId, ref: 'Prescription' },
     isActive: { type: Boolean, default: true, index: true },
+
+    /**
+     * The request that wrote this, for a client retrying it.
+     *
+     * Set only when the request carried an `Idempotency-Key`. The hash is of
+     * what was asked for, so the same key replayed with different values is
+     * refused rather than answered with this record — see
+     * middleware/idempotency.js. Null on every row written without one, which
+     * is every row written before this existed.
+     */
+    idempotencyKey: { type: String, default: null },
+    idempotencyHash: { type: String, default: null },
   },
   { timestamps: true },
 );
 
 prescriptionSchema.index({ patient: 1, issuedOn: -1 });
+
+/**
+ * One prescription per request key.
+ *
+ * What makes a retry safe rather than merely checked: two identical requests a
+ * few milliseconds apart both find nothing, and this refuses the second write.
+ * Partial on the key being a string, so the rows with none never collide.
+ */
+prescriptionSchema.index(
+  { doctor: 1, idempotencyKey: 1 },
+  { unique: true, partialFilterExpression: { idempotencyKey: { $type: 'string' } } },
+);
 
 // Voided, corrected or superseded — never deleted. This generalises what
 // `supersedes` above already did for one case, and adds the two it could not

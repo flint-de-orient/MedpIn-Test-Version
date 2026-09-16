@@ -27,6 +27,7 @@ import { CAPABILITIES } from '../services/capabilities.js';
 import { practiceOfPatient } from '../middleware/practiceScope.js';
 import { RECORD_STATE } from '../models/plugins/clinicalRecord.js';
 import { nextInSequence } from '../services/sequence.js';
+import { idempotencyKey, isReplayOf, isKeyCollision } from '../middleware/idempotency.js';
 import { attachableAssetIds } from '../services/mediaAccess.js';
 
 const router = Router({ mergeParams: true });
@@ -121,6 +122,9 @@ router.post(
   // from the clinician preset and must still not issue one — that is about
   // what the organisation is licensed to do, not who it employs.
   requireCapability(CAPABILITIES.PRESCRIPTION),
+  // Before validation: the fingerprint is of what the client sent. See
+  // middleware/idempotency.js for why the parsed body cannot be used here.
+  idempotencyKey(),
   validate({
     body: z.object({
       appointmentId: z.string().optional(),
@@ -170,6 +174,25 @@ router.post(
     const { syncToMedications, appointmentId, supersedeReason, ...body } = req.body;
 
     /*
+     * The same request again — a tap retried after a timeout whose first
+     * attempt was written. Answered with the prescription that exists, before
+     * anything else is looked at: the supersede check below would otherwise
+     * refuse the retry, because the first attempt already ended the old one.
+     */
+    const replay = async () => {
+      if (!req.idempotency) return null;
+      const existing = await Prescription.findOne({
+        doctor: req.user._id,
+        idempotencyKey: req.idempotency.key,
+      }).populate('doctor', 'name');
+      return isReplayOf(req, existing) ? existing : null;
+    };
+    const already = await replay();
+    if (already) {
+      return res.status(201).set('Idempotent-Replayed', 'true').json({ prescription: serialise(already) });
+    }
+
+    /*
      * The prescription being replaced, read through the same scope as every
      * other read on this router — and before anything is written.
      *
@@ -199,13 +222,28 @@ router.post(
       }
     }
 
-    const prescription = await Prescription.create({
-      ...body,
-      patient: req.patientId,
-      doctor: req.user._id,
-      appointment: appointmentId,
-      referenceNo: await nextReference(),
-    });
+    let prescription;
+    try {
+      prescription = await Prescription.create({
+        ...body,
+        patient: req.patientId,
+        doctor: req.user._id,
+        appointment: appointmentId,
+        referenceNo: await nextReference(),
+        idempotencyKey: req.idempotency?.key ?? null,
+        idempotencyHash: req.idempotency?.hash ?? null,
+      });
+    } catch (err) {
+      /*
+       * Two copies of one request in the same instant: both found nothing
+       * above, and the unique index refused this one. The other has written it;
+       * this answers with what it wrote, and does not supersede or sync twice.
+       */
+      if (!isKeyCollision(err)) throw err;
+      const raced = await replay();
+      if (!raced) throw err;
+      return res.status(201).set('Idempotent-Replayed', 'true').json({ prescription: serialise(raced) });
+    }
 
     if (superseded) {
       /*
