@@ -17,6 +17,7 @@ import '../domain/patient_summary.dart';
 import '../../../shared/widgets/notification_list_sheet.dart';
 import '../domain/prescription_scan.dart';
 import '../domain/chat_summary.dart';
+import '../../../core/network/submission_keys.dart';
 
 /// Talks to `/doctor/*` — the clinician (doctor + staff) API: dashboard
 /// overview, the patient directory, and clinical-alert triage.
@@ -272,18 +273,25 @@ class ClinicianRepository {
     List<String> labTestsAdvised = const [],
     String? generalAdvice,
     DateTime? followUpOn,
+    SubmissionKeys? submission,
   }) async {
+    final body = <String, dynamic>{
+      'items': items,
+      if (complaint != null && complaint.isNotEmpty) 'complaint': complaint,
+      if (diagnosis.isNotEmpty) 'diagnosis': diagnosis,
+      if (labTestsAdvised.isNotEmpty) 'labTestsAdvised': labTestsAdvised,
+      if (generalAdvice != null && generalAdvice.isNotEmpty)
+        'generalAdvice': generalAdvice,
+      if (followUpOn != null) 'followUpOn': followUpOn.toIso8601String(),
+    };
     await _client.postJson(
       '/patients/$patientId/prescriptions',
-      body: {
-        'items': items,
-        if (complaint != null && complaint.isNotEmpty) 'complaint': complaint,
-        if (diagnosis.isNotEmpty) 'diagnosis': diagnosis,
-        if (labTestsAdvised.isNotEmpty) 'labTestsAdvised': labTestsAdvised,
-        if (generalAdvice != null && generalAdvice.isNotEmpty)
-          'generalAdvice': generalAdvice,
-        if (followUpOn != null) 'followUpOn': followUpOn.toIso8601String(),
-      },
+      body: body,
+      // From the exact body sent, so a retry of this prescription is answered
+      // with the one already issued and a corrected one is issued afresh.
+      headers: submission == null
+          ? null
+          : {'Idempotency-Key': submission.keyFor('prescription', body)},
     );
   }
 
@@ -355,6 +363,7 @@ class ClinicianRepository {
     int? pulse,
     int? spo2,
     int? glucoseMgDl,
+    SubmissionKeys? submission,
   }) async {
     final body = <String, dynamic>{
       if (complaint != null && complaint.isNotEmpty) 'complaint': complaint,
@@ -368,7 +377,13 @@ class ClinicianRepository {
       if (glucoseMgDl != null) 'glucoseMgDl': glucoseMgDl,
     };
     if (body.isEmpty) return;
-    await _client.postJson('/doctor/patients/$patientId/vitals', body: body);
+    await _client.postJson(
+      '/doctor/patients/$patientId/vitals',
+      body: body,
+      headers: submission == null
+          ? null
+          : {'Idempotency-Key': submission.keyFor('vitals', body)},
+    );
   }
 
   /// Medication adherence over a window (days) — for the profile's adherence

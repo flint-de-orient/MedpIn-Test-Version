@@ -23,6 +23,7 @@ import '../../medications/domain/strength.dart';
 import '../../../shared/widgets/strength_field.dart';
 import '../data/medicine_brand_repository.dart';
 import '../../../shared/widgets/disclosure_tile.dart';
+import '../../../core/network/submission_keys.dart';
 
 /// The consultation flow: Vitals → Diagnosis → Clinical advice, ending in a
 /// generated prescription. Vitals are recorded to the patient's history and the
@@ -41,6 +42,13 @@ class ConsultScreen extends ConsumerStatefulWidget {
 class _ConsultScreenState extends ConsumerState<ConsultScreen> {
   static const _steps = ['Vitals', 'Diagnosis', 'Advice'];
   int _step = 0;
+
+  /// This consultation's identity for the server, for as long as the screen is
+  /// open. A submit that timed out after the server had written it is retried
+  /// under the same key and answered with what was written, rather than written
+  /// a second time; edit the form first and the key changes with it, so the
+  /// correction is recorded. See core/network/submission_keys.dart.
+  final _submission = SubmissionKeys();
 
   // Vitals + complaint
   final _height = TextEditingController();
@@ -319,6 +327,7 @@ class _ConsultScreenState extends ConsumerState<ConsultScreen> {
         pulse: _int(_pulse),
         spo2: _int(_spo2),
         glucoseMgDl: _int(_sugar),
+        submission: _submission,
       );
       await repo.createPrescription(
         patientId: widget.patientId,
@@ -331,6 +340,7 @@ class _ConsultScreenState extends ConsumerState<ConsultScreen> {
         labTestsAdvised: labs.toList(),
         generalAdvice: _advice.text.trim(),
         followUpOn: _followUp,
+        submission: _submission,
       );
       // The record, the medicine tracker and the history all just changed.
       ref.invalidate(patientPrescriptionsProvider(widget.patientId));

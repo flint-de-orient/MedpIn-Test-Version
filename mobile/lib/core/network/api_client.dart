@@ -148,13 +148,22 @@ class ApiClient {
     return _asMap(response.data);
   }
 
+  /// [headers] are for what a request needs to say about itself — above all
+  /// an `Idempotency-Key`, which a retry must repeat. They ride on the request
+  /// options, so the refresh-and-retry after a 401 sends them again unchanged.
   Future<Map<String, dynamic>> postJson(
     String path, {
     Object? body,
     Map<String, dynamic>? query,
+    Map<String, String>? headers,
   }) async {
     final response = await _run(
-      () => _dio.post(path, data: body, queryParameters: _cleanQuery(query)),
+      () => _dio.post(
+        path,
+        data: body,
+        queryParameters: _cleanQuery(query),
+        options: headers == null ? null : Options(headers: headers),
+      ),
     );
     return _asMap(response.data);
   }
