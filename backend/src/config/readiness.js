@@ -1,4 +1,4 @@
-import { env } from './env.js';
+import { allowedOrigins, env } from './env.js';
 
 /**
  * What this deployment can actually do, given the configuration it has.
@@ -43,6 +43,32 @@ const OFF = 'off';
 
 /** True when a value is set to something that is not whitespace. */
 const set = (v) => typeof v === 'string' && v.trim().length > 0;
+
+/**
+ * Whether this process is running as production, asked now rather than at import.
+ *
+ * `isProd` is a module constant fixed when `env.js` loads, which makes the
+ * production branches of this file untestable — and those are precisely the
+ * branches worth testing, because they describe outages nobody would see. It
+ * also matches how `services/sms.js` decides to throw, which is the behaviour
+ * the SMS check below is predicting.
+ */
+const running = (mode) => env.NODE_ENV === mode;
+
+/**
+ * The scheme-host-port of a configured URL, or null if it is not one.
+ *
+ * `ADMIN_CONSOLE_URL` is a URL with a path; `ALLOWED_ORIGINS` holds origins.
+ * Comparing them as written says they differ when they agree.
+ */
+function originOf(url) {
+  if (!set(url)) return null;
+  try {
+    return new URL(url.trim()).origin;
+  } catch {
+    return null;
+  }
+}
 
 /**
  * Every subsystem whose behaviour depends on configuration, and what breaks.
@@ -176,6 +202,62 @@ export function readiness() {
         },
   );
 
+  // ---- text messages, which are how everybody signs in --------------------
+  /*
+   * The check whose absence would have taken sign-in down quietly.
+   *
+   * Every patient and every member of staff authenticates with a code sent by
+   * SMS. With no credentials `services/sms.js` logs the code instead — and
+   * refuses to do that under NODE_ENV=production, deliberately, because a
+   * clinic that deploys without them has to find out at the first request
+   * rather than by discovering patients' codes in a log file. So it throws,
+   * every OTP request fails, and nobody can sign in at all.
+   *
+   * Before this check, that deployment reported `config: ready`. MSG91
+   * appeared in this file only inside the staging-isolation test below, which
+   * asks the opposite question and is satisfied by exactly this state.
+   *
+   * Which is why staging is excluded rather than flagged: it runs
+   * NODE_ENV=production on purpose and omits these credentials so it cannot
+   * text real patients. `off` is the honest answer there, and it still names
+   * the cost — sign-in cannot be rehearsed on a box that cannot send a code.
+   */
+  const smsKeys = set(env.MSG91_AUTH_KEY) && set(env.MSG91_SENDER_ID);
+  const smsMustSend = running('production') && env.DEPLOY_ENV !== 'staging';
+
+  if (!smsKeys) {
+    checks.push({
+      key: 'sms',
+      state: smsMustSend ? DEGRADED : OFF,
+      because: 'MSG91_AUTH_KEY / MSG91_SENDER_ID are not set',
+      affects: smsMustSend
+        ? 'Nobody can sign in. Sending refuses to fall back to the log in production, ' +
+          'so every sign-in, registration and enrolment code fails at the first request.'
+        : 'Codes are written to the log instead of sent. Sign-in cannot be exercised ' +
+          'against a real handset here.',
+    });
+  } else if (!set(env.MSG91_TEMPLATE_LOGIN)) {
+    checks.push({
+      key: 'sms',
+      state: DEGRADED,
+      because: 'MSG91_TEMPLATE_LOGIN is not set while the MSG91 credentials are',
+      affects:
+        'India requires a pre-approved DLT template per message, so a send without one ' +
+        'is refused. Existing users cannot sign in; registration still works.',
+    });
+  } else if (!set(env.MSG91_TEMPLATE_REGISTER)) {
+    checks.push({
+      key: 'sms',
+      state: DEGRADED,
+      because: 'MSG91_TEMPLATE_REGISTER is not set while the MSG91 credentials are',
+      affects:
+        'New patients cannot register, and a desk cannot enrol one who already has an ' +
+        'account — enrolment falls back to this template until it has its own.',
+    });
+  } else {
+    checks.push({ key: 'sms', state: READY, because: `sending as ${env.MSG91_SENDER_ID}` });
+  }
+
   // ---- the platform console ----------------------------------------------
   if (!set(env.ADMIN_JWT_SECRET)) {
     checks.push({
@@ -201,6 +283,69 @@ export function readiness() {
     });
   } else {
     checks.push({ key: 'adminConsole', state: READY, because: 'signing key configured' });
+  }
+
+  // ---- which browsers may call this API -----------------------------------
+  /*
+   * Unset in production, CORS is handed `false` and refuses every browser: the
+   * console loads, signs in against nothing, and shows an operator a page of
+   * failed requests with no server-side error anywhere to explain it.
+   *
+   * Not required, because a deployment serving only the phone app needs none —
+   * the app is not a browser and sends no `Origin`. The wrong state is the
+   * combination of a console switched on and nothing allowed to reach it,
+   * which is the sort of judgement this file exists to make.
+   *
+   * Malformed counts as worse than missing, because it looks configured. An
+   * `Origin` header is scheme, host and port and nothing else; an entry with a
+   * path, or without a scheme, matches no browser that will ever call.
+   */
+  const origins = allowedOrigins();
+  const malformed = origins.filter((o) => !/^https?:\/\/[^/?#]+$/.test(o));
+  const consoleOrigin = originOf(env.ADMIN_CONSOLE_URL);
+
+  if (malformed.length) {
+    checks.push({
+      key: 'browserOrigins',
+      state: DEGRADED,
+      because: `not a bare origin: ${malformed.join(', ')}`,
+      affects:
+        'An origin is scheme, host and port only. Anything else matches no browser, so ' +
+        'that entry is refused exactly as if it had never been listed.',
+    });
+  } else if (origins.length && consoleOrigin && !origins.includes(consoleOrigin)) {
+    /*
+     * A list that was written, and does not contain the one host it exists for.
+     * Somebody configured this and made a typo, or moved the console and
+     * changed one variable of the two.
+     */
+    checks.push({
+      key: 'browserOrigins',
+      state: DEGRADED,
+      because: `${consoleOrigin} is named in ADMIN_CONSOLE_URL and is not in ALLOWED_ORIGINS`,
+      affects:
+        'Unless the console is proxied from its own host, every request it makes to this ' +
+        'API is refused by CORS — which the console can only show as a page of failures.',
+    });
+  } else if (origins.length) {
+    checks.push({ key: 'browserOrigins', state: READY, because: origins.join(', ') });
+  } else {
+    /*
+     * `off`, not `degraded`, and the distinction is the whole point of this
+     * file. Empty is the *correct* setting for how this is deployed: Apache
+     * proxies `/admin/` and `/applications/` from the console's own host, so
+     * the browser never makes a cross-origin request and has nothing to allow.
+     * Marking the intended arrangement degraded would make this check noise.
+     */
+    checks.push({
+      key: 'browserOrigins',
+      state: OFF,
+      because: 'ALLOWED_ORIGINS is not set',
+      affects:
+        'Cross-origin browser calls are refused. Correct where the console is proxied ' +
+        'from its own host; fatal for a console served from anywhere else, which sees ' +
+        'only failed requests. The phone app is unaffected — it sends no Origin.',
+    });
   }
 
   // ---- staging must not be able to reach a real patient -------------------

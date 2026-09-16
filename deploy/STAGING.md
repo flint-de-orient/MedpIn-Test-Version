@@ -160,6 +160,33 @@ author, so it cannot tell which practice wrote one: where more than one practice
 has written knowledge, read the dry run before applying. A second run adopts
 nothing.
 
+### Once, after deploying desk registrations
+
+Before that change, `POST /doctor/patients` with a number MedPin had not seen
+made an account and no enrolment. Every list scoped to a practice's enrolled
+patients left those people out, so the desk that had just added somebody could
+not find them. This enrols each at the practice whose desk added them, dated
+from when the account was made, with a consent event saying how it came to be:
+
+```bash
+cd /var/www/clinq-staging/backend     # then /var/www/clinq/backend for production
+node scripts/backfillDeskRegistrations.js                                    # report
+mongodump --db medpin_staging --collection enrollments --out ~/dumps/desk-before-backfill
+mongodump --db medpin_staging --collection consentevents --out ~/dumps/desk-before-backfill
+node scripts/backfillDeskRegistrations.js --apply
+```
+
+**Read the report before applying.** A patient with no enrolment anywhere is
+either one of these or a self sign-up, and a self sign-up is unaffiliated by
+decision — enrolling one hands a stranger's record to a practice. The two are
+told apart by the desk route's audit row, matched to the account by time
+because those rows did not record the account's id. Anything the script cannot
+match to exactly one row is listed as skipped and left for a person: that list
+is the part worth reading, and the right answer for an ambiguous row is to
+enrol that patient from the app, with their code, rather than by script.
+
+A second run enrols nobody. The rollback is the dump above.
+
 ### Once, after deploying per-practice emergency numbers
 
 The number patients ring — "Call clinic", the emergency card, and the number the

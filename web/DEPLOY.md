@@ -25,10 +25,22 @@ nothing.
 The console calls routes that only exist from `00766b3` onwards. Ship the
 backend first, or the operator's first screen is a 404.
 
+**Pull into the checkout pm2 actually runs, not the one in your home
+directory.** This document used to say `~/ClinQ` while `deploy/ecosystem.config.cjs`
+declares `cwd: /var/www/clinq/backend`. Pulling into the wrong one updates
+nothing that is running: `pm2 restart clinq` then reports success, `/health`
+answers, and the box serves the previous release. Confirm before you pull —
+whatever the answer is, it is the only directory that counts.
+
 ```bash
-cd ~/ClinQ
+pm2 describe clinq | grep -Ei 'exec cwd|script path'
+```
+
+```bash
+cd /var/www/clinq          # or whatever the line above printed
 git pull
 cd backend
+npm install
 node scripts/checkRecordWindow.js
 ```
 
@@ -43,9 +55,16 @@ a number in.
 ```bash
 pm2 restart clinq
 curl -s https://clinq.flintdeorient.in/api/v1/health
+node scripts/smoke.mjs https://clinq.flintdeorient.in
 ```
 
-A low `uptime` confirms the restart took.
+A low `uptime` confirms the restart took. `config: ready` confirms no subsystem
+is misconfigured; `degraded` publishes a count and never a reason, so read the
+reasons from `GET /api/v1/admin/readiness` as an operator.
+
+The smoke run is what proves the restart served *this* release rather than the
+last one: it asks for the routes that only exist in it, and a `404` there means
+the running checkout is not the one that was pulled.
 
 ---
 
@@ -69,7 +88,20 @@ refuses every request and says why. A misconfiguration that silently grants
 platform access is worse than one that stops the console working.
 
 `ALLOWED_ORIGINS` is an exact string match. `https://admin.medpin.in` and
-`https://www.admin.medpin.in` are different origins to a browser.
+`https://www.admin.medpin.in` are different origins to a browser, and a
+trailing slash is a third thing again — `allowedOrigins()` trims one rather
+than leaving it to be found at 9pm, but nothing can rescue a wrong hostname.
+
+Leaving it empty is legitimate **only** because Apache proxies `/admin/` and
+`/applications/` from the console's own host, so the browser never makes a
+cross-origin request. A console served from anywhere else with this unset sees
+nothing but failed requests, and the API logs nothing at all.
+
+Readiness reports `browserOrigins`, and what it can catch is the state that
+looks configured: a list that does not contain the host named in
+`ADMIN_CONSOLE_URL`, or an entry that is not a bare origin — a path, or a
+missing scheme. Both are `degraded`, so `scripts/smoke.mjs` sees them before an
+operator does.
 
 ```bash
 pm2 restart clinq

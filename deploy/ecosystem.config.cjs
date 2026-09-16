@@ -13,7 +13,7 @@
  * the question "were they ever actually separate" has no quick answer.
  *
  * Declared together, the differences are readable in one screen, and
- * `deployIsSeparate.test.js` asserts them: different port, different database,
+ * `deploymentIsSeparate.test.js` asserts them: different port, different database,
  * different upload directory, different working copy.
  *
  * ---- What is deliberately NOT here --------------------------------------

@@ -236,6 +236,56 @@ if (surface === 'console') {
 }
 
 // ---------------------------------------------------------------------------
+section('Surfaces the running box has never served');
+
+/*
+ * The routes added since the last deployment, proven mounted and guarded.
+ *
+ * This is the check that catches the failure this deploy is most exposed to:
+ * a `git pull` into a directory pm2 does not execute. Everything else here
+ * passes against the *old* code — /health answers, the database is connected,
+ * an anonymous caller is refused — and a router that was never loaded answers
+ * 404, which is the only signal that the restart served the previous release.
+ *
+ * GETs and refusals only, per the rule at the top of this file. The two
+ * genuinely new POSTs — `/team/phone/otp` and `/applications/verify/send` —
+ * each send a real SMS, so what is proven is that their router is mounted and
+ * turns an anonymous caller away. Their handlers belong to the HTTP suite.
+ */
+if (surface === 'api') {
+  const summaries = await req('/chat-summaries');
+  record(
+    summaries.status === 401,
+    'the chat summary surface is mounted and guarded',
+    summaries.status === 404
+      ? '404 — either this release predates chat summaries, or the running checkout is not the one that was pulled'
+      : `HTTP ${summaries.status} (expected 401)`,
+  );
+
+  const team = await req('/team');
+  record(
+    team.status === 401,
+    'the team surface, which carries the hire codes, refuses an anonymous caller',
+    team.status === 404
+      ? '404 — this release predates hiring by phone code'
+      : `HTTP ${team.status} (expected 401)`,
+  );
+}
+
+if (surface === 'console') {
+  /*
+   * A reference no application can hold. 404 proves the status route is
+   * mounted; 200 would mean it had answered about somebody else's.
+   */
+  const unknown = await req('/applications/SMOKE-0000-0000');
+  record(
+    unknown.status === 404,
+    'an unknown application reference is refused, and the status route exists',
+    `HTTP ${unknown.status} (expected 404)`,
+  );
+}
+
+// ---------------------------------------------------------------------------
 section('Error handling');
 
 const missing = await req(surface === 'console' ? '/admin/nope' : '/this-route-does-not-exist');

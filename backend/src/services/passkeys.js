@@ -6,6 +6,7 @@ import {
 } from '@simplewebauthn/server';
 
 import { badRequest } from '../middleware/errors.js';
+import { allowedOrigins } from '../config/env.js';
 
 /**
  * A passkey instead of a code typed off a phone.
@@ -79,10 +80,9 @@ export function expectedOrigin(req) {
   const origin = req.get('origin');
   if (!origin) throw badRequest('This request did not come from a browser.');
 
-  const allowed = (process.env.ALLOWED_ORIGINS ?? '')
-    .split(',')
-    .map((o) => o.trim())
-    .filter(Boolean);
+  // The same parsed list CORS uses. Two copies of one `split(',')` is how an
+  // origin ends up permitted for a signature and refused for a fetch.
+  const allowed = allowedOrigins();
 
   const dev = ['http://localhost:8144', 'http://127.0.0.1:8144', 'http://localhost:3000'];
   const permitted = allowed.length ? allowed : dev;

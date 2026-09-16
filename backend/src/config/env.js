@@ -145,6 +145,28 @@ const schema = z.object({
    */
   PUBLIC_API_ORIGIN: z.string().default(''),
 
+  /*
+   * Which browsers may call this API. Comma-separated, exact, e.g.
+   * `https://admin.medpin.in,https://console.medpin.in`
+   *
+   * Declared here rather than read straight out of `process.env` in app.js,
+   * which is where it used to live. Unset in production, `cors()` was handed
+   * `false` and every call from the operator console was refused — while the
+   * server booted clean, logged nothing and reported itself ready. A variable
+   * that decides whether a whole surface works belongs in the file whose job is
+   * to be loud about configuration.
+   *
+   * Not required, and that is deliberate: the phone app is not a browser and
+   * sends no `Origin`, so a deployment serving only the app needs none of this.
+   * What is wrong is the *combination* — a console switched on with nothing
+   * allowed to reach it — and `readiness()` is where combinations are judged.
+   *
+   * Matching is exact, scheme and port included. `https://admin.medpin.in/`
+   * with the trailing slash is a different string and matches nothing, so
+   * `allowedOrigins()` trims one rather than leaving it to be found at 9pm.
+   */
+  ALLOWED_ORIGINS: z.string().default(''),
+
   /// What the customer sees they are paying. Configurable so a rebrand does not
   /// need an app release.
   BRAND_NAME: z.string().default('MedPin'),
@@ -284,3 +306,22 @@ if (!parsed.success) {
 
 export const env = parsed.data;
 export const isProd = env.NODE_ENV === 'production';
+
+/**
+ * The browser origins this deployment accepts, parsed once for everybody.
+ *
+ * One reader rather than two, because CORS and the passkey verifier each held
+ * their own `split(',')` over the same variable — and two parsers of one list
+ * eventually disagree. The disagreement that matters here is a passkey
+ * assertion accepted from an origin CORS would have refused.
+ *
+ * A trailing slash is trimmed rather than honoured. `https://admin.medpin.in/`
+ * is what a person pastes out of a browser's address bar, it is not equal to
+ * the `Origin` header any browser sends, and the failure it causes — every
+ * request refused, no error anywhere — looks nothing like its cause.
+ */
+export function allowedOrigins() {
+  return env.ALLOWED_ORIGINS.split(',')
+    .map((o) => o.trim().replace(/\/+$/, ''))
+    .filter(Boolean);
+}

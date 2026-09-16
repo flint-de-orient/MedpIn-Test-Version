@@ -1,7 +1,8 @@
 import { test, describe, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 
-import { env } from '../src/config/env.js';
+import { allowedOrigins, env } from '../src/config/env.js';
 import { readiness, readinessSummary } from '../src/config/readiness.js';
 
 /**
@@ -243,7 +244,9 @@ describe('every check says what breaks, not which variable is missing', () => {
       'payments',
       'publicOrigin',
       'push',
+      'sms',
       'adminConsole',
+      'browserOrigins',
     ]) {
       assert.ok(keys.includes(expected), `nothing reports on ${expected}`);
     }
@@ -327,5 +330,203 @@ describe('staging cannot quietly reach a real patient', () => {
       SMTP_HOST: 'smtp.example.test',
     });
     assert.equal(find('stagingIsolation'), undefined);
+  });
+});
+
+describe('a production box nobody can sign in to says so', () => {
+  /*
+   * The outage this check was added for.
+   *
+   * Every patient and every member of staff authenticates with a code sent by
+   * SMS. `services/sms.js` refuses to fall back to logging the code when
+   * NODE_ENV is production — on purpose, so a clinic that deploys without
+   * credentials finds out at once rather than by reading patients' codes out
+   * of a log file. It therefore throws, and every sign-in fails.
+   *
+   * Before this, MSG91 appeared in readiness only inside the staging-isolation
+   * check, which asks the opposite question. A production deployment with no
+   * SMS credentials reported `config: ready`.
+   */
+  test('no MSG91 credentials in production is degraded, not off', () => {
+    withEnv({
+      NODE_ENV: 'production',
+      DEPLOY_ENV: 'production',
+      MSG91_AUTH_KEY: '',
+      MSG91_SENDER_ID: '',
+    });
+
+    const check = find('sms');
+    assert.equal(check.state, 'degraded');
+    assert.match(check.affects, /nobody can sign in/i);
+    assert.ok(readinessSummary().degradedCount >= 1);
+  });
+
+  test('the same configuration on a laptop is off — the code is logged', () => {
+    /*
+     * `off` rather than `degraded`, because a development machine has no SMS
+     * account and a box that always reports broken is one nobody reads. Asked
+     * of the check rather than of `readinessSummary()`, which also answers for
+     * whatever else this machine's own .env happens to be missing.
+     */
+    withEnv({ NODE_ENV: 'development', MSG91_AUTH_KEY: '', MSG91_SENDER_ID: '' });
+
+    assert.equal(find('sms').state, 'off');
+    assert.match(find('sms').affects, /written to the log/i);
+  });
+
+  test('staging is excluded, because omitting the credentials is the point there', () => {
+    /*
+     * Staging runs NODE_ENV=production and deliberately holds no MSG91 keys so
+     * it cannot text a real patient — the state `stagingIsolation` calls ready.
+     * Reporting the same box degraded would put the two checks in permanent
+     * disagreement, and a signal that is always red is one nobody reads.
+     */
+    withEnv({
+      NODE_ENV: 'production',
+      DEPLOY_ENV: 'staging',
+      MSG91_AUTH_KEY: '',
+      MSG91_SENDER_ID: '',
+      GOOGLE_APPLICATION_CREDENTIALS: '',
+      SMTP_HOST: '',
+    });
+
+    assert.equal(find('sms').state, 'off');
+    assert.equal(find('stagingIsolation').state, 'ready');
+    // And it still says what the box cannot do, rather than nothing.
+    assert.match(find('sms').affects, /cannot be exercised/i);
+  });
+
+  test('credentials without the login template is degraded', () => {
+    // India requires a pre-approved DLT template per message; a send without
+    // one is refused by MSG91, so existing users cannot sign in while
+    // registration carries on working.
+    withEnv({
+      MSG91_AUTH_KEY: 'key',
+      MSG91_SENDER_ID: 'MEDPIN',
+      MSG91_TEMPLATE_LOGIN: '',
+      MSG91_TEMPLATE_REGISTER: 'reg-template',
+    });
+
+    const check = find('sms');
+    assert.equal(check.state, 'degraded');
+    assert.match(check.affects, /cannot sign in/i);
+  });
+
+  test('credentials without the registration template is degraded', () => {
+    withEnv({
+      MSG91_AUTH_KEY: 'key',
+      MSG91_SENDER_ID: 'MEDPIN',
+      MSG91_TEMPLATE_LOGIN: 'login-template',
+      MSG91_TEMPLATE_REGISTER: '',
+    });
+
+    const check = find('sms');
+    assert.equal(check.state, 'degraded');
+    assert.match(check.affects, /cannot register/i);
+  });
+
+  test('and a complete configuration is ready', () => {
+    withEnv({
+      MSG91_AUTH_KEY: 'key',
+      MSG91_SENDER_ID: 'MEDPIN',
+      MSG91_TEMPLATE_LOGIN: 'login-template',
+      MSG91_TEMPLATE_REGISTER: 'reg-template',
+    });
+    assert.equal(find('sms').state, 'ready');
+  });
+});
+
+describe('the operator console cannot be locked out silently', () => {
+  /*
+   * Unset in production, CORS is handed `false` and refuses every browser. The
+   * console loads, signs in against nothing, and shows a page of failed
+   * requests with no server-side error anywhere to explain it.
+   */
+  test('a list that omits the console it exists for is degraded', () => {
+    /*
+     * Somebody configured this and made a typo, or moved the console and
+     * changed one of the two variables. The list is present, so it is being
+     * relied on — and the one host it exists for is not in it.
+     */
+    withEnv({
+      ADMIN_CONSOLE_URL: 'https://admin.medpin.in/applications',
+      ALLOWED_ORIGINS: 'https://console.medpin.in',
+    });
+
+    const check = find('browserOrigins');
+    assert.equal(check.state, 'degraded');
+    assert.match(check.because, /admin\.medpin\.in/);
+  });
+
+  test('and a list containing it is ready, path and all', () => {
+    // ADMIN_CONSOLE_URL is a URL with a path; ALLOWED_ORIGINS holds origins.
+    // Compared as written, the two never match.
+    withEnv({
+      ADMIN_CONSOLE_URL: 'https://admin.medpin.in/applications',
+      ALLOWED_ORIGINS: 'https://admin.medpin.in',
+    });
+    assert.equal(find('browserOrigins').state, 'ready');
+  });
+
+  test('empty is off, because that is how this is actually deployed', () => {
+    /*
+     * Apache proxies `/admin/` and `/applications/` from the console's own
+     * host, so the browser makes no cross-origin request and has nothing to
+     * allow. Reporting the intended arrangement as degraded would make this
+     * check noise, and a check that is always red is one nobody reads.
+     */
+    withEnv({ NODE_ENV: 'production', ADMIN_JWT_SECRET: 'x'.repeat(40), ALLOWED_ORIGINS: '' });
+
+    const check = find('browserOrigins');
+    assert.equal(check.state, 'off');
+    assert.match(check.affects, /proxied\s+from its own host/i);
+  });
+
+  test('a trailing slash is trimmed rather than left to be debugged', () => {
+    /*
+     * `https://admin.medpin.in/` is what a person pastes out of an address
+     * bar. No browser ever sends that as an Origin, so the match fails, every
+     * request is refused, and nothing says why.
+     */
+    withEnv({
+      ADMIN_CONSOLE_URL: '',
+      ALLOWED_ORIGINS: 'https://admin.medpin.in/, https://console.medpin.in',
+    });
+
+    assert.deepEqual(allowedOrigins(), [
+      'https://admin.medpin.in',
+      'https://console.medpin.in',
+    ]);
+    assert.equal(find('browserOrigins').state, 'ready');
+  });
+
+  test('an entry that is not a bare origin is degraded', () => {
+    // Worse than missing, because it looks configured.
+    withEnv({ ADMIN_CONSOLE_URL: '', ALLOWED_ORIGINS: 'https://admin.medpin.in/console' });
+
+    const check = find('browserOrigins');
+    assert.equal(check.state, 'degraded');
+    assert.match(check.because, /not a bare origin/i);
+  });
+
+  test('and one list serves CORS and the passkey verifier alike', () => {
+    /*
+     * Both used to hold their own `split(',')` over the raw variable. Two
+     * parsers of one list eventually disagree, and the disagreement that
+     * matters is a passkey assertion accepted from an origin CORS refuses.
+     */
+    const app = readFileSync(new URL('../src/app.js', import.meta.url), 'utf8');
+    const passkeys = readFileSync(new URL('../src/services/passkeys.js', import.meta.url), 'utf8');
+
+    for (const [name, source] of [
+      ['app.js', app],
+      ['passkeys.js', passkeys],
+    ]) {
+      assert.ok(
+        !/process\.env\.ALLOWED_ORIGINS/.test(source),
+        `${name} parses ALLOWED_ORIGINS itself instead of using allowedOrigins()`,
+      );
+      assert.match(source, /allowedOrigins\(\)/, `${name} does not use the shared list`);
+    }
   });
 });

@@ -8,7 +8,7 @@ import rateLimit from 'express-rate-limit';
 import routes from './routes/index.js';
 import { errorHandler, notFoundHandler } from './middleware/errors.js';
 import { logger } from './config/logger.js';
-import { isProd } from './config/env.js';
+import { allowedOrigins, isProd } from './config/env.js';
 
 export function createApp() {
   const app = express();
@@ -32,9 +32,21 @@ export function createApp() {
     }),
   );
 
+  /*
+   * Who may call this from a browser.
+   *
+   * `false` — refuse every cross-origin browser call — is the right answer for
+   * a deployment that serves only the phone app, which sends no Origin and is
+   * unaffected either way. It is the wrong answer for one running the operator
+   * console, and the two are indistinguishable from here. So the list decides,
+   * `readiness()` reports the console-without-origins combination, and nothing
+   * about it is silent any more.
+   */
+  const browserOrigins = allowedOrigins();
+
   app.use(
     cors({
-      origin: isProd ? (process.env.ALLOWED_ORIGINS?.split(',') ?? false) : true,
+      origin: isProd ? (browserOrigins.length ? browserOrigins : false) : true,
       credentials: true,
     }),
   );
