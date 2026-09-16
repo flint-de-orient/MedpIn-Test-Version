@@ -747,39 +747,58 @@ router.patch(
       }
     }
 
-    appointment.clinic = clinic._id;
-    appointment.scheduledFor = scheduledFor;
-    appointment.durationMinutes = clinic.slotMinutes ?? DEFAULT_SLOT_MINUTES;
-    appointment.status = 'confirmed';
-    // The wish is spent. Keeping it would leave two dates on one row and no
-    // way to tell which one anybody should turn up for.
-    appointment.preferredFor = undefined;
-    appointment.preferredTime = undefined;
-    await appointment.save();
-    await appointment.populate(POPULATE);
+    /*
+     * The confirmation itself — only if nobody has confirmed it first.
+     *
+     * It read the request, checked it was still a request above, changed it
+     * and saved it. Two desks answering the same request together both passed
+     * that check and both saved, the second silently replacing the first
+     * desk's time and building, and the patient was sent a confirmation for
+     * each: two times for one appointment, with the later one quietly the true
+     * one. Conditional on the status in one operation, exactly one desk
+     * confirms; the other is told somebody already has, and sends nothing.
+     */
+    const confirmed = await Appointment.findOneAndUpdate(
+      { _id: appointment._id, status: 'requested' },
+      {
+        $set: {
+          clinic: clinic._id,
+          scheduledFor,
+          durationMinutes: clinic.slotMinutes ?? DEFAULT_SLOT_MINUTES,
+          status: 'confirmed',
+        },
+        // The wish is spent. Keeping it would leave two dates on one row and
+        // no way to tell which one anybody should turn up for.
+        $unset: { preferredFor: 1, preferredTime: 1 },
+      },
+      { new: true },
+    ).populate(POPULATE);
+    if (!confirmed) {
+      throw conflict('Somebody has already confirmed this request. Nothing was changed.');
+    }
 
     const when = inClinicTz(scheduledFor).format('ddd D MMM, h:mm A');
 
     // The patient asked and is owed the answer; the doctor's day has changed.
     await Promise.all([
-      notifyPatientOfAppointmentChange(appointment, 'confirmed').catch(() => {}),
+      notifyPatientOfAppointmentChange(confirmed, 'confirmed').catch(() => {}),
       // And in the thread they asked in. The push is dismissed or arrives with
       // the phone face-down; the Home card shows a date with no account of
       // where it came from. Without this the conversation reads as a question
       // nobody answered.
       postCareThreadNote({
-        patientId: appointment.patient?._id ?? appointment.patient,
+        patientId: confirmed.patient?._id ?? confirmed.patient,
         author: req.user,
         text: `Your appointment is confirmed for ${when} at ${clinic.name}.`,
       }),
       notifyClinicOfAppointmentChange(
-        appointment,
-        appointment.patient?.name ?? 'A patient',
+        confirmed,
+        confirmed.patient?.name ?? 'A patient',
         'booked',
       ).catch(() => {}),
     ]);
 
-    res.json({ appointment: serialise(appointment) });
+    res.json({ appointment: serialise(confirmed) });
   }),
 );
 

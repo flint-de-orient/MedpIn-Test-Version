@@ -84,8 +84,11 @@ describe('an appointment request', () => {
     assert.match(block, /status !== 'requested'/, 'only a request may be confirmed');
     assert.match(block, /isSlotBookable/, 'the slot must be validated');
     assert.match(block, /ACTIVE_STATUSES/, 'a clash must be guarded');
-    assert.match(block, /status = 'confirmed'/, 'the status must move with the time');
-    assert.match(block, /preferredFor = undefined/, 'the spent wish must be cleared');
+    // In one operation, conditional on the request still being open — two desks
+    // confirming together each saved their own time before. See confirmRace.
+    assert.match(block, /\{ _id: appointment\._id, status: 'requested' \}/, 'the confirmation must be conditional');
+    assert.match(block, /scheduledFor,\s*\n[^\n]*\n\s*status: 'confirmed',/, 'the status must move with the time');
+    assert.match(block, /\$unset: \{ preferredFor: 1, preferredTime: 1 \}/, 'the spent wish must be cleared');
   });
 });
 describe('one patient, two slots in a day', () => {

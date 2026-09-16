@@ -99,10 +99,15 @@ describe('the hour the patient asked for', () => {
   test('is cleared when the desk confirms a real time', () => {
     // Two times on one row, one of them imaginary, is how somebody turns up at
     // the wrong hour.
-    const confirm = appointments.slice(
-      appointments.indexOf("appointment.status = 'confirmed';"),
-    );
-    assert.match(confirm.slice(0, 400), /appointment\.preferredTime = undefined;/);
+    //
+    // Confirming is one conditional update now — see confirmRace.test.js for
+    // why — so the wish is cleared by `$unset` in the same operation that sets
+    // the real time, rather than by assigning undefined before a save.
+    // Anchored on the transition itself: direct booking also writes
+    // `status: 'confirmed'`, further up, and has no wish to clear.
+    const at = appointments.indexOf("{ _id: appointment._id, status: 'requested' },");
+    assert.ok(at > 0, 'the conditional confirmation has moved');
+    assert.match(appointments.slice(at, at + 700), /\$unset: \{ preferredFor: 1, preferredTime: 1 \}/);
   });
 
   test('a repeat request without a time clears the old one', () => {
