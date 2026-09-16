@@ -49,7 +49,7 @@ describe('no route guesses at the doctor any more', () => {
      *
      * Registration used to ask the resolver with no context at all, which
      * falls through to "the only active doctor" — so every self sign-up on a
-     * one-doctor deployment was attached to him, and `assignedDoctor` is what
+     * one-doctor deployment was attached to that doctor, and `assignedDoctor` is what
      * several routes read to decide whose patient somebody is. Signing up asks
      * for an account, not for a doctor: the field is filled when a practice
      * enrols them, which is the moment there is both an answer and consent.

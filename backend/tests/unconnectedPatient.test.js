@@ -14,7 +14,7 @@ import { PLAN, PRACTICE_TYPE } from '../src/models/Practice.js';
  *
  * Registration asked the doctor resolver with no context, which falls through
  * to "the only active doctor" — so on a one-doctor deployment every person who
- * downloaded the app and signed up was attached to him. And the enrolment gate
+ * downloaded the app and signed up was attached to that doctor. And the enrolment gate
  * permitted any practice to open a patient who had no enrolment anywhere,
  * because before the migration that meant "not backfilled yet".
  *

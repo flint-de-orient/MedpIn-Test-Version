@@ -378,9 +378,9 @@ router.post(
        * This used to call `resolveDoctor({})` with no context at all, which
        * falls through to "the only active doctor" — so on a deployment with
        * one doctor, every person who downloaded the app and signed up was
-       * attached to him. Attached, and then treated as his: `assignedDoctor`
-       * is what several routes read to decide which practice a patient
-       * belongs to.
+       * attached to that doctor — and then treated as that doctor's patient:
+       * `assignedDoctor` is what several routes read to decide which practice
+       * a patient belongs to.
        *
        * Somebody signing up has asked for an account, not for a doctor. The
        * field is filled when a practice enrols them, by the desk or by the
