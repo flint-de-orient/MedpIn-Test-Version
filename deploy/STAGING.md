@@ -160,6 +160,33 @@ author, so it cannot tell which practice wrote one: where more than one practice
 has written knowledge, read the dry run before applying. A second run adopts
 nothing.
 
+### Before deploying the concurrency fixes: split conversations
+
+The rule that a patient has one conversation per practice (per department, per
+kind) was declared as a unique index with options MongoDB refuses to combine,
+so it was never built in any environment. Two replies arriving together could
+each create the conversation, and the thread split in two. This release fixes
+the declaration and builds the index at startup — but a unique index cannot be
+built over data that already breaks it. Check first:
+
+```bash
+cd /var/www/clinq-staging/backend     # then /var/www/clinq/backend for production
+node scripts/checkDuplicateConversations.js
+```
+
+Exit 0 means the index will build. Exit 1 lists each split conversation and the
+message count in each half. The deploy is still safe with splits present: the
+index build fails and is logged, and conversations keep behaving exactly as
+they do today. Joining the halves rewrites message order in a clinical record,
+so it is a separate, reviewed step — do not improvise it.
+
+Two counters also start with this release, for prescription references and
+queue tokens, plus one per conversation for message order. Each seeds itself
+from the highest number already issued the first time it is used, so there is
+nothing to run — but a prescription reference issued during the deploy window
+by the old process could, in principle, be issued again by the new one. Deploy
+outside clinic hours.
+
 ### Once, after deploying the dietician caseload
 
 A dietician's caseload was "everyone at the practice, unless somebody has been

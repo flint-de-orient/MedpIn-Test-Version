@@ -117,12 +117,25 @@ describe('the waiting room is this practice’s waiting room', () => {
 
 describe('the queue number belongs to one queue', () => {
   const body = route("router.post(\n  '/:id/check-in',");
+  const src = readFileSync(new URL('../src/routes/appointments.js', import.meta.url), 'utf8');
+  const queueOf = src.slice(
+    src.indexOf('async function queueOf('),
+    src.indexOf('async function queueOfPatient('),
+  );
 
-  test('the next number comes from this clinic, not the platform', () => {
-    assert.match(body, /const queueScope = appt\.clinic/);
-    assert.match(body, /Appointment\.findOne\(\{ queueDate: today, \.\.\.queueScope \}\)/);
+  test('the next number comes from this queue’s own counter, not the platform', () => {
+    /*
+     * Read-the-highest-and-add-one, which this used to pin, handed six people
+     * checked in together the same token. The number is now drawn from a
+     * counter named after the queue, so the queue is in the name and cannot be
+     * dropped from a filter by accident. queueNumberRace.test.js holds the race.
+     */
     assert.ok(
-      !/findOne\(\{ queueDate: today \}\)/.test(body),
+      body.includes('nextInSequence(`queue:${queue.key}:${today}`'),
+      'the token is not drawn from the queue’s counter',
+    );
+    assert.ok(
+      !body.includes('findOne({ queueDate: today })'),
       'the queue number is drawn from every practice again',
     );
   });
@@ -130,13 +143,15 @@ describe('the queue number belongs to one queue', () => {
   test('and the position counts the same queue', () => {
     // "Seven ahead of you" counting people in another building is the same bug
     // wearing a different number.
-    assert.match(body, /queueNumber: \{ \$lt: appt\.queueNumber \},\s*\n\s*\.\.\.queueScope,/);
+    assert.ok(body.includes('queueNumber: { $lt: checkedIn.queueNumber },'));
+    assert.ok(body.includes('...queue.scope,'));
   });
 
-  test('a teleconsult queues with the practice', () => {
-    // It has no clinic to queue at, and falling through to an unscoped count
-    // would put it back where it started.
-    assert.match(body, /: await practiceMembers\(req, ROLES\.DOCTOR, 'doctor'\)/);
+  test('a teleconsult queues with its practice — the appointment’s, not the caller’s', () => {
+    // A patient checking themselves in has no membership. Their queue has to
+    // come from the appointment, or every one of them is number one.
+    assert.ok(queueOf.includes('appt.practice ?? (await practiceOfMember(appt.doctor))'));
+    assert.ok(!queueOf.includes('practiceMembers(req'), 'the queue is read off the caller again');
   });
 });
 

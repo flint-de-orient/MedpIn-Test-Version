@@ -110,15 +110,31 @@ const chatSessionSchema = new mongoose.Schema(
 chatSessionSchema.index({ patient: 1, lastMessageAt: -1 });
 chatSessionSchema.index({ patient: 1, kind: 1 });
 
-/// One care thread per enrollment per department. A second is a duplicate, not
-/// a new conversation — a patient returning to the same specialty continues the
-/// thread they already have, with its history.
-///
-/// Sparse, because the overwhelming majority of rows today have neither field
-/// and a plain unique index would collide them all on (null, null).
+/**
+ * One care thread per enrollment per department. A second is a duplicate, not
+ * a new conversation — a patient returning to the same specialty continues the
+ * thread they already have, with its history.
+ *
+ * ---- This index never existed until now ---------------------------------
+ *
+ * It was declared `sparse: true` *and* with a `partialFilterExpression`, and
+ * MongoDB refuses that combination outright: "cannot mix partialFilterExpression
+ * and sparse options". Mongoose logs an index build failure and carries on, so
+ * the server booted, every test passed, and the one rule that kept a patient's
+ * conversation with a practice in one place was enforced by nothing. Two
+ * replies arriving at once could each create a conversation, and the thread
+ * split in two — with 201 on both.
+ *
+ * Partial on the enrolment being a real id is the whole of what `sparse` was
+ * reaching for: rows with no enrolment are not indexed, so the older rows that
+ * have neither field do not collide on (null, null).
+ *
+ * indexesBuild.test.js now builds every model's indexes, so a declaration
+ * MongoDB will not accept fails the suite rather than a log line nobody reads.
+ */
 chatSessionSchema.index(
   { enrollment: 1, department: 1, kind: 1 },
-  { unique: true, sparse: true, partialFilterExpression: { enrollment: { $type: 'objectId' } } },
+  { unique: true, partialFilterExpression: { enrollment: { $type: 'objectId' } } },
 );
 
 export const ChatSession = mongoose.model('ChatSession', chatSessionSchema);

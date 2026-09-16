@@ -13,6 +13,7 @@ import { practicePatients } from '../middleware/practiceScope.js';
 import { handlePatientMessage, streamPatientMessage } from '../services/ai/assistant.js';
 import { ChatSession } from '../models/ChatSession.js';
 import { ChatMessage } from '../models/ChatMessage.js';
+import { nextMessageSeq } from '../services/chatSequence.js';
 import {
   notifyPatientOfClinicianReply,
   notifyDieticianOfPatientMessage,
@@ -595,12 +596,11 @@ router.post(
 
     // seq is unique per session, so derive it from the current tail rather than
     // a count â€” an archived or partially deleted history would collide.
-    const last = await ChatMessage.findOne({ session: session._id }).sort({ seq: -1 }).select('seq').lean();
-
     const message = await ChatMessage.create({
       session: session._id,
       patient: req.patientId,
-      seq: (last?.seq ?? -1) + 1,
+      // Drawn, not derived — see services/chatSequence.js.
+      seq: await nextMessageSeq(session._id),
       role: 'clinician',
       sender: req.user._id,
       content: req.body.content,
@@ -764,11 +764,10 @@ router.post(
       latestGlucose: context.latestGlucose,
     });
 
-    const last = await ChatMessage.findOne({ session: session._id }).sort({ seq: -1 }).select('seq').lean();
     const message = await ChatMessage.create({
       session: session._id,
       patient: patientId,
-      seq: (last?.seq ?? -1) + 1,
+      seq: await nextMessageSeq(session._id),
       role: 'user',
       content: text,
       language: session.language,
@@ -886,7 +885,7 @@ router.post(
       assistantMessage = await ChatMessage.create({
         session: session._id,
         patient: patientId,
-        seq: message.seq + 1,
+        seq: await nextMessageSeq(session._id),
         role: 'assistant',
         content: WHICH_MEAL_PROMPT[replyLanguage] ?? WHICH_MEAL_PROMPT.en,
         language: replyLanguage,
@@ -922,7 +921,7 @@ router.post(
         assistantMessage = await ChatMessage.create({
           session: session._id,
           patient: patientId,
-          seq: message.seq + 1,
+          seq: await nextMessageSeq(session._id),
           role: 'assistant',
           content: reply,
           language: replyLanguage,

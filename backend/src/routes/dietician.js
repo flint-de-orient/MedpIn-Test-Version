@@ -16,6 +16,7 @@ import { FoodLog } from '../models/FoodLog.js';
 import { buildAnalytes } from '../services/analyteCatalog.js';
 import { ChatSession } from '../models/ChatSession.js';
 import { ChatMessage } from '../models/ChatMessage.js';
+import { nextMessageSeq } from '../services/chatSequence.js';
 import { DietPlan } from '../models/DietPlan.js';
 import { DietPlanRevision } from '../models/DietPlanRevision.js';
 import { notifyPatientOfClinicianReply } from '../services/notifications.js';
@@ -1349,11 +1350,11 @@ async function postToCareThread(patientId, sender, content, attachments = [], re
     title: 'Nutrition',
   });
 
-  const last = await ChatMessage.findOne({ session: session._id }).sort({ seq: -1 }).select('seq').lean();
   const message = await ChatMessage.create({
     session: session._id,
     patient: patientId,
-    seq: (last?.seq ?? -1) + 1,
+    // Drawn, not derived — see services/chatSequence.js.
+    seq: await nextMessageSeq(session._id),
     role: 'dietician',
     sender: sender._id,
     content,

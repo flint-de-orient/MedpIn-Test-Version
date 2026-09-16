@@ -65,7 +65,14 @@ describe('prescriptions are bounded, list and fetch alike', () => {
   test('and so does fetching one directly', () => {
     // A list that hides a row while its own URL still serves it is a filter,
     // not a rule.
-    const one = src.slice(src.indexOf("Prescription.findOne({"));
+    //
+    // Found inside the `/:id` handler rather than as the first `findOne` in the
+    // file: the reference counter's seed reads the highest reference number
+    // further up, and a test that inspected whichever query came first would
+    // have been checking the wrong one without saying so.
+    const handler = src.slice(src.indexOf("router.get(\n  '/:id',"));
+    const one = handler.slice(handler.indexOf('Prescription.findOne({'));
+    assert.ok(handler.length < src.length, 'the /:id handler has moved');
     assert.match(one.slice(0, 300), /recordWindow\(req, 'issuedOn'\)/);
   });
 });

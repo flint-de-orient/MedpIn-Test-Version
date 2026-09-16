@@ -26,18 +26,43 @@ import { requireCapability } from '../middleware/requireCapability.js';
 import { CAPABILITIES } from '../services/capabilities.js';
 import { practiceOfPatient } from '../middleware/practiceScope.js';
 import { RECORD_STATE } from '../models/plugins/clinicalRecord.js';
+import { nextInSequence } from '../services/sequence.js';
 import { attachableAssetIds } from '../services/mediaAccess.js';
 
 const router = Router({ mergeParams: true });
 router.use(requireAuth, resolvePatientScope);
 
-/** Sequential per-year reference, e.g. AKD-2026-000412. */
+/**
+ * Sequential per-year reference, e.g. AKD-2026-000412.
+ *
+ * ---- Drawn from a counter, not counted -----------------------------------
+ *
+ * This was `countDocuments(this year) + 1`, against a unique index. Two
+ * prescriptions issued in the same second both counted the same number; the
+ * index refused the second, the error handler called it "an account with that
+ * referenceNo already exists", and the prescription was never written. Eight
+ * issued at once lost seven.
+ *
+ * The counter starts where the printed references left off — the highest
+ * this year, not the count — so the first number it issues follows the last
+ * one a patient was handed rather than repeating one from January.
+ */
 async function nextReference() {
   const year = dayjs().year();
-  const count = await Prescription.countDocuments({
-    referenceNo: new RegExp(`^AKD-${year}-`),
+  const prefix = `AKD-${year}-`;
+
+  const n = await nextInSequence(`prescription:${year}`, {
+    seed: async () => {
+      // Zero-padded to six digits, so the highest string is the highest number.
+      const last = await Prescription.findOne({ referenceNo: new RegExp(`^${prefix}\\d{6}$`) })
+        .sort({ referenceNo: -1 })
+        .select('referenceNo')
+        .lean();
+      return last ? Number(last.referenceNo.slice(prefix.length)) : 0;
+    },
   });
-  return `AKD-${year}-${String(count + 1).padStart(6, '0')}`;
+
+  return `${prefix}${String(n).padStart(6, '0')}`;
 }
 
 router.get(

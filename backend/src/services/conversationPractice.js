@@ -160,13 +160,30 @@ export async function sessionForEnrolment({ patientId, enrollment, kind = 'care'
     }
   }
 
-  return ChatSession.create({
-    patient: patientId,
-    enrollment: idOf(enrollment),
-    kind,
-    language,
-    ...(title ? { title } : {}),
-  });
+  /*
+   * A new conversation — unless another request made it a moment ago.
+   *
+   * Two replies arriving together both look for this enrolment's conversation,
+   * both find none, and both reach here. Without an index behind it each
+   * created its own, and the thread split in two; the unique index on
+   * (enrollment, department, kind) now refuses the second, and the second
+   * request continues in the conversation the first one made. A conversation
+   * with no enrolment is outside that index and cannot race this way.
+   */
+  try {
+    return await ChatSession.create({
+      patient: patientId,
+      enrollment: idOf(enrollment),
+      kind,
+      language,
+      ...(title ? { title } : {}),
+    });
+  } catch (err) {
+    if (err?.code !== 11000) throw err;
+    const raced = await find();
+    if (raced) return raced;
+    throw err;
+  }
 }
 
 /**

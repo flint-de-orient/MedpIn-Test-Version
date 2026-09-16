@@ -1,5 +1,6 @@
 import { ChatSession } from '../models/ChatSession.js';
 import { ChatMessage } from '../models/ChatMessage.js';
+import { nextMessageSeq } from './chatSequence.js';
 import { logger } from '../config/logger.js';
 
 /**
@@ -38,17 +39,13 @@ export async function postCareThreadNote({ patientId, author, text }) {
     // have asked for this here. The push and the Home card carry it instead.
     if (!session) return null;
 
-    // seq is unique per session, so derive it from the tail rather than a
-    // count — an archived or partly deleted history would collide.
-    const last = await ChatMessage.findOne({ session: session._id })
-      .sort({ seq: -1 })
-      .select('seq')
-      .lean();
-
     const message = await ChatMessage.create({
       session: session._id,
       patient: patientId,
-      seq: (last?.seq ?? -1) + 1,
+      // Drawn from the conversation's counter. Reading the tail and adding one
+      // collided with any other message written in the same moment — and a
+      // note like this one is written precisely when the desk is busy.
+      seq: await nextMessageSeq(session._id),
       role: 'clinician',
       sender: author?._id,
       content: text,

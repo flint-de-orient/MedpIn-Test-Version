@@ -16,6 +16,7 @@ import { VitalRecord } from '../models/VitalRecord.js';
 import { Medication } from '../models/Medication.js';
 import { ChatSession } from '../models/ChatSession.js';
 import { ChatMessage } from '../models/ChatMessage.js';
+import { nextMessageSeq } from '../services/chatSequence.js';
 import {
   notifyPatientOfClinicianReply,
   notifyDieticianOfAssignment,
@@ -2048,11 +2049,11 @@ router.post(
       kind: session.kind === 'nutrition' ? 'nutrition' : 'care',
     });
 
-    const last = await ChatMessage.findOne({ session: session._id }).sort({ seq: -1 }).select('seq').lean();
     const message = await ChatMessage.create({
       session: session._id,
       patient: session.patient,
-      seq: (last?.seq ?? -1) + 1,
+      // Drawn, not derived — see services/chatSequence.js.
+      seq: await nextMessageSeq(session._id),
       role: 'clinician',
       sender: req.user._id,
       content: req.body.content,

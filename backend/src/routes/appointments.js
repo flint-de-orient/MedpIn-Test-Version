@@ -24,6 +24,7 @@ import { ACTIVE_STATUSES, isSlotBookable } from '../services/scheduling.js';
 import { paged, pageParams, dateRange } from '../utils/pagination.js';
 import { postCareThreadNote } from '../services/careThreadNote.js';
 import { resolveDoctor } from '../services/doctorContext.js';
+import { nextInSequence } from '../services/sequence.js';
 import {
   practiceMembers,
   memberLocation,
@@ -71,6 +72,40 @@ async function scopeFilter(req) {
 }
 
 /**
+ * Which waiting room an appointment queues in, and how to find the others in it.
+ *
+ * A location where there is one: two branches of one practice run two rooms and
+ * two numbering sequences. A teleconsult has no building and queues with its
+ * practice's other remote consultations.
+ *
+ * ---- From the appointment, never from the caller -------------------------
+ *
+ * The teleconsult queue was the *caller's* practice's doctors. A receptionist
+ * has a practice; a patient checking themselves in does not, so their queue
+ * came back empty — and every patient who checked in on their own phone was
+ * told they were number one, whoever was already waiting. The appointment
+ * knows whose it is.
+ *
+ * `key` names the counter; `scope` finds the room's other patients.
+ */
+async function queueOf(appt) {
+  if (appt.clinic) {
+    return { key: `clinic:${appt.clinic}`, scope: { clinic: appt.clinic } };
+  }
+
+  const practice = appt.practice ?? (await practiceOfMember(appt.doctor));
+  if (!practice) {
+    return { key: `doctor:${appt.doctor}`, scope: { doctor: appt.doctor, clinic: null } };
+  }
+
+  const doctors = await memberIdsOf(practice, ROLES.DOCTOR);
+  return {
+    key: `practice:${practice}`,
+    scope: { doctor: { $in: doctors?.length ? doctors : [appt.doctor] }, clinic: null },
+  };
+}
+
+/**
  * The queue a patient is standing in today, as a filter — or null when they are
  * not in one.
  *
@@ -84,13 +119,12 @@ async function queueOfPatient(patientId, today) {
     queueDate: today,
     status: { $in: ['checked_in', 'in_consultation'] },
   })
-    .select('clinic doctor')
+    .select('clinic doctor practice')
     .lean();
   if (!mine) return null;
-  if (mine.clinic) return { clinic: mine.clinic };
-
-  const doctors = await memberIdsOf(await practiceOfMember(mine.doctor), ROLES.DOCTOR);
-  return { doctor: { $in: doctors ?? [mine.doctor] } };
+  // The same definition check-in numbers by, so "three ahead of you" counts the
+  // room the token came from — see queueOf.
+  return (await queueOf(mine)).scope;
 }
 
 /**
@@ -1072,46 +1106,67 @@ router.post(
     }
 
     const today = dayjs().format('YYYY-MM-DD');
+    const queue = await queueOf(appt);
 
-    /**
-     * The next number in *this* queue.
+    /*
+     * The next token, drawn from a counter rather than read off the room.
      *
-     * It was the highest number anywhere today, so two practices checking
-     * patients in shared one sequence: the second clinic's first patient of the
-     * morning was told they were number nine. Not a leak so much as the queue
-     * being wrong, and wrong in a way the person holding the token can see.
+     * It was "today's highest in this queue, plus one, then save". Two people
+     * checked in at the same moment both read the same highest, and six checked
+     * in together were all handed token one — six patients holding the same
+     * number in one waiting room, with no index behind it to refuse any of
+     * them. The counter hands each request its own number; a gap where a
+     * double tap drew one it did not keep is harmless, and a duplicate is not.
      *
-     * Per clinic where there is one, because two branches of one practice run
-     * two waiting rooms and two numbering sequences. A teleconsult has no
-     * clinic and queues with the practice.
+     * Seeded from the tokens already handed out today, so a deploy at eleven
+     * does not start a second number one in a room that is on twelve.
      */
-    const queueScope = appt.clinic
-      ? { clinic: appt.clinic }
-      : await practiceMembers(req, ROLES.DOCTOR, 'doctor');
+    const queueNumber = await nextInSequence(`queue:${queue.key}:${today}`, {
+      seed: async () => {
+        const last = await Appointment.findOne({ queueDate: today, ...queue.scope })
+          .sort({ queueNumber: -1 })
+          .select('queueNumber')
+          .lean();
+        return last?.queueNumber ?? 0;
+      },
+    });
 
-    const last = await Appointment.findOne({ queueDate: today, ...queueScope })
-      .sort({ queueNumber: -1 })
-      .select('queueNumber')
-      .lean();
+    /*
+     * And the check-in itself, only if it has not already happened.
+     *
+     * A read, a change and a `save()` let two taps on a slow connection both
+     * pass the status check above and both write — the second silently taking
+     * a new token over the first. Conditional on the status, in one operation,
+     * exactly one of them checks the patient in; the other is told the token
+     * that stuck.
+     */
+    const checkedIn = await Appointment.findOneAndUpdate(
+      { _id: appt._id, status: { $in: ['requested', 'confirmed'] } },
+      { $set: { queueDate: today, queueNumber, status: 'checked_in' } },
+      { new: true },
+    ).lean();
 
-    appt.queueDate = today;
-    appt.queueNumber = (last?.queueNumber ?? 0) + 1;
-    appt.status = 'checked_in';
-    await appt.save();
+    if (!checkedIn) {
+      const current = await Appointment.findById(appt._id).select('status queueNumber').lean();
+      if (current?.status === 'checked_in') {
+        return res.json({ queueNumber: current.queueNumber, position: null, estimatedWaitMinutes: null });
+      }
+      throw badRequest('This appointment cannot be checked in');
+    }
 
     // The same queue the number came from, or "seven ahead of you" counts
     // people in another building.
     const ahead = await Appointment.countDocuments({
       queueDate: today,
       status: { $in: ['checked_in', 'in_consultation'] },
-      queueNumber: { $lt: appt.queueNumber },
-      ...queueScope,
+      queueNumber: { $lt: checkedIn.queueNumber },
+      ...queue.scope,
     });
 
     res.json({
-      queueNumber: appt.queueNumber,
+      queueNumber: checkedIn.queueNumber,
       position: ahead + 1,
-      estimatedWaitMinutes: ahead * (appt.durationMinutes ?? DEFAULT_SLOT_MINUTES),
+      estimatedWaitMinutes: ahead * (checkedIn.durationMinutes ?? DEFAULT_SLOT_MINUTES),
     });
   }),
 );

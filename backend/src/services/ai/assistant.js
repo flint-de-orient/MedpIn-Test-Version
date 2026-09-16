@@ -1,4 +1,5 @@
 ﻿import { ChatMessage } from '../../models/ChatMessage.js';
+import { nextMessageSeq } from '../chatSequence.js';
 import { triageMessage } from '../triage/engine.js';
 import { buildPatientContext } from '../patientContext.js';
 import { retrieve, formatContext } from './rag.js';
@@ -373,10 +374,14 @@ ${forceLanguageInstruction(language)}`,
   // message and aggregated nowhere anybody could read it.
   countReply(relationship.practiceId, usage);
 
+  // Drawn after the model has answered, not claimed as the patient's message
+  // plus one: a doctor replying while the assistant was thinking took that
+  // number first, and this reply was the one refused. See chatSequence.js.
+  const replySeq = await nextMessageSeq(session._id);
   const assistantMessage = await ChatMessage.create({
     session: session._id,
     patient: patientId,
-    seq: seq + 1,
+    seq: replySeq,
     role: 'assistant',
     content: replyText,
     language,
@@ -415,7 +420,7 @@ ${forceLanguageInstruction(language)}`,
     alert: alert?._id,
   });
 
-  session.messageCount = seq + 1;
+  session.messageCount = replySeq + 1;
   session.lastMessageAt = new Date();
   session.highestUrgency = maxUrgency(session.highestUrgency, triage.urgency);
   if (triage.urgency === 'emergency' || triage.urgency === 'urgent') session.flaggedForReview = true;
@@ -684,10 +689,14 @@ ${forceLanguageInstruction(language)}`,
   // message and aggregated nowhere anybody could read it.
   countReply(relationship.practiceId, usage);
 
+  // Drawn after the model has answered, not claimed as the patient's message
+  // plus one: a doctor replying while the assistant was thinking took that
+  // number first, and this reply was the one refused. See chatSequence.js.
+  const replySeq = await nextMessageSeq(session._id);
   const assistantMessage = await ChatMessage.create({
     session: session._id,
     patient: patientId,
-    seq: seq + 1,
+    seq: replySeq,
     role: 'assistant',
     content: replyText,
     language,
@@ -702,7 +711,7 @@ ${forceLanguageInstruction(language)}`,
     alert: alert?._id,
   });
 
-  session.messageCount = seq + 1;
+  session.messageCount = replySeq + 1;
   session.lastMessageAt = new Date();
   session.highestUrgency = maxUrgency(session.highestUrgency, triage.urgency);
   if (triage.urgency === 'emergency' || triage.urgency === 'urgent') session.flaggedForReview = true;
