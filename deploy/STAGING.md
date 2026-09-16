@@ -160,6 +160,37 @@ author, so it cannot tell which practice wrote one: where more than one practice
 has written knowledge, read the dry run before applying. A second run adopts
 nothing.
 
+### Once, after deploying appointment isolation
+
+An appointment carried a patient, a doctor and sometimes a clinic, and no
+practice. "One open request at a time" was therefore a query with neither
+practice nor doctor in it, so a patient enrolled at two clinics who asked the
+second one rewrote the row sitting in the first one's diary. New appointments
+now record whose diary they are in, and the database enforces one open request
+per patient per practice. This gives the existing rows the same answer:
+
+```bash
+cd /var/www/clinq-staging/backend     # then /var/www/clinq/backend for production
+node scripts/backfillAppointmentPractice.js                                  # report
+mongodump --db medpin_staging --collection appointments --out ~/dumps/apptpractice-before-backfill
+node scripts/backfillAppointmentPractice.js --apply
+```
+
+The clinic answers it where there is one; a teleconsult falls back to the
+doctor's current membership. A doctor who has left leaves the row unplaced and
+reported — every route still scopes by doctor, so an unplaced row behaves
+exactly as it does today, and filing it under a guessed practice would be one
+clinic reading another's diary.
+
+**Read the contested list.** Where one patient holds two open requests that
+turn out to belong to one practice — the state the old query produced — neither
+row is written, because choosing between them is the desk's job. Close the
+stale one in the app, then run the script again.
+
+The unique index builds itself at startup and covers only rows that have a
+practice, so it never fails to build on a database that has not been
+backfilled.
+
 ### Once, after deploying the prescription record state
 
 Creating a prescription that replaced another used to end the old one by

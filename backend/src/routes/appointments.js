@@ -119,6 +119,44 @@ function bookableClinics(req, patientId) {
 }
 
 /**
+ * Which practice an appointment request is being made to.
+ *
+ * A member of staff asks for their own. A patient asks the practice they are
+ * under — derived from the work, never picked off a list: the doctor they are
+ * assigned to where that doctor works at one of their practices, and otherwise
+ * their enrolment when they have only one.
+ *
+ * `assignedDoctor` is a single global field on the profile, so it can name a
+ * doctor at a practice the caller has nothing to do with. Read as a preference
+ * *within* the practice being asked and ignored when it points outside, which
+ * is what stops a desk at one clinic writing a request into another's diary.
+ *
+ * `ambiguous` rather than a guess: two enrolments and nothing to choose
+ * between them is a question for the patient, and answering it by writing into
+ * whichever practice came back first is how one clinic ends up holding
+ * another's appointment. `unknown` is the pre-backfill deployment, where the
+ * old permissive behaviour stands.
+ *
+ * @returns {Promise<{practice: import('mongoose').Types.ObjectId|null, reason: string|null}>}
+ */
+async function practiceAsked(req, patientId, assignedDoctor) {
+  if (!isPatient(req)) return { practice: await practiceOf(req), reason: null };
+
+  const mine = await patientPracticeIds(patientId);
+  if (mine === null) return { practice: null, reason: 'unknown' };
+  if (mine.length === 0) return { practice: null, reason: 'none' };
+  if (mine.length === 1) return { practice: mine[0], reason: null };
+
+  if (assignedDoctor) {
+    const where = await practiceOfMember(assignedDoctor);
+    if (where && mine.some((p) => String(p) === String(where))) {
+      return { practice: where, reason: null };
+    }
+  }
+  return { practice: null, reason: 'ambiguous' };
+}
+
+/**
  * Refuse a doctor who does not work where this booking is.
  *
  * `resolveDoctor` finds a named doctor anywhere on the platform, which is
@@ -286,6 +324,9 @@ router.post(
       patient: patientId,
       doctor: doctor._id,
       clinic: clinic?._id,
+      // Whose diary. From the building where there is one; a teleconsult has
+      // none, so it comes from the doctor's own membership.
+      practice: clinic?.practice ?? (await practiceOfMember(doctor._id)),
       scheduledFor,
       mode,
       reason,
@@ -409,18 +450,63 @@ router.post(
     const enrolled = await PatientProfile.findOne({ user: patientId })
       .select('assignedDoctor')
       .lean();
+
+    const asked = await practiceAsked(req, patientId, enrolled?.assignedDoctor);
+    if (asked.reason === 'none') {
+      throw badRequest('You are not with a clinic yet, so there is nobody to ask.');
+    }
+    if (asked.reason === 'ambiguous') {
+      throw badRequest('Please choose which of your clinics you are asking.');
+    }
+
+    /*
+     * The doctors of the practice being asked. `assignedDoctor` is honoured
+     * only if it names one of them: it is a single field for a patient who may
+     * be under two clinics, and a request carrying the wrong practice's doctor
+     * lands in the wrong diary — where the practice that took it cannot even
+     * confirm it, because every route here is scoped by its own doctors.
+     */
+    const doctorsHere = asked.practice ? await memberIdsOf(asked.practice, ROLES.DOCTOR) : null;
+    const assignedHere =
+      enrolled?.assignedDoctor &&
+      (doctorsHere === null ||
+        doctorsHere.some((id) => String(id) === String(enrolled.assignedDoctor)));
+
     const doctor = await resolveDoctor({
-      explicitId: enrolled?.assignedDoctor,
+      explicitId: assignedHere ? enrolled.assignedDoctor : null,
+      practiceId: asked.practice ?? null,
       required: true,
     });
     if (!doctor) throw badRequest('No doctor is available for booking');
 
-    // One open request at a time. A patient who taps twice, or asks again next
-    // day because nobody has answered, should not appear on the desk's list as
-    // two people wanting two appointments.
+    /*
+     * One open request at a time — at this practice.
+     *
+     * A patient who taps twice, or asks again next day because nobody has
+     * answered, should not appear on the desk's list as two people wanting two
+     * appointments. That is a true rule about a clinic and a false one about a
+     * person: somebody may be asking a diabetologist and a cardiologist in the
+     * same week, and this query had neither practice nor doctor in it. The
+     * second clinic's request therefore rewrote the first clinic's row, which
+     * kept its original doctor — so the second never saw it, and the first saw
+     * a day the patient had asked somebody else for.
+     *
+     * Falls back to the resolved doctor where the practice cannot be read,
+     * which is narrower than the platform and never touches another practice's
+     * row.
+     */
     const existing = await Appointment.findOne({
       patient: patientId,
       status: 'requested',
+      doctor: doctorsHere?.length ? { $in: doctorsHere } : doctor._id,
+      /*
+       * A request for a day, not the replacement row a reschedule leaves
+       * behind. That one is also 'requested' and carries a time the patient
+       * already holds; writing this request's preferred day onto it would put
+       * two times on one row, one of them imaginary — which is the thing
+       * `preferredFor` exists as a separate field to prevent.
+       */
+      preferredFor: { $ne: null },
     });
     if (existing) {
       existing.preferredFor = preferredFor;
@@ -439,20 +525,49 @@ router.post(
       return res.json({ appointment: serialise(existing), updated: true });
     }
 
-    const appointment = await Appointment.create({
-      patient: patientId,
-      doctor: doctor._id,
-      // No clinic and no time yet: the desk assigns both when it confirms.
-      //
-      // preferredFor, NOT scheduledFor. 'requested' is an active status, so a
-      // time written here would hold that slot against everyone — including the
-      // desk trying to confirm this very request at a different hour.
-      preferredFor,
-      preferredTime,
-      mode,
-      reason,
-      status: 'requested',
-    });
+    let appointment;
+    try {
+      appointment = await Appointment.create({
+        patient: patientId,
+        doctor: doctor._id,
+        // Which practice was asked. Written on the row rather than inferred
+        // from the doctor later, so "one open request per practice" is a rule
+        // the database can hold rather than one every query has to remember.
+        practice: asked.practice ?? (await practiceOfMember(doctor._id)),
+        // No clinic and no time yet: the desk assigns both when it confirms.
+        //
+        // preferredFor, NOT scheduledFor. 'requested' is an active status, so a
+        // time written here would hold that slot against everyone — including the
+        // desk trying to confirm this very request at a different hour.
+        preferredFor,
+        preferredTime,
+        mode,
+        reason,
+        status: 'requested',
+      });
+    } catch (err) {
+      /*
+       * Two taps in the same instant.
+       *
+       * The lookup above and this write are a read and then a write, and both
+       * requests read "nothing there". The unique index is what actually stops
+       * the second row; this turns its refusal into the answer the second tap
+       * deserved in the first place — the request that exists, which is what a
+       * patient who pressed twice is asking about.
+       */
+      if (err?.code !== 11000) throw err;
+
+      const raced = await Appointment.findOne({
+        patient: patientId,
+        status: 'requested',
+        practice: asked.practice,
+        preferredFor: { $ne: null },
+      }).populate(POPULATE);
+      if (!raced) throw err;
+
+      acknowledgeInThread(raced, patientId);
+      return res.json({ appointment: serialise(raced), updated: true });
+    }
 
     await appointment.populate(POPULATE);
 
@@ -565,10 +680,20 @@ router.patch(
     // ahead, rather than being refused something the clinic is allowed to do.
     if (!req.body.allowSameDay) {
       const dayStart = slotStart.startOf('day');
+      /*
+       * This practice's day, not the patient's.
+       *
+       * Unscoped, this refused a legitimate confirmation because another
+       * practice had seen the same patient that morning — and said so, by
+       * returning that appointment's exact time in the error. Two clinics
+       * seeing one person on one day is ordinary; only a clash inside a
+       * practice is a mistake worth warning the desk about.
+       */
       const sameDay = await Appointment.findOne({
         _id: { $ne: appointment._id },
         patient: appointment.patient,
         status: { $in: ACTIVE_STATUSES },
+        ...(await scopeFilter(req)),
         scheduledFor: {
           $gte: dayStart.toDate(),
           $lt: dayStart.add(1, 'day').toDate(),
@@ -660,6 +785,9 @@ router.patch(
       patient: existing.patient,
       doctor: existing.doctor,
       clinic: existing.clinic,
+      // Carried from the row it replaces, and derived for one written before
+      // the field existed — a reschedule must not lose whose diary it is in.
+      practice: existing.practice ?? (await practiceOfMember(existing.doctor)),
       scheduledFor: req.body.scheduledFor,
       mode: existing.mode,
       reason: existing.reason,

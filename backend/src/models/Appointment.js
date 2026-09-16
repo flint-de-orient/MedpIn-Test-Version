@@ -19,6 +19,29 @@ const appointmentSchema = new mongoose.Schema(
     // visit (its slot came from the clinic's schedule); absent for teleconsult.
     clinic: { type: mongoose.Schema.Types.ObjectId, ref: 'Clinic', index: true },
 
+    /**
+     * The practice whose diary this sits in.
+     *
+     * Every read and write here scopes by the practice's *doctors*, which
+     * works and answers a slightly different question — "is this one of ours"
+     * rather than "whose is it". The difference showed up the moment two
+     * practices held requests for one patient: a rule about how many open
+     * requests a patient may have at a clinic cannot be written against a set
+     * of doctor ids, and the query that tried had neither practice nor doctor
+     * in it, so the second clinic's request overwrote the first's.
+     *
+     * Derived from the clinic where there is one and from the doctor's
+     * membership otherwise — a teleconsult has no building. Nullable, because
+     * rows written before this field existed have none until the backfill
+     * runs, and a required field would have refused to load every one of them.
+     */
+    practice: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Practice',
+      default: null,
+      index: true,
+    },
+
     mode: { type: String, enum: ['in_clinic', 'teleconsult'], default: 'in_clinic' },
     /// When the appointment is. Absent while it is only a request.
     ///
@@ -99,5 +122,39 @@ const appointmentSchema = new mongoose.Schema(
 appointmentSchema.index({ doctor: 1, scheduledFor: 1 });
 appointmentSchema.index({ patient: 1, scheduledFor: -1 });
 appointmentSchema.index({ queueDate: 1, queueNumber: 1 });
+
+/**
+ * One open request per patient per practice, enforced by the database.
+ *
+ * The route already looks for an existing request and updates it rather than
+ * writing a second — but that is a read followed by a write, and two taps a
+ * few milliseconds apart both read "nothing there". The desk then sees one
+ * person listed twice, wanting two appointments.
+ *
+ * Partial on `practice` being a real id, not merely on the status: rows
+ * written before the practice field existed all have `null`, and null counts
+ * as a value in a unique index. Without the `$type` clause the first pair of
+ * legacy requests would refuse to let this index build at all — and an index
+ * that cannot build is enforcement nobody gets.
+ *
+ * And partial on `preferredFor` too, because "requested" covers two different
+ * things. A patient asking for a day has one; the replacement row a
+ * reschedule writes carries a time the patient already holds and no
+ * preference. Somebody who has asked for an appointment *and* moved an
+ * existing one wants two things, and the desk should see both — so only the
+ * first kind is unique.
+ */
+appointmentSchema.index(
+  { patient: 1, practice: 1, status: 1 },
+  {
+    unique: true,
+    partialFilterExpression: {
+      status: 'requested',
+      practice: { $type: 'objectId' },
+      preferredFor: { $type: 'date' },
+    },
+    name: 'one_open_request_per_practice',
+  },
+);
 
 export const Appointment = mongoose.model('Appointment', appointmentSchema);
