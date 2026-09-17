@@ -32,10 +32,14 @@ describe('the clinic answers where it was asked', () => {
     assert.match(block("'/:id/confirm'"), /postCareThreadNote/);
   });
 
+  // The cancel route, from its declaration to the next. It anchored on the line
+  // that set the status, which became one conditional update — see
+  // appointmentWritesRetried.test.js for why.
+  const cancelRoute = () => block("'/:id/cancel',");
+
   test('declining writes into the thread too', () => {
-    const cancel = src.slice(src.indexOf("appt.status = 'cancelled'"));
     assert.match(
-      cancel.slice(0, 2000),
+      cancelRoute(),
       /postCareThreadNote/,
       'a refusal must leave a trace the patient can go back and read',
     );
@@ -44,7 +48,7 @@ describe('the clinic answers where it was asked', () => {
   test('neither announces the patient\'s own action back at them', () => {
     // Cancelling your own appointment and then being told you cancelled it is
     // noise, and noise is what teaches people to ignore the alert that matters.
-    const cancel = src.slice(src.indexOf("appt.status = 'cancelled'"), src.length);
+    const cancel = cancelRoute();
     const guard = cancel.indexOf('!appt.patient?._id?.equals?.(req.user._id)');
     const note = cancel.indexOf('postCareThreadNote');
     assert.ok(guard > -1, 'the guard exists');
@@ -55,9 +59,9 @@ describe('the clinic answers where it was asked', () => {
     // A request that was refused never had a time, so there is nothing to say
     // has been called off. Telling somebody their 1pm was cancelled when they
     // were never given a 1pm is a different — and more alarming — message.
-    const cancel = src.slice(src.indexOf("appt.status = 'cancelled'"));
-    assert.match(cancel.slice(0, 2500), /declinedRequest/);
-    assert.match(cancel.slice(0, 2500), /!appt\.scheduledFor/);
+    const cancel = cancelRoute();
+    assert.match(cancel, /declinedRequest/);
+    assert.match(cancel, /!appt\.scheduledFor/);
   });
 });
 

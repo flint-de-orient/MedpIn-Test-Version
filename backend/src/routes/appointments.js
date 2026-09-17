@@ -7,6 +7,7 @@ import crypto from 'node:crypto';
 import { z } from 'zod';
 import { requireAuth, requireClinician, requireRole } from '../middleware/auth.js';
 import { validate, q } from '../middleware/validate.js';
+import { idempotentWrite } from '../middleware/idempotentWrite.js';
 import { asyncHandler, notFound, badRequest, conflict } from '../middleware/errors.js';
 import { audit } from '../middleware/audit.js';
 import { Appointment, APPOINTMENT_STATUS } from '../models/Appointment.js';
@@ -334,6 +335,9 @@ router.get(
 
 router.post(
   '/',
+  // A retry of this request answers with what the first attempt did. See
+  // middleware/idempotentWrite.js.
+  idempotentWrite(),
   validate({
     body: z.object({
       scheduledFor: z.coerce.date(),
@@ -535,6 +539,9 @@ function acknowledgeInThread(appointment, patientId) {
 
 router.post(
   '/request',
+  // A retry of this request answers with what the first attempt did. See
+  // middleware/idempotentWrite.js.
+  idempotentWrite(),
   validate({
     body: z.object({
       // A day they have in mind. Required, because "sometime" gives the desk
@@ -732,6 +739,9 @@ router.post(
 router.patch(
   '/:id/confirm',
   requireRole(ROLES.DOCTOR, ROLES.STAFF),
+  // A retry of this request answers with what the first attempt did. See
+  // middleware/idempotentWrite.js.
+  idempotentWrite(),
   validate({
     body: z.object({
       // Optional where there is one location or none. See soleLocation.
@@ -943,6 +953,9 @@ router.patch(
  */
 router.patch(
   '/:id/reschedule',
+  // A retry of this request answers with what the first attempt did. See
+  // middleware/idempotentWrite.js.
+  idempotentWrite(),
   validate({
     body: z.object({
       scheduledFor: z.coerce.date(),
@@ -1119,22 +1132,41 @@ router.patch(
 
 router.patch(
   '/:id/cancel',
+  // A retry of this request answers with what the first attempt did. See
+  // middleware/idempotentWrite.js.
+  idempotentWrite(),
   validate({ body: z.object({ reason: z.string().max(500).optional() }) }),
   audit('update', 'Appointment'),
   asyncHandler(async (req, res) => {
-    const appt = await Appointment.findOne({ _id: req.params.id, ...(await scopeFilter(req)) });
-    if (!appt) throw notFound('Appointment not found');
+    const found = await Appointment.findOne({ _id: req.params.id, ...(await scopeFilter(req)) });
+    if (!found) throw notFound('Appointment not found');
     // The desk calls off appointments only at locations it runs. A patient
     // cancels their own, wherever it is.
-    if (!isPatient(req) && appt.clinic) await assertManagesLocation(req, appt.clinic);
-    if (appt.status === 'completed') throw badRequest('Completed appointments cannot be cancelled');
+    if (!isPatient(req) && found.clinic) await assertManagesLocation(req, found.clinic);
+    if (found.status === 'completed') throw badRequest('Completed appointments cannot be cancelled');
 
-    appt.status = 'cancelled';
-    appt.cancelledBy = req.user._id;
-    appt.cancellationReason = req.body.reason;
-    await appt.save();
-
-    await appt.populate(POPULATE);
+    /*
+     * Called off once, however many times it is asked.
+     *
+     * It set the status and saved whatever the row already said, and then told
+     * everybody. A cancel resent after a timeout — by a phone that reconnected,
+     * or an app that refreshed its token and sent it again — cancelled a
+     * cancelled appointment and told the patient a second time, by push and in
+     * their thread, and offered the freed slot to the waitlist again. Two taps
+     * together did the same. Conditional on it not being called off already,
+     * exactly one request does it and tells people; any other is answered with
+     * the appointment as it now stands, and tells nobody.
+     */
+    const appt = await Appointment.findOneAndUpdate(
+      { _id: found._id, status: { $nin: ['cancelled', 'completed'] } },
+      { $set: { status: 'cancelled', cancelledBy: req.user._id, cancellationReason: req.body.reason } },
+      { new: true },
+    ).populate(POPULATE);
+    if (!appt) {
+      const current = await Appointment.findById(found._id).populate(POPULATE);
+      if (current?.status === 'completed') throw badRequest('Completed appointments cannot be cancelled');
+      return res.json({ appointment: serialise(current) });
+    }
 
     await notifyClinicOfAppointmentChange(appt, appt.patient?.name ?? 'A patient', 'cancelled');
     // Only tell the patient when someone else cancelled on them. Announcing
@@ -1394,6 +1426,9 @@ router.get(
 
 router.post(
   '/:id/check-in',
+  // A retry of this request answers with what the first attempt did. See
+  // middleware/idempotentWrite.js.
+  idempotentWrite(),
   audit('update', 'Appointment'),
   asyncHandler(async (req, res) => {
     const appt = await Appointment.findOne({ _id: req.params.id, ...(await scopeFilter(req)) });
