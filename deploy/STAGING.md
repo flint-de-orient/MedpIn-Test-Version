@@ -705,6 +705,34 @@ version. `assistantStatus.js --practice` shows the assistant on only when both
 are done: a clinician of the specialty reviews and approves in the knowledge
 screen before the assistant switches on.
 
+### Once, after deploying: members from before the chat grants
+
+Symptom: a doctor opens a patient's conversation and gets **"Could not load the
+conversation"**, and replying says **"Could not send"** — while the patient list
+works. Reading a patient's conversation and replying became their own grants
+(`CHAT_READ`, `CHAT_REPLY`) on 16 September, and nothing gave them to members who
+already existed: a member's stored grant list is used as it is, and only an
+empty list falls back to the role's preset.
+
+`scripts/backfillChatPermissions.js` adds the two grants to a member whose list is
+exactly what their role was given before that day. A list somebody set by hand
+in the console is printed for an operator and never changed; the laboratory and
+the practice manager get nothing, because they do not read conversations.
+
+```bash
+cd /var/www/clinq-test/backend        # then /var/www/clinq/backend for production
+node scripts/backfillChatPermissions.js             # report: who gets the grants, who is left for an operator
+node scripts/backfillChatPermissions.js --apply     # write
+node scripts/backfillChatPermissions.js             # report again: 0 to add
+```
+
+- **No restart needed.** Grants are read on every request, so the doctor's next
+  attempt to open the conversation works.
+- **Each write is conditional** on the list still being what the report read; a
+  change made in the console in between is kept. A second run writes nothing.
+- **Rows under "Left for an operator"** need a person: give that member Chat read
+  and Chat reply in the console if they should have them.
+
 ## Pointing the app at staging
 
 `API_BASE_URL` is a `--dart-define`, so no code change:
