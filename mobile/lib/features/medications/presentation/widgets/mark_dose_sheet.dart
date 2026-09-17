@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 
-import '../../../../core/theme/app_colors.dart';
-import '../../../../core/theme/app_spacing.dart';
+import '../../../../core/theme/tokens.dart';
 import '../../../../l10n/gen/app_localizations.dart';
+import '../../../shell/presentation/widgets/patient_kit.dart';
 
 class MarkDoseResult {
   const MarkDoseResult({required this.status, this.skipReason});
@@ -10,192 +10,120 @@ class MarkDoseResult {
   final String? skipReason;
 }
 
+/// Asks whether one dose was taken.
+///
+/// [detail] is the dose's own line — "8:30 PM · 1 tablet · After meal" — so a
+/// patient holding two strips answers for the right one.
 Future<MarkDoseResult?> showMarkDoseSheet(
   BuildContext context,
-  String medicationName,
-) {
+  String medicationName, {
+  String? detail,
+}) {
   return showModalBottomSheet<MarkDoseResult>(
     context: context,
     showDragHandle: true,
-    builder: (context) => _MarkDoseSheet(medicationName: medicationName),
+    isScrollControlled: true,
+    builder:
+        (context) => _MarkDoseSheet(medicationName: medicationName, detail: detail),
   );
 }
 
 class _MarkDoseSheet extends StatelessWidget {
-  const _MarkDoseSheet({required this.medicationName});
+  const _MarkDoseSheet({required this.medicationName, this.detail});
 
   final String medicationName;
+  final String? detail;
 
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
-    final scheme = Theme.of(context).colorScheme;
 
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(
-        AppSpacing.lg,
-        AppSpacing.sm,
-        AppSpacing.lg,
-        AppSpacing.lg,
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          // The medicine, with the pill mark beside it. The sheet used to open
-          // with a bare line of text and two buttons; on a phone held at arm's
-          // length that is easy to answer for the wrong medicine.
-          Row(
-            children: [
-              Container(
-                width: 44,
-                height: 44,
-                decoration: BoxDecoration(
-                  color: AppColors.accentSoftOn(context),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Icon(
-                  Icons.medication_rounded,
-                  size: 22,
-                  color: AppColors.accentOn(context),
-                ),
-              ),
-              const SizedBox(width: AppSpacing.md),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      medicationName,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.w800,
-                        height: 1.2,
-                      ),
-                    ),
-                    const SizedBox(height: 0),
-                    Text(
-                      'Did you take this dose?',
-                      style: TextStyle(
-                        fontSize: 14,
-                        color: scheme.onSurfaceVariant,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: AppSpacing.lg),
+    return SafeArea(
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.fromLTRB(T.s5, 0, T.s5, T.s5),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              l10n.ptDidYouTakeThisDose,
+              style: T.small.copyWith(color: T.inkMuted),
+            ),
+            const SizedBox(height: T.s1),
+            // The medicine, large. The sheet used to open on a bare line of
+            // text; at arm's length that is easy to answer for the wrong one.
+            Text(medicationName, style: T.title.copyWith(color: T.ink)),
+            if (detail != null && detail!.isNotEmpty)
+              Text(detail!, style: T.body.copyWith(color: T.inkMuted)),
+            const SizedBox(height: T.s5),
 
-          // Taken is the answer nearly every time, so it is the filled button
-          // and it comes first. Skipped is deliberately quieter — not hidden,
-          // because an honest "no" is what makes the adherence figure worth
-          // showing the doctor, but not weighted the same as the common case.
-          SizedBox(
-            height: 54,
-            child: FilledButton.icon(
-              style: FilledButton.styleFrom(
-                backgroundColor: AppColors.primary,
-                foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16),
-                ),
-              ),
+            // Taken is the answer nearly every time, so it is the filled
+            // button and it comes first. Skipped is deliberately quieter — not
+            // hidden, because an honest "no" is what makes the record worth
+            // showing the doctor.
+            PrimaryAction(
+              label: l10n.ptYesTookIt,
+              icon: Icons.check_rounded,
               onPressed:
                   () => Navigator.of(
                     context,
                   ).pop(const MarkDoseResult(status: 'taken')),
-              icon: const Icon(Icons.check_circle_rounded, size: 22),
-              label: Text(
-                l10n.medsMarkTaken,
-                style: const TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
             ),
-          ),
-          const SizedBox(height: AppSpacing.sm),
-          SizedBox(
-            height: 54,
-            child: OutlinedButton.icon(
-              style: OutlinedButton.styleFrom(
-                foregroundColor: AppColors.dangerOn(context),
-                side: BorderSide(
-                  color: AppColors.dangerOn(context).withValues(alpha: 0.4),
-                ),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16),
-                ),
-              ),
+            const SizedBox(height: T.s3),
+            SecondaryAction(
+              label: l10n.ptNoSkippedIt,
+              icon: Icons.close_rounded,
+              tone: T.ink,
               onPressed: () async {
                 final reason = await _pickSkipReason(context);
-                if (context.mounted) {
-                  Navigator.of(
-                    context,
-                  ).pop(MarkDoseResult(status: 'skipped', skipReason: reason));
-                }
-              },
-              icon: const Icon(Icons.cancel_outlined, size: 21),
-              label: Text(
-                l10n.medsMarkSkipped,
-                style: const TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ),
-          ),
-          const SizedBox(height: AppSpacing.md),
-          Row(
-            children: [
-              Icon(
-                Icons.lock_outline_rounded,
-                size: 14,
-                color: scheme.onSurfaceVariant,
-              ),
-              const SizedBox(width: 4),
-              Expanded(
-                child: Text(
-                  // Said plainly, because a patient who thinks a skip gets them
-                  // told off simply taps "taken" — and then the adherence
-                  // figure the doctor prescribes against is fiction.
-                  'Your answer helps your doctor. Skipping a dose is not a problem to hide.',
-                  style: TextStyle(
-                    fontSize: 12,
-                    height: 1.35,
-                    color: scheme.onSurfaceVariant,
+                if (reason == null || !context.mounted) return;
+                Navigator.of(context).pop(
+                  MarkDoseResult(
+                    status: 'skipped',
+                    skipReason: reason.isEmpty ? null : reason,
                   ),
-                ),
-              ),
-            ],
-          ),
-        ],
+                );
+              },
+            ),
+            const SizedBox(height: T.s4),
+            // Said plainly, because a patient who thinks a skip gets them told
+            // off simply taps "taken" — and then the record is fiction.
+            Text(
+              l10n.ptSkipHonestyNote,
+              style: T.small.copyWith(color: T.inkMuted),
+            ),
+          ],
+        ),
       ),
     );
   }
 }
 
+/// The reason for a skip, or '' for none. Null only when the dialog was
+/// dismissed, which leaves the dose unanswered.
+///
+/// The left-hand button used to say "Cancel" and recorded the skip anyway,
+/// without a reason. It now says what it does.
 Future<String?> _pickSkipReason(BuildContext context) async {
   final l10n = AppLocalizations.of(context);
+  // Not disposed here: the dialog's closing animation still draws the field
+  // after the future completes.
   final controller = TextEditingController();
   return showDialog<String>(
     context: context,
     builder:
         (ctx) => AlertDialog(
-          title: Text(l10n.medsSkipReasonTitle),
+          title: Text(l10n.medsSkipReasonTitle, style: T.title),
           content: TextField(
             controller: controller,
             autofocus: true,
             maxLines: 2,
+            textCapitalization: TextCapitalization.sentences,
           ),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(ctx, ''),
-              child: Text(l10n.commonCancel),
+              child: Text(l10n.ptNoReason),
             ),
             TextButton(
               onPressed: () => Navigator.pop(ctx, controller.text.trim()),

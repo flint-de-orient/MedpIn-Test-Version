@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../shared/providers/core_providers.dart';
 import '../../../shared/services/notification_service.dart';
+import '../../shell/presentation/load_stamps.dart';
 import '../data/medications_repository.dart';
 import '../domain/medication.dart';
 
@@ -22,9 +23,14 @@ final mealTimesProvider = FutureProvider.autoDispose<
 });
 
 final FutureProvider<TodaySchedule> todayScheduleProvider =
-    FutureProvider<TodaySchedule>(
-      (ref) => ref.watch(medicationsRepositoryProvider).getTodaySchedule(),
-    );
+    FutureProvider<TodaySchedule>((ref) async {
+      final today =
+          await ref.watch(medicationsRepositoryProvider).getTodaySchedule();
+      // When it arrived, so a later refresh that fails can say how old the
+      // doses on screen are. See LoadStamps.
+      LoadStamps.mark(LoadStamps.todaySchedule);
+      return today;
+    });
 
 final FutureProvider<MedicationAdherence> medicationAdherenceProvider =
     FutureProvider<MedicationAdherence>(
@@ -34,9 +40,12 @@ final FutureProvider<MedicationAdherence> medicationAdherenceProvider =
 /// The patient's medications. Fetched from the real API and reused both to list
 /// medicines and to build the reminder schedule.
 final FutureProvider<List<Medication>> medicationsListProvider =
-    FutureProvider<List<Medication>>(
-      (ref) => ref.watch(medicationsRepositoryProvider).getMedications(),
-    );
+    FutureProvider<List<Medication>>((ref) async {
+      final meds =
+          await ref.watch(medicationsRepositoryProvider).getMedications();
+      LoadStamps.mark(LoadStamps.medications);
+      return meds;
+    });
 
 /// Every medicine on the list, ended ones included — for "Stopped by you" and
 /// "Past medicines". Separate from [medicationsListProvider], which the
