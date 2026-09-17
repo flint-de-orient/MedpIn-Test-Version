@@ -72,10 +72,16 @@ describe('nothing reads the clinic brand out of the environment', () => {
     assert.deepEqual(offenders, [], `\n  ${offenders.join('\n  ')}\n`);
   });
 
-  test('and neither has a default that names anybody', async () => {
-    const { env } = await import('../src/config/env.js');
+  test('and neither has a default that names anybody', () => {
+    // The declared defaults, not this machine's values. A developer's .env may
+    // still carry the founding clinic's name for the one retired script that
+    // reads it, and nothing else reads it (the test above) — so the loaded
+    // value said something about the machine the suite ran on, not the code.
+    const src = readFileSync(new URL('../src/config/env.js', import.meta.url), 'utf8');
     for (const key of ['CLINIC_NAME', 'DOCTOR_DISPLAY_NAME']) {
-      assert.ok(!/dey|amit/i.test(env[key] ?? ''), `${key} still defaults to the founding clinic`);
+      const declared = src.match(new RegExp(`${key}: z\\.string\\(\\)\\.default\\('([^']*)'\\)`));
+      assert.ok(declared, `${key} is no longer declared where this test looks — re-check it`);
+      assert.ok(!/dey|amit/i.test(declared[1]), `${key} still defaults to the founding clinic`);
     }
   });
 
