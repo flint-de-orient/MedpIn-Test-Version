@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/capabilities/capabilities.dart';
+import '../../../core/network/api_exception.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/tokens.dart';
@@ -44,25 +45,28 @@ class DepartmentsScreen extends ConsumerWidget {
      * Reading a permission rather than a role: a practice manager who is not a
      * doctor may hold it, and a doctor normally does not.
      */
-    final mayManage = ref.watch(capabilitySetProvider).can(Perm.manageDepartment);
+    final mayManage = ref
+        .watch(capabilitySetProvider)
+        .can(Perm.manageDepartment);
 
     return Scaffold(
       backgroundColor: T.surface,
       appBar: AppBar(title: const Text('Departments')),
-      floatingActionButton: mayManage
-          ? FloatingActionButton.extended(
-              onPressed: () => _edit(context, ref, null),
-              icon: const Icon(Icons.add_rounded),
-              label: const Text('Add department'),
-            )
-          : null,
+      floatingActionButton:
+          mayManage
+              ? FloatingActionButton.extended(
+                onPressed: () => _edit(context, ref, null),
+                icon: const Icon(Icons.add_rounded),
+                label: const Text('Add department'),
+              )
+              : null,
       body: RefreshIndicator(
         onRefresh: () async => ref.refresh(departmentsProvider.future),
         child: async.when(
           loading: () => const Center(child: CircularProgressIndicator()),
-          error: (err, _) => _Failed(
-            onRetry: () => ref.invalidate(departmentsProvider),
-          ),
+          error:
+              (err, _) =>
+                  _Failed(onRetry: () => ref.invalidate(departmentsProvider)),
           data: (items) => _List(items: items, ref: ref, mayManage: mayManage),
         ),
       ),
@@ -82,7 +86,11 @@ Future<void> _edit(BuildContext context, WidgetRef ref, Department? existing) {
 }
 
 class _List extends StatelessWidget {
-  const _List({required this.items, required this.ref, required this.mayManage});
+  const _List({
+    required this.items,
+    required this.ref,
+    required this.mayManage,
+  });
 
   final List<Department> items;
   final WidgetRef ref;
@@ -93,10 +101,12 @@ class _List extends StatelessWidget {
     // Its own first, then the shared ones. A practice looking at this screen is
     // looking for what it added; the platform list is reference material and
     // belongs under it.
-    final mine = items.where((d) => !d.isShared).toList()
-      ..sort((a, b) => a.sortIndex.compareTo(b.sortIndex));
-    final shared = items.where((d) => d.isShared).toList()
-      ..sort((a, b) => a.name.compareTo(b.name));
+    final mine =
+        items.where((d) => !d.isShared).toList()
+          ..sort((a, b) => a.sortIndex.compareTo(b.sortIndex));
+    final shared =
+        items.where((d) => d.isShared).toList()
+          ..sort((a, b) => a.name.compareTo(b.name));
 
     return ListView(
       padding: const EdgeInsets.fromLTRB(
@@ -109,13 +119,14 @@ class _List extends StatelessWidget {
       children: [
         _Heading(
           title: 'This practice',
-          hint: mine.isEmpty
-              // Informative rather than noise: a practice with no departments
-              // of its own runs as one list, which is the right shape for a
-              // solo clinic and worth saying rather than showing a blank.
-              ? 'None yet. The practice runs as a single list, which is the '
-                  'right shape for a solo clinic.'
-              : null,
+          hint:
+              mine.isEmpty
+                  // Informative rather than noise: a practice with no departments
+                  // of its own runs as one list, which is the right shape for a
+                  // solo clinic and worth saying rather than showing a blank.
+                  ? 'None yet. The practice runs as a single list, which is the '
+                      'right shape for a solo clinic.'
+                  : null,
         ),
         for (final d in mine) ...[
           const SizedBox(height: AppSpacing.sm),
@@ -164,9 +175,17 @@ Future<void> _toggle(BuildContext context, WidgetRef ref, Department d) async {
       SnackBar(content: Text(d.isActive ? 'Retired' : 'Back in use')),
     );
   } catch (e) {
-    messenger.showSnackBar(SnackBar(content: Text('$e')));
+    // The server's sentence, never the exception's own toString: "Instance of
+    // ApiException" or a stack of fields is not something to show a doctor.
+    messenger.showSnackBar(SnackBar(content: Text(_reason(e))));
   }
 }
+
+/// Why a change did not go through, in words a reader can act on.
+String _reason(Object error) =>
+    error is ApiException && error.message.trim().isNotEmpty
+        ? error.message
+        : 'Could not save the change. Check the connection and try again.';
 
 class _Heading extends StatelessWidget {
   const _Heading({required this.title, this.hint});
@@ -225,8 +244,7 @@ class _Row extends StatelessWidget {
                     // Every status carries a word. A greyed row and nothing
                     // else is unreadable to somebody who cannot separate the
                     // two greys, and this clinic's readers are elderly.
-                    if (!d.isActive)
-                      _Tag(label: 'Retired', tone: T.inkMuted),
+                    if (!d.isActive) _Tag(label: 'Retired', tone: T.inkMuted),
                     if (!d.hasAssistant)
                       _Tag(label: 'No assistant', tone: T.inkMuted),
                     /*
@@ -244,9 +262,10 @@ class _Row extends StatelessWidget {
                      */
                     if (d.widgets.isNotEmpty)
                       _Tag(
-                        label: d.usingDefault
-                            ? '${d.widgets.length}-panel dashboard'
-                            : 'Custom dashboard · ${d.widgets.length} panels',
+                        label:
+                            d.usingDefault
+                                ? '${d.widgets.length}-panel dashboard'
+                                : 'Custom dashboard · ${d.widgets.length} panels',
                         tone: d.usingDefault ? T.inkMuted : T.primary,
                       ),
                     // Only on rows this practice owns.
@@ -258,10 +277,7 @@ class _Row extends StatelessWidget {
                     // something they cannot edit, printed nine times under
                     // names that already say the same thing.
                     if (!d.isShared)
-                      Text(
-                        d.key,
-                        style: T.small.copyWith(color: T.inkFaint),
-                      ),
+                      Text(d.key, style: T.small.copyWith(color: T.inkFaint)),
                   ],
                 ),
               ],
@@ -275,10 +291,12 @@ class _Row extends StatelessWidget {
               onTap: onRename!,
             ),
             _IconAction(
-              icon: d.isActive
-                  ? Icons.archive_outlined
-                  : Icons.unarchive_outlined,
-              label: d.isActive ? 'Retire ${d.name}' : 'Put ${d.name} back in use',
+              icon:
+                  d.isActive
+                      ? Icons.archive_outlined
+                      : Icons.unarchive_outlined,
+              label:
+                  d.isActive ? 'Retire ${d.name}' : 'Put ${d.name} back in use',
               onTap: onToggle!,
             ),
           ],
@@ -416,11 +434,14 @@ class _DepartmentSheetState extends ConsumerState<_DepartmentSheet> {
       if (widget.existing == null) {
         await repo.createDepartment(key: _key, name: _name.text.trim());
       } else {
-        await repo.updateDepartment(widget.existing!.id, name: _name.text.trim());
+        await repo.updateDepartment(
+          widget.existing!.id,
+          name: _name.text.trim(),
+        );
       }
       if (mounted) Navigator.of(context).pop();
     } catch (e) {
-      if (mounted) setState(() => _serverError = '$e');
+      if (mounted) setState(() => _serverError = _reason(e));
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -503,8 +524,8 @@ class _DepartmentSheetState extends ConsumerState<_DepartmentSheet> {
                   _saving
                       ? 'Saving…'
                       : adding
-                          ? 'Add department'
-                          : 'Save',
+                      ? 'Add department'
+                      : 'Save',
                 ),
               ),
               TextButton(

@@ -37,7 +37,10 @@ class PracticeScreen extends ConsumerWidget {
 
     return Scaffold(
       backgroundColor: T.surface,
-      appBar: AppBar(automaticallyImplyLeading: false, title: const Text('Practice')),
+      // With its back arrow. The screen is pushed from Profile, and the bar
+      // had been told not to offer one — so on a phone without a system back
+      // gesture there was no way out of it.
+      appBar: AppBar(title: const Text('Practice')),
       body: RefreshIndicator(
         onRefresh: () async => ref.refresh(practiceOverviewProvider.future),
         child: async.when(
@@ -46,8 +49,13 @@ class PracticeScreen extends ConsumerWidget {
           // app answers a failed load with an empty list, which tells a doctor
           // their practice has no locations rather than that the server is
           // unreachable.
-          error: (err, _) => _LoadFailed(onRetry: () => ref.invalidate(practiceOverviewProvider)),
-          data: (p) => p == null ? const _NoPracticeYet() : _Overview(practice: p),
+          error:
+              (err, _) => _LoadFailed(
+                onRetry: () => ref.invalidate(practiceOverviewProvider),
+              ),
+          data:
+              (p) =>
+                  p == null ? const _NoPracticeYet() : _Overview(practice: p),
         ),
       ),
     );
@@ -120,7 +128,10 @@ class _Masthead extends StatelessWidget {
               Text(practice.name, style: T.title.copyWith(color: T.ink)),
               if (practice.tagline != null) ...[
                 const SizedBox(height: T.s1),
-                Text(practice.tagline!, style: T.small.copyWith(color: T.inkMuted)),
+                Text(
+                  practice.tagline!,
+                  style: T.small.copyWith(color: T.inkMuted),
+                ),
               ],
               if (practice.registrationNo != null) ...[
                 const SizedBox(height: T.s2),
@@ -154,7 +165,11 @@ class _Readiness extends StatelessWidget {
     if (practice.isComplete) {
       return Row(
         children: [
-          const Icon(Icons.check_circle_outline_rounded, size: 18, color: T.success),
+          const Icon(
+            Icons.check_circle_outline_rounded,
+            size: 18,
+            color: T.success,
+          ),
           const SizedBox(width: T.s2),
           Expanded(
             child: Text(
@@ -221,7 +236,10 @@ class _Readiness extends StatelessWidget {
 
 /// Opens the letterhead sheet. Sheet rather than a pushed screen: the doctor is
 /// three taps into an admin corner and the work is four text fields.
-Future<void> _editDetails(BuildContext context, PracticeOverview practice) async {
+Future<void> _editDetails(
+  BuildContext context,
+  PracticeOverview practice,
+) async {
   final saved = await showModalBottomSheet<bool>(
     context: context,
     showDragHandle: true,
@@ -229,9 +247,9 @@ Future<void> _editDetails(BuildContext context, PracticeOverview practice) async
     builder: (_) => PracticeDetailsSheet(practice: practice),
   );
   if (saved == true && context.mounted) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Letterhead updated')),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('Letterhead updated')));
   }
 }
 
@@ -249,7 +267,10 @@ class _GapRow extends StatelessWidget {
           margin: const EdgeInsets.only(top: T.s2),
           width: 6,
           height: 6,
-          decoration: const BoxDecoration(color: T.danger, shape: BoxShape.circle),
+          decoration: const BoxDecoration(
+            color: T.danger,
+            shape: BoxShape.circle,
+          ),
         ),
         const SizedBox(width: T.s3),
         Expanded(
@@ -352,7 +373,9 @@ class _LocationRow extends StatelessWidget {
               children: [
                 Text(
                   location.name,
-                  style: T.body.copyWith(color: location.isActive ? T.ink : T.inkMuted),
+                  style: T.body.copyWith(
+                    color: location.isActive ? T.ink : T.inkMuted,
+                  ),
                 ),
                 const SizedBox(height: T.s1),
                 Text(detail, style: T.label.copyWith(color: T.inkMuted)),
@@ -541,7 +564,11 @@ class _Skeleton extends StatelessWidget {
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
-                children: [bar(180, 20), const SizedBox(height: T.s2), bar(120, 14)],
+                children: [
+                  bar(180, 20),
+                  const SizedBox(height: T.s2),
+                  bar(120, 14),
+                ],
               ),
             ),
           ],
@@ -568,7 +595,10 @@ class _LoadFailed extends StatelessWidget {
     return ListView(
       padding: const EdgeInsets.fromLTRB(T.s4, T.s12, T.s4, T.s4),
       children: [
-        Text('Could not load the practice', style: T.title.copyWith(color: T.ink)),
+        Text(
+          'Could not load the practice',
+          style: T.title.copyWith(color: T.ink),
+        ),
         const SizedBox(height: T.s2),
         Text(
           'The server did not answer. Your practice details are safe — this screen '
@@ -578,7 +608,10 @@ class _LoadFailed extends StatelessWidget {
         const SizedBox(height: T.s6),
         Align(
           alignment: Alignment.centerLeft,
-          child: FilledButton(onPressed: onRetry, child: const Text('Try again')),
+          child: FilledButton(
+            onPressed: onRetry,
+            child: const Text('Try again'),
+          ),
         ),
       ],
     );
