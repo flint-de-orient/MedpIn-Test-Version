@@ -34,6 +34,7 @@ import enrolmentRoutes from './enrolments.js';
 import recordRoutes from './records.js';
 import dieticianRoutes from './dietician.js';
 import feedbackRoutes from './feedback.js';
+import sharingRoutes from './sharing.js';
 import uploadRoutes from './uploads.js';
 
 const router = Router();
@@ -144,6 +145,9 @@ router.use('/enrolments', enrolmentRoutes);
 router.use('/records', recordRoutes);
 router.use('/dietician', dieticianRoutes);
 router.use('/feedback', feedbackRoutes);
+// Who can see a patient's record: the patient sharing, taking it back and
+// answering a practice's request, and a practice seeing what it was given.
+router.use('/sharing', sharingRoutes);
 // Prescribing aid: brand -> composition, for autocomplete and the strength check.
 router.use('/medicine-brands', medicineBrandRoutes);
 router.use('/uploads', uploadRoutes);

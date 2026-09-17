@@ -28,7 +28,30 @@ export const CONSENT_ACTION = Object.freeze({
   REQUESTED: 'requested',
   GRANTED: 'granted',
   REVOKED: 'revoked',
+
+  /*
+   * The patient's answer to the two questions asked once per consent:
+   * "share my own health logs with this clinic" and "share my earlier history
+   * with this clinic".
+   *
+   * Asked when a practice enrols them — at the desk, in the same step as the
+   * code, or in their own app afterwards. `sharing_given` when either answer
+   * was yes (and `grants` names what that created), `sharing_declined` when
+   * both were no. An answer is a consent decision like the three above, so it
+   * lives in the same log; it does not move the enrolment between states,
+   * which is why `latestFor` leaves it out.
+   */
+  SHARING_GIVEN: 'sharing_given',
+  SHARING_DECLINED: 'sharing_declined',
 });
+
+/// The actions that move an enrolment between pending, active and revoked —
+/// the ones its status is a projection of.
+export const RELATIONSHIP_ACTIONS = Object.freeze([
+  CONSENT_ACTION.REQUESTED,
+  CONSENT_ACTION.GRANTED,
+  CONSENT_ACTION.REVOKED,
+]);
 
 export const CONSENT_METHOD = Object.freeze({
   /// A code read back from the patient's own handset at the desk.
@@ -63,6 +86,45 @@ const consentEventSchema = new mongoose.Schema(
     /// Free-text reason, for a revocation the patient explained.
     note: { type: String, trim: true, maxlength: 500 },
 
+    /*
+     * What the desk typed when it asked, on a `requested` event.
+     *
+     * A desk registering a number that already has an account must not be
+     * shown anything about that account before its owner consents — not the
+     * name on it, not the other numbers it signs in with. So the waiting list
+     * is built from these, the desk's own words handed back, and never from
+     * the account.
+     *
+     * `requestedPhone` is also where the code went. It is always a number the
+     * account signs in with (that is how the account was found), and the
+     * confirmation checks the code against it rather than against whatever the
+     * account's primary number happens to be.
+     */
+    requestedName: { type: String, trim: true, maxlength: 120, default: null },
+    requestedPhone: { type: String, trim: true, maxlength: 20, default: null },
+
+    /// On a sharing answer: the `granted` event it answers. Unique, so one
+    /// consent is answered once however many times the button is pressed.
+    answers: { type: mongoose.Schema.Types.ObjectId, ref: 'ConsentEvent', default: null },
+
+    /// On a sharing answer: each question's answer, what was shared, and the
+    /// grants that carry it.
+    ownLogs: { type: Boolean, default: undefined },
+    history: { type: Boolean, default: undefined },
+    categories: { type: [String], default: undefined },
+    grants: { type: [{ type: mongoose.Schema.Types.ObjectId, ref: 'ShareGrant' }], default: undefined },
+
+    /*
+     * On a `granted` event: this is somebody coming back to a practice they
+     * had withdrawn from.
+     *
+     * The enrolment keeps its original `enrolledOn`, so the practice goes on
+     * reading its own history with them; this is where the new consent is
+     * recorded — its own event, its own date, marked for what it is — rather
+     * than by moving the enrolment's date.
+     */
+    reconsent: { type: Boolean, default: undefined },
+
     at: { type: Date, default: Date.now },
   },
   // No `updatedAt`: these do not change. A timestamp saying a consent record
@@ -72,6 +134,12 @@ const consentEventSchema = new mongoose.Schema(
 
 /// The consent history for one relationship, newest last.
 consentEventSchema.index({ enrollment: 1, at: 1 });
+
+/// One answer per consent. See `answers`.
+consentEventSchema.index(
+  { answers: 1 },
+  { unique: true, partialFilterExpression: { answers: { $type: 'objectId' } } },
+);
 
 /**
  * Append an event. The only way rows are written.
@@ -87,13 +155,48 @@ consentEventSchema.statics.record = function record({
   method,
   wording = null,
   note = null,
+  requestedName = null,
+  requestedPhone = null,
+  answers = null,
+  ownLogs = undefined,
+  history = undefined,
+  categories = undefined,
+  grants = undefined,
+  reconsent = undefined,
 }) {
-  return this.create({ enrollment, action, actor, method, wording, note, at: new Date() });
+  return this.create({
+    enrollment,
+    action,
+    actor,
+    method,
+    wording,
+    note,
+    requestedName,
+    requestedPhone,
+    answers,
+    ownLogs,
+    history,
+    categories,
+    grants,
+    reconsent,
+    at: new Date(),
+  });
 };
 
-/** The latest event for an enrollment — what the status is a projection of. */
+/**
+ * The latest event that moved the relationship — what the status is a
+ * projection of.
+ *
+ * Only those three actions. A history answer written after the consent is not
+ * a change of state, and counting it would make every enrolment whose patient
+ * answered the history question look as though its status and its log
+ * disagreed.
+ */
 consentEventSchema.statics.latestFor = function latestFor(enrollmentId) {
-  return this.findOne({ enrollment: enrollmentId }).sort({ at: -1 });
+  return this.findOne({ enrollment: enrollmentId, action: { $in: RELATIONSHIP_ACTIONS } }).sort({
+    at: -1,
+    _id: -1,
+  });
 };
 
 consentEventSchema.methods.toPublic = function toPublic() {

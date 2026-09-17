@@ -7,8 +7,10 @@ import { asyncHandler, forbidden, notFound } from '../middleware/errors.js';
 import { audit } from '../middleware/audit.js';
 import { Enrollment } from '../models/Enrollment.js';
 import { Patient } from '../models/Patient.js';
+import { ConsentEvent, CONSENT_ACTION } from '../models/ConsentEvent.js';
 import { confirmEnrolment } from '../services/enrolByPhone.js';
 import { revokeEnrolment, consentHistory, practicesFor } from '../services/enrollments.js';
+import { sharedWithPractice } from '../services/sharing.js';
 import { loginMayAccess } from '../services/patientsForLogin.js';
 import { practiceOf } from '../middleware/practiceScope.js';
 
@@ -46,8 +48,17 @@ router.use(requireAuth);
  * "I added one patient but it did not show any patient" is what that looks
  * like from the counter.
  *
- * Nothing clinical is exposed. A name, a number and a date: what the desk
- * typed in themselves, handed back so they can finish what they started.
+ * ---- Only what the desk typed ----------------------------------------------
+ *
+ * This said "a name, a number and a date: what the desk typed", and returned
+ * the name and primary number stored on the *account*, and its id. For a number
+ * that already belonged to somebody that is exactly the account's identity,
+ * handed to a practice the owner has not agreed to — and for a mistyped number,
+ * a stranger's name on the desk's screen.
+ *
+ * So the name and number now come from the request the desk made, and nothing
+ * comes from the account until its owner reads back the code. A request from
+ * before the desk's words were kept has none to show, and says so.
  */
 router.get(
   '/pending',
@@ -62,22 +73,33 @@ router.get(
     const rows = await Enrollment.find({ practice: practiceId, status: 'pending' })
       .sort({ createdAt: -1 })
       .limit(50)
-      .populate({ path: 'patient', select: 'name login', populate: { path: 'login', select: 'phone' } })
+      .select('_id createdAt')
       .lean();
 
+    const requests = await ConsentEvent.find({
+      enrollment: { $in: rows.map((r) => r._id) },
+      action: CONSENT_ACTION.REQUESTED,
+    })
+      .sort({ at: 1, _id: 1 })
+      .select('enrollment requestedName requestedPhone at')
+      .lean();
+    // The latest request for each: the words the desk used most recently, and
+    // the number the live code went to.
+    const latest = new Map(requests.map((e) => [String(e.enrollment), e]));
+
     res.json({
-      items: rows
-        // A row whose patient has since gone is a row nobody can act on.
-        .filter((r) => r.patient)
-        .map((r) => ({
+      items: rows.map((r) => {
+        const asked = latest.get(String(r._id));
+        return {
           id: String(r._id),
-          patientId: String(r.patient._id),
-          name: r.patient.name ?? 'Unknown patient',
+          name: asked?.requestedName ?? null,
           // The number the code went to, so the desk can tell two people with
           // the same name apart and check they typed it correctly.
-          phone: r.patient.login?.phone ?? null,
+          phone: asked?.requestedPhone ?? null,
           registeredOn: r.createdAt,
-        })),
+          lastAskedOn: asked?.at ?? r.createdAt,
+        };
+      }),
     });
   }),
 );
@@ -92,15 +114,46 @@ router.get(
 router.post(
   '/:id/confirm',
   requireClinician,
-  validate({ body: z.object({ code: z.string().trim().regex(/^\d{4,8}$/) }) }),
+  validate({
+    body: z.object({
+      code: z.string().trim().regex(/^\d{4,8}$/),
+      /*
+       * The patient's answers to the two questions asked at enrolment, when
+       * the desk asked them at the counter: may this clinic see their own
+       * health logs, and their earlier history. Absent, the patient is asked
+       * in their own app. Sent with the code, never on its own.
+       */
+      share: z.object({ ownLogs: z.boolean(), history: z.boolean() }).optional(),
+    }),
+  }),
   audit('update', 'Enrollment'),
   asyncHandler(async (req, res) => {
+    // Only the practice that asked may finish asking. With no practice there
+    // is nothing this caller could have asked for.
+    const practiceId = await practiceOf(req);
+    if (!practiceId) throw notFound('That enrolment was not found');
+
     const enrollment = await confirmEnrolment({
       enrollmentId: req.params.id,
       code: req.body.code,
       confirmedBy: req.user._id,
+      confirmer: req.user,
+      practiceId,
+      share: req.body.share,
     });
-    res.json({ enrollment: enrollment.toPublic() });
+    req.auditResourceId = enrollment._id;
+
+    // The patient has said yes, so the practice may now know who it has
+    // enrolled — and the desk needs the record to open. Before this moment the
+    // desk has only ever been shown what it typed itself.
+    const current = enrollment.isCurrent();
+    const patient = current ? await Patient.findById(enrollment.patient).select('name').lean() : null;
+    res.json({
+      enrollment: enrollment.toPublic(),
+      patient: patient ? { id: String(patient._id), name: patient.name } : null,
+      // And what it is not being shown, said at the moment it starts reading.
+      sharing: current ? await sharedWithPractice(enrollment.patient, practiceId, req.user._id) : null,
+    });
   }),
 );
 
@@ -200,15 +253,20 @@ async function patientIdsFor(loginId) {
   return ids;
 }
 
-/** The practice named on the enrolment, or the patient it is about. */
+/**
+ * The practice named on the enrolment, or the patient it is about.
+ *
+ * "Unknown practice permits" was the rule here, and every patient is a caller
+ * with no practice — so any signed-in patient could read the consent trail of
+ * any enrolment on the platform by its id: who asked, which desk account, and
+ * the reason somebody gave for withdrawing. No practice is nobody's practice.
+ */
 async function assertMayTouch(req, enrollment) {
   const mine = await patientIdsFor(req.user._id);
   if (mine.some((id) => String(id) === String(enrollment.patient))) return;
 
   const practiceId = await practiceOf(req);
-  // Unknown practice permits, for the same reason it does everywhere else:
-  // a deployment that has not migrated has no memberships to check against.
-  if (!practiceId || String(practiceId) === String(enrollment.practice)) return;
+  if (practiceId && String(practiceId) === String(enrollment.practice)) return;
 
   throw forbidden('That enrolment belongs to another practice.');
 }

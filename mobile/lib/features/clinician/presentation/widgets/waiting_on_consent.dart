@@ -4,11 +4,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_spacing.dart';
 import '../../../../core/theme/tokens.dart';
-import '../../../../shared/widgets/error_view.dart';
-import '../../../../shared/widgets/otp_field.dart';
-import '../../data/clinician_repository.dart';
 import '../../domain/patient_registration.dart';
 import '../clinician_providers.dart';
+import 'consent_code_dialog.dart';
 
 /// Who the practice has registered and is still waiting on.
 ///
@@ -120,11 +118,15 @@ class WaitingOnConsent extends ConsumerWidget {
             for (final person in waiting)
               ListTile(
                 contentPadding: EdgeInsets.zero,
-                title: Text(person.name),
+                // What the desk typed, never the name on the account: the
+                // account's owner has not agreed to this practice knowing it.
+                title: Text(person.label),
                 // The number the code went to. Two people with one name is the
                 // ordinary case at a counter, and a mistyped digit is the
                 // commonest reason no code ever arrived.
-                subtitle: Text(person.phone ?? 'no number on file'),
+                subtitle: Text(
+                  person.name == null ? 'Name not recorded when this was asked' : person.phone ?? 'no number on file',
+                ),
                 trailing: FilledButton.tonal(
                   onPressed: () async {
                     Navigator.of(sheet).pop();
@@ -144,90 +146,25 @@ class WaitingOnConsent extends ConsumerWidget {
     WidgetRef ref,
     PendingEnrolment person,
   ) async {
-    final code = TextEditingController();
-    var busy = false;
-    String? error;
-
-    final confirmed = await showDialog<bool>(
-      context: context,
-      barrierDismissible: false,
-      builder: (dialog) => StatefulBuilder(
-        builder: (dialog, setLocal) {
-          Future<void> submit() async {
-            if (code.text.trim().length < 4) return;
-            setLocal(() {
-              busy = true;
-              error = null;
-            });
-            try {
-              await ref
-                  .read(clinicianRepositoryProvider)
-                  .confirmEnrolment(
-                    enrollmentId: person.id,
-                    code: code.text.trim(),
-                  );
-              if (dialog.mounted) Navigator.of(dialog).pop(true);
-            } catch (e) {
-              setLocal(() {
-                busy = false;
-                error = ErrorView.messageFor(dialog, e);
-              });
-            }
-          }
-
-          final sentTo = person.phone ?? 'their phone';
-
-          return AlertDialog(
-            title: Text(person.name),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Ask them to read out the code sent to $sentTo.',
-                  style: Theme.of(dialog).textTheme.bodyMedium,
-                ),
-                const SizedBox(height: AppSpacing.md),
-                OtpCodeField(
-                  controller: code,
-                  enabled: !busy,
-                  hasError: error != null,
-                  onCompleted: (_) => submit(),
-                ),
-                if (error != null) ...[
-                  const SizedBox(height: AppSpacing.sm),
-                  Text(
-                    error!,
-                    style: TextStyle(color: AppColors.dangerOn(dialog)),
-                  ),
-                ],
-              ],
-            ),
-            actions: [
-              TextButton(
-                onPressed: busy ? null : () => Navigator.of(dialog).pop(false),
-                child: const Text('Not now'),
-              ),
-              FilledButton(
-                onPressed: busy ? null : submit,
-                child: Text(busy ? 'Checking…' : 'Confirm'),
-              ),
-            ],
-          );
-        },
-      ),
+    final sentTo = person.phone ?? 'their phone';
+    final confirmation = await showConsentCodeDialog(
+      context,
+      enrollmentId: person.id,
+      title: person.label,
+      message: 'Ask them to read out the code sent to $sentTo.',
     );
-
-    code.dispose();
-    if (confirmed != true) return;
+    if (confirmation == null) return;
 
     // Both lists move: one person leaves the waiting list and joins the roll.
     ref.invalidate(pendingEnrolmentsProvider);
     ref.invalidate(patientsProvider);
 
     if (context.mounted) {
+      // The patient's own name only now, with their agreement — and what the
+      // practice will not see.
+      final who = confirmation.patientName ?? person.label;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('${person.name} is enrolled')),
+        SnackBar(content: Text('$who is enrolled. ${confirmation.sharingSummary}')),
       );
     }
   }

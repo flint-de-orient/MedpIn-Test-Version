@@ -24,6 +24,7 @@ import '../data/clinician_repository.dart';
 import '../domain/patient_summary.dart';
 import 'clinician_providers.dart';
 import 'widgets/panel_ui.dart';
+import 'widgets/sharing_notice.dart';
 import 'patient_detail_screen.dart' show PatientRecordSections;
 import '../../medications/domain/strength.dart';
 import '../../../shared/widgets/strength_field.dart';
@@ -385,6 +386,10 @@ class _PatientProfileScreenState extends ConsumerState<PatientProfileScreen> {
                 children: [
                   _ProfileHeader(patient: p),
                   const SizedBox(height: AppSpacing.lg),
+
+                  // What the patient has not shared with this practice, said
+                  // before the record below can be read as the whole of it.
+                  SharingNotice(patientId: widget.patientId),
 
                   // The read side of the record — health metrics, the trend graph,
                   // HbA1c history, uploaded reports, alerts and the dietician

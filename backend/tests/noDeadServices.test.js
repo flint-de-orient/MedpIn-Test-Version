@@ -43,10 +43,15 @@ function walk(dir) {
  */
 const EXEMPT = new Map([
   [
-    'models/ShareGrant.js',
-    'Sharing between practices and break-glass are fixed as shape and ' +
-      'deliberately unbuilt — the decision is open, and the models exist so it ' +
-      'can be answered later without unpicking anything around them.',
+    /*
+     * Was `models/ShareGrant.js`, which held break-glass beside the grant. The
+     * grant is built now and has callers to find, so break-glass moved to its
+     * own file and only it is excused.
+     */
+    'models/BreakGlassAccess.js',
+    'Break-glass — a doctor who is not the patient’s, in an emergency — is fixed ' +
+      'as shape and deliberately unbuilt: the workflow has not been walked through, ' +
+      'and the model exists so it can be added without unpicking anything around it.',
   ],
 ]);
 

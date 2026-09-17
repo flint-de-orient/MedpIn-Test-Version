@@ -333,27 +333,77 @@ second run changes nothing.
 Before that change, `POST /doctor/patients` with a number MedPin had not seen
 made an account and no enrolment. Every list scoped to a practice's enrolled
 patients left those people out, so the desk that had just added somebody could
-not find them. This enrols each at the practice whose desk added them, dated
-from when the account was made, with a consent event saying how it came to be:
+not find them.
+
+**This is no longer a bulk backfill.** The script used to enrol every patient it
+matched, ACTIVE, in one `--apply`. Patients are now enrolled one at a time, with
+their consent (C8, §26), so the script only reports — it has no write path and
+`--apply` does nothing but say so:
 
 ```bash
 cd /var/www/clinq-staging/backend     # then /var/www/clinq/backend for production
-node scripts/backfillDeskRegistrations.js                                    # report
-mongodump --db medpin_staging --collection enrollments --out ~/dumps/desk-before-backfill
-mongodump --db medpin_staging --collection consentevents --out ~/dumps/desk-before-backfill
-node scripts/backfillDeskRegistrations.js --apply
+node scripts/backfillDeskRegistrations.js                                    # report only
 ```
 
-**Read the report before applying.** A patient with no enrolment anywhere is
-either one of these or a self sign-up, and a self sign-up is unaffiliated by
-decision — enrolling one hands a stranger's record to a practice. The two are
-told apart by the desk route's audit row, matched to the account by time
-because those rows did not record the account's id. Anything the script cannot
-match to exactly one row is listed as skipped and left for a person: that list
-is the part worth reading, and the right answer for an ambiguous row is to
-enrol that patient from the app, with their code, rather than by script.
+The report lists, per practice, each patient its desk added and cannot see,
+with the number they were registered under. Hand each practice its list. The
+desk registers each person again from the app: the number already has an
+account, so the patient is texted a code and is enrolled when they read it back
+— and is then asked, once, in their own app, whether that practice may see
+their earlier records. Rows the script cannot match to one practice are listed
+as unresolved; ask the practices, and enrol through the same route.
 
-A second run enrols nobody. The rollback is the dump above.
+If this ran with `--apply` on a deployment before C8, the enrolments it wrote
+stand — nothing here removes them.
+
+### Once, after deploying patient-controlled sharing and feedback routing (C8)
+
+Feedback used to store the patient and nothing else, and every practice that
+patient was enrolled at read all of it — about any clinic, and about the app.
+New feedback records where it went: one practice (and the enrolment it went
+through), or MedPin. Nothing on the old rows says which clinic they were about,
+so they are marked `legacy_unattributed` and stay private to the patient who
+wrote them. Every inbox already ignores them, so this changes what the data
+says, not what anybody sees:
+
+```bash
+cd /var/www/clinq-staging/backend     # then /var/www/clinq/backend for production
+mongodump --db medpin_staging --collection feedbacks --out ~/dumps/feedback-before-routing   # 1. back up
+node scripts/backfillFeedbackRouting.js                                                       # 2. dry run
+mongosh --quiet --eval 'db.getSiblingDB("medpin_staging").feedbacks.countDocuments({ origin: { $exists: false } })'  # 3. matches the report
+node scripts/backfillFeedbackRouting.js --apply                                               # 4. apply
+node scripts/backfillFeedbackRouting.js                                                       # 5. verify: 0 rows
+```
+
+- **Tell the live practice before deploying.** Old feedback leaves every
+  practice's inbox with this release — it was never attributable to one
+  practice, and could not stay in a list that now means "written to us". The
+  patients who wrote it still see it in the app, marked private.
+- Nothing is deleted; the old practice-wide "reviewed" mark stays on the rows
+  that have it. A second run changes nothing. The rollback is the dump above.
+- Nothing to run for sharing. `ShareGrant` had no rows (nothing wrote to it), the
+  new consent-log fields are optional, and the new unique indexes (one answer
+  per consent, one open request per patient per practice, the idempotency keys)
+  build themselves at startup over collections that cannot already break them.
+- **Nobody's sharing is answered for them.** The two questions — "share my own
+  health logs", "share my earlier history" — are asked once per desk consent.
+  A patient a desk enrolled before this release (their enrolment has a consent
+  event of method `otp_desk`) finds them waiting in the app; one the migration
+  enrolled (no such event) is not asked, and can share from "Who can see my
+  records?". Until somebody answers, nothing is shared beyond what the
+  enrolment gives. There is no script that answers for anybody.
+- **Admin console**: platform feedback — about the app, and from patients no
+  practice has taken on — is in the console at Platform → Feedback (`/feedback/`,
+  reading `GET /api/v1/admin/feedback`), without the patient's identity. Deploy
+  the console with the API, or that feedback has nowhere to be read.
+- **Tell the practices** that patients' own logs and earlier history are now
+  asked for at the counter with the code ("The patient answered now"), or in the
+  patient's app, and that a patient record shows what has not been shared.
+- **The app**: builds from before this keep sending feedback (a patient with
+  one practice is routed to it; with two, the old form is told to choose, which
+  it cannot, and says so) and keep working at the desk — an existing number
+  now always asks for the patient's code, and the older build opens the patient
+  list afterwards rather than the record.
 
 ### Once, after deploying per-practice emergency numbers
 

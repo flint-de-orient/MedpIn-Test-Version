@@ -1,6 +1,7 @@
 import { Enrollment, ENROLLMENT_STATUS } from '../models/Enrollment.js';
 import { ConsentEvent, CONSENT_ACTION, CONSENT_METHOD } from '../models/ConsentEvent.js';
 import { notFound } from '../middleware/errors.js';
+import { endSharingWithEnrolment } from './sharing.js';
 
 /**
  * Which practices a patient belongs to, and what each may see.
@@ -154,7 +155,46 @@ export async function revokeEnrolment({ enrollmentId, actor = null, inApp = true
     note,
   });
 
+  // What the patient shared with this practice ends with the relationship it
+  // was shared under, so coming back later asks them again.
+  await endSharingWithEnrolment({ enrollmentId: enrollment._id, actor });
+
   return enrollment;
+}
+
+/**
+ * Whether this enrolment has ever been active — the question a returning
+ * patient's consent turns on.
+ *
+ * ---- Why it matters -------------------------------------------------------
+ *
+ * Reactivating keeps the original `enrolledOn`, so the practice goes on
+ * reading the history of its own relationship with the patient rather than
+ * losing everything it recorded before the gap. A request that was never
+ * answered, withdrawn and then asked again is not a return: nothing was ever
+ * given, and the window opens at the consent like any first one.
+ *
+ * ---- How it is told, from the log alone -----------------------------------
+ *
+ *   - any `granted` event: it was active.
+ *   - withdrawn with no request before the withdrawal: it was active — a row
+ *     the migration or the old desk path wrote active before consent was
+ *     logged, which is the only way a withdrawal can precede every request.
+ *   - otherwise it was only ever asked for.
+ */
+export async function wasActiveBefore(enrollmentId) {
+  const events = await ConsentEvent.find({
+    enrollment: enrollmentId,
+    action: { $in: [CONSENT_ACTION.GRANTED, CONSENT_ACTION.REQUESTED, CONSENT_ACTION.REVOKED] },
+  })
+    .sort({ at: 1, _id: 1 })
+    .select('action')
+    .lean();
+
+  if (events.some((e) => e.action === CONSENT_ACTION.GRANTED)) return true;
+  const firstWithdrawal = events.findIndex((e) => e.action === CONSENT_ACTION.REVOKED);
+  if (firstWithdrawal === -1) return false;
+  return !events.slice(0, firstWithdrawal).some((e) => e.action === CONSENT_ACTION.REQUESTED);
 }
 
 /**

@@ -6,6 +6,7 @@ import { z } from 'zod';
 import { requireAdmin } from '../middleware/requireAdmin.js';
 import adminBillingRoutes from './adminBilling.js';
 import adminApplicationRoutes from './adminApplications.js';
+import adminFeedbackRoutes from './adminFeedback.js';
 import { validate, q } from '../middleware/validate.js';
 import { asyncHandler, unauthorized, notFound, badRequest, conflict } from '../middleware/errors.js';
 import { PlatformAdmin } from '../models/PlatformAdmin.js';
@@ -466,6 +467,10 @@ router.use(requireAdmin);
  * added to that file later.
  */
 router.use('/billing', adminBillingRoutes);
+
+// Feedback no practice reads — about the app, or from somebody no practice has
+// taken on — nested for the same reason, and without the patient's identity.
+router.use('/feedback', adminFeedbackRoutes);
 
 /*
  * The self-registration queue, nested for exactly the same reason.

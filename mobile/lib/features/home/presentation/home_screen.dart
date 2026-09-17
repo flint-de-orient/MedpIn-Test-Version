@@ -20,6 +20,7 @@ import '../../glucose/presentation/log_glucose_sheet.dart';
 import '../../labtests/presentation/lab_tests_providers.dart';
 import '../../medications/domain/medication.dart';
 import '../../medications/presentation/medications_providers.dart';
+import '../../sharing/presentation/widgets/sharing_question_card.dart';
 import '../domain/care_summary.dart';
 import 'home_providers.dart';
 import 'widgets/appointments_section.dart';
@@ -160,6 +161,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                     // had already swiped away.
                     const SizedBox(height: T.s8),
                     const AppointmentsSection(),
+
+                    // A clinic connected to this record is waiting on the
+                    // patient's answer about what else it may see. Nothing
+                    // is drawn when nothing is waiting.
+                    const SharingQuestionsBanner(),
 
                     // Whose Home this is. Only rendered when the phone carries
                     // more than one person — a switcher above a single name is

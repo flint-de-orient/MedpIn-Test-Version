@@ -19,6 +19,7 @@ import '../../../shared/providers/preferences_provider.dart';
 import '../../../shared/widgets/profile_photo_header.dart';
 import '../../../shared/data/care_contact.dart';
 import '../../auth/presentation/auth_controller.dart';
+import '../../sharing/data/sharing_repository.dart';
 import 'widgets/profile_section.dart';
 import 'widgets/theme_selector.dart';
 import '../../../shared/providers/theme_provider.dart';
@@ -421,8 +422,20 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                     ProfileRow(
                       icon: Icons.biotech_outlined,
                       title: 'My tests & reports',
-                      showDivider: false,
                       onTap: () => context.push('/profile/tests'),
+                    ),
+                    // Which clinics can see this record and why, what else has
+                    // been shared with them, and the history of who looked.
+                    ProfileRow(
+                      icon: Icons.lock_person_outlined,
+                      title: 'Who can see my records?',
+                      value: switch (ref.watch(sharingQuestionsProvider).valueOrNull?.length ?? 0) {
+                        0 => null,
+                        1 => '1 to answer',
+                        final n => '$n to answer',
+                      },
+                      showDivider: false,
+                      onTap: () => context.push('/profile/sharing'),
                     ),
                   ],
                 ),

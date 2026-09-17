@@ -1,11 +1,29 @@
 /**
- * Enrols the patients a desk added before a new number was given an enrolment.
+ * Lists the patients a desk added before a new number was given an enrolment,
+ * so each can be enrolled one at a time — with their consent — rather than in
+ * bulk.
  *
  * Until the change that came with this script, `POST /doctor/patients` made an
  * account and a profile for a number MedPin had not seen, and no enrolment. So
  * every list scoped to a practice's enrolled patients left them out, and the
- * desk that had just added somebody could not find them. This finds them and
- * enrols each at the practice whose desk added them.
+ * desk that had just added somebody could not find them.
+ *
+ * ---- Why it no longer writes -------------------------------------------------
+ *
+ * It used to enrol every patient it matched, ACTIVE, in one run. That is a bulk
+ * backfill of real patients into practices, decided by matching audit rows to
+ * accounts by time, and the specification rules it out: enrolment is one
+ * patient at a time, approved. A wrong match here would hand a stranger's record
+ * to a practice with nobody having said yes — and "the desk made the account"
+ * is not the same sentence as "the patient agreed to this practice", least of
+ * all for an account that has been used on its own since.
+ *
+ * So `--apply` is gone. The report is still worth having: it tells each
+ * practice exactly who it registered and cannot see. The desk registers each
+ * one again from the app; the number already has an account, so the patient is
+ * texted a code and the enrolment exists when they read it back. The history
+ * from before is then theirs to share or not, through the question the app asks
+ * them once.
  *
  * ---- Which patients ------------------------------------------------------
  *
@@ -19,19 +37,11 @@
  * Those rows did not record the account's id, so the two are matched by time.
  * The row is written as the response finishes, moments after the account is
  * made. A patient with exactly one such row within MATCH_WINDOW_MS of being
- * made, where that row could be nobody else, is matched. Anything else is
- * reported and left for a person: a wrong match gives somebody's record to the
- * wrong practice. Rows written since the change carry the account's id.
+ * made, where that row could be nobody else, is listed against that practice.
+ * Anything else is listed as unresolved. Rows written since the change carry
+ * the account's id.
  *
- * ---- Which practice, and from when -----------------------------------------
- *
- * The practice the member of staff belonged to at the time; failing that, the
- * only practice they have ever belonged to. The enrolment is ACTIVE and dated
- * from when the account was made, so the practice keeps everything recorded
- * since, and a consent event says how it came to be.
- *
- *   node scripts/backfillDeskRegistrations.js           # report
- *   node scripts/backfillDeskRegistrations.js --apply   # write
+ *   node scripts/backfillDeskRegistrations.js           # report; writes nothing, ever
  *
  * It reads `.env` from the directory it runs in, and that decides the database:
  * run it from the deployment's own `backend/`.
@@ -40,25 +50,24 @@ import { pathToFileURL } from 'node:url';
 
 import { connectDb, disconnectDb } from '../src/config/db.js';
 import { User, ROLES, CLINICIAN_ROLES } from '../src/models/User.js';
-import { Patient, RELATIONSHIP } from '../src/models/Patient.js';
 import { PatientProfile } from '../src/models/PatientProfile.js';
-import { Enrollment, ENROLLMENT_STATUS } from '../src/models/Enrollment.js';
+import { Enrollment } from '../src/models/Enrollment.js';
 import { Membership } from '../src/models/Membership.js';
 import { Practice } from '../src/models/Practice.js';
 import { AuditLog } from '../src/models/AuditLog.js';
-import { ConsentEvent, CONSENT_ACTION, CONSENT_METHOD } from '../src/models/ConsentEvent.js';
 
 /** How long after an account is made its registration's audit row may be written. */
 export const MATCH_WINDOW_MS = 3000;
 
 /**
- * Who would be enrolled where, without writing anything.
+ * Who each practice registered and cannot see, without writing anything.
  *
  * @returns {Promise<{toEnrol: object[], skipped: object[], unmatched: number}>}
+ *   `toEnrol` is the list for each desk to register again, one at a time.
  */
 export async function planDeskRegistrations({ windowMs = MATCH_WINDOW_MS } = {}) {
   const enrolled = new Set((await Enrollment.distinct('patient')).map(String));
-  const orphans = (await User.find({ role: ROLES.PATIENT }).select('_id name createdAt').lean()).filter(
+  const orphans = (await User.find({ role: ROLES.PATIENT }).select('_id name phone createdAt').lean()).filter(
     (u) => !enrolled.has(String(u._id)),
   );
 
@@ -127,9 +136,10 @@ export async function planDeskRegistrations({ windowMs = MATCH_WINDOW_MS } = {})
     toEnrol.push({
       patientId: o._id,
       name: o.name,
+      phone: o.phone ?? null,
       practiceId,
-      enrolledBy: row.actor ?? null,
-      enrolledOn: o.createdAt,
+      addedBy: row.actor ?? null,
+      addedOn: o.createdAt,
       primaryDoctor: doctorHere ? profile.assignedDoctor : null,
     });
   }
@@ -159,63 +169,16 @@ async function practiceOfActorAt(actor, at) {
   return ever.length === 1 ? ever[0] : null;
 }
 
-/**
- * Write the plan. Idempotent: an enrolment that already exists is left alone.
- *
- * @returns {Promise<number>} enrolments written
- */
-export async function applyDeskRegistrations(plan) {
-  let written = 0;
-  for (const e of plan.toEnrol) {
-    const login = await User.findById(e.patientId).select('name dateOfBirth gender').lean();
-    if (!login) continue;
-
-    // The patient row the enrolment points at. A backfilled Patient shares its
-    // login's id, which is why nothing else pointing at the patient moves.
-    await Patient.updateOne(
-      { _id: login._id },
-      {
-        $setOnInsert: {
-          login: login._id,
-          name: login.name,
-          dateOfBirth: login.dateOfBirth ?? null,
-          gender: login.gender ?? 'undisclosed',
-          relationship: RELATIONSHIP.SELF,
-        },
-      },
-      { upsert: true },
-    );
-
-    const result = await Enrollment.updateOne(
-      { patient: login._id, practice: e.practiceId },
-      {
-        $setOnInsert: {
-          status: ENROLLMENT_STATUS.ACTIVE,
-          enrolledOn: e.enrolledOn,
-          enrolledBy: e.enrolledBy ?? null,
-          primaryDoctor: e.primaryDoctor ?? null,
-          revokedAt: null,
-          revokedBy: null,
-        },
-      },
-      { upsert: true },
-    );
-    if (!result.upsertedId) continue;
-
-    await ConsentEvent.record({
-      enrollment: result.upsertedId,
-      action: CONSENT_ACTION.GRANTED,
-      actor: e.enrolledBy ?? null,
-      method: CONSENT_METHOD.MIGRATION,
-      note: 'Registered at this practice’s desk before new numbers were enrolled; enrolled by backfillDeskRegistrations',
-    });
-    written += 1;
-  }
-  return written;
-}
-
 async function main(argv) {
-  const apply = argv.includes('--apply');
+  if (argv.includes('--apply')) {
+    // Said, rather than silently ignored: somebody following an old runbook
+    // should learn why nothing happened.
+    console.log(
+      '\n--apply no longer exists. Patients are not enrolled in bulk: each desk registers its\n' +
+        'patients again from the app, and each patient reads back their own code. The list\n' +
+        'below is who to register.\n',
+    );
+  }
   await connectDb();
   try {
     const plan = await planDeskRegistrations();
@@ -225,22 +188,16 @@ async function main(argv) {
       ),
     );
 
-    console.log(`\n${apply ? 'WRITING' : 'DRY RUN — nothing will be written'}\n`);
-    console.log(`  ${plan.toEnrol.length} patient(s) to enrol, ACTIVE, from the day they were added:`);
+    console.log('\nREPORT — nothing is written\n');
+    console.log(`  ${plan.toEnrol.length} patient(s) a desk added and its practice cannot see.`);
+    console.log('  Register each again from that practice’s app; the patient reads back a code:');
     for (const e of plan.toEnrol) {
-      const since = new Date(e.enrolledOn).toISOString().slice(0, 10);
-      console.log(`    ${e.name} → ${names.get(String(e.practiceId)) ?? e.practiceId}, from ${since}`);
+      const since = new Date(e.addedOn).toISOString().slice(0, 10);
+      console.log(`    ${names.get(String(e.practiceId)) ?? e.practiceId}: ${e.name} (${e.phone ?? 'no number'}), added ${since}`);
     }
-    console.log(`  ${plan.skipped.length} left for a person to decide:`);
+    console.log(`  ${plan.skipped.length} that could not be matched to one practice — ask the practices:`);
     for (const s of plan.skipped) console.log(`    ${s.name} (${s.patientId}): ${s.reason}`);
-    console.log(`  ${plan.unmatched} patient(s) with no enrolment and no desk registration (self sign-ups): left alone`);
-
-    if (!apply) {
-      console.log('\nRe-run with --apply.\n');
-      return;
-    }
-    const written = await applyDeskRegistrations(plan);
-    console.log(`\n  enrolled ${written} patient(s). Nothing was removed.\n`);
+    console.log(`  ${plan.unmatched} patient(s) with no enrolment and no desk registration (self sign-ups): left alone\n`);
   } finally {
     await disconnectDb();
   }

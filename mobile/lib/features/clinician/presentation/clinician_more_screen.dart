@@ -27,6 +27,13 @@ import 'widgets/panel_ui.dart';
 import '../../../shared/providers/theme_provider.dart';
 import 'widgets/clinician_notification_sheet.dart';
 import '../../../shared/widgets/language_picker.dart';
+import '../../feedback/data/feedback_repository.dart';
+
+/// The roles the server lets read patient feedback — `DIRECT_PATIENT_ACCESS` in
+/// backend/src/middleware/auth.js. A practice manager and a dietician are not
+/// among them.
+bool _readsPatientFeedback(String? role) =>
+    const {'doctor', 'staff', 'doctor_assistant', 'lab_manager', 'lab_technician'}.contains(role);
 
 /// Full profile for doctor and staff — the clinician counterpart of the patient
 /// [ProfileScreen]: avatar, edit details, appearance, language, app lock, a
@@ -620,15 +627,26 @@ class _ClinicianMoreScreenState extends ConsumerState<ClinicianMoreScreen> {
                 icon: Icons.menu_book_outlined,
                 title: 'Knowledge base',
                 subtitle: 'Clinic answers the assistant draws on',
+                // The last row when patient feedback is not this person's.
+                showDivider: caps.can(Perm.viewPatient) && _readsPatientFeedback(user?.role),
                 onTap: () => context.push('/clinician/knowledge'),
               ),
-              ProfileRow(
-                icon: Icons.rate_review_outlined,
-                title: 'Patient feedback',
-                subtitle: 'Ratings and comments patients have sent',
-                showDivider: false,
-                onTap: () => context.push('/clinician/feedback'),
-              ),
+              // Only for somebody the server lets read it: a role that opens
+              // patients directly, holding VIEW_PATIENT. A practice manager was
+              // shown the row and refused behind it. The count is this
+              // person's own unread, of what they may see.
+              if (caps.can(Perm.viewPatient) && _readsPatientFeedback(user?.role))
+                ProfileRow(
+                  icon: Icons.rate_review_outlined,
+                  title: 'Patient feedback',
+                  subtitle: 'What patients registered here have written',
+                  value: switch (ref.watch(feedbackUnreadProvider).valueOrNull ?? 0) {
+                    0 => null,
+                    final n => '$n new',
+                  },
+                  showDivider: false,
+                  onTap: () => context.push('/clinician/feedback'),
+                ),
             ],
           ),
 

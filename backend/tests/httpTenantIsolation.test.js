@@ -110,18 +110,22 @@ describe('one practice cannot see another', () => {
   test('the feedback inbox is this practice’s patients', async () => {
     // The worst of the eight. Feedback is attributable by design and the route
     // populated name, phone and photograph onto every row it returned.
-    await Feedback.create({ patient: anita.user._id, about: 'clinic', rating: 5, message: 'Very good' });
-    await Feedback.create({
-      patient: farida.user._id,
-      about: 'clinic',
-      rating: 2,
-      message: 'Waited two hours',
-    });
+    //
+    // Sent through the app's own route, so each row names the practice it went
+    // to: rows that name none are private to their authors, and a test built on
+    // them would pass against an inbox that showed nothing at all.
+    assert.equal((await as(anita.token).post('/feedback', { about: 'clinic', rating: 5, message: 'Very good' })).status, 201);
+    assert.equal(
+      (await as(farida.token).post('/feedback', { about: 'clinic', rating: 2, message: 'Waited two hours' })).status,
+      201,
+    );
+    assert.equal(await Feedback.countDocuments({ route: 'practice' }), 2);
 
     const res = await as(bose.token).get('/feedback');
     assert.equal(res.status, 200);
 
     const text = allText(res.body);
+    assert.match(text, /Very good/, 'the practice cannot read its own patient’s feedback');
     assert.doesNotMatch(text, /Farida Rahman/, 'another practice’s patient was named');
     assert.doesNotMatch(text, /Waited two hours/, 'another practice’s patient was quoted');
     assert.doesNotMatch(

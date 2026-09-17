@@ -307,31 +307,33 @@ describe('and two more of the same shape, found by finishing the sweep', () => {
      * That is the shape worth noticing: a fix applied where somebody was
      * looking, and not to its neighbour.
      */
+    // Sent the way the app sends it, so the row says which practice it went
+    // to. A row that names none is private to its author and reviewable by
+    // nobody, which would make this test pass for the wrong reason.
     const { Feedback } = await import('../src/models/Feedback.js');
-    const theirs = await Feedback.create({
-      patient: b.patient.user._id,
+    const sent = await as(b.patient.token).post('/feedback', {
       about: 'clinic',
       rating: 2,
       message: 'The clinic did not call me back.',
     });
+    assert.equal(sent.status, 201);
 
-    const res = await as(a.doctor.token).post(`/feedback/${theirs._id}/reviewed`, {});
+    const res = await as(a.doctor.token).post(`/feedback/${sent.body.id}/reviewed`, {});
 
     assert.equal(res.status, 404, 'a doctor at another practice reviewed this feedback');
-    const after = await Feedback.findById(theirs._id).lean();
+    const after = await Feedback.findById(sent.body.id).lean();
     assert.ok(!after.reviewedAt, 'the feedback was marked reviewed');
+    assert.equal(after.readBy.length, 0, 'the feedback was marked read by another practice');
   });
 
   test('but their own practice’s feedback is still theirs to review', async () => {
-    const { Feedback } = await import('../src/models/Feedback.js');
-    const mine = await Feedback.create({
-      patient: a.patient.user._id,
+    const sent = await as(a.patient.token).post('/feedback', {
       about: 'clinic',
       rating: 5,
       message: 'Very helpful, thank you.',
     });
 
-    const res = await as(a.doctor.token).post(`/feedback/${mine._id}/reviewed`, {});
+    const res = await as(a.doctor.token).post(`/feedback/${sent.body.id}/reviewed`, {});
     assert.equal(res.status, 204);
   });
 });

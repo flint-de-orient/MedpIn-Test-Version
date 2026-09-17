@@ -938,18 +938,42 @@ router.post(
       });
       req.auditResourceId = login._id;
 
-      if (!isNewLogin) {
+      if (!isNewLogin && consentRequired) {
+        /*
+         * Nothing about the account until its owner says yes.
+         *
+         * This answered with the account's id and the name stored on it, before
+         * any code had been read back. For the patient standing at the counter
+         * that is harmless; for a mistyped digit it put a stranger's name on the
+         * desk's screen and handed over the id that opens their record the
+         * moment anything else goes wrong. The number having an account is all
+         * the desk learns — it has to, to ask for the code — and the name and
+         * number it is shown are the ones it typed.
+         */
         return res.status(200).json({
-          id: String(patient._id),
-          name: login.name,
+          name: b.name,
           phone: b.phone,
           // The desk needs to know which of two quite different things happened.
           existing: true,
           enrollmentId: String(enrollment._id),
-          consentRequired,
-          message: consentRequired
-            ? 'This patient already uses MedPin. We have texted them a code — ask them to read it out.'
-            : 'This patient is already registered here.',
+          consentRequired: true,
+          message:
+            'This number already has a MedPin account. We have texted it a code — ask the patient to read it out. ' +
+            'Nothing about the account is shown until they do.',
+        });
+      }
+
+      if (!isNewLogin) {
+        // Already this practice's patient, with consent on file: nothing here is
+        // news to the desk.
+        return res.status(200).json({
+          id: String(patient._id),
+          name: login.name,
+          phone: b.phone,
+          existing: true,
+          enrollmentId: String(enrollment._id),
+          consentRequired: false,
+          message: 'This patient is already registered here.',
         });
       }
 

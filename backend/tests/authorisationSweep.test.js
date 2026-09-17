@@ -167,11 +167,6 @@ const CLASSIFIED = new Map([
       'Was not, and a file could be filed into any patient’s record on the platform.',
   ],
   [
-    'feedback.js /:id/reviewed',
-    'scoped: filtered to the practice’s own patients. The GET beside it already was; ' +
-      'this one was not.',
-  ],
-  [
     'enrolments.js /:id/confirm',
     'scoped: the patient’s own one-time code is the authorisation. A clinic that could ' +
       'confirm without it could enrol somebody who never agreed.',
@@ -279,7 +274,7 @@ function mutations() {
  * mounted after the guard — without that assertion this would be a way to
  * exempt a file by adding its name here.
  */
-const PLATFORM = new Set(['admin.js', 'adminBilling.js', 'adminApplications.js']);
+const PLATFORM = new Set(['admin.js', 'adminBilling.js', 'adminApplications.js', 'adminFeedback.js']);
 
 /** Whether something other than the classification list authorises this route. */
 function guarded({ file, body, routerLevel }) {

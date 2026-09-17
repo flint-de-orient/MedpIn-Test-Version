@@ -108,8 +108,10 @@ router.get(
     const withRemoved = includeRemoved === 'true' && req.user.role !== 'patient';
     const filter = {
       patient: req.patientId,
-      ...recordWindow(req, 'measuredAt'),
-      ...dateRange('measuredAt', { from, to }),
+      // Both, not one after the other. Spread in sequence they share the key
+      // `measuredAt`, so `?from=` replaced the enrolment's bound and a practice
+      // read every reading since whatever date it named.
+      $and: [recordWindow(req, 'measuredAt'), dateRange('measuredAt', { from, to })],
       ...(context ? { context } : {}),
       ...(withRemoved ? WITH_VOIDED : {}),
     };
@@ -282,8 +284,8 @@ router.get(
     const { page, limit, skip, from, to } = q(req);
     const filter = {
       patient: req.patientId,
-      ...recordWindow(req, 'recordedAt'),
-      ...dateRange('recordedAt', { from, to }),
+      // Together — see the glucose list above.
+      $and: [recordWindow(req, 'recordedAt'), dateRange('recordedAt', { from, to })],
     };
     const [items, total] = await Promise.all([
       VitalRecord.find(filter).sort({ recordedAt: -1 }).skip(skip).limit(limit).lean(),
@@ -301,8 +303,9 @@ router.get(
     const [records, profile] = await Promise.all([
       VitalRecord.find({
         patient: req.patientId,
-        ...recordWindow(req, 'recordedAt'),
-        recordedAt: { $gte: since },
+        // Together — the trend's own `recordedAt` replaced the window when it
+        // followed it, and `?days=730` read two years before the enrolment.
+        $and: [recordWindow(req, 'recordedAt'), { recordedAt: { $gte: since } }],
         weightKg: { $ne: null },
       })
         .sort({ recordedAt: 1 })
@@ -391,8 +394,8 @@ router.get(
     const { page, limit, skip, from, to, kind } = q(req);
     const filter = {
       patient: req.patientId,
-      ...recordWindow(req, 'loggedAt'),
-      ...dateRange('loggedAt', { from, to }),
+      // Together — see the glucose list above.
+      $and: [recordWindow(req, 'loggedAt'), dateRange('loggedAt', { from, to })],
       ...(kind ? { kind } : {}),
     };
     const [items, total] = await Promise.all([
@@ -411,8 +414,12 @@ router.get(
     const [logs, profile] = await Promise.all([
       LifestyleLog.find({
         patient: req.patientId,
-        ...recordWindow(req, 'loggedAt'),
-        loggedAt: { $gte: day.startOf('day').toDate(), $lte: day.endOf('day').toDate() },
+        // Together — a day's own `loggedAt` replaced the window when it
+        // followed it, so any day before the enrolment could be named.
+        $and: [
+          recordWindow(req, 'loggedAt'),
+          { loggedAt: { $gte: day.startOf('day').toDate(), $lte: day.endOf('day').toDate() } },
+        ],
       }).lean(),
       PatientProfile.findOne({ user: req.patientId }).select('targets').lean(),
     ]);
