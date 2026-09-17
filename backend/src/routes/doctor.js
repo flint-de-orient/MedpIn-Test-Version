@@ -345,8 +345,19 @@ router.post(
     // This practice's patients only. Unscoped, closing one practice's bell
     // cleared every practice's badge, and stamped their patients' messages as
     // seen by a clinic that never read them.
+    //
+    // And this practice's conversations with them. A patient cared for by two
+    // practices has a conversation with each; scoped by patient alone, opening
+    // one practice's bell marked the other practice's thread "seen by the
+    // clinic" — its badge dropped, and the patient was told it had been read
+    // (V-05). The same conversation filter the badge counts use.
     const result = await ChatMessage.updateMany(
-      { role: 'user', seenByClinicAt: null, ...(await practicePatients(req, 'patient')) },
+      {
+        role: 'user',
+        seenByClinicAt: null,
+        ...(await practicePatients(req, 'patient')),
+        ...(await practiceMessages(req)),
+      },
       { $set: { seenByClinicAt: new Date() } },
     );
     res.json({ cleared: result.modifiedCount ?? 0 });
@@ -1268,7 +1279,13 @@ router.get(
     let profileFilter = {};
     if (riskBand) profileFilter = { riskBand };
 
-    const matchingProfiles = await PatientProfile.find(profileFilter)
+    // Only the profiles of patients this list can show. With no risk filter
+    // this read every patient profile on the platform — on every refresh of the
+    // inbox, and again for risk ordering (V-51).
+    const matchingProfiles = await PatientProfile.find({
+      ...profileFilter,
+      ...(scope._id ? { user: scope._id } : {}),
+    })
       .select('user riskScore riskBand checkInIntervalDays')
       .lean();
     const profileMap = new Map(matchingProfiles.map((p) => [p.user.toString(), p]));

@@ -111,7 +111,9 @@ const CLASSIFIED = new Map([
       + 'Keyed on the token, never on a body field.',
   ],
   ['auth.js /device-token', 'self: this handset registering itself for push.'],
-  ['messages.js /', 'self: a patient writing to their own clinic.'],
+  // messages.js is retired (V-02): one merged direct-message thread per patient
+  // with no practice on it. Every route there now answers 410 Gone, so it has
+  // no mutating route left to classify.
   ['feedback.js /', 'self: a patient’s own feedback. The handler refuses non-patients.'],
   ['chat.js /message', 'self: the patient’s own thread. patientId comes from the token.'],
   [

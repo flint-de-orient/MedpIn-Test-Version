@@ -304,19 +304,20 @@ describe('a file can only be attached where it already belongs', () => {
 describe('inboxes and badges stay in their practice', () => {
   lifecycle();
 
-  test('the direct-message inbox lists this practice’s patients only', async () => {
+  test('the direct-message inbox is retired, and shows nobody’s messages', async () => {
+    // It was one merged thread per patient with no practice on it (V-02), so a
+    // second practice read and answered into the first's. Care chat replaced
+    // it; the routes answer 410 and the stored messages stay where they are.
     await DirectMessage.create([
       { patient: a.patient.user._id, sender: a.patient.user._id, senderRole: 'patient', content: 'Salt Lake question' },
       { patient: b.patient.user._id, sender: b.patient.user._id, senderRole: 'patient', content: 'Behala question' },
     ]);
 
     const res = await as(a.doctor.token).get('/messages/threads');
-    assert.equal(res.status, 200);
+    assert.equal(res.status, 410);
     const text = allText(res.body);
-    assert.ok(text.includes('Salt Lake Patient'), 'the practice’s own conversation is missing');
-    assert.ok(!text.includes('Behala Patient'), 'another practice’s patient is in the inbox');
-    assert.ok(!text.includes('Behala question'), 'another practice’s message is in the inbox');
-    assert.ok(!text.includes(b.patient.user.phone), 'another practice’s patient’s phone is in the inbox');
+    assert.ok(!text.includes('Salt Lake question') && !text.includes('Behala question'), 'a retired inbox returned messages');
+    assert.equal(await DirectMessage.countDocuments({}), 2);
   });
 
   test('marking messages seen clears this practice’s badge, not another’s', async () => {

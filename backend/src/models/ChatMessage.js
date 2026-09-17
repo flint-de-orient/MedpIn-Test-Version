@@ -120,5 +120,8 @@ const chatMessageSchema = new mongoose.Schema(
 );
 
 chatMessageSchema.index({ session: 1, seq: 1 }, { unique: true });
+// The bell, the badges and "seen by the clinic": unread patient turns within a
+// set of conversations — the queries that run on every inbox refresh (V-52).
+chatMessageSchema.index({ session: 1, role: 1, seenByClinicAt: 1 });
 
 export const ChatMessage = mongoose.model('ChatMessage', chatMessageSchema);

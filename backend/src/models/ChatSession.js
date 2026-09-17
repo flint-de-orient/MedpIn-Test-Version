@@ -108,6 +108,8 @@ const chatSessionSchema = new mongoose.Schema(
 );
 
 chatSessionSchema.index({ patient: 1, lastMessageAt: -1 });
+// A practice's inbox: its enrolments' conversations, most recent first (V-52).
+chatSessionSchema.index({ enrollment: 1, lastMessageAt: -1 });
 chatSessionSchema.index({ patient: 1, kind: 1 });
 
 /**

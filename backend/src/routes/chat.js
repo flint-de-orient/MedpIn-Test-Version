@@ -10,6 +10,7 @@ import { ROLES } from '../models/User.js';
 import { dieticianFacingPatient } from '../services/dieticianIdentity.js';
 import { audit } from '../middleware/audit.js';
 import { practicePatients } from '../middleware/practiceScope.js';
+import { practiceMessages } from '../services/conversationPractice.js';
 import { handlePatientMessage, streamPatientMessage } from '../services/ai/assistant.js';
 import { ChatSession } from '../models/ChatSession.js';
 import { ChatMessage } from '../models/ChatMessage.js';
@@ -1285,6 +1286,11 @@ async function findVisibleMessage(req) {
      * backfill has not reached.
      */
     Object.assign(filter, await practicePatients(req, 'patient'));
+    // In this practice's conversation with them, not merely about one of its
+    // patients: a patient cared for by two practices has a conversation with
+    // each, and a doctor at one could pin or hide messages in the other's
+    // (V-04). Refused as not found, like any message outside the caller's reach.
+    Object.assign(filter, await practiceMessages(req));
   }
 
   const message = await ChatMessage.findOne(filter);
