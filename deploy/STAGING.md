@@ -427,6 +427,43 @@ are unchanged; `version` goes up by one. Embeddings are left as they are — the
 rewording changes a name, not what the passage is about. The rollback is the
 dump above.
 
+### Before deploying C10: suspension is enforced from the first request
+
+A practice marked `suspended` in the console used to change nothing. From this
+release its staff are refused every practice route with `PRACTICE_SUSPENDED`
+(they can still sign in and see that it is suspended; its patients are
+unaffected). Look for any practice already marked suspended, because it stops
+working the moment this deploys:
+
+```bash
+mongosh --quiet --eval 'db.getSiblingDB("medpin_staging").practices.find({ status: "suspended" }, { name: 1, status: 1 })'
+```
+
+Reinstate from the console (it now asks for a reason) before deploying if any of
+them should still be working. Nothing is written by the deploy itself.
+
+### After deploying C10: prescription references — nothing to run, one decision
+
+New references are `RX-<year>-<n>` unless the practice has its own prefix;
+references already issued are never rewritten. Counters are now one per prefix
+per year (`prescription:<PREFIX>:<year>`), each seeding itself from the highest
+reference already printed with that prefix, so there is nothing to run — and the
+old `prescription:<year>` counter is simply no longer used. Deploy outside clinic
+hours, as with the counters before: a reference issued by the old process in the
+window carries `AKD-`.
+
+**The decision owed:** whether the founding practice continues its `AKD-` series.
+If so, an operator sets its prefix to `AKD` in the console (practice → Edit
+details → Prescription prefix). The server allows it only when every existing
+`AKD-` prescription is recorded as that practice's own, so run the medicine
+lifecycle backfill above first; a row with no practice refuses it. The
+`one_practice_per_prescription_prefix` index builds at startup and cannot fail on
+existing data — no practice has a prefix before this release.
+
+The daily patient summary and onboarding changes need no data step. Every daily
+report generation writes `AuditLog` rows (`resource: "DailyReport"`); check one
+appears after `node scripts/smoke.mjs` and a first report from the app.
+
 ## Pointing the app at staging
 
 `API_BASE_URL` is a `--dart-define`, so no code change:
