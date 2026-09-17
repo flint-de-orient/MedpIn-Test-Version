@@ -3,6 +3,7 @@ import 'dart:io';
 import 'dart:ui' as ui;
 
 import 'package:akd_care/core/capabilities/capabilities.dart';
+import 'package:akd_care/core/network/api_exception.dart';
 import 'package:akd_care/core/storage/secure_store.dart';
 import 'package:akd_care/core/theme/app_theme.dart';
 import 'package:akd_care/features/appointments/domain/clinic.dart';
@@ -46,22 +47,49 @@ Future<void> loadPreviewFonts() async {
   );
   if (iconFile.existsSync()) {
     final icons = FontLoader('MaterialIcons')
-      ..addFont(
-        Future.value(ByteData.view(iconFile.readAsBytesSync().buffer)),
-      );
+      ..addFont(Future.value(ByteData.view(iconFile.readAsBytesSync().buffer)));
     await icons.load();
   }
 }
 
-/// A 360dp-wide phone, [height] logical pixels tall.
+/// A phone [width] logical pixels wide — 360 is the common Android size, 320
+/// the smallest still sold, 412 a large one — and [height] tall.
 ///
 /// Tall views are how a long screen is captured whole: a list lays out what
 /// its viewport shows, so the viewport is made as tall as the content.
-void setPhone(WidgetTester tester, {double height = 780}) {
-  tester.view.physicalSize = Size(1080, height * 3);
+void setPhone(WidgetTester tester, {double width = 360, double height = 780}) {
+  tester.view.physicalSize = Size(width * 3, height * 3);
   tester.view.devicePixelRatio = 3;
   addTearDown(tester.view.reset);
 }
+
+/// The server's refusals and failures, as the app receives them.
+const offline = ApiException(
+  code: 'NETWORK_ERROR',
+  message: 'No internet connection',
+);
+const refusedNotEnrolled = ApiException(
+  code: 'FORBIDDEN',
+  message: 'That patient is not enrolled at this practice',
+  statusCode: 403,
+);
+const refusedNotConnected = ApiException(
+  code: 'FORBIDDEN',
+  message:
+      'That patient is not connected to any practice yet. Add them to enrol them.',
+  statusCode: 403,
+);
+const refusedNoAccess = ApiException(
+  code: 'FORBIDDEN',
+  message: 'You do not have permission to do that',
+  statusCode: 403,
+);
+const practiceRequired = ApiException(
+  code: 'PRACTICE_REQUIRED',
+  message:
+      'You work at more than one practice. Choose which one this request is for.',
+  statusCode: 409,
+);
 
 /// Nobody's token, or somebody's.
 class PreviewStore extends SecureStore {
@@ -78,8 +106,10 @@ class PreviewAuth implements AuthRepository {
   final AppUser user;
 
   @override
-  Future<({AppUser user, String? diabetesType})> getMe() async =>
-      (user: user, diabetesType: null);
+  Future<({AppUser user, String? diabetesType})> getMe() async => (
+    user: user,
+    diabetesType: null,
+  );
 
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);

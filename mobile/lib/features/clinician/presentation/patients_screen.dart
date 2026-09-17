@@ -1,42 +1,44 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../../core/theme/app_colors.dart';
-import '../../../core/theme/app_spacing.dart';
+import '../../../core/router/area.dart';
 import '../../../core/theme/tokens.dart';
 import '../../../shared/models/paged.dart';
+import '../../../shared/widgets/clinic_brand.dart';
 import '../../../shared/widgets/markdown_text.dart';
+import '../../../shared/widgets/surfaces.dart';
 import '../../../shared/widgets/user_avatar.dart';
 import '../../auth/presentation/auth_controller.dart';
 import '../domain/clinician_models.dart';
 import 'clinician_providers.dart';
-import 'widgets/panel_ui.dart';
-import 'widgets/waiting_on_consent.dart';
 import 'widgets/clinician_notification_sheet.dart';
-import '../../../core/router/area.dart';
-import '../../../shared/widgets/clinic_brand.dart';
+import 'widgets/load_states.dart';
+import 'widgets/panel_ui.dart';
+import 'widgets/record_ui.dart';
+import 'widgets/waiting_on_consent.dart';
 
-/// The clinician's inbox.
+/// The patient list: who needs the doctor, what changed, and when they last
+/// wrote.
 ///
-/// Deliberately a conversation list rather than a clinical directory: reaching a
-/// waiting patient is the daily job, and the question the doctor opens the app
-/// to answer is "who is waiting on me", not "who has the worst HbA1c". Risk and
-/// alerts still appear, but as marks on a row, not as the organising principle.
+/// ---- A list of patients, not of conversations -----------------------------
 ///
-/// Rows sort unread-first, then by most recent message, so the list orders
-/// itself around that question without the doctor having to filter.
+/// This was the "Care Inbox": a conversation list whose rows opened the chat,
+/// with a risk band or an alert as a small mark at most. Between consultations
+/// the question is wider than "who wrote" — it is who has an open alert, whose
+/// readings have moved, who has gone quiet — and the answer to all of it is the
+/// patient's record. So a row now opens the record, says why the patient might
+/// need the doctor in words, and keeps the conversation one tap away on its own
+/// button, with the unread count on it.
 ///
-/// ---- The server sorts the whole roll; the phone pages through it ---------
+/// ---- The server orders the whole roll; the phone pages through it ---------
 ///
 /// This used to fetch the first hundred patients by name and put unread first
 /// on the phone. The rule was right and the hundred were the wrong hundred: an
 /// unread message from the hundred-and-first patient by name was never
-/// fetched, so it never appeared on the one screen whose job is to show it.
-/// The server now orders every patient this way before paging, and the rest of
+/// fetched. The server now orders every patient before paging, and the rest of
 /// the roll is a button at the end of the list.
 class PatientsScreen extends ConsumerStatefulWidget {
   const PatientsScreen({super.key});
@@ -45,30 +47,39 @@ class PatientsScreen extends ConsumerStatefulWidget {
   ConsumerState<PatientsScreen> createState() => _PatientsScreenState();
 }
 
+/// The three ways to look at the roll. A bounded set, so it is laid out in
+/// full rather than in a rail that hides the last one off the edge.
+enum _Filter {
+  all('All'),
+  unread('Unread'),
+  atRisk('At risk');
+
+  const _Filter(this.label);
+  final String label;
+}
+
 class _PatientsScreenState extends ConsumerState<PatientsScreen>
     with WidgetsBindingObserver {
   final _searchController = TextEditingController();
   String _search = '';
   Timer? _debounce;
   Timer? _poll;
-
-  /// Only unread conversations, when the doctor wants the queue and nothing else.
-  bool _unreadOnly = false;
+  _Filter _filter = _Filter.all;
 
   /// How many pages of the roll are loaded. Back to one whenever the search or
   /// a filter changes, because a different list starts from its own first page.
   int _pages = 1;
 
-  /// The last list that arrived, and the query it answered. See [build].
-  ({PatientsQuery query, Paged<PatientListItem> paged})? _held;
+  /// The last list that arrived without an error, the query it answered, and
+  /// when. See [build].
+  ({PatientsQuery query, Paged<PatientListItem> paged, DateTime at})? _held;
 
-  /// The inbox is only useful if it is current. There is no socket, so it
+  /// The list is only useful if it is current. There is no socket, so it
   /// re-reads on a timer while on screen and immediately on resume.
   ///
-  /// Matched to the conversation screens rather than the twenty seconds a list
-  /// view would normally justify: this is the screen a doctor sits on while
-  /// waiting for a patient to reply, and a message that takes twenty seconds to
-  /// appear reads as the app being broken.
+  /// Matched to the conversation screens: this is where a doctor waits for a
+  /// patient to reply, and a message that takes twenty seconds to appear reads
+  /// as the app being broken.
   static const _pollInterval = Duration(seconds: 3);
 
   @override
@@ -89,17 +100,13 @@ class _PatientsScreenState extends ConsumerState<PatientsScreen>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    // Returning from the background is the likeliest moment for a new message
-    // to have arrived, so check at once rather than waiting out the timer.
     if (state == AppLifecycleState.resumed) _refresh();
   }
 
   void _refresh() {
     if (!mounted) return;
     // A read still on its way is left to finish. Invalidating restarts it, and
-    // with every loaded page read again on each tick, a slow connection can
-    // take longer than the tick — so each poll would throw away the one before
-    // it, and the list, or the page just asked for, would never arrive.
+    // on a slow connection each poll would throw away the one before it.
     if (ref.read(patientsProvider(_query)).isLoading) return;
     ref.invalidate(patientsProvider(_query));
   }
@@ -116,10 +123,19 @@ class _PatientsScreenState extends ConsumerState<PatientsScreen>
     });
   }
 
-  void _setUnreadOnly(bool v) {
-    if (v == _unreadOnly) return;
+  void _clearSearch() {
+    _debounce?.cancel();
+    _searchController.clear();
     setState(() {
-      _unreadOnly = v;
+      _search = '';
+      _pages = 1;
+    });
+  }
+
+  void _setFilter(_Filter f) {
+    if (f == _filter) return;
+    setState(() {
+      _filter = f;
       _pages = 1;
     });
   }
@@ -127,10 +143,10 @@ class _PatientsScreenState extends ConsumerState<PatientsScreen>
   PatientsQuery get _query => (
     riskBand: null,
     search: _search.isEmpty ? null : _search,
-    // Unread first, newest unread first, then by latest message, then everyone
-    // who has never written by name — across the whole roll, on the server,
-    // before it is paged.
-    sort: 'inbox',
+    // Unread first, newest unread first, then by latest message — or, for
+    // "At risk", highest risk first. Either way across the whole roll, on the
+    // server, before it is paged.
+    sort: _filter == _Filter.atRisk ? 'risk' : 'inbox',
     pages: _pages,
   );
 
@@ -138,13 +154,20 @@ class _PatientsScreenState extends ConsumerState<PatientsScreen>
   static bool _sameRoll(PatientsQuery a, PatientsQuery b) =>
       a.riskBand == b.riskBand && a.search == b.search && a.sort == b.sort;
 
-  /// Unread first, then newest message. A patient who has never written sinks
-  /// to the bottom — there is nothing waiting there.
-  List<PatientListItem> _ordered(List<PatientListItem> items) {
+  static bool _atRisk(PatientListItem p) =>
+      p.riskBand == 'moderate' ||
+      p.riskBand == 'high' ||
+      p.riskBand == 'critical';
+
+  /// Unread first, then newest message; a patient who has never written sinks
+  /// to the bottom. The server's inbox order, kept on the phone as well so
+  /// merged pages cannot interleave.
+  static List<PatientListItem> _inboxOrder(List<PatientListItem> items) {
     final list = [...items];
     list.sort((a, b) {
-      if ((a.unreadCount > 0) != (b.unreadCount > 0))
+      if ((a.unreadCount > 0) != (b.unreadCount > 0)) {
         return a.unreadCount > 0 ? -1 : 1;
+      }
       final at = a.lastMessage?.at;
       final bt = b.lastMessage?.at;
       if (at == null && bt == null) return a.name.compareTo(b.name);
@@ -158,282 +181,221 @@ class _PatientsScreenState extends ConsumerState<PatientsScreen>
   @override
   Widget build(BuildContext context) {
     final query = _query;
-    final asyncRaw = ref.watch(patientsProvider(query));
-    // Hold the last list while a refresh is in flight. The screen polls, and
-    // every tick dropped the whole list to a spinner and back — which is the
-    // flicker you see, most obviously at the moment you tap the toggle and are
-    // actually looking at it.
+    final raw = ref.watch(patientsProvider(query));
+
+    // What is on screen, and whether it is current.
     //
-    // A refresh keeps its own previous value. Another page is a new query with
-    // no value yet, so the list it extends is held here instead — and only for
-    // the same search: the last search's patients under a new search's words
-    // would be a wrong answer, not a steady one.
-    final fresh = asyncRaw.valueOrNull;
-    if (fresh != null) _held = (query: query, paged: fresh);
+    // A refresh keeps its previous value while it runs and, if it fails, keeps
+    // it alongside the error — so a dropped connection mid-poll must not turn
+    // a full list into "No patients". Another page is a new query with no value
+    // yet, so the list it extends is held here instead, and only for the same
+    // search: the last search's patients under a new search's words would be a
+    // wrong answer, not a steady one.
+    final fresh = raw.valueOrNull;
+    if (fresh != null && !raw.hasError && !identical(fresh, _held?.paged)) {
+      _held = (query: query, paged: fresh, at: DateTime.now());
+    }
     final held = _held;
-    Paged<PatientListItem>? kept;
+    Paged<PatientListItem>? shown = fresh;
     var growing = false;
-    if (fresh == null && held != null && _sameRoll(held.query, query)) {
-      kept = held.paged;
+    if (shown == null && held != null && _sameRoll(held.query, query)) {
+      shown = held.paged;
       growing = query.pages > held.query.pages;
     }
-    final loaded = fresh ?? kept;
-    final async = loaded != null ? AsyncData(loaded) : asyncRaw;
-    // About the page being added, and only that. A shorter read after a filter
-    // change is still a read, but "loading more" is not what it is.
-    final loadingMore = growing && asyncRaw.isLoading;
-    final moreFailed = growing && asyncRaw.hasError && !asyncRaw.isLoading;
-    final scheme = Theme.of(context).colorScheme;
+    final error = raw.hasError && !raw.isLoading ? raw.error : null;
+    final failure =
+        error == null ? null : Failure.of(error, what: 'the patient list');
+    final loadingMore = growing && raw.isLoading;
+    final moreFailed = growing && error != null;
+    // Stale is a refresh of the list on screen that did not arrive. Not a page
+    // being added — the button at the end speaks for that.
+    final stale = shown != null && error != null && !growing;
+
+    final isDesk = areaPrefix(ref) == '/staff';
+
+    final slivers = <Widget>[
+      SliverPadding(
+        padding: const EdgeInsets.fromLTRB(T.s4, T.s4, T.s4, 0),
+        sliver: SliverToBoxAdapter(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _TitleBlock(
+                total:
+                    _filter == _Filter.all && shown != null
+                        ? shown.total
+                        : null,
+                searching: _search.isNotEmpty,
+              ),
+              const SizedBox(height: T.s4),
+              _SearchField(
+                controller: _searchController,
+                onChanged: _onSearchChanged,
+                onClear: _clearSearch,
+              ),
+              const SizedBox(height: T.s3),
+              _FilterBar(selected: _filter, onSelect: _setFilter),
+              const SizedBox(height: T.s4),
+              // Above the roll, because somebody missing from it is the reason
+              // a desk arrives at this screen confused.
+              const WaitingOnConsent(),
+              if (stale && failure!.keepsData) ...[
+                StaleNotice(
+                  error: error,
+                  what: 'the list',
+                  loadedAt: held?.at,
+                  onRetry: _refresh,
+                ),
+                const SizedBox(height: T.s3),
+              ],
+            ],
+          ),
+        ),
+      ),
+    ];
+
+    if (failure != null && (!failure.keepsData || shown == null)) {
+      // Nothing to show, or an answer that must replace what was shown: a
+      // refusal is not something to keep drawing the old list over.
+      slivers.add(
+        SliverFillRemaining(
+          hasScrollBody: false,
+          child: FailurePanel(
+            error: error!,
+            what: 'the patient list',
+            onRetry: _refresh,
+          ),
+        ),
+      );
+    } else if (shown == null) {
+      slivers.add(
+        const SliverPadding(
+          padding: EdgeInsets.symmetric(horizontal: T.s4),
+          sliver: SliverToBoxAdapter(child: _LoadingRows()),
+        ),
+      );
+    } else {
+      final paged = shown;
+      var items =
+          query.sort == 'inbox' ? _inboxOrder(paged.items) : paged.items;
+      if (_filter == _Filter.unread) {
+        items = items.where((p) => p.unreadCount > 0).toList();
+      } else if (_filter == _Filter.atRisk) {
+        items = items.where(_atRisk).toList();
+      }
+
+      // Offered only where another page could show somebody. Both filters
+      // follow the server's order — every unread before every read, every
+      // at-risk patient before every low-risk one — so once the last row loaded
+      // fails the filter, no later page holds anything it would let through.
+      final last = paged.items.isEmpty ? null : paged.items.last;
+      final more =
+          paged.hasMore &&
+          switch (_filter) {
+            _Filter.all => true,
+            _Filter.unread => (last?.unreadCount ?? 0) > 0,
+            _Filter.atRisk => last != null && _atRisk(last),
+          };
+
+      if (items.isEmpty && !more) {
+        slivers.add(
+          SliverFillRemaining(
+            hasScrollBody: false,
+            child: _EmptyState(
+              filter: _filter,
+              search: _search,
+              isDesk: isDesk,
+              onClearSearch: _clearSearch,
+              onShowAll: () => _setFilter(_Filter.all),
+            ),
+          ),
+        );
+      } else {
+        if (items.isNotEmpty) {
+          slivers.add(
+            SliverPadding(
+              padding: const EdgeInsets.symmetric(horizontal: T.s4),
+              sliver: DecoratedSliver(
+                decoration: T.card(radius: T.rSection),
+                sliver: SliverList.builder(
+                  itemCount: items.length,
+                  itemBuilder:
+                      (context, i) => _PatientRow(
+                        patient: items[i],
+                        first: i == 0,
+                        last: i == items.length - 1,
+                        onOpen:
+                            () => context.push(
+                              '${areaPrefix(ref)}/patients/${items[i].id}',
+                            ),
+                        onConversation:
+                            items[i].lastMessage == null
+                                ? null
+                                : () => context.push(
+                                  '${areaPrefix(ref)}/patients/${items[i].id}/thread',
+                                  extra: items[i].name,
+                                ),
+                      ),
+                ),
+              ),
+            ),
+          );
+        }
+        if (more) {
+          slivers.add(
+            SliverPadding(
+              padding: const EdgeInsets.fromLTRB(T.s4, T.s3, T.s4, 0),
+              sliver: SliverToBoxAdapter(
+                child: _ShowMorePatients(
+                  remaining: paged.total - paged.items.length,
+                  loading: loadingMore,
+                  failed: moreFailed,
+                  onPressed:
+                      moreFailed ? _refresh : () => setState(() => _pages += 1),
+                ),
+              ),
+            ),
+          );
+        }
+      }
+    }
+
+    // Clear of the "Add patient" button: an extended FAB and its margin are
+    // nearly ninety points, and the last patient must stay readable to the end.
+    slivers.add(
+      SliverToBoxAdapter(child: SizedBox(height: isDesk ? T.s8 : T.s12 * 2)),
+    );
 
     return Scaffold(
-      // Transparent so the shell's ground runs unbroken behind this
-      // screen and the navigation bar alike. An opaque page here left a
-      // visible band of ground around the pill and nowhere else.
+      // Transparent so the shell's ground runs unbroken behind this screen and
+      // the navigation bar alike.
       backgroundColor: Colors.transparent,
       // The doctor registers from here, because this is where they notice
-      // somebody missing from the roll.
-      //
-      // The desk does not: registering is the front desk's whole morning, so
-      // it lives on Today where the queue is. Offering it in both places put
-      // two buttons for one act two tabs apart, and a receptionist who used
-      // the other one could not tell whether they had made a second record.
+      // somebody missing from the roll. The desk registers from Today, where
+      // the queue is; offering it in both places put two buttons for one act
+      // two tabs apart.
       floatingActionButton:
-          areaPrefix(ref) == '/staff'
+          isDesk
               ? null
               : FloatingActionButton.extended(
                 onPressed:
                     () => context.push('${areaPrefix(ref)}/patients/new'),
-                backgroundColor: AppColors.primary,
+                backgroundColor: T.primary,
                 foregroundColor: Colors.white,
                 icon: const Icon(Icons.person_add_alt_1_rounded),
-                label: const Text('Add patient'),
+                label: Text('Add patient', style: T.bodyStrong),
               ),
       body: SafeArea(
         bottom: false,
         child: Column(
           children: [
-            const _InboxHeader(),
+            const _Header(),
             Expanded(
               child: RefreshIndicator(
                 onRefresh: () async => _refresh(),
-                child: ListView(
-                  padding: const EdgeInsets.fromLTRB(
-                    AppSpacing.md,
-                    AppSpacing.md,
-                    AppSpacing.md,
-                    // Clear of the "Add patient" button. AppSpacing.xl is 32,
-                    // and an extended FAB plus its margin is nearer 90 — so the
-                    // last patient in the list sat underneath it, which is the
-                    // one place a list must stay readable to the end.
-                    96,
-                  ),
-                  children: [
-                    _SectionBar(
-                      unreadOnly: _unreadOnly,
-                      onSelect: _setUnreadOnly,
-                    ),
-                    _SearchField(
-                      controller: _searchController,
-                      onChanged: _onSearchChanged,
-                    ),
-                    const SizedBox(height: AppSpacing.md),
-                    // Above the roll, because somebody missing from it is the
-                    // reason a desk arrives at this screen confused.
-                    const WaitingOnConsent(),
-                    async.when(
-                      loading:
-                          () => const Padding(
-                            padding: EdgeInsets.symmetric(vertical: 60),
-                            child: Center(child: CircularProgressIndicator()),
-                          ),
-                      error:
-                          (_, _) => Padding(
-                            padding: const EdgeInsets.symmetric(vertical: 40),
-                            child: Column(
-                              children: [
-                                const Text('Could not load messages'),
-                                const SizedBox(height: AppSpacing.sm),
-                                OutlinedButton(
-                                  onPressed: _refresh,
-                                  child: const Text('Retry'),
-                                ),
-                              ],
-                            ),
-                          ),
-                      data: (paged) {
-                        var items = _ordered(paged.items);
-                        if (_unreadOnly)
-                          items =
-                              items.where((p) => p.unreadCount > 0).toList();
-
-                        if (items.isEmpty) {
-                          // Three different nothings, and they mean opposite
-                          // things. A search with no match is a typo; nothing
-                          // unread is the clinic being on top of its messages;
-                          // an empty roll is a clinic with no patients yet.
-                          // One shrug for all three left the doctor unable to
-                          // tell "you are done" from "this is broken".
-                          final searching = _search.isNotEmpty;
-                          final (icon, title, body, action) = switch ((
-                            searching,
-                            _unreadOnly,
-                          )) {
-                            (true, _) => (
-                              Icons.search_off_rounded,
-                              'No patient matches “$_search”',
-                              'Check the spelling, or clear the search to see '
-                                  'everyone.',
-                              'Clear search',
-                            ),
-                            (false, true) => (
-                              Icons.mark_email_read_outlined,
-                              'Nothing unread',
-                              'Every patient message has been read. New ones '
-                                  'appear here as they arrive.',
-                              'Show all conversations',
-                            ),
-                            (false, false) => (
-                              Icons.forum_outlined,
-                              'No conversations yet',
-                              'When a patient writes in, their message opens a '
-                                  'thread here.',
-                              null,
-                            ),
-                          };
-
-                          return Padding(
-                            padding: const EdgeInsets.fromLTRB(
-                              AppSpacing.lg,
-                              40,
-                              AppSpacing.lg,
-                              40,
-                            ),
-                            child: Column(
-                              children: [
-                                Icon(
-                                  icon,
-                                  size: 52,
-                                  color: scheme.outlineVariant,
-                                ),
-                                const SizedBox(height: AppSpacing.md),
-                                Text(
-                                  title,
-                                  textAlign: TextAlign.center,
-                                  style: const TextStyle(
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                                const SizedBox(height: AppSpacing.xs),
-                                Text(
-                                  body,
-                                  textAlign: TextAlign.center,
-                                  style: TextStyle(
-                                    fontSize: 13.5,
-                                    height: 1.4,
-                                    color: scheme.onSurfaceVariant,
-                                  ),
-                                ),
-                                if (action != null) ...[
-                                  const SizedBox(height: AppSpacing.md),
-                                  OutlinedButton(
-                                    onPressed: () {
-                                      setState(() {
-                                        _pages = 1;
-                                        if (searching) {
-                                          _searchController.clear();
-                                          _search = '';
-                                        } else {
-                                          _unreadOnly = false;
-                                        }
-                                      });
-                                    },
-                                    child: Text(action),
-                                  ),
-                                ],
-                              ],
-                            ),
-                          );
-                        }
-
-                        // Offered only where another page could show somebody.
-                        // With Unread on, the server's order puts every unread
-                        // conversation before every read one, so once the last
-                        // one loaded is read, no later page holds anything this
-                        // filter would let through.
-                        final more =
-                            paged.hasMore &&
-                            (!_unreadOnly || paged.items.last.unreadCount > 0);
-
-                        // A separate card per conversation (per the redesign),
-                        // with a red rail on anything flagged urgent/emergency.
-                        return Column(
-                          children: [
-                            for (final it in items)
-                              Container(
-                                margin: const EdgeInsets.only(
-                                  bottom: AppSpacing.sm,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: scheme.surfaceContainerLowest,
-                                  borderRadius: BorderRadius.circular(16),
-                                  border: Border.all(
-                                    color: scheme.outlineVariant.withValues(
-                                      alpha: 0.22,
-                                    ),
-                                  ),
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: Colors.black.withValues(
-                                        alpha: 0.04,
-                                      ),
-                                      blurRadius: 14,
-                                      offset: const Offset(0, 3),
-                                    ),
-                                  ],
-                                ),
-                                clipBehavior: Clip.antiAlias,
-                                child: IntrinsicHeight(
-                                  child: Row(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.stretch,
-                                    children: [
-                                      // No severity rail. The row already
-                                      // carries a NEEDS ATTENTION tag and a red
-                                      // timestamp; a third marker for the same
-                                      // fact just made the card look striped.
-                                      Expanded(
-                                        child: Material(
-                                          color: Colors.transparent,
-                                          child: _ConversationRow(
-                                            patient: it,
-                                            onTap:
-                                                () => context.push(
-                                                  '${areaPrefix(ref)}/patients/${it.id}/thread',
-                                                  extra: it.name,
-                                                ),
-                                          ),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ),
-                            if (more)
-                              _ShowMorePatients(
-                                remaining: paged.total - paged.items.length,
-                                loading: loadingMore,
-                                failed: moreFailed,
-                                onPressed:
-                                    moreFailed
-                                        ? _refresh
-                                        : () => setState(() => _pages += 1),
-                              ),
-                          ],
-                        );
-                      },
-                    ),
-                  ],
+                child: CustomScrollView(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  slivers: slivers,
                 ),
               ),
             ),
@@ -444,11 +406,715 @@ class _PatientsScreenState extends ConsumerState<PatientsScreen>
   }
 }
 
+/// The practice, the bell, and the way to your own profile.
+class _Header extends ConsumerWidget {
+  const _Header();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final user = ref.watch(authControllerProvider).user;
+    final isDesk = areaPrefix(ref) == '/staff';
+
+    return Container(
+      padding: const EdgeInsets.fromLTRB(T.s4, T.s2, T.s2, T.s2),
+      decoration: const BoxDecoration(
+        border: Border(bottom: BorderSide(color: T.line)),
+      ),
+      child: Row(
+        children: [
+          // The clinic this app belongs to, not the app.
+          const Expanded(child: ClinicWordmark()),
+          const SizedBox(width: T.s2),
+          PanelNotificationBell(
+            onTap: () => showClinicianNotifications(context),
+          ),
+          Semantics(
+            button: true,
+            label: isDesk ? 'Your profile' : 'Your profile and settings',
+            child: InkWell(
+              customBorder: const CircleBorder(),
+              // `go`, not `push`: Profile is one of this shell's own tabs, so
+              // pushing it stacked a copy while the bar kept the old tab lit.
+              onTap:
+                  () =>
+                      context.go(isDesk ? '/staff/profile' : '/clinician/more'),
+              child: SizedBox(
+                width: T.tap,
+                height: T.tap,
+                child: Center(
+                  child: UserAvatar(
+                    // "Dr Anirban Dey" drew a "D" — the title's initial.
+                    name: nameForInitial(user?.name ?? ''),
+                    avatarUrl: user?.avatarUrl,
+                    accent: T.primary,
+                    size: T.s8 + T.s1,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _TitleBlock extends StatelessWidget {
+  const _TitleBlock({required this.total, required this.searching});
+
+  /// Patients on the roll, from the server — or matching the search. Null when
+  /// no honest count is to hand: while loading, or under a filter that is
+  /// applied to loaded pages only.
+  final int? total;
+  final bool searching;
+
+  @override
+  Widget build(BuildContext context) {
+    final count = total;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Semantics(
+          header: true,
+          child: Text('Patients', style: T.display.copyWith(color: T.ink)),
+        ),
+        if (count != null && count > 0)
+          Text(
+            searching
+                ? '$count ${count == 1 ? 'patient matches' : 'patients match'}'
+                : '$count ${count == 1 ? 'patient' : 'patients'}',
+            style: T.body.copyWith(color: T.inkMuted),
+          ),
+      ],
+    );
+  }
+}
+
+class _SearchField extends StatefulWidget {
+  const _SearchField({
+    required this.controller,
+    required this.onChanged,
+    required this.onClear,
+  });
+
+  final TextEditingController controller;
+  final ValueChanged<String> onChanged;
+  final VoidCallback onClear;
+
+  @override
+  State<_SearchField> createState() => _SearchFieldState();
+}
+
+class _SearchFieldState extends State<_SearchField> {
+  @override
+  Widget build(BuildContext context) {
+    final border = OutlineInputBorder(
+      borderRadius: BorderRadius.circular(T.rControl),
+      borderSide: const BorderSide(color: T.line),
+    );
+    return TextField(
+      controller: widget.controller,
+      onChanged: (v) {
+        widget.onChanged(v);
+        // For the clear button, which depends on whether there is text.
+        setState(() {});
+      },
+      textInputAction: TextInputAction.search,
+      style: T.body.copyWith(color: T.ink),
+      decoration: InputDecoration(
+        hintText: 'Search by name or phone',
+        // Wraps at large text rather than cutting the hint to "Search by nam…".
+        hintMaxLines: 2,
+        hintStyle: T.body.copyWith(color: T.inkFaint),
+        prefixIcon: const Icon(Icons.search_rounded, color: T.inkMuted),
+        suffixIcon:
+            widget.controller.text.isEmpty
+                ? null
+                : IconButton(
+                  tooltip: 'Clear search',
+                  onPressed: () {
+                    widget.onClear();
+                    setState(() {});
+                  },
+                  icon: const Icon(Icons.close_rounded, color: T.inkMuted),
+                ),
+        filled: true,
+        fillColor: T.surfaceRaised,
+        contentPadding: const EdgeInsets.symmetric(vertical: T.s4),
+        border: border,
+        enabledBorder: border,
+        focusedBorder: border.copyWith(
+          borderSide: const BorderSide(color: T.primary, width: 2),
+        ),
+      ),
+    );
+  }
+}
+
+/// All, Unread, At risk — all three always visible, wrapping onto a second
+/// line before any of them is cut.
+class _FilterBar extends StatelessWidget {
+  const _FilterBar({required this.selected, required this.onSelect});
+
+  final _Filter selected;
+  final ValueChanged<_Filter> onSelect;
+
+  @override
+  Widget build(BuildContext context) {
+    return Wrap(
+      spacing: T.s2,
+      runSpacing: T.s2,
+      children: [
+        for (final f in _Filter.values)
+          _FilterChip(
+            label: f.label,
+            selected: f == selected,
+            onTap: () => onSelect(f),
+          ),
+      ],
+    );
+  }
+}
+
+class _FilterChip extends StatelessWidget {
+  const _FilterChip({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      button: true,
+      selected: selected,
+      child: Material(
+        color: selected ? T.primary : T.surfaceRaised,
+        shape: StadiumBorder(
+          side: BorderSide(color: selected ? T.primary : T.line),
+        ),
+        child: InkWell(
+          customBorder: const StadiumBorder(),
+          onTap: onTap,
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(
+              minHeight: T.tap,
+              minWidth: T.tap,
+            ),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: T.s4),
+              child: Center(
+                widthFactor: 1,
+                child: Text(
+                  label,
+                  style: T.bodyStrong.copyWith(
+                    color: selected ? Colors.white : T.ink,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Why a patient might need the doctor, in words, worst first.
+List<Reading> patientReasons(PatientListItem p, {DateTime? now}) {
+  final out = <Reading>[];
+  if (p.openAlertCount > 0) {
+    out.add((
+      word:
+          p.openAlertCount == 1
+              ? '1 open alert'
+              : '${p.openAlertCount} open alerts',
+      status: Status.alert,
+    ));
+  }
+  // An urgent message is a reason while it waits to be read; once read, the
+  // preview still says what it was.
+  final urgency = p.lastMessage?.urgency;
+  if (p.unreadCount > 0 && p.lastMessage?.fromPatient == true) {
+    if (urgency == 'emergency') {
+      out.add((word: 'Emergency message', status: Status.alert));
+    } else if (urgency == 'urgent') {
+      out.add((word: 'Urgent message', status: Status.alert));
+    }
+  }
+  switch (p.riskBand) {
+    case 'critical':
+      out.add((word: 'Critical risk', status: Status.alert));
+    case 'high':
+      out.add((word: 'High risk', status: Status.alert));
+    case 'moderate':
+      out.add((word: 'Moderate risk', status: Status.watch));
+  }
+  if (p.checkInOverdue) {
+    final at = p.lastReadingAt;
+    final days =
+        at == null ? null : (now ?? DateTime.now()).difference(at).inDays;
+    out.add((
+      word: days == null ? 'Check-in overdue' : 'No reading for $days days',
+      status: Status.watch,
+    ));
+  }
+  return out;
+}
+
+/// The latest figures on the row: the last glucose and when, where the average
+/// is heading, and the latest HbA1c. Only what is recorded.
+String? patientFigures(PatientListItem p) {
+  final parts = <String>[
+    if (p.lastReadingValue != null && p.lastReadingAt != null)
+      'Glucose ${figure(p.lastReadingValue!)} mg/dL ${whenLabel(p.lastReadingAt!)}',
+    if (p.trendDelta != null && p.trend == 'up')
+      'average up ${p.trendDelta!.abs()}',
+    if (p.trendDelta != null && p.trend == 'down')
+      'average down ${p.trendDelta!.abs()}',
+    if (p.hba1c != null) 'HbA1c ${figure(p.hba1c!)}%',
+  ];
+  return parts.isEmpty ? null : parts.join(' · ');
+}
+
+/// `10:42 AM` today, `Yesterday`, a weekday within the week, else `12 Oct`.
+String _stamp(DateTime at) {
+  final now = DateTime.now();
+  final day = DateTime(at.year, at.month, at.day);
+  final today = DateTime(now.year, now.month, now.day);
+  final diff = today.difference(day).inDays;
+  if (diff == 0) {
+    final h = at.hour % 12 == 0 ? 12 : at.hour % 12;
+    return '$h:${at.minute.toString().padLeft(2, '0')} ${at.hour < 12 ? 'AM' : 'PM'}';
+  }
+  if (diff == 1) return 'Yesterday';
+  if (diff > 1 && diff < 7) {
+    return ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'][at.weekday - 1];
+  }
+  return whenLabel(at);
+}
+
+/// One patient: who, why they might need the doctor, what they last said, and
+/// their latest figures. The row opens the record; the button beside it opens
+/// the conversation.
+class _PatientRow extends StatelessWidget {
+  const _PatientRow({
+    required this.patient,
+    required this.first,
+    required this.last,
+    required this.onOpen,
+    required this.onConversation,
+  });
+
+  final PatientListItem patient;
+  final bool first;
+  final bool last;
+  final VoidCallback onOpen;
+  final VoidCallback? onConversation;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = patient;
+    final msg = p.lastMessage;
+    final unread = p.unreadCount > 0;
+    final reasons = patientReasons(p);
+    final figures = patientFigures(p);
+    final crowded = MediaQuery.textScalerOf(context).scale(T.s4) > T.s4 * 1.5;
+    final name = Text(
+      p.name,
+      style: T.bodyStrong.copyWith(
+        color: T.ink,
+        fontWeight: unread ? FontWeight.w700 : FontWeight.w600,
+      ),
+    );
+    final stamp =
+        msg == null
+            ? null
+            : Text(
+              _stamp(msg.at),
+              style: T.small.copyWith(
+                color: unread ? T.primary : T.inkMuted,
+                fontWeight: unread ? FontWeight.w700 : FontWeight.w400,
+              ),
+            );
+    final corners = BorderRadius.vertical(
+      top: first ? const Radius.circular(T.rSection) : Radius.zero,
+      bottom: last ? const Radius.circular(T.rSection) : Radius.zero,
+    );
+
+    final preview =
+        msg == null
+            ? null
+            : Text.rich(
+              TextSpan(
+                children: [
+                  // Who spoke, so "answered" and "waiting" are told apart.
+                  if (msg.fromAssistant)
+                    const TextSpan(text: 'Assistant: ')
+                  else if (!msg.fromPatient)
+                    const TextSpan(text: 'You: '),
+                  if (msg.mediaType != null)
+                    WidgetSpan(
+                      alignment: PlaceholderAlignment.middle,
+                      child: Padding(
+                        padding: const EdgeInsets.only(right: T.s1),
+                        child: Icon(
+                          _mediaIcon(msg.mediaType!),
+                          size: T.s4,
+                          color: unread ? T.ink : T.inkMuted,
+                        ),
+                      ),
+                    ),
+                  TextSpan(text: MarkdownText.toPreview(msg.preview)),
+                ],
+              ),
+              // A preview, one tap from the whole message — so it may be cut,
+              // unlike the name or a reason.
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: T.small.copyWith(
+                color: unread ? T.ink : T.inkMuted,
+                fontWeight: unread ? FontWeight.w600 : FontWeight.w400,
+              ),
+            );
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (!first) const Divider(height: 1, thickness: 1, color: T.line),
+        Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: onOpen,
+            borderRadius: corners,
+            child: Semantics(
+              button: true,
+              hint: 'Opens the patient record',
+              child: Padding(
+                padding: const EdgeInsets.all(T.s4),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // At very large text the initial gives up its column: it
+                    // says nothing the name does not, and beside it a name
+                    // broke mid-word, "Chakra / borty".
+                    if (!crowded) ...[
+                      UserAvatar(
+                        name: nameForInitial(p.name),
+                        avatarUrl: p.avatarUrl,
+                        accent: T.primary,
+                        size: T.tap,
+                      ),
+                      const SizedBox(width: T.s3),
+                    ],
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              // Wraps rather than ellipsises: a name
+                              // cut to "Meera Bhattach…" is two people.
+                              Expanded(child: name),
+                              if (stamp != null && !crowded) ...[
+                                const SizedBox(width: T.s2),
+                                stamp,
+                              ],
+                            ],
+                          ),
+                          if (stamp != null && crowded) stamp,
+                          if (reasons.isNotEmpty) ...[
+                            const SizedBox(height: T.s1),
+                            Wrap(
+                              spacing: T.s1,
+                              runSpacing: T.s1,
+                              children: [
+                                for (final r in reasons)
+                                  StatusPill(label: r.word, status: r.status),
+                              ],
+                            ),
+                          ],
+                          // The conversation button sits on the line it
+                          // is about, so only that line gives up width —
+                          // beside the whole row it squeezed every name
+                          // onto two lines.
+                          if (preview != null) ...[
+                            const SizedBox(height: T.s1),
+                            Row(
+                              children: [
+                                Expanded(child: preview),
+                                if (onConversation != null) ...[
+                                  const SizedBox(width: T.s1),
+                                  _ConversationButton(
+                                    name: p.name,
+                                    unread: p.unreadCount,
+                                    onTap: onConversation!,
+                                  ),
+                                ],
+                              ],
+                            ),
+                          ],
+                          if (figures != null) ...[
+                            const SizedBox(height: T.s1),
+                            Text(
+                              figures,
+                              style: T.small.copyWith(color: T.inkMuted),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// The way into the conversation, carrying its unread count.
+class _ConversationButton extends StatelessWidget {
+  const _ConversationButton({
+    required this.name,
+    required this.unread,
+    required this.onTap,
+  });
+
+  final String name;
+  final int unread;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final label =
+        unread == 0
+            ? 'Open the conversation with $name'
+            : 'Open the conversation with $name, $unread unread '
+                '${unread == 1 ? 'message' : 'messages'}';
+    return Semantics(
+      button: true,
+      label: label,
+      excludeSemantics: true,
+      child: InkResponse(
+        onTap: onTap,
+        radius: T.tap / 2,
+        child: SizedBox(
+          width: T.tap,
+          height: T.tap,
+          child: Stack(
+            clipBehavior: Clip.none,
+            alignment: Alignment.center,
+            children: [
+              Icon(
+                unread > 0
+                    ? Icons.chat_bubble_rounded
+                    : Icons.chat_bubble_outline_rounded,
+                color: unread > 0 ? T.primary : T.inkMuted,
+              ),
+              if (unread > 0)
+                Positioned(
+                  top: T.s1,
+                  right: T.s1 / 2,
+                  child: Container(
+                    constraints: const BoxConstraints(
+                      minWidth: T.s5,
+                      minHeight: T.s5,
+                    ),
+                    padding: const EdgeInsets.symmetric(horizontal: T.s1),
+                    decoration: const BoxDecoration(
+                      // Brand blue, as on the bell: a count of things to
+                      // read, not a warning in its own right.
+                      color: T.primary,
+                      borderRadius: T.rFull,
+                    ),
+                    child: Center(
+                      widthFactor: 1,
+                      child: Text(
+                        unread > 99 ? '99+' : '$unread',
+                        style: T.label.copyWith(color: Colors.white),
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// A monochrome glyph for a media turn, not an emoji.
+IconData _mediaIcon(String type) => switch (type) {
+  'voice' => Icons.mic_none_rounded,
+  'photo' => Icons.photo_camera_outlined,
+  'pdf' => Icons.picture_as_pdf_outlined,
+  'document' => Icons.description_outlined,
+  _ => Icons.attach_file_rounded,
+};
+
+/// The shape of the list while it loads, so the screen does not read as empty
+/// on its way.
+class _LoadingRows extends StatelessWidget {
+  const _LoadingRows();
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      label: 'Loading patients',
+      child: Container(
+        decoration: T.card(radius: T.rSection),
+        child: Column(
+          children: [
+            for (var i = 0; i < 4; i++) ...[
+              if (i > 0) const Divider(height: 1, thickness: 1, color: T.line),
+              Padding(
+                padding: const EdgeInsets.all(T.s4),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Container(
+                      width: T.tap,
+                      height: T.tap,
+                      decoration: const BoxDecoration(
+                        color: T.line,
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                    const SizedBox(width: T.s3),
+                    const Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          SkeletonLine(width: 160),
+                          SizedBox(height: T.s2),
+                          SkeletonLine(),
+                          SizedBox(height: T.s2),
+                          SkeletonLine(width: 120),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Four different nothings, and they mean different things. A search with no
+/// match is a typo; nothing unread is a clinic on top of its messages; nobody
+/// at risk is good news; an empty roll is a practice with no patients yet.
+class _EmptyState extends StatelessWidget {
+  const _EmptyState({
+    required this.filter,
+    required this.search,
+    required this.isDesk,
+    required this.onClearSearch,
+    required this.onShowAll,
+  });
+
+  final _Filter filter;
+  final String search;
+  final bool isDesk;
+  final VoidCallback onClearSearch;
+  final VoidCallback onShowAll;
+
+  @override
+  Widget build(BuildContext context) {
+    final (icon, title, body, action, onAction) = switch ((
+      search.isNotEmpty,
+      filter,
+    )) {
+      (true, _) => (
+        Icons.search_off_rounded,
+        'No patient matches “$search”',
+        filter == _Filter.all
+            ? 'Check the spelling, or search by phone number instead.'
+            : 'Nobody matches under “${filter.label}”. Try All, or check the '
+                'spelling.',
+        'Clear search',
+        onClearSearch,
+      ),
+      (false, _Filter.unread) => (
+        Icons.mark_email_read_outlined,
+        'No unread messages',
+        'Every message from a patient has been read. New ones appear here as '
+            'they arrive.',
+        'Show all patients',
+        onShowAll,
+      ),
+      (false, _Filter.atRisk) => (
+        Icons.verified_outlined,
+        'Nobody is at moderate risk or above',
+        'Risk is worked out from readings, open alerts, doses taken and HbA1c. '
+            'A patient appears here when theirs rises.',
+        'Show all patients',
+        onShowAll,
+      ),
+      (false, _Filter.all) => (
+        Icons.groups_outlined,
+        'No patients yet',
+        isDesk
+            ? 'Patients registered at the desk appear here. Register them from '
+                'Today.'
+            : 'Patients you add, and patients who join the practice, appear '
+                'here. Add one with Add patient.',
+        null,
+        null,
+      ),
+    };
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(T.s6, T.s6, T.s6, T.s8),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.start,
+        children: [
+          Icon(icon, size: T.s12, color: T.inkMuted),
+          const SizedBox(height: T.s4),
+          Text(
+            title,
+            textAlign: TextAlign.center,
+            style: T.title.copyWith(color: T.ink),
+          ),
+          const SizedBox(height: T.s2),
+          Text(
+            body,
+            textAlign: TextAlign.center,
+            style: T.body.copyWith(color: T.inkMuted),
+          ),
+          if (action != null) ...[
+            const SizedBox(height: T.s5),
+            OutlinedButton(
+              onPressed: onAction,
+              style: OutlinedButton.styleFrom(
+                minimumSize: const Size(T.tap, T.tap),
+              ),
+              child: Text(action),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
 /// The end of what is loaded, and the way past it.
 ///
-/// A button rather than loading on scroll. The inbox re-reads every page it
-/// holds every three seconds, so a page loaded because a thumb flicked past
-/// the end would be re-read all day; asked for, it is somebody's decision.
+/// A button rather than loading on scroll. The list re-reads every page it
+/// holds every three seconds, so a page loaded because a thumb flicked past the
+/// end would be re-read all day; asked for, it is somebody's decision.
 class _ShowMorePatients extends StatelessWidget {
   const _ShowMorePatients({
     required this.remaining,
@@ -474,520 +1140,32 @@ class _ShowMorePatients extends StatelessWidget {
             ? 'Could not load more. Try again'
             : 'Show more patients';
 
-    return Padding(
-      padding: const EdgeInsets.only(top: AppSpacing.sm),
-      // Full width, and at least a tap tall. A minimum rather than a height,
-      // so text raised in the phone's settings makes the button taller instead
-      // of clipping the words inside it.
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(
-          minWidth: double.infinity,
-          minHeight: T.tap,
+    // Full width, and at least a tap tall. A minimum rather than a height, so
+    // raised text makes the button taller instead of clipping the words.
+    return ConstrainedBox(
+      constraints: const BoxConstraints(
+        minWidth: double.infinity,
+        minHeight: T.tap,
+      ),
+      child: OutlinedButton(
+        onPressed: loading ? null : onPressed,
+        style: OutlinedButton.styleFrom(
+          backgroundColor: T.surfaceRaised,
+          side: const BorderSide(color: T.line),
+          padding: const EdgeInsets.symmetric(vertical: T.s3),
         ),
-        child: OutlinedButton(
-          onPressed: loading ? null : onPressed,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(label, textAlign: TextAlign.center, style: T.bodyStrong),
-              if (remaining > 0)
-                Text(
-                  '$remaining more after these',
-                  textAlign: TextAlign.center,
-                  style: T.small,
-                ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// Brand row. Uses the app's own mark, not a generic medical cross.
-class _InboxHeader extends ConsumerWidget {
-  const _InboxHeader();
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final scheme = Theme.of(context).colorScheme;
-    final user = ref.watch(authControllerProvider).user;
-
-    return Container(
-      padding: const EdgeInsets.fromLTRB(
-        AppSpacing.md,
-        AppSpacing.sm,
-        AppSpacing.md,
-        AppSpacing.md,
-      ),
-      decoration: BoxDecoration(
-        border: Border(
-          bottom: BorderSide(
-            color: scheme.outlineVariant.withValues(alpha: 0.5),
-          ),
-        ),
-      ),
-      child: Row(
-        children: [
-          // The clinic this app belongs to, not the app. See
-          // [ClinicWordmark] for why the logo replaces the name rather than
-          // sitting beside it.
-          const Expanded(child: ClinicWordmark()),
-          const SizedBox(width: AppSpacing.sm),
-          PanelNotificationBell(
-            onTap: () => showClinicianNotifications(context),
-          ),
-          const SizedBox(width: 4),
-          GestureDetector(
-            // `go`, not `push`: Profile is one of this shell's own tabs, so
-            // pushing it stacked a copy while the bar kept the old tab lit.
-            onTap:
-                () => context.go(
-                  areaPrefix(ref) == '/staff'
-                      ? '/staff/profile'
-                      : '/clinician/more',
-                ),
-            child: UserAvatar(
-              name: user?.name ?? '',
-              avatarUrl: user?.avatarUrl,
-              accent: AppColors.accentOn(context),
-              size: 38,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _SearchField extends StatelessWidget {
-  const _SearchField({required this.controller, required this.onChanged});
-
-  final TextEditingController controller;
-  final ValueChanged<String> onChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return Padding(
-      padding: EdgeInsets.zero,
-      child: TextField(
-        controller: controller,
-        onChanged: onChanged,
-        style: const TextStyle(fontSize: 16),
-        decoration: InputDecoration(
-          hintText: 'Search by name or number…',
-          prefixIcon: Icon(
-            Icons.search_rounded,
-            color: scheme.onSurfaceVariant,
-          ),
-          filled: true,
-          fillColor: scheme.surfaceContainerHigh.withValues(alpha: 0.55),
-          contentPadding: const EdgeInsets.symmetric(vertical: 12),
-          border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(20),
-            borderSide: BorderSide(
-              color: scheme.outlineVariant.withValues(alpha: 0.35),
-            ),
-          ),
-          enabledBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(20),
-            borderSide: BorderSide(
-              color: scheme.outlineVariant.withValues(alpha: 0.35),
-            ),
-          ),
-          focusedBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(20),
-            borderSide: BorderSide(
-              color: AppColors.accentOn(context),
-              width: 1.6,
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _SectionBar extends StatelessWidget {
-  const _SectionBar({required this.unreadOnly, required this.onSelect});
-
-  final bool unreadOnly;
-  final ValueChanged<bool> onSelect;
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        // Title and filter share a line: the heading names the screen, the
-        // control sits at the far edge where a control belongs, and the pair
-        // reads as one bar instead of two stacked blocks.
-        Row(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
           children: [
-            const Expanded(
-              child: Text(
-                'Care Inbox',
-                style: TextStyle(
-                  fontSize: 32,
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: -0.4,
-                ),
+            Text(label, textAlign: TextAlign.center, style: T.bodyStrong),
+            if (remaining > 0)
+              Text(
+                '$remaining more after these',
+                textAlign: TextAlign.center,
+                style: T.small.copyWith(color: T.inkMuted),
               ),
-            ),
-            const SizedBox(width: AppSpacing.sm),
-            Container(
-              padding: const EdgeInsets.all(4),
-              decoration: BoxDecoration(
-                color: scheme.surfaceContainerHigh,
-                borderRadius: BorderRadius.circular(20),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  _Seg(
-                    label: 'Unread',
-                    selected: unreadOnly,
-                    onTap: () => onSelect(true),
-                  ),
-                  _Seg(
-                    label: 'All',
-                    selected: !unreadOnly,
-                    onTap: () => onSelect(false),
-                  ),
-                ],
-              ),
-            ),
           ],
         ),
-        const SizedBox(height: AppSpacing.md),
-      ],
-    );
-  }
-}
-
-/// One segment of the pill toggle — the selected one lifts onto a white pill.
-class _Seg extends StatelessWidget {
-  const _Seg({
-    required this.label,
-    required this.selected,
-    required this.onTap,
-  });
-
-  final String label;
-  final bool selected;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return GestureDetector(
-      onTap: onTap,
-      behavior: HitTestBehavior.opaque,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 150),
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        decoration: BoxDecoration(
-          color: selected ? scheme.surfaceContainerLowest : Colors.transparent,
-          borderRadius: BorderRadius.circular(20),
-          boxShadow:
-              selected
-                  ? [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.06),
-                      blurRadius: 6,
-                      offset: const Offset(0, 1),
-                    ),
-                  ]
-                  : null,
-        ),
-        child: Text(
-          label,
-          style: TextStyle(
-            fontSize: 14,
-            fontWeight: FontWeight.w700,
-            color: selected ? scheme.onSurface : scheme.onSurfaceVariant,
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// One conversation. Reads top-to-bottom as: who, when, what was last said,
-/// and whether it needs the doctor.
-class _ConversationRow extends StatelessWidget {
-  const _ConversationRow({required this.patient, required this.onTap});
-
-  final PatientListItem patient;
-  final VoidCallback onTap;
-
-  /// `10:42 AM` today, `Yesterday`, a weekday within the week, else `12 Oct`.
-  String _stamp(DateTime at) {
-    final now = DateTime.now();
-    final day = DateTime(at.year, at.month, at.day);
-    final today = DateTime(now.year, now.month, now.day);
-    final diff = today.difference(day).inDays;
-
-    if (diff == 0) {
-      final h = at.hour % 12 == 0 ? 12 : at.hour % 12;
-      return '$h:${at.minute.toString().padLeft(2, '0')} ${at.hour < 12 ? 'AM' : 'PM'}';
-    }
-    if (diff == 1) return 'Yesterday';
-    if (diff < 7) {
-      return ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'][at.weekday - 1];
-    }
-    const months = [
-      'Jan',
-      'Feb',
-      'Mar',
-      'Apr',
-      'May',
-      'Jun',
-      'Jul',
-      'Aug',
-      'Sep',
-      'Oct',
-      'Nov',
-      'Dec',
-    ];
-    return '${at.day} ${months[at.month - 1]}';
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    final msg = patient.lastMessage;
-    final unread = patient.unreadCount > 0;
-    final emergency = msg?.urgency == 'emergency' || msg?.urgency == 'urgent';
-
-    return InkWell(
-      onTap: onTap,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(
-          horizontal: AppSpacing.md,
-          vertical: 12,
-        ),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            UserAvatar(
-              name: patient.name,
-              avatarUrl: patient.avatarUrl,
-              accent: emergency ? AppColors.danger : AppColors.primary,
-              size: 48,
-            ),
-            const SizedBox(width: AppSpacing.md),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          patient.name,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            fontSize: 16,
-                            // Unread rows carry the weight, so the queue is
-                            // visible without reading a single word.
-                            fontWeight:
-                                unread ? FontWeight.w800 : FontWeight.w600,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      if (msg != null)
-                        Text(
-                          _stamp(msg.at),
-                          style: TextStyle(
-                            fontSize: 14,
-                            color:
-                                unread
-                                    ? AppColors.primary
-                                    : scheme.onSurfaceVariant,
-                            fontWeight:
-                                unread ? FontWeight.w700 : FontWeight.w400,
-                          ),
-                        ),
-                    ],
-                  ),
-                  const SizedBox(height: 4),
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.center,
-                    children: [
-                      Expanded(
-                        child: Text.rich(
-                          TextSpan(
-                            children: [
-                              if (msg == null)
-                                const TextSpan(text: 'No messages yet')
-                              else ...[
-                                // Say who spoke, so "answered" and "waiting" are
-                                // distinguishable at a glance.
-                                if (msg.fromAssistant)
-                                  const TextSpan(text: 'Assistant: ')
-                                else if (!msg.fromPatient)
-                                  const TextSpan(text: 'You: '),
-                                // A subtle monochrome icon for a media turn —
-                                // premium, not a cheap emoji.
-                                if (msg.mediaType != null)
-                                  WidgetSpan(
-                                    alignment: PlaceholderAlignment.middle,
-                                    child: Padding(
-                                      padding: const EdgeInsets.only(right: 4),
-                                      child: Icon(
-                                        _mediaIcon(msg.mediaType!),
-                                        size: 15,
-                                        color:
-                                            unread
-                                                ? scheme.onSurface
-                                                : scheme.onSurfaceVariant,
-                                      ),
-                                    ),
-                                  ),
-                                TextSpan(
-                                  text: MarkdownText.toPreview(msg.preview),
-                                ),
-                              ],
-                            ],
-                          ),
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            fontSize: 14,
-                            height: 1.35,
-                            color:
-                                msg == null
-                                    ? scheme.outline
-                                    : unread
-                                    ? scheme.onSurface
-                                    : scheme.onSurfaceVariant,
-                            fontWeight:
-                                unread ? FontWeight.w600 : FontWeight.w400,
-                          ),
-                        ),
-                      ),
-                      // WhatsApp-style unread count: a green disc with just the
-                      // number, on the right of the preview line. Expands to a
-                      // pill for two digits, "99+" beyond.
-                      if (unread) ...[
-                        const SizedBox(width: 8),
-                        Container(
-                          constraints: const BoxConstraints(minWidth: 22),
-                          height: 22,
-                          padding: const EdgeInsets.symmetric(horizontal: 8),
-                          alignment: Alignment.center,
-                          decoration: BoxDecoration(
-                            color: AppColors.accentOn(context),
-                            borderRadius: BorderRadius.all(Radius.circular(12)),
-                          ),
-                          child: Text(
-                            patient.unreadCount > 99
-                                ? '99+'
-                                : '${patient.unreadCount}',
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 12,
-                              fontWeight: FontWeight.w800,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ],
-                  ),
-                  // Status tags only — "Needs attention" and "Check-in due" flow
-                  // onto one line (wrapping if a narrow phone needs it), and only
-                  // the ones that apply are shown.
-                  if (emergency || patient.checkInOverdue) ...[
-                    const SizedBox(height: 8),
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 4,
-                      crossAxisAlignment: WrapCrossAlignment.center,
-                      children: [
-                        if (emergency)
-                          _Chip(
-                            label: 'Needs attention',
-                            fg: AppColors.dangerOn(context),
-                            bg: AppColors.dangerBgOn(context),
-                            icon: Icons.priority_high_rounded,
-                          ),
-                        if (patient.checkInOverdue)
-                          _Chip(
-                            label: 'Check-in due',
-                            fg: AppColors.warningOn(context),
-                            bg: AppColors.warningBgOn(context),
-                            icon: Icons.schedule_rounded,
-                          ),
-                      ],
-                    ),
-                  ],
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-/// Subtle inbox-preview icon for a media turn — a monochrome Material glyph, not
-/// an emoji, so the row reads as premium.
-IconData _mediaIcon(String type) {
-  switch (type) {
-    case 'voice':
-      return Icons.mic_none_rounded;
-    case 'photo':
-      return Icons.photo_camera_rounded;
-    case 'pdf':
-      return Icons.picture_as_pdf_rounded;
-    case 'document':
-      return Icons.description_rounded;
-    default:
-      return Icons.attach_file_rounded;
-  }
-}
-
-class _Chip extends StatelessWidget {
-  const _Chip({
-    required this.label,
-    required this.fg,
-    required this.bg,
-    required this.icon,
-  });
-
-  final String label;
-  final Color fg;
-  final Color bg;
-  final IconData icon;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(
-        color: bg,
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 13, color: fg),
-          const SizedBox(width: 4),
-          Text(
-            label,
-            style: TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w700,
-              color: fg,
-            ),
-          ),
-        ],
       ),
     );
   }

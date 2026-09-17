@@ -32,155 +32,226 @@ Map<String, dynamic> _glucoseDaily(List<int> averages) => {
 
 /// A type 2 diabetic with a lot on her record: rising HbA1c, patchy
 /// adherence, an open alert, reports with values out of range.
-PatientSummary diabetologyPatient({List<Object>? riskReasons}) =>
-    PatientSummary.fromJson({
-      'patient': {
-        'id': 'p-sunita',
-        'name': 'Sunita Chakraborty',
-        'phone': '+919830011122',
-        'email': 'sunita.c@example.in',
-        'gender': 'female',
-        'age': 58,
-        'address': '14/2 Lake Gardens, Kolkata 700045',
-        'chiefComplaint':
-            'Tingling and burning in both feet for three weeks, worse at night',
-        'language': 'bn',
+PatientSummary diabetologyPatient({
+  List<Object>? riskReasons,
+}) => PatientSummary.fromJson({
+  'patient': {
+    'id': 'p-sunita',
+    'name': 'Sunita Chakraborty',
+    'phone': '+919830011122',
+    'email': 'sunita.c@example.in',
+    'gender': 'female',
+    'age': 58,
+    'address': '14/2 Lake Gardens, Kolkata 700045',
+    'chiefComplaint':
+        'Tingling and burning in both feet for three weeks, worse at night',
+    'language': 'bn',
+  },
+  'details': {
+    'diagnosedOn': _ago(365 * 9),
+    'comorbidities': ['hypertension', 'retinopathy', 'dyslipidaemia'],
+    'allergies': ['Sulfa drugs'],
+    'footRiskCategory': 'moderate',
+    'emergencyContact': {
+      'name': 'Amit Chakraborty',
+      'phone': '+919830099887',
+      'relation': 'Son',
+    },
+  },
+  'profile': {
+    'diabetesType': 'type2',
+    'riskBand': 'high',
+    'riskScore': 72,
+    'heightCm': 156,
+  },
+  if (riskReasons != null) 'riskReasons': riskReasons,
+  'healthScore': {'score': 54, 'band': 'needs_attention'},
+  'trends': {
+    ..._glucoseDaily([
+      168,
+      181,
+      175,
+      190,
+      204,
+      187,
+      172,
+      166,
+      179,
+      198,
+      211,
+      186,
+      176,
+      182,
+    ]),
+    'count': 41,
+    'stats': {'average': 184, 'timeInRangePercent': 52, 'estimatedHba1c': 8.0},
+  },
+  'adherence': {
+    'taken': 61,
+    'expected': 88,
+    'missed': 27,
+    'percentage': 69,
+    'perMedication': [
+      {
+        'name': 'Metformin 500 mg',
+        'taken': 52,
+        'expected': 58,
+        'percentage': 90,
       },
-      'details': {
-        'diagnosedOn': _ago(365 * 9),
-        'comorbidities': ['hypertension', 'retinopathy', 'dyslipidaemia'],
-        'allergies': ['Sulfa drugs'],
-        'footRiskCategory': 'moderate',
-        'emergencyContact': {
-          'name': 'Amit Chakraborty',
-          'phone': '+919830099887',
-          'relation': 'Son',
-        },
+      {
+        'name': 'Glimepiride 2 mg',
+        'taken': 9,
+        'expected': 30,
+        'percentage': 30,
       },
-      'profile': {
-        'diabetesType': 'type2',
-        'riskBand': 'high',
-        'riskScore': 72,
-        'heightCm': 156,
-      },
-      if (riskReasons != null) 'riskReasons': riskReasons,
-      'healthScore': {'score': 54, 'band': 'needs_attention'},
-      'trends': {
-        ..._glucoseDaily([
-          168, 181, 175, 190, 204, 187, 172, 166, 179, 198, 211, 186, 176, 182,
-        ]),
-        'count': 41,
-        'stats': {
-          'average': 184,
-          'timeInRangePercent': 52,
-          'estimatedHba1c': 8.0,
-        },
-      },
-      'adherence': {
-        'taken': 61,
-        'expected': 88,
-        'missed': 27,
-        'percentage': 69,
-        'perMedication': [
-          {'name': 'Metformin 500 mg', 'taken': 52, 'expected': 58, 'percentage': 90},
-          {'name': 'Glimepiride 2 mg', 'taken': 9, 'expected': 30, 'percentage': 30},
-        ],
-      },
-      'medicationCount': 3,
-      'lastFasting': {'value': 162, 'at': _ago(2)},
-      'latestVitals': {
-        'systolic': 148,
-        'diastolic': 92,
-        'pulse': 84,
-        'spo2': 97,
-        'weightKg': 71.5,
-        'waistCm': 94,
-        'at': _ago(9),
-      },
-      'hba1cHistory': [
-        {'percentage': 8.4, 'testedOn': _ago(12)},
-        {'percentage': 8.9, 'testedOn': _ago(100)},
-        {'percentage': 9.6, 'testedOn': _ago(190)},
-        {'percentage': 10.1, 'testedOn': _ago(280)},
-        {'percentage': 9.2, 'testedOn': _ago(370)},
-      ],
-      'footAssessments': [
-        {'id': 'f1', 'assessedAt': _ago(40), 'site': 'both', 'finalRiskLevel': 'moderate'},
-      ],
-      'labResults': [
+    ],
+  },
+  'medicationCount': 3,
+  'lastFasting': {'value': 162, 'at': _ago(2)},
+  'latestVitals': {
+    'systolic': 148,
+    'diastolic': 92,
+    'pulse': 84,
+    'spo2': 97,
+    'weightKg': 71.5,
+    'waistCm': 94,
+    'at': _ago(9),
+  },
+  'hba1cHistory': [
+    {'percentage': 8.4, 'testedOn': _ago(12)},
+    {'percentage': 8.9, 'testedOn': _ago(100)},
+    {'percentage': 9.6, 'testedOn': _ago(190)},
+    {'percentage': 10.1, 'testedOn': _ago(280)},
+    {'percentage': 9.2, 'testedOn': _ago(370)},
+  ],
+  'footAssessments': [
+    {
+      'id': 'f1',
+      'assessedAt': _ago(40),
+      'site': 'both',
+      'finalRiskLevel': 'moderate',
+    },
+  ],
+  'labResults': [
+    {
+      'id': 'lab1',
+      'testName': 'HbA1c',
+      'note': '',
+      'photoUrl': null,
+      'mimeType': 'application/pdf',
+      'analysisStatus': 'done',
+      'analytes': [
         {
-          'id': 'lab1',
-          'testName': 'HbA1c',
-          'note': '',
-          'photoUrl': null,
-          'mimeType': 'application/pdf',
-          'analysisStatus': 'done',
-          'analytes': [
-            {'code': 'hba1c', 'label': 'HbA1c', 'value': 8.4, 'unit': '%', 'refHigh': 5.7, 'flag': 'high'},
-          ],
-          'createdAt': _ago(12),
-        },
-        {
-          'id': 'lab2',
-          'testName': 'Lipid Profile',
-          'note': 'Fasting sample',
-          'photoUrl': null,
-          'mimeType': 'application/pdf',
-          'analysisStatus': 'done',
-          'analytes': [
-            {'code': 'tchol', 'label': 'Total cholesterol', 'value': 224, 'unit': 'mg/dL', 'refHigh': 200, 'flag': 'high'},
-            {'code': 'ldl', 'label': 'LDL', 'value': 138, 'unit': 'mg/dL', 'refHigh': 100, 'flag': 'high'},
-            {'code': 'hdl', 'label': 'HDL', 'value': 44, 'unit': 'mg/dL', 'refLow': 40, 'flag': 'normal'},
-            {'code': 'tg', 'label': 'Triglycerides', 'value': 188, 'unit': 'mg/dL', 'refHigh': 150, 'flag': 'high'},
-          ],
-          'createdAt': _ago(12),
-        },
-        {
-          'id': 'lab3',
-          'testName': 'Lipid Profile',
-          'note': '',
-          'photoUrl': null,
-          'mimeType': 'application/pdf',
-          'analysisStatus': 'done',
-          'analytes': [
-            {'code': 'ldl', 'label': 'LDL', 'value': 152, 'unit': 'mg/dL', 'refHigh': 100, 'flag': 'high'},
-          ],
-          'createdAt': _ago(190),
-        },
-        {
-          'id': 'lab4',
-          'testName': 'Kidney Function Test',
-          'note': '',
-          'photoUrl': null,
-          'mimeType': 'image/webp',
-          'analysisStatus': 'failed',
-          'analytes': [],
-          'createdAt': _ago(30),
+          'code': 'hba1c',
+          'label': 'HbA1c',
+          'value': 8.4,
+          'unit': '%',
+          'refHigh': 5.7,
+          'flag': 'high',
         },
       ],
-      'labTestsAdvised': ['Lipid Profile', 'Urine Microalbumin', 'Kidney Function Test'],
-      'alerts': [
+      'createdAt': _ago(12),
+    },
+    {
+      'id': 'lab2',
+      'testName': 'Lipid Profile',
+      'note': 'Fasting sample',
+      'photoUrl': null,
+      'mimeType': 'application/pdf',
+      'analysisStatus': 'done',
+      'analytes': [
         {
-          'id': 'a1',
-          'severity': 'urgent',
-          'type': 'hyperglycemia',
-          'title': 'Glucose 312 mg/dL after dinner',
-          'status': 'open',
-          'createdAt': _ago(1.2),
+          'code': 'tchol',
+          'label': 'Total cholesterol',
+          'value': 224,
+          'unit': 'mg/dL',
+          'refHigh': 200,
+          'flag': 'high',
         },
         {
-          'id': 'a2',
-          'severity': 'warning',
-          'type': 'missed_medication',
-          'title': 'Missed Glimepiride three days running',
-          'status': 'resolved',
-          'createdAt': _ago(20),
+          'code': 'ldl',
+          'label': 'LDL',
+          'value': 138,
+          'unit': 'mg/dL',
+          'refHigh': 100,
+          'flag': 'high',
+        },
+        {
+          'code': 'hdl',
+          'label': 'HDL',
+          'value': 44,
+          'unit': 'mg/dL',
+          'refLow': 40,
+          'flag': 'normal',
+        },
+        {
+          'code': 'tg',
+          'label': 'Triglycerides',
+          'value': 188,
+          'unit': 'mg/dL',
+          'refHigh': 150,
+          'flag': 'high',
         },
       ],
-      'aiContext':
-          'Type 2 diabetes for 9 years. On metformin and glimepiride. Latest HbA1c 8.4%. '
-          'Reports tingling in both feet.',
-    });
+      'createdAt': _ago(12),
+    },
+    {
+      'id': 'lab3',
+      'testName': 'Lipid Profile',
+      'note': '',
+      'photoUrl': null,
+      'mimeType': 'application/pdf',
+      'analysisStatus': 'done',
+      'analytes': [
+        {
+          'code': 'ldl',
+          'label': 'LDL',
+          'value': 152,
+          'unit': 'mg/dL',
+          'refHigh': 100,
+          'flag': 'high',
+        },
+      ],
+      'createdAt': _ago(190),
+    },
+    {
+      'id': 'lab4',
+      'testName': 'Kidney Function Test',
+      'note': '',
+      'photoUrl': null,
+      'mimeType': 'image/webp',
+      'analysisStatus': 'failed',
+      'analytes': [],
+      'createdAt': _ago(30),
+    },
+  ],
+  'labTestsAdvised': [
+    'Lipid Profile',
+    'Urine Microalbumin',
+    'Kidney Function Test',
+  ],
+  'alerts': [
+    {
+      'id': 'a1',
+      'severity': 'urgent',
+      'type': 'hyperglycemia',
+      'title': 'Glucose 312 mg/dL after dinner',
+      'status': 'open',
+      'createdAt': _ago(1.2),
+    },
+    {
+      'id': 'a2',
+      'severity': 'warning',
+      'type': 'missed_medication',
+      'title': 'Missed Glimepiride three days running',
+      'status': 'resolved',
+      'createdAt': _ago(20),
+    },
+  ],
+  'aiContext':
+      'Type 2 diabetes for 9 years. On metformin and glimepiride. Latest HbA1c 8.4%. '
+      'Reports tingling in both feet.',
+});
 
 /// A cardiology patient: high blood pressure, a fast pulse, an abnormal ECG,
 /// and an LDL well above the limit. No diabetes.
@@ -197,10 +268,21 @@ PatientSummary cardiologyPatient() => PatientSummary.fromJson({
     'comorbidities': ['cad', 'hypertension', 'dyslipidaemia'],
     'allergies': ['Aspirin', 'Penicillin'],
   },
-  'profile': {'diabetesType': 'none', 'riskBand': 'critical', 'riskScore': 88, 'heightCm': 172},
+  'profile': {
+    'diabetesType': 'none',
+    'riskBand': 'critical',
+    'riskScore': 88,
+    'heightCm': 172,
+  },
   'healthScore': {'score': null, 'band': 'unknown'},
   'trends': {'daily': [], 'count': 0, 'stats': null},
-  'adherence': {'taken': 40, 'expected': 44, 'missed': 4, 'percentage': 91, 'perMedication': []},
+  'adherence': {
+    'taken': 40,
+    'expected': 44,
+    'missed': 4,
+    'percentage': 91,
+    'perMedication': [],
+  },
   'medicationCount': 4,
   'lastFasting': null,
   'latestVitals': {
@@ -221,9 +303,30 @@ PatientSummary cardiologyPatient() => PatientSummary.fromJson({
       'mimeType': 'application/pdf',
       'analysisStatus': 'done',
       'analytes': [
-        {'code': 'ldl', 'label': 'LDL', 'value': 171, 'unit': 'mg/dL', 'refHigh': 100, 'flag': 'high'},
-        {'code': 'hdl', 'label': 'HDL', 'value': 34, 'unit': 'mg/dL', 'refLow': 40, 'flag': 'low'},
-        {'code': 'tg', 'label': 'Triglycerides', 'value': 212, 'unit': 'mg/dL', 'refHigh': 150, 'flag': 'high'},
+        {
+          'code': 'ldl',
+          'label': 'LDL',
+          'value': 171,
+          'unit': 'mg/dL',
+          'refHigh': 100,
+          'flag': 'high',
+        },
+        {
+          'code': 'hdl',
+          'label': 'HDL',
+          'value': 34,
+          'unit': 'mg/dL',
+          'refLow': 40,
+          'flag': 'low',
+        },
+        {
+          'code': 'tg',
+          'label': 'Triglycerides',
+          'value': 212,
+          'unit': 'mg/dL',
+          'refHigh': 150,
+          'flag': 'high',
+        },
       ],
       'createdAt': _ago(6),
     },
@@ -235,7 +338,14 @@ PatientSummary cardiologyPatient() => PatientSummary.fromJson({
       'mimeType': 'application/pdf',
       'analysisStatus': 'done',
       'analytes': [
-        {'code': 'ldl', 'label': 'LDL', 'value': 149, 'unit': 'mg/dL', 'refHigh': 100, 'flag': 'high'},
+        {
+          'code': 'ldl',
+          'label': 'LDL',
+          'value': 149,
+          'unit': 'mg/dL',
+          'refHigh': 100,
+          'flag': 'high',
+        },
       ],
       'createdAt': _ago(120),
     },
@@ -266,7 +376,13 @@ PatientSummary newPatient() => PatientSummary.fromJson({
   'profile': null,
   'healthScore': {'score': null, 'band': 'unknown'},
   'trends': {'daily': [], 'count': 0, 'stats': null},
-  'adherence': {'taken': 0, 'expected': 0, 'missed': 0, 'percentage': null, 'perMedication': []},
+  'adherence': {
+    'taken': 0,
+    'expected': 0,
+    'missed': 0,
+    'percentage': null,
+    'perMedication': [],
+  },
   'medicationCount': 0,
   'lastFasting': null,
   'latestVitals': null,
@@ -339,7 +455,10 @@ List<Medication> diabetologyMedicines() => [
     'isActive': false,
     'prescriptionState': 'active',
     'takingState': 'stopped_by_patient',
-    'stoppedTaking': {'at': _ago(6), 'reason': 'Felt dizzy and shaky in the mornings'},
+    'stoppedTaking': {
+      'at': _ago(6),
+      'reason': 'Felt dizzy and shaky in the mornings',
+    },
     'startDate': _ago(90),
     'changeableByYou': true,
   }),
@@ -358,11 +477,33 @@ List<PrescriptionSummary> diabetologyPrescriptions() => [
     'issuedOn': _ago(12),
     'doctorName': 'Dr Anirban Dey',
     'complaint': 'Tingling in both feet',
-    'diagnosis': ['Type 2 diabetes mellitus', 'Hypertension', 'Peripheral neuropathy'],
+    'diagnosis': [
+      'Type 2 diabetes mellitus',
+      'Hypertension',
+      'Peripheral neuropathy',
+    ],
     'items': [
-      {'name': 'Metformin', 'strength': '500 mg', 'frequency': 'BD', 'relationToMeal': 'after_meal', 'durationDays': 90},
-      {'name': 'Telmisartan', 'strength': '40 mg', 'frequency': 'OD', 'relationToMeal': 'any', 'durationDays': 90},
-      {'name': 'Pregabalin', 'strength': '75 mg', 'frequency': 'HS', 'relationToMeal': 'any', 'durationDays': 30},
+      {
+        'name': 'Metformin',
+        'strength': '500 mg',
+        'frequency': 'BD',
+        'relationToMeal': 'after_meal',
+        'durationDays': 90,
+      },
+      {
+        'name': 'Telmisartan',
+        'strength': '40 mg',
+        'frequency': 'OD',
+        'relationToMeal': 'any',
+        'durationDays': 90,
+      },
+      {
+        'name': 'Pregabalin',
+        'strength': '75 mg',
+        'frequency': 'HS',
+        'relationToMeal': 'any',
+        'durationDays': 30,
+      },
     ],
     'labTestsAdvised': ['Lipid Profile', 'Urine Microalbumin'],
     'generalAdvice': 'Walk 30 minutes daily.\nInspect both feet every evening.',
@@ -393,7 +534,13 @@ List<PrescriptionSummary> diabetologyPrescriptions() => [
     'doctorName': 'Dr Anirban Dey',
     'diagnosis': ['Type 2 diabetes mellitus'],
     'items': [
-      {'name': 'Glimepiride', 'strength': '2 mg', 'frequency': 'OD', 'relationToMeal': 'before_meal', 'durationDays': 90},
+      {
+        'name': 'Glimepiride',
+        'strength': '2 mg',
+        'frequency': 'OD',
+        'relationToMeal': 'before_meal',
+        'durationDays': 90,
+      },
     ],
     'labTestsAdvised': ['HbA1c'],
     'isActive': false,
@@ -412,7 +559,8 @@ List<EcgReport> cardiologyEcgs() => [
     'heartRate': 118,
     'qrsDurationMs': 96,
     'qtcMs': 452,
-    'findings': 'Irregularly irregular rhythm, no P waves. Rate poorly controlled.',
+    'findings':
+        'Irregularly irregular rhythm, no P waves. Rate poorly controlled.',
     'readBy': 'Dr Kaushik Roy',
   }),
   EcgReport.fromJson({
@@ -441,7 +589,8 @@ List<PatientListItem> caseload() => [
     'unreadCount': 3,
     'openAlertCount': 1,
     'lastMessage': {
-      'preview': 'Chest feels tight again since this morning, BP machine says 168/102',
+      'preview':
+          'Chest feels tight again since this morning, BP machine says 168/102',
       'role': 'user',
       'at': _ago(0.02),
       'urgency': 'emergency',
@@ -496,7 +645,8 @@ List<PatientListItem> caseload() => [
     'lastReadingAt': _ago(1),
     'lastReadingValue': 118,
     'lastMessage': {
-      'preview': 'Take the evening dose after dinner, not before. See you on the 30th.',
+      'preview':
+          'Take the evening dose after dinner, not before. See you on the 30th.',
       'role': 'clinician',
       'at': _ago(3),
     },
@@ -521,4 +671,58 @@ List<PatientListItem> caseload() => [
     'riskBand': 'low',
     'riskScore': 0,
   }),
+  listItem({
+    'id': 'p-long',
+    'name': 'Venkata Satyanarayana Subrahmanyam Chakravarthy-Bandyopadhyay',
+    'phone': '+919830022211',
+    'riskBand': 'moderate',
+    'riskScore': 38,
+    'unreadCount': 128,
+    'openAlertCount': 12,
+    'checkInOverdue': true,
+    'lastReadingAt': _ago(23),
+    'lastReadingValue': 96,
+    'lastMessage': {
+      'preview':
+          'Doctor, the swelling in my left ankle has not gone down after the new '
+          'tablets, and I am also getting cramps at night in both calves.',
+      'role': 'user',
+      'at': _ago(2),
+      'mediaType': 'voice',
+    },
+  }),
 ];
+
+/// A long roll, in the server's inbox order: the unread first.
+List<PatientListItem> manyPatients(int n) {
+  const first = ['Aarav', 'Bina', 'Chandan', 'Deepa', 'Esha', 'Farhan', 'Gita'];
+  const last = [
+    'Basu',
+    'Chatterjee',
+    'Dutta',
+    'Ghosh',
+    'Kar',
+    'Mitra',
+    'Sarkar',
+  ];
+  const bands = ['low', 'low', 'moderate', 'low', 'high', 'low', 'critical'];
+  return [
+    for (var i = 0; i < n; i++)
+      listItem({
+        'id': 'p-many-$i',
+        'name': '${first[i % first.length]} ${last[(i * 3) % last.length]}',
+        'phone': '+91983000${(1000 + i).toString()}',
+        'riskBand': bands[i % bands.length],
+        'riskScore': 10 * (i % 8),
+        'unreadCount': i < 6 ? (i % 3) + 1 : 0,
+        'openAlertCount': i % 11 == 0 ? 1 : 0,
+        'lastReadingAt': _ago(i % 15),
+        'lastReadingValue': 110 + (i * 7) % 160,
+        'lastMessage': {
+          'preview': 'Reading taken before breakfast, as asked.',
+          'role': i % 4 == 0 ? 'clinician' : 'user',
+          'at': _ago(i / 5),
+        },
+      }),
+  ];
+}
