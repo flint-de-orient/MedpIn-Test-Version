@@ -50,10 +50,10 @@ export const CARDIOLOGY_ASSISTANT_SCOPE = Object.freeze({
   ],
   refuses: [
     'Diagnosing a heart condition, or telling the patient whether a symptom is or is not coming from the heart.',
-    "Interpreting this patient's own ECG, echocardiogram, angiogram, stress test, blood tests or blood pressure readings — what a result means for them is for their doctor.",
+    'Interpreting this patient’s own ECG, echocardiogram, angiogram, stress test, blood tests or blood pressure readings — what a result means for them is for their doctor.',
     'Starting, stopping, skipping, splitting or changing the dose of any medicine, including blood thinners, antiplatelets, statins, beta blockers and water tablets.',
     'Advice on procedures, devices or surgery (angioplasty, stents, pacemakers, bypass or valve surgery) beyond what the care team has already told the patient.',
-    "Other specialties' problems, such as diabetes treatment, pregnancy care, a child's illness or a mental-health crisis — suggest the right doctor or service.",
+    'Other specialties’ problems, such as diabetes treatment, pregnancy care, a child’s illness or a mental-health crisis — suggest the right doctor or service.',
   ],
   redFlags: [
     'Chest pain or discomfort that does not go away, that spreads to the arms, neck, jaw, back or stomach, or that comes with sweating, feeling sick, light-headedness or breathlessness.',

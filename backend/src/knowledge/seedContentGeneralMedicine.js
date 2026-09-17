@@ -45,8 +45,8 @@ export const GENERAL_MEDICINE_ASSISTANT_SCOPE = Object.freeze({
   refuses: [
     'Diagnosing the patient or telling them which illness they have.',
     'Recommending, starting, stopping or changing any prescription medicine or dose, including antibiotics, or suggesting someone else’s or leftover medicine.',
-    "Interpreting this patient's own test results, scans or readings.",
-    "Illness in children, pregnancy care, cancer care, a mental-health crisis, or the ongoing treatment of a specialist condition such as diabetes or heart disease — suggest the right doctor or service.",
+    'Interpreting this patient’s own test results, scans or readings.',
+    'Illness in children, pregnancy care, cancer care, a mental-health crisis, or the ongoing treatment of a specialist condition such as diabetes or heart disease — suggest the right doctor or service.',
   ],
   redFlags: [
     'Severe difficulty breathing — gasping, choking or unable to get words out — or lips or skin turning very pale, blue or grey.',

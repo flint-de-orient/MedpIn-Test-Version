@@ -116,7 +116,7 @@ export const SOURCES = Object.freeze({
   cdcMeasureBloodPressure: src(CDC, 'Measuring Your Blood Pressure', 2026, 'https://www.cdc.gov/high-blood-pressure/measure/index.html'),
   cdcCardiacRehabilitation: src(CDC, 'How Cardiac Rehabilitation Can Help Heal Your Heart', 2024, 'https://www.cdc.gov/heart-disease/about/cardiac-rehabilitation-treatment.html'),
   cdcFluHeartDisease: src(CDC, 'Flu and People with Heart Disease or History of Stroke', 2025, 'https://www.cdc.gov/flu/highrisk/heartdisease.htm'),
-  cdcAntibioticDosDonts: src(CDC, "Healthy Habits: Antibiotic Do's and Don'ts", 2025, 'https://www.cdc.gov/antibiotic-use/about/index.html'),
+  cdcAntibioticDosDonts: src(CDC, `Healthy Habits: Antibiotic Do's and Don'ts`, 2025, 'https://www.cdc.gov/antibiotic-use/about/index.html'),
   nhlbiLivingWithHeartFailure: src('National Heart, Lung, and Blood Institute (US National Institutes of Health)', 'Living With Heart Failure', 2022, 'https://www.nhlbi.nih.gov/health/heart-failure/living-with'),
 
   // ---- India -----------------------------------------------------------------
@@ -134,7 +134,7 @@ export const SOURCES = Object.freeze({
   ),
   imdHeatWave: src(
     'India Meteorological Department (Agromet), Government of India',
-    "Dos and Don'ts for Heat wave",
+    `Dos and Don'ts for Heat wave`,
     null,
     'https://imdagrimet.gov.in/Files/Dos_Donts/Heat_wave_Dos_and_Donts.pdf',
   ),
