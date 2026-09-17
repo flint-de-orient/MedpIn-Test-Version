@@ -17,7 +17,8 @@ import mongoose from 'mongoose';
  */
 const reminderRunSchema = new mongoose.Schema(
   {
-    // 'glucose' | 'lab' — which pass.
+    // Which pass: 'glucose' | 'lab' (the morning nudges), 'digest:tomorrow' |
+    // 'digest:chat' (the scheduler's evening pushes).
     pass: { type: String, required: true },
 
     // The clinic-timezone date it ran, as YYYY-MM-DD. A date string rather

@@ -8,6 +8,8 @@ import { notifyClinicOfTomorrowSchedule, notifyVisitTomorrow } from './notificat
 import { User, ROLES } from '../models/User.js';
 import { practiceOfAppointment, memberIdsOf } from '../middleware/practiceScope.js';
 import { sendChatDigests } from './chatDigest.js';
+import { claimReminderPass } from '../models/ReminderRun.js';
+import { ownsTheCrons, notStartedHere } from './cronOwner.js';
 import { env } from '../config/env.js';
 import { logger } from '../config/logger.js';
 
@@ -25,13 +27,6 @@ const DIGEST_HOUR = 20;
  * five minutes keeps the digest punctual without meaningful cost.
  */
 const TICK_MS = 5 * 60 * 1000;
-
-/**
- * Guards against sending twice. In memory rather than persisted: the only cost
- * of a restart inside the digest window is one repeated notification, which is
- * not worth a collection and a write to prevent.
- */
-let lastDigestDate = null;
 
 async function sendTomorrowDigest() {
   const start = dayjs().tz(CLINIC_TZ).add(1, 'day').startOf('day');
@@ -59,9 +54,12 @@ async function sendTomorrowDigest() {
  * Guarded on the appointment itself. An in-memory flag would re-remind fifty
  * patients after a restart, and the whole point of the guard is that a person's
  * phone buzzes once.
+ *
+ * Returns how many were reminded. `now` and `notify` are replaceable so a test
+ * can run it for a chosen evening and count what would have been sent.
  */
-async function sendVisitReminders() {
-  const start = dayjs().tz(CLINIC_TZ).add(1, 'day').startOf('day');
+export async function sendVisitReminders({ now, notify = notifyVisitTomorrow } = {}) {
+  const start = (now ?? dayjs().tz(CLINIC_TZ)).add(1, 'day').startOf('day');
   const end = start.endOf('day');
 
   const due = await Appointment.find({
@@ -73,7 +71,7 @@ async function sendVisitReminders() {
     .limit(200)
     .lean();
 
-  if (!due.length) return;
+  if (!due.length) return 0;
 
   /**
    * The doctors to copy in, for the practice whose day this appointment is.
@@ -109,38 +107,53 @@ async function sendVisitReminders() {
     return tokens;
   }
 
+  let sent = 0;
   for (const appt of due) {
+    // Claimed on the row before the push. It was marked after: two processes
+    // reading the same due list — or a tick overlapping a slow one — both found
+    // `remindedAt` empty and both reminded. Only one of them can fill it.
+    const claimedAt = new Date();
+    const claim = await Appointment.updateOne(
+      { _id: appt._id, remindedAt: null },
+      { $set: { remindedAt: claimedAt } },
+    );
+    if (claim.modifiedCount !== 1) continue;
+
     try {
       const doctorTokens = await doctorTokensFor(appt);
-      await notifyVisitTomorrow(appt, { patient: appt.patient, doctorTokens });
-      // Marked after the send, so a push that throws is retried on the next
-      // tick rather than silently skipped for good.
-      await Appointment.updateOne({ _id: appt._id }, { $set: { remindedAt: new Date() } });
+      await notify(appt, { patient: appt.patient, doctorTokens });
+      sent += 1;
     } catch (err) {
+      // Released, so a push that throws is retried on the next tick rather
+      // than silently skipped for good — the reason it was marked after.
+      await Appointment.updateOne(
+        { _id: appt._id, remindedAt: claimedAt },
+        { $set: { remindedAt: null } },
+      ).catch(() => {});
       logger.error({ err, appointmentId: String(appt._id) }, 'visit reminder failed');
     }
   }
 
-  logger.info({ count: due.length }, 'sent day-before visit reminders');
+  logger.info({ due: due.length, sent }, 'sent day-before visit reminders');
+  return sent;
 }
-
-/** Guards the conversation digest the way `lastDigestDate` guards tomorrow's list. */
-let lastChatDigestDate = null;
 
 async function tick() {
   try {
     const now = dayjs().tz(CLINIC_TZ);
     const today = now.format('YYYY-MM-DD');
 
-    if (now.hour() === DIGEST_HOUR && lastDigestDate !== today) {
-      lastDigestDate = today;
+    // Each evening push is claimed in the database, once per clinic day, before
+    // it is sent (see ReminderRun). It was a date in memory, on the reasoning
+    // that a restart inside the hour cost one repeated push; a restart re-sent
+    // the whole list, and a second process would have sent it every evening.
+    if (now.hour() === DIGEST_HOUR && (await claimReminderPass('digest:tomorrow', today))) {
       await sendTomorrowDigest();
     }
 
     // The day's patient conversations, summarised, to the clinicians who were
     // pushed only what could not wait. See services/chatDigest.js.
-    if (now.hour() === env.CHAT_DIGEST_HOUR && lastChatDigestDate !== today) {
-      lastChatDigestDate = today;
+    if (now.hour() === env.CHAT_DIGEST_HOUR && (await claimReminderPass('digest:chat', today))) {
       const { sent } = await sendChatDigests(today);
       logger.info({ sent, for: today }, 'sent conversation digest');
     }
@@ -160,63 +173,19 @@ async function tick() {
 }
 
 /**
- * Starts the background schedule. Returns a stop function so tests and a clean
- * shutdown can cancel it.
+ * Starts the background schedule, in the process that owns the background jobs
+ * (see cronOwner.js). Returns a stop function so tests and a clean shutdown can
+ * cancel it, or null when another process owns the jobs.
  *
  * The digest goes out the evening before rather than the morning of, because
  * knowing the shape of a day is only useful while there is still time to change
  * it — move a clash, prepare for a complex case, start late if the morning is
  * empty. By the time the clinic opens, none of that is possible any more.
  */
-/**
- * Whether this process is the one that runs the crons.
- *
- * ---- The failure this prevents -------------------------------------------
- *
- * The scheduler lives inside the API process. Run the API under `pm2 -i max`
- * and every worker starts its own copy, so a patient with a 9pm insulin
- * reminder gets it once per CPU core — four prompts to take a dose they should
- * take once. Nothing errors. Nothing is logged. The only symptom is a patient
- * being told four times, and the plausible response to that is to take it
- * again.
- *
- * So the guard is here rather than in a deployment note. A note is followed
- * until the evening somebody scales the API to fix a slow endpoint and does not
- * think about reminders.
- *
- * pm2 numbers its workers in `NODE_APP_INSTANCE`; worker 0 runs the crons and
- * the rest do not. Unset — a plain `node src/server.js` — means there is one
- * process and it is this one.
- *
- * `RUN_SCHEDULER` overrides both ways, for the step after this: the scheduler
- * extracted into a process of its own, where the API sets it false and the
- * worker sets it true.
- *
- * ---- What this does not solve -------------------------------------------
- *
- * Two *machines*. Each has its own worker 0, so both would run the crons. That
- * is fine until step 5 of the scaling order — nginx in front of two app servers
- * — and before then this needs a lock in the database rather than a look at an
- * environment variable. Written down because the guard reads as complete and is
- * not.
- */
-function shouldRunScheduler() {
-  const override = process.env.RUN_SCHEDULER;
-  if (override === 'true') return true;
-  if (override === 'false') return false;
-  return (process.env.NODE_APP_INSTANCE ?? '0') === '0';
-}
-
 export function startScheduler() {
-  if (!shouldRunScheduler()) {
-    // Logged rather than silent: a worker that is deliberately not scheduling
-    // should say so, or the first question during an incident is whether the
-    // crons are running at all.
-    logger.info(
-      { instance: process.env.NODE_APP_INSTANCE ?? null },
-      'scheduler not started in this worker — another process owns the crons',
-    );
-    return () => {};
+  if (!ownsTheCrons()) {
+    notStartedHere('scheduler');
+    return null;
   }
 
   const handle = setInterval(tick, TICK_MS);

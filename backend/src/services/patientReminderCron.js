@@ -7,6 +7,7 @@ import { sendGlucoseCheckinPush, sendLabUploadNudgePush } from './notifications.
 import { logger } from '../config/logger.js';
 import { ReminderRun, claimReminderPass } from '../models/ReminderRun.js';
 import { outstandingTests } from '../utils/testNames.js';
+import { ownsTheCrons, notStartedHere } from './cronOwner.js';
 
 /**
  * Two gentle, patient-facing nudges the app owes but never sent: "log a blood
@@ -162,12 +163,26 @@ async function tick() {
 
 let handle = null;
 
-/** Starts the cron. Idempotent; `unref` so it never holds the process open. */
+/**
+ * Starts the cron in the process that owns the background jobs (see
+ * cronOwner.js). Idempotent; `unref` so it never holds the process open.
+ *
+ * Returns a stop function, or null when another process owns the jobs.
+ */
 export function startPatientReminderCron() {
-  if (handle) return;
-  handle = setInterval(() => {
-    tick().catch((err) => logger.error({ err }, 'patient reminder tick failed'));
-  }, TICK_MS);
-  handle.unref?.();
-  logger.info({ glucoseHour: GLUCOSE_HOUR, labHour: LAB_HOUR }, 'patient reminder cron started');
+  if (!ownsTheCrons()) {
+    notStartedHere('patient reminder cron');
+    return null;
+  }
+  if (!handle) {
+    handle = setInterval(() => {
+      tick().catch((err) => logger.error({ err }, 'patient reminder tick failed'));
+    }, TICK_MS);
+    handle.unref?.();
+    logger.info({ glucoseHour: GLUCOSE_HOUR, labHour: LAB_HOUR }, 'patient reminder cron started');
+  }
+  return () => {
+    clearInterval(handle);
+    handle = null;
+  };
 }

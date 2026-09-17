@@ -63,20 +63,29 @@ describe('the day-before reminder', () => {
 
   test('goes out once, and the guard survives a restart', () => {
     // An in-memory flag would re-remind fifty patients after a deploy, and the
-    // whole point of the guard is that one person's phone buzzes once.
+    // whole point of the guard is that one person's phone buzzes once. The
+    // guard is a claim on the row, taken before the push, so two schedulers
+    // cannot both remind — raced for real in remindersOnce.test.js (V-53).
     assert.match(model, /remindedAt: \{ type: Date \}/);
-    assert.match(scheduler, /remindedAt: null/);
-    assert.match(scheduler, /\$set: \{ remindedAt: new Date\(\) \}/);
+    assert.match(scheduler, /\{ _id: appt\._id, remindedAt: null \},\s*\{ \$set: \{ remindedAt: claimedAt \} \}/);
   });
 
-  test('is marked only after the push, so a failure retries', () => {
+  test('a push that fails is released, so it retries', () => {
+    // It used to be marked only after the push for this reason — which is also
+    // what let two schedulers both send. Now claimed first, and handed back on
+    // failure; the retry is exercised in remindersOnce.test.js.
     const fn = scheduler.slice(
       scheduler.indexOf('async function sendVisitReminders'),
       scheduler.indexOf('async function tick'),
     );
     assert.ok(
-      fn.indexOf('notifyVisitTomorrow') < fn.indexOf('remindedAt: new Date()'),
-      'the appointment is marked reminded before the push is attempted',
+      fn.indexOf('$set: { remindedAt: claimedAt }') < fn.indexOf('await notify('),
+      'the push is attempted before the appointment is claimed',
+    );
+    assert.match(
+      fn,
+      /\{ _id: appt\._id, remindedAt: claimedAt \},\s*\{ \$set: \{ remindedAt: null \} \}/,
+      'a failed push keeps its claim and is never retried',
     );
   });
 
