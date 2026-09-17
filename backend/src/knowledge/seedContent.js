@@ -549,4 +549,5 @@ To book, reschedule or cancel an appointment, use the Appointments section. If y
  * position. Adding a domain here is what makes it answerable; the assistant is
  * instructed to refuse rather than improvise when nothing matches.
  */
-export const KNOWLEDGE_SEED = [...DIABETES_SEED, ...ENDOCRINE_SEED];
+import { AI_DRAFT_SEED } from './aiDrafts.js';
+export const KNOWLEDGE_SEED = [...DIABETES_SEED, ...ENDOCRINE_SEED, ...AI_DRAFT_SEED];

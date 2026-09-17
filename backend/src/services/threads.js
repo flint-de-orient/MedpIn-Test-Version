@@ -2,7 +2,7 @@ import { ChatSession } from '../models/ChatSession.js';
 import { Department } from '../models/Department.js';
 import { Practice } from '../models/Practice.js';
 import { practicesFor } from './enrollments.js';
-import { departmentHasAssistant } from './ai/departmentAssistant.js';
+import { conversationAssistant } from './ai/assistantAvailability.js';
 
 /**
  * A patient's conversations, grouped the way they actually exist.
@@ -56,7 +56,7 @@ export async function threadsFor(patientId, { language = 'en' } = {}) {
     // Pre-migration: no enrollments, so there is nothing to group by. Return
     // the threads as one unlabelled group, which is precisely today's screen.
     return sessions.length
-      ? [{ practice: null, enrollment: null, threads: await describe(sessions, language) }]
+      ? [{ practice: null, enrollment: null, threads: await describe(sessions, language, null) }]
       : [];
   }
 
@@ -88,7 +88,7 @@ export async function threadsFor(patientId, { language = 'en' } = {}) {
     out.push({
       practice: g.practice,
       enrollment: g.enrollment,
-      threads: await describe(g.sessions, language),
+      threads: await describe(g.sessions, language, g.practice.id),
     });
   }
   // A practice the patient has joined but never messaged still appears, so they
@@ -96,16 +96,32 @@ export async function threadsFor(patientId, { language = 'en' } = {}) {
   return out;
 }
 
-/** Label each thread with its department, and say whether it can be answered. */
-async function describe(sessions, language) {
+/**
+ * Label each thread with its department, and say whether it can be answered.
+ *
+ * Whether it can be answered is the availability check's answer for this
+ * practice, asked once per department rather than once per thread. It was
+ * `Boolean(assistantScope.role)`, which a scope still awaiting review also
+ * satisfies — the list would have promised an assistant nobody had approved.
+ */
+async function describe(sessions, language, practiceId) {
   const ids = [...new Set(sessions.map((s) => s.department).filter(Boolean).map(String))];
   const departments = ids.length
     ? await Department.find({ _id: { $in: ids } }).lean()
     : [];
   const byId = new Map(departments.map((d) => [String(d._id), d]));
 
+  const answers = new Map();
+  for (const s of sessions) {
+    const key = s.department ? String(s.department) : 'general';
+    if (!answers.has(key)) {
+      answers.set(key, await conversationAssistant({ session: s, practiceId, language }));
+    }
+  }
+
   return sessions.map((s) => {
     const d = s.department ? byId.get(String(s.department)) : null;
+    const answer = answers.get(s.department ? String(s.department) : 'general');
     return {
       id: String(s._id),
       // Null department renders as the practice's own name upstream, which is
@@ -113,7 +129,11 @@ async function describe(sessions, language) {
       department: d
         ? { id: String(d._id), key: d.key, name: d.names?.[language] || d.names?.en || d.key }
         : null,
-      hasAssistant: d ? Boolean(d.assistantScope?.role) : true,
+      hasAssistant: answer.enabled,
+      // Why not, for a screen that wants to say more than "clinic replies
+      // only": a scope still awaiting review reads differently from a
+      // specialty with no assistant at all.
+      assistant: { enabled: answer.enabled, reason: answer.reason },
       lastMessageAt: s.lastMessageAt,
       highestUrgency: s.highestUrgency,
       messageCount: s.messageCount ?? 0,
@@ -148,14 +168,8 @@ export async function threadFor({ patientId, enrollmentId = null, departmentId =
   });
 }
 
-/**
- * Whether a reply may be generated in this thread at all.
- *
- * A department with no assistant scope gets silence, and the composer should
- * say so rather than accept a message nothing will answer. The practice's
- * general thread keeps the assistant it has always had.
- */
-export async function threadHasAssistant(session) {
-  if (!session?.department) return true;
-  return departmentHasAssistant(session.department);
-}
+// Whether a reply may be generated in a thread is `conversationAssistant` in
+// ai/assistantAvailability.js: a department with no approved assistant gets
+// silence, a practice's general thread follows the practice's specialty, and
+// with no specialty on the practice it keeps the assistant it has always had.
+// The thread list above and the assistant itself both ask it.

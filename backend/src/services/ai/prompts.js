@@ -59,7 +59,7 @@ const LANGUAGE_NAME = { en: 'English', bn: 'Bengali (বাংলা)', hi: 'Hin
  * patients met an assistant that introduced their doctor as a diabetologist and
  * declined to discuss cardiology as belonging to another specialty.
  */
-const ENDOCRINE = /diabet|endocrin|metabol/i;
+export const ENDOCRINE = /diabet|endocrin|metabol/i;
 
 function defaultScopeFor(doctorName, specialty) {
   // Nothing known about what this practice treats. The assistant claims no

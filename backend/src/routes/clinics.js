@@ -407,7 +407,7 @@ router.put(
         { doctor: doctor._id, location: clinic._id },
         { $set: set },
         { upsert: true, new: true, runValidators: true },
-      );
+      ).exec();
     let row;
     try {
       row = await write();

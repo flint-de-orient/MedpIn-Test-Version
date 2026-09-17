@@ -57,9 +57,23 @@ describe('no scope means no assistant, not a general one', () => {
     assert.match(service, /No scope, no assistant/);
   });
 
-  test('a route can ask cheaply whether to show a composer', () => {
-    assert.match(service, /export async function departmentHasAssistant/);
-    assert.match(service, /\.select\('assistantScope\.role'\)/);
+  test('whether a department answers is asked of one function, not worked out here', () => {
+    // departmentHasAssistant read the role alone, which a scope still awaiting
+    // review also has, and nothing called it. The answer now lives in
+    // assistantAvailability.js — assistantAvailability.test.js runs it against a
+    // real database — and the prompt context asks it before building anything.
+    assert.ok(!/export async function departmentHasAssistant/.test(service), 'a second answer to "is there an assistant" is back');
+    assert.match(service, /const availability = status \?\? \(await assistantStatus\(\{ department: row, practiceId, language \}\)\);/);
+    assert.match(service, /if \(!availability\.enabled\) return null;/);
+  });
+
+  test('a written scope awaiting review is not an assistant', () => {
+    const d = new Department({
+      key: 'cardiology',
+      names: { en: 'Cardiologist' },
+      assistantScope: { role: 'the cardiology assistant', status: 'pending_review', version: 1 },
+    });
+    assert.equal(d.toPublic().hasAssistant, false, 'a draft scope reads as a live assistant');
   });
 });
 
