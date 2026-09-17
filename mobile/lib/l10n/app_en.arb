@@ -372,6 +372,8 @@
   "apptChooseTime": "Choose a time",
   "apptNoSlots": "No available times on this day",
   "apptClosedThatDay": "The clinic is closed on this day",
+  "apptNoOnlineBooking": "This clinic does not take bookings in the app. Ask for an appointment and the clinic will give you a time.",
+  "apptAskForAppointment": "Ask for an appointment",
   "apptNotifyMeLater": "Notify me if a slot opens",
   "apptWaitlistJoined": "We'll notify you if a slot opens",
   "apptReasonLabel": "Reason for visit (optional)",

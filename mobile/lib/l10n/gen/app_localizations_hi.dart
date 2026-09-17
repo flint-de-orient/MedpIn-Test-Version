@@ -976,6 +976,13 @@ class AppLocalizationsHi extends AppLocalizations {
   String get apptClosedThatDay => 'इस दिन क्लिनिक बंद है';
 
   @override
+  String get apptNoOnlineBooking =>
+      'इस क्लिनिक में ऐप से बुकिंग नहीं होती। अपॉइंटमेंट का अनुरोध भेजें, क्लिनिक आपको समय बताएगा।';
+
+  @override
+  String get apptAskForAppointment => 'अपॉइंटमेंट का अनुरोध करें';
+
+  @override
   String get apptNotifyMeLater => 'स्लॉट खाली होने पर मुझे सूचित करें';
 
   @override

@@ -3,6 +3,7 @@ import 'package:intl/intl.dart';
 
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_spacing.dart';
+import '../../../../core/theme/tokens.dart';
 import '../../../../l10n/gen/app_localizations.dart';
 import '../../domain/appointment.dart';
 
@@ -189,24 +190,34 @@ class AppointmentCard extends StatelessWidget {
                             ),
                           ],
                           const SizedBox(height: 4),
-                          Row(
+                          // Wraps rather than running off the card. A Row with
+                          // nothing flexible in it overflowed at 360 points once
+                          // a request's "· requested" was added, cutting the
+                          // day a patient had asked for.
+                          Wrap(
+                            spacing: T.s2,
+                            crossAxisAlignment: WrapCrossAlignment.center,
                             children: [
-                              Icon(
-                                a.isTeleconsult
-                                    ? Icons.videocam_outlined
-                                    : Icons.location_on_outlined,
-                                size: 14,
-                                color: scheme.onSurfaceVariant,
+                              Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(
+                                    a.isTeleconsult
+                                        ? Icons.videocam_outlined
+                                        : Icons.location_on_outlined,
+                                    size: 14,
+                                    color: scheme.onSurfaceVariant,
+                                  ),
+                                  const SizedBox(width: T.s1),
+                                  Text(
+                                    appointmentModeLabel(l10n, a.mode),
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: scheme.onSurfaceVariant,
+                                    ),
+                                  ),
+                                ],
                               ),
-                              const SizedBox(width: 4),
-                              Text(
-                                appointmentModeLabel(l10n, a.mode),
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: scheme.onSurfaceVariant,
-                                ),
-                              ),
-                              const SizedBox(width: 8),
                               Text(
                                 a.displayDate == null
                                     ? 'Waiting for the clinic'
@@ -250,9 +261,14 @@ class AppointmentCard extends StatelessWidget {
                 ],
                 if (actions != null && actions!.isNotEmpty) ...[
                   const Divider(height: AppSpacing.lg),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.end,
-                    children: _spaced(actions!),
+                  // A Wrap, not a Row. "Reschedule" and "Cancel appointment"
+                  // side by side are wider than the card on a small phone, and
+                  // an overflowing Row does not draw its last child — the
+                  // button a patient needs to call a visit off.
+                  Wrap(
+                    alignment: WrapAlignment.end,
+                    spacing: T.s2,
+                    children: actions!,
                   ),
                 ],
               ],
@@ -261,14 +277,5 @@ class AppointmentCard extends StatelessWidget {
         ),
       ),
     );
-  }
-
-  List<Widget> _spaced(List<Widget> items) {
-    final out = <Widget>[];
-    for (var i = 0; i < items.length; i++) {
-      out.add(items[i]);
-      if (i < items.length - 1) out.add(const SizedBox(width: AppSpacing.sm));
-    }
-    return out;
   }
 }

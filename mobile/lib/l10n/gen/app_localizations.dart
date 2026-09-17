@@ -1942,6 +1942,18 @@ abstract class AppLocalizations {
   /// **'The clinic is closed on this day'**
   String get apptClosedThatDay;
 
+  /// No description provided for @apptNoOnlineBooking.
+  ///
+  /// In en, this message translates to:
+  /// **'This clinic does not take bookings in the app. Ask for an appointment and the clinic will give you a time.'**
+  String get apptNoOnlineBooking;
+
+  /// No description provided for @apptAskForAppointment.
+  ///
+  /// In en, this message translates to:
+  /// **'Ask for an appointment'**
+  String get apptAskForAppointment;
+
   /// No description provided for @apptNotifyMeLater.
   ///
   /// In en, this message translates to:

@@ -316,6 +316,8 @@
   "apptChooseTime": "एक समय चुनें",
   "apptNoSlots": "इस दिन कोई समय उपलब्ध नहीं",
   "apptClosedThatDay": "इस दिन क्लिनिक बंद है",
+  "apptNoOnlineBooking": "इस क्लिनिक में ऐप से बुकिंग नहीं होती। अपॉइंटमेंट का अनुरोध भेजें, क्लिनिक आपको समय बताएगा।",
+  "apptAskForAppointment": "अपॉइंटमेंट का अनुरोध करें",
   "apptNotifyMeLater": "स्लॉट खाली होने पर मुझे सूचित करें",
   "apptWaitlistJoined": "स्लॉट खाली होने पर हम आपको सूचित करेंगे",
   "apptReasonLabel": "विज़िट का कारण (वैकल्पिक)",

@@ -184,10 +184,17 @@ class _AppointmentList extends ConsumerWidget {
             actions:
                 showActions && a.isActive
                     ? [
-                      TextButton(
-                        onPressed: () => _reschedule(context, ref, a),
-                        child: Text(l10n.apptReschedule),
-                      ),
+                      // Only where moving it can work: a booked time at a
+                      // location, whose published hours the patient chooses
+                      // from. It was drawn on every active row, and on a
+                      // request with no time, or a visit at no location, the
+                      // tap returned without a word. Those are the clinic's to
+                      // move; the patient can still cancel, or ask again.
+                      if (canPatientReschedule(a))
+                        TextButton(
+                          onPressed: () => _reschedule(context, ref, a),
+                          child: Text(l10n.apptReschedule),
+                        ),
                       TextButton(
                         style: TextButton.styleFrom(
                           foregroundColor: AppColors.danger,
@@ -248,7 +255,14 @@ class _AppointmentList extends ConsumerWidget {
   ) async {
     final l10n = AppLocalizations.of(context);
     final messenger = ScaffoldMessenger.of(context);
-    if (a.clinicId == null) return;
+    // Never reached without a location — the button is not drawn — but a
+    // guard that says nothing is how this path went dead, so it says why.
+    if (!canPatientReschedule(a)) {
+      messenger.showSnackBar(
+        SnackBar(content: Text(l10n.commonSomethingWentWrong)),
+      );
+      return;
+    }
     final iso = await showModalBottomSheet<String>(
       context: context,
       isScrollControlled: true,
@@ -257,6 +271,7 @@ class _AppointmentList extends ConsumerWidget {
           (_) => _RescheduleSheet(
             clinicId: a.clinicId!,
             clinicName: a.clinicName ?? '',
+            initialDay: a.scheduledFor,
           ),
     );
     if (iso == null) return;
@@ -274,12 +289,25 @@ class _AppointmentList extends ConsumerWidget {
   }
 }
 
+/// Whether a patient can move this appointment themselves: a booked time, at a
+/// location. A request has no time yet, and a visit at no location has no
+/// published hours to choose another from — the server refuses both.
+bool canPatientReschedule(Appointment a) =>
+    a.isActive && a.scheduledFor != null && a.clinicId != null;
+
 /// Compact date + slot picker for rescheduling within the same clinic.
 class _RescheduleSheet extends ConsumerStatefulWidget {
-  const _RescheduleSheet({required this.clinicId, required this.clinicName});
+  const _RescheduleSheet({
+    required this.clinicId,
+    required this.clinicName,
+    this.initialDay,
+  });
 
   final String clinicId;
   final String clinicName;
+
+  /// The appointment's own day, where the strip opens when it is still ahead.
+  final DateTime? initialDay;
 
   @override
   ConsumerState<_RescheduleSheet> createState() => _RescheduleSheetState();
@@ -292,7 +320,17 @@ class _RescheduleSheetState extends ConsumerState<_RescheduleSheet> {
   @override
   void initState() {
     super.initState();
-    _date = DateTime.now();
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final day = widget.initialDay;
+    // Within the fortnight the strip shows, or it would open on a day it
+    // cannot highlight.
+    _date =
+        day != null &&
+                !day.isBefore(today) &&
+                day.isBefore(today.add(const Duration(days: 14)))
+            ? DateTime(day.year, day.month, day.day)
+            : now;
   }
 
   String get _dateKey => DateFormat('yyyy-MM-dd').format(_date);

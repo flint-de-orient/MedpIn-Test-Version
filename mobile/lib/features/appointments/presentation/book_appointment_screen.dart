@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
+import '../../../core/theme/tokens.dart';
 import '../../../l10n/gen/app_localizations.dart';
 import '../../../shared/providers/preferences_provider.dart';
 import '../../../shared/services/notification_service.dart';
@@ -12,6 +13,7 @@ import '../../../shared/widgets/auto_refresh.dart';
 import '../data/appointment_repository.dart';
 import '../domain/clinic.dart';
 import 'appointment_providers.dart';
+import 'request_appointment_sheet.dart';
 
 /// Patient booking flow on one screen: choose clinic → choose date → choose an
 /// available time → confirm. Slot availability auto-refreshes so a time taken
@@ -140,16 +142,16 @@ class _BookAppointmentScreenState extends ConsumerState<BookAppointmentScreen> {
             (_, _) =>
                 _ErrorRetry(onRetry: () => ref.invalidate(clinicsProvider)),
         data: (list) {
-          if (list.isEmpty) {
-            return Center(
-              child: Padding(
-                padding: const EdgeInsets.all(AppSpacing.xl),
-                child: Text(l10n.apptNoSlots, textAlign: TextAlign.center),
-              ),
-            );
-          }
+          final (:open, :choice) = locationChoice(list);
+
+          // No location, so no published hours to book from. This said "No
+          // available times on this day" — about a day nobody had chosen, at
+          // a clinic that does not exist — and left the patient nowhere to go.
+          // Asking is how this practice takes appointments.
+          if (choice == LocationChoice.none) return const _AskInstead();
+
           // Default to the first clinic so the flow is one step shorter.
-          _clinic ??= list.first;
+          _clinic ??= open.first;
           return ListView(
             padding: const EdgeInsets.fromLTRB(
               AppSpacing.md,
@@ -158,14 +160,21 @@ class _BookAppointmentScreenState extends ConsumerState<BookAppointmentScreen> {
               120,
             ),
             children: [
-              _SectionTitle(l10n.apptChooseClinic),
-              ...list.map(
-                (c) => _ClinicOption(
-                  clinic: c,
-                  selected: c.id == _clinic?.id,
-                  onTap: () => _selectClinic(c),
+              // One location is where the visit is, not a question: it is
+              // named, with nothing to pick. Two or more are the choice they
+              // always were.
+              if (choice == LocationChoice.one)
+                _ClinicSummary(clinic: open.first)
+              else ...[
+                _SectionTitle(l10n.apptChooseClinic),
+                ...open.map(
+                  (c) => _ClinicOption(
+                    clinic: c,
+                    selected: c.id == _clinic?.id,
+                    onTap: () => _selectClinic(c),
+                  ),
                 ),
-              ),
+              ],
               const SizedBox(height: AppSpacing.lg),
               _SectionTitle(l10n.apptChooseDate),
               _DateStrip(
@@ -235,6 +244,89 @@ class _SectionTitle extends StatelessWidget {
       ),
     ),
   );
+}
+
+/// The practice has no location to book at: say so, and offer the way it does
+/// take appointments.
+class _AskInstead extends StatelessWidget {
+  const _AskInstead();
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    final scheme = Theme.of(context).colorScheme;
+    final navigator = Navigator.of(context);
+
+    return Center(
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.all(T.s6),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.edit_calendar_outlined,
+              size: 48,
+              color: scheme.outlineVariant,
+            ),
+            const SizedBox(height: T.s4),
+            Text(
+              l10n.apptNoOnlineBooking,
+              textAlign: TextAlign.center,
+              style: T.body.copyWith(color: scheme.onSurfaceVariant),
+            ),
+            const SizedBox(height: T.s6),
+            FilledButton(
+              style: FilledButton.styleFrom(
+                minimumSize: const Size.fromHeight(T.hControl),
+              ),
+              onPressed: () async {
+                // Back to their appointments, where the request now is.
+                if (await showRequestAppointmentSheet(context)) navigator.pop();
+              },
+              child: Text(l10n.apptAskForAppointment),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// The only location, named — where the visit will be, with nothing to choose.
+class _ClinicSummary extends StatelessWidget {
+  const _ClinicSummary({required this.clinic});
+
+  final Clinic clinic;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final accent = isDark ? AppColors.primaryDark : AppColors.primary;
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: T.s2),
+      child: Row(
+        children: [
+          Icon(Icons.local_hospital_outlined, color: accent),
+          const SizedBox(width: T.s4),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(clinic.name, style: T.bodyStrong),
+                if (clinic.locationLine.isNotEmpty)
+                  Text(
+                    clinic.locationLine,
+                    style: T.small.copyWith(color: scheme.onSurfaceVariant),
+                  ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 class _ClinicOption extends StatelessWidget {

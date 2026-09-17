@@ -974,6 +974,13 @@ class AppLocalizationsEn extends AppLocalizations {
   String get apptClosedThatDay => 'The clinic is closed on this day';
 
   @override
+  String get apptNoOnlineBooking =>
+      'This clinic does not take bookings in the app. Ask for an appointment and the clinic will give you a time.';
+
+  @override
+  String get apptAskForAppointment => 'Ask for an appointment';
+
+  @override
   String get apptNotifyMeLater => 'Notify me if a slot opens';
 
   @override
