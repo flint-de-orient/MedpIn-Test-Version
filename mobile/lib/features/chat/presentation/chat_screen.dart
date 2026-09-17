@@ -24,6 +24,7 @@ import 'widgets/generating_bubble.dart';
 import 'widgets/edit_message_sheet.dart';
 import '../../../core/push/chat_push_signal.dart';
 import '../../appointments/presentation/request_appointment_sheet.dart';
+import '../../shell/presentation/care_access.dart';
 
 class ChatScreen extends ConsumerStatefulWidget {
   const ChatScreen({super.key});
@@ -324,6 +325,10 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
         chatState.isSending &&
         (messages.isEmpty || messages.last.isUser || awaitingFirstToken);
 
+    // Clinic surfaces — the clinic's name and booking — only for a patient
+    // enrolled at a practice. The number is gated at its provider.
+    final enrolled = ref.watch(clinicCareProvider) == ClinicCare.enrolled;
+
     // Kept so a banner/quote tap can resolve a message id to its list index.
     _entries = entries;
     _itemCount = entries.length + (showGenerating ? 1 : 0);
@@ -335,8 +340,10 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
       backgroundColor: Colors.transparent,
       appBar: AppBar(
         centerTitle: true,
+        // A patient enrolled at no practice has the assistant and no clinic,
+        // so the bar names the assistant rather than a clinic they are not at.
         title: Text(
-          l10n.chatTitle,
+          enrolled ? l10n.chatTitle : l10n.ptHealthAssistant,
           style: TextStyle(
             color: AppColors.accentOn(context),
             fontWeight: FontWeight.w700,
@@ -356,11 +363,12 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
           // patients never open it. This is the shorter path — name a day, and
           // the desk answers — and it belongs here because this is where a
           // patient is already talking to the clinic.
-          IconButton(
-            tooltip: 'Request an appointment',
-            icon: const Icon(Icons.event_available_rounded),
-            onPressed: _requestAppointment,
-          ),
+          if (enrolled)
+            IconButton(
+              tooltip: l10n.ptRequestAppointment,
+              icon: const Icon(Icons.event_available_rounded),
+              onPressed: _requestAppointment,
+            ),
           // The patient's own practice's number, and no button without one.
           // It dialled a placeholder compiled into the app whenever the real
           // number had not loaded.
