@@ -415,25 +415,35 @@ class _Waveform extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final filled = (_heights.length * progress).round();
-    return SizedBox(
-      height: 32,
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          for (var i = 0; i < _heights.length; i++) ...[
-            Container(
-              width: 3.5,
-              height: _heights[i],
-              decoration: BoxDecoration(
-                color: i < filled ? colour : track,
-                borderRadius: BorderRadius.circular(12),
-              ),
-            ),
-            if (i != _heights.length - 1) const SizedBox(width: 4),
-          ],
-        ],
-      ),
+    // As many bars as the box holds. It drew all twenty-two — 161px of bars in
+    // a 112px box — so the last third painted past the player, over the clock.
+    return LayoutBuilder(
+      builder: (context, box) {
+        const bar = 3.5;
+        const gap = 4.0;
+        final fit = ((box.maxWidth + gap) / (bar + gap)).floor();
+        final count = fit.clamp(1, _heights.length);
+        final filled = (count * progress).round();
+        return SizedBox(
+          height: 32,
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              for (var i = 0; i < count; i++) ...[
+                Container(
+                  width: bar,
+                  height: _heights[i],
+                  decoration: BoxDecoration(
+                    color: i < filled ? colour : track,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+                if (i != count - 1) const SizedBox(width: gap),
+              ],
+            ],
+          ),
+        );
+      },
     );
   }
 }
