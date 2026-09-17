@@ -392,9 +392,13 @@ node scripts/backfillFeedbackRouting.js                                         
   enrolled (no such event) is not asked, and can share from "Who can see my
   records?". Until somebody answers, nothing is shared beyond what the
   enrolment gives. There is no script that answers for anybody.
-- **Admin console**: platform feedback is served at `/admin/feedback`, without
-  the patient's identity. Until the console has a screen for it, it is readable
-  with an operator's bearer token.
+- **Admin console**: platform feedback — about the app, and from patients no
+  practice has taken on — is at Platform → Feedback (`/admin/feedback`), without
+  the patient's identity. Deploy the console with the API, or that feedback has
+  nowhere to be read.
+- **Tell the practices** that patients' own logs and earlier history are now
+  asked for at the counter with the code ("The patient answered now"), or in the
+  patient's app, and that a patient record shows what has not been shared.
 - **The app**: builds from before this keep sending feedback (a patient with
   one practice is routed to it; with two, the old form is told to choose, which
   it cannot, and says so) and keep working at the desk — an existing number
