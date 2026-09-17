@@ -487,7 +487,7 @@ class _PrescriptionCardState extends ConsumerState<_PrescriptionCard> {
                       ),
                     ],
                     if (rx.endedLabel != null) ...[
-                      const SizedBox(height: 2),
+                      const SizedBox(height: 0),
                       Text(
                         rx.endedLabel!,
                         style: const TextStyle(
