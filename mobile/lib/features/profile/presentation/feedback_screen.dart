@@ -151,7 +151,7 @@ class _FeedbackScreenState extends ConsumerState<FeedbackScreen> {
             decoration: InputDecoration(
               hintText:
                   _about == 'clinic'
-                      ? 'Tell Dr. Dey what went well, or what did not…'
+                      ? 'Tell your doctor what went well, or what did not…'
                       : 'Tell us what is broken or confusing…',
               // Darker than the theme's default hint, which sits at 38% opacity
               // and falls under the AA contrast floor on white. A placeholder

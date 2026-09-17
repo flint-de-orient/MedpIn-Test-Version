@@ -30,11 +30,15 @@ class _PracticeDetailsSheetState extends ConsumerState<PracticeDetailsSheet> {
   String? _error;
 
   /// The text fields this sheet knows how to edit, in letterhead order.
+  ///
+  /// The hints are the shape of an answer, not somebody's answer. They were one
+  /// real clinic's name and its doctor's, shown as the example to every other
+  /// practice's doctor filling in their own letterhead.
   static const _editable = <String, ({String label, String hint})>{
-    'name': (label: 'Practice name', hint: 'Dey Diabetes Clinic'),
-    'doctorDisplayName': (label: 'Doctor’s printed name', hint: 'Dr. Amit Kumar Dey'),
-    'registrationNo': (label: 'Registration number', hint: 'WBMC-12345'),
-    'tagline': (label: 'Tagline', hint: 'Diabetes Obesity & Metabolic Clinic'),
+    'name': (label: 'Practice name', hint: 'e.g. City Diabetes Clinic'),
+    'doctorDisplayName': (label: 'Doctor’s printed name', hint: 'As it should print, e.g. Dr. A. Sharma'),
+    'registrationNo': (label: 'Registration number', hint: 'e.g. WBMC-12345'),
+    'tagline': (label: 'Tagline', hint: 'e.g. Diabetes & Endocrine Care'),
   };
 
   @override

@@ -4,7 +4,7 @@
   "@appName": {
     "description": "App name shown on splash and title bars"
   },
-  "appTagline": "Diabetes care with Dr. Amit Kumar Dey",
+  "appTagline": "Your care, between visits",
   "commonRetry": "Retry",
   "commonCancel": "Cancel",
   "commonSave": "Save",
@@ -160,7 +160,7 @@
   "dashboardEmptyTitle": "No dashboard data yet",
   "dashboardEmptyBody": "Start logging your glucose and medicines to see your health summary here.",
   "dashboardErrorTitle": "Couldn't load your dashboard",
-  "chatTitle": "Dr. Dey's Clinic",
+  "chatTitle": "Your clinic",
   "chatFromClinic": "From the clinic",
   "appLockSubtitle": "Unlock to see your messages and health records.",
   "profileFeedback": "Send feedback",
