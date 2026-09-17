@@ -3,8 +3,6 @@ import 'dart:async';
 import 'package:akd_care/core/capabilities/capabilities.dart';
 import 'package:akd_care/core/network/api_exception.dart';
 import 'package:akd_care/features/auth/domain/user.dart';
-import 'package:akd_care/features/clinician/domain/chat_review.dart';
-import 'package:akd_care/features/clinician/domain/chat_summary.dart';
 import 'package:akd_care/features/clinician/domain/patient_summary.dart';
 import 'package:akd_care/features/clinician/presentation/chat_review_screen.dart';
 import 'package:akd_care/features/clinician/presentation/chat_summaries_screen.dart';
@@ -12,7 +10,6 @@ import 'package:akd_care/features/clinician/presentation/clinician_providers.dar
 import 'package:akd_care/features/clinician/presentation/nutrition_inbox_screen.dart';
 import 'package:akd_care/features/clinician/presentation/patient_thread_screen.dart';
 import 'package:akd_care/features/clinician/presentation/widgets/inbox_states.dart';
-import 'package:akd_care/shared/models/paged.dart';
 import 'package:akd_care/shared/providers/core_providers.dart';
 import 'package:akd_care/shared/widgets/clinic_brand.dart';
 import 'package:akd_care/shared/widgets/user_avatar.dart';

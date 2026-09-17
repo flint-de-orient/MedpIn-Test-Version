@@ -13,7 +13,6 @@ import 'package:akd_care/shared/models/paged.dart';
 import 'package:akd_care/shared/widgets/clinic_brand.dart';
 import 'package:akd_care/shared/widgets/notification_list_sheet.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'ui_preview/desk_fixtures.dart';
