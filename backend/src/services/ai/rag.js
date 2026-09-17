@@ -118,7 +118,12 @@ async function vectorSearchInProcess(queryVector, { limit, languages, categories
  */
 async function textSearch(query, { limit, language, practice = null, department = null }) {
   const filter = { status: 'approved', $text: { $search: query }, ...scopeFilter({ practice, department }) };
-  if (language) filter.language = language;
+  // The same languages the vector searches read. This asked for the patient's
+  // language alone, so during an embedding outage a Bengali question lost the
+  // English passages it is normally grounded on — and the assistant's
+  // availability check, which counts both, would have described a corpus the
+  // outage path could not see.
+  if (language) filter.language = { $in: searchLanguagesFor(language) };
   const results = await KnowledgeChunk.find(filter, { score: { $meta: 'textScore' } })
     .sort({ score: { $meta: 'textScore' } })
     .limit(limit)
