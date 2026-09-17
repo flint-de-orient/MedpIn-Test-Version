@@ -11,7 +11,7 @@ import { activePatientCount } from './practiceUsage.js';
 import { ConsentEvent, CONSENT_ACTION, CONSENT_METHOD } from '../models/ConsentEvent.js';
 import { autoAssignDietician } from './dieticianAssignment.js';
 import { wasActiveBefore } from './enrollments.js';
-import { askHistoryQuestion } from './sharing.js';
+import { askSharingQuestions, answerSharingQuestions } from './sharing.js';
 import { logger } from '../config/logger.js';
 
 /**
@@ -282,8 +282,21 @@ export async function enrolByPhone({
  * at *a* counter; it is the enrolment that says which practice asked, and one
  * practice confirming another's would be handed a patient who consented to
  * somebody else.
+ *
+ * `share` is the patient's answer to the two questions asked at enrolment —
+ * `{ ownLogs, history }` — when the desk asked them at the counter. It rides
+ * in the same request as the code, so it is recorded with that proof; when it
+ * is absent the patient is asked in their own app instead. `confirmer` is the
+ * desk account, `{ _id, role }`, recorded as the one who entered it.
  */
-export async function confirmEnrolment({ enrollmentId, code, confirmedBy = null, practiceId = undefined }) {
+export async function confirmEnrolment({
+  enrollmentId,
+  code,
+  confirmedBy = null,
+  confirmer = null,
+  practiceId = undefined,
+  share = undefined,
+}) {
   const enrollment = await Enrollment.findById(enrollmentId);
   if (!enrollment) throw notFound('That enrolment was not found');
   if (practiceId !== undefined && String(enrollment.practice) !== String(practiceId)) {
@@ -320,8 +333,9 @@ export async function confirmEnrolment({ enrollmentId, code, confirmedBy = null,
    * goes on reading its own history with them rather than losing it for the
    * gap. See `wasActiveBefore`.
    */
+  const returning = await wasActiveBefore(enrollment._id);
   const set = { status: ENROLLMENT_STATUS.ACTIVE, enrolledBy: enrollment.enrolledBy ?? confirmedBy };
-  if (!(await wasActiveBefore(enrollment._id))) set.enrolledOn = new Date();
+  if (!returning) set.enrolledOn = new Date();
 
   // Conditional on still pending, so two desks spending one code at the same
   // moment make one consent rather than two.
@@ -336,17 +350,44 @@ export async function confirmEnrolment({ enrollmentId, code, confirmedBy = null,
   // the moment its only dietician takes them on.
   await autoAssignDietician(confirmed.patient, confirmed.practice);
 
+  // A return is recorded as one, on its own event and its own date, while the
+  // enrolment keeps the date it started.
   await ConsentEvent.record({
     enrollment: confirmed._id,
     action: CONSENT_ACTION.GRANTED,
     actor: confirmedBy,
     method: CONSENT_METHOD.OTP_DESK,
     wording: CONSENT_WORDING,
+    ...(returning
+      ? { reconsent: true, note: 'Consented again after a withdrawal; the original enrolment date is kept' }
+      : {}),
   });
 
-  // The practice now reads from `enrolledOn`. Whether it may read further back
-  // is the patient's question to answer, in their own app — asked once, here.
-  askHistoryQuestion(confirmed).catch((err) => logger.warn({ err }, 'history question push failed'));
+  /*
+   * What the practice may see beyond its own window is the patient's to
+   * answer: at the counter, in this same request, or in their own app.
+   */
+  let answered = false;
+  if (share && confirmer?._id && confirmer?.role) {
+    try {
+      await answerSharingQuestions({
+        actor: confirmer,
+        enrollment: confirmed,
+        ownLogs: share.ownLogs,
+        history: share.history,
+        method: CONSENT_METHOD.OTP_DESK,
+        grantedBy: patient.login,
+      });
+      answered = true;
+    } catch (err) {
+      // The consent stands whatever happened to the answers. Unrecorded, they
+      // are asked again in the patient's app rather than lost or guessed.
+      logger.warn({ err }, 'sharing answers given at the desk were not recorded');
+    }
+  }
+  if (!answered) {
+    askSharingQuestions(confirmed).catch((err) => logger.warn({ err }, 'sharing question push failed'));
+  }
 
   return confirmed;
 }

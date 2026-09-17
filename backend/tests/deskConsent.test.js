@@ -9,7 +9,8 @@ import { Enrollment, ENROLLMENT_STATUS } from '../src/models/Enrollment.js';
 import { ConsentEvent, CONSENT_ACTION, CONSENT_METHOD } from '../src/models/ConsentEvent.js';
 import { OtpChallenge, hashOtp } from '../src/models/OtpChallenge.js';
 import { GlucoseReading } from '../src/models/GlucoseReading.js';
-import { ShareGrant } from '../src/models/ShareGrant.js';
+import { ShareGrant, OWN_LOG_CATEGORIES, HISTORY_CATEGORIES } from '../src/models/ShareGrant.js';
+import { Prescription } from '../src/models/Prescription.js';
 import { signAccessToken } from '../src/services/tokens.js';
 import { PLAN, PRACTICE_TYPE } from '../src/models/Practice.js';
 
@@ -22,9 +23,12 @@ import { PLAN, PRACTICE_TYPE } from '../src/models/Practice.js';
  *     account that exists, including one nobody else holds
  *   - nothing about the account shown before that: not its name, not its id,
  *     not the number it signs in with
- *   - a patient coming back keeps the original `enrolledOn`
- *   - the practice reads nothing from before the consent unless the patient,
- *     answering the one-time question in their own app, shares it
+ *   - a patient coming back keeps the original `enrolledOn`, and the new
+ *     consent is recorded as a return, on its own event
+ *   - the practice reads nothing beyond its enrolment unless the patient
+ *     shares it: at the counter, in the same step as the code, or once in
+ *     their own app — "my own health logs" and "my earlier history", each a
+ *     grant — and the practice is told what it is not seeing
  */
 
 const DAY = 24 * 60 * 60 * 1000;
@@ -187,16 +191,26 @@ describe('registering a number that already has an account', () => {
     assert.equal(await Enrollment.countDocuments({ patient: behala.owner.user._id }), 0);
   });
 
-  test('a brand-new number is registered at once, and asks no history question', async () => {
+  test('a brand-new number is registered at once, and is asked only about its own logs', async () => {
     const number = phone();
     const res = await register(salt.desk, number, 'Brand New');
     assert.equal(res.status, 201);
     assert.equal(res.body.consentRequired, false);
 
+    // What the patient writes themselves is theirs to share, even with the
+    // clinic that made the account. There is no earlier history to ask about.
     const user = await User.findOne({ phone: number });
     const prompts = await as(signAccessToken(user)).get('/sharing/prompts');
     assert.equal(prompts.status, 200);
-    assert.deepEqual(prompts.body.items, [], 'a new account the desk made was asked about history it cannot have');
+    assert.equal(prompts.body.items.length, 1);
+    assert.deepEqual(prompts.body.items[0].asks, { ownLogs: true, history: false });
+
+    const history = await as(signAccessToken(user)).post(`/sharing/prompts/${res.body.enrollmentId}`, {
+      ownLogs: false,
+      history: true,
+    });
+    assert.equal(history.status, 400, 'history was shared from an account with none');
+    assert.equal(await ShareGrant.countDocuments(), 0);
   });
 
   test('nobody can read a consent trail that is not theirs', async () => {
@@ -215,7 +229,7 @@ describe('registering a number that already has an account', () => {
   });
 });
 
-describe('the history from before stays the patient’s to share', () => {
+describe('what the practice sees beyond its enrolment is the patient’s to share', () => {
   before(boot);
   after(shutdown);
   beforeEach(async () => {
@@ -224,73 +238,159 @@ describe('the history from before stays the patient’s to share', () => {
     behala = await practice('Behala');
   });
 
-  async function connected() {
+  /** Meera signed herself up, then Behala wrote her a prescription; now Salt Lake's desk connects her. */
+  async function connected(share) {
     const meera = await selfSignedUp();
+    await Enrollment.create({
+      patient: meera.user._id,
+      practice: behala.practice._id,
+      status: 'active',
+      enrolledOn: ago(60),
+    });
+    await Prescription.create({
+      patient: meera.user._id,
+      doctor: behala.owner.user._id,
+      referenceNo: 'DESK-BEHALA-000001',
+      issuedOn: ago(15),
+      items: [{ name: 'Metformin' }],
+    });
     const res = await register(salt.desk, meera.phone);
     await plantCode(meera.phone);
-    const ok = await as(salt.desk.token).post(`/enrolments/${res.body.enrollmentId}/confirm`, { code: CODE });
-    assert.equal(ok.status, 200);
-    return { meera, enrollmentId: res.body.enrollmentId };
+    const ok = await as(salt.desk.token).post(`/enrolments/${res.body.enrollmentId}/confirm`, {
+      code: CODE,
+      ...(share ? { share } : {}),
+    });
+    assert.equal(ok.status, 200, JSON.stringify(ok.body));
+    return { meera, enrollmentId: res.body.enrollmentId, confirmed: ok.body };
   }
 
   const glucoseValues = async (token, id) =>
     ((await as(token).get(`/patients/${id}/glucose`)).body.items ?? []).map((g) => g.valueMgDl);
+  const references = async (token, id) =>
+    ((await as(token).get(`/patients/${id}/prescriptions`)).body.items ?? []).map((p) => p.referenceNo);
 
-  test('a newly connected practice does not see the earlier records by default', async () => {
-    const { meera } = await connected();
+  test('a newly connected practice sees neither her own logs nor her history from before, and is told so', async () => {
+    const { meera, confirmed } = await connected();
     assert.deepEqual(await glucoseValues(salt.owner.token, meera.user._id), []);
+    assert.deepEqual(await references(salt.owner.token, meera.user._id), []);
+
+    // Told at the moment it starts reading, and whenever it asks.
+    assert.equal(confirmed.sharing.ownLogsShared, false);
+    assert.equal(confirmed.sharing.historyShared, false);
+    assert.ok(confirmed.sharing.notShared.includes('readings'));
+    assert.ok(confirmed.sharing.notShared.includes('prescriptions'));
+
+    const view = await as(salt.owner.token).get(`/sharing/patients/${meera.user._id}`);
+    assert.equal(view.status, 200);
+    assert.equal(view.body.notShared.length, 9, 'the practice is not told it is seeing nothing beyond its enrolment');
   });
 
-  test('the patient is asked once, and sharing opens exactly what they chose', async () => {
+  test('answered at the counter with the code: each yes is a grant, recorded as the patient’s', async () => {
+    const { meera, enrollmentId, confirmed } = await connected({ ownLogs: true, history: false });
+
+    assert.deepEqual(await glucoseValues(salt.owner.token, meera.user._id), [256]);
+    assert.deepEqual(await references(salt.owner.token, meera.user._id), [], 'history was shared without a yes');
+    assert.equal(confirmed.sharing.ownLogsShared, true);
+    assert.equal(confirmed.sharing.historyShared, false);
+
+    const [grant] = await ShareGrant.find({ enrollment: enrollmentId }).lean();
+    assert.deepEqual([...grant.categories].sort(), [...OWN_LOG_CATEGORIES].sort());
+    assert.equal(grant.origin, 'enrolment_consent');
+    assert.equal(String(grant.grantedBy), String(meera.user._id), 'the grant does not name the patient as granting it');
+    assert.equal(String(grant.createdBy), String(salt.desk.user._id));
+
+    const answer = await ConsentEvent.findOne({ enrollment: enrollmentId, action: CONSENT_ACTION.SHARING_GIVEN }).lean();
+    assert.equal(answer.method, CONSENT_METHOD.OTP_DESK);
+    assert.equal(answer.ownLogs, true);
+    assert.equal(answer.history, false);
+    assert.deepEqual(answer.grants.map(String), [String(grant._id)]);
+
+    // Already answered: the app does not ask again.
+    assert.deepEqual((await as(meera.token).get('/sharing/prompts')).body.items, []);
+  });
+
+  test('both yes at the counter: her logs and her earlier history from other practices', async () => {
+    const { meera, enrollmentId } = await connected({ ownLogs: true, history: true });
+    assert.deepEqual(await glucoseValues(salt.owner.token, meera.user._id), [256]);
+    assert.deepEqual(await references(salt.owner.token, meera.user._id), ['DESK-BEHALA-000001']);
+
+    const grants = await ShareGrant.find({ enrollment: enrollmentId }).lean();
+    assert.equal(grants.length, 2);
+    assert.ok(grants.some((g) => [...g.categories].sort().join() === [...HISTORY_CATEGORIES].sort().join()));
+  });
+
+  test('both no at the counter: nothing is shared, and the app does not ask again', async () => {
+    const { meera, enrollmentId } = await connected({ ownLogs: false, history: false });
+    assert.equal(await ShareGrant.countDocuments(), 0);
+    assert.ok(await ConsentEvent.exists({ enrollment: enrollmentId, action: CONSENT_ACTION.SHARING_DECLINED }));
+    assert.deepEqual((await as(meera.token).get('/sharing/prompts')).body.items, []);
+  });
+
+  test('not asked at the counter: asked once in the app, and the answers open exactly what was chosen', async () => {
     const { meera, enrollmentId } = await connected();
 
     const prompts = await as(meera.token).get('/sharing/prompts');
     assert.equal(prompts.body.items.length, 1);
     assert.equal(prompts.body.items[0].enrollmentId, enrollmentId);
     assert.equal(prompts.body.items[0].practice.name, 'Salt Lake');
+    assert.deepEqual(prompts.body.items[0].asks, { ownLogs: true, history: true });
 
-    const answer = await as(meera.token).post(`/sharing/prompts/${enrollmentId}`, { share: true, categories: ['readings'] });
+    const answer = await as(meera.token).post(`/sharing/prompts/${enrollmentId}`, { ownLogs: false, history: true });
     assert.equal(answer.status, 201, JSON.stringify(answer.body));
-    assert.equal(answer.body.grant.origin, 'history_prompt');
+    assert.equal(answer.body.grants.length, 1);
+    assert.equal(answer.body.grants[0].origin, 'enrolment_consent');
 
-    assert.deepEqual(await glucoseValues(salt.owner.token, meera.user._id), [256]);
+    assert.deepEqual(await glucoseValues(salt.owner.token, meera.user._id), [], 'her own logs were shared without a yes');
+    assert.deepEqual(await references(salt.owner.token, meera.user._id), ['DESK-BEHALA-000001']);
     assert.deepEqual((await as(meera.token).get('/sharing/prompts')).body.items, [], 'the question was asked again');
 
-    const again = await as(meera.token).post(`/sharing/prompts/${enrollmentId}`, { share: false });
+    const again = await as(meera.token).post(`/sharing/prompts/${enrollmentId}`, { ownLogs: true, history: true });
     assert.equal(again.status, 409);
   });
 
-  test('declining shares nothing and is not asked again', async () => {
+  test('declining in the app shares nothing and is not asked again', async () => {
     const { meera, enrollmentId } = await connected();
-    const answer = await as(meera.token).post(`/sharing/prompts/${enrollmentId}`, { share: false });
+    const answer = await as(meera.token).post(`/sharing/prompts/${enrollmentId}`, { ownLogs: false, history: false });
     assert.equal(answer.status, 201);
-    assert.equal(answer.body.grant, null);
+    assert.deepEqual(answer.body.grants, []);
     assert.equal(await ShareGrant.countDocuments(), 0);
     assert.deepEqual(await glucoseValues(salt.owner.token, meera.user._id), []);
     assert.deepEqual((await as(meera.token).get('/sharing/prompts')).body.items, []);
   });
 
-  test('two answers at once are one answer and at most one grant', async () => {
+  test('two answers at once are one answer and the grants of one answer', async () => {
     await ConsentEvent.createIndexes();
     const { meera, enrollmentId } = await connected();
     const [one, two] = await Promise.all([
-      as(meera.token).post(`/sharing/prompts/${enrollmentId}`, { share: true, categories: ['readings'] }),
-      as(meera.token).post(`/sharing/prompts/${enrollmentId}`, { share: true, categories: ['readings'] }),
+      as(meera.token).post(`/sharing/prompts/${enrollmentId}`, { ownLogs: true, history: true }),
+      as(meera.token).post(`/sharing/prompts/${enrollmentId}`, { ownLogs: true, history: true }),
     ]);
     assert.deepEqual([one.status, two.status].sort(), [201, 409]);
-    assert.equal(await ShareGrant.countDocuments(), 1);
+    assert.equal(await ShareGrant.countDocuments(), 2);
     assert.equal(
-      await ConsentEvent.countDocuments({ enrollment: enrollmentId, action: CONSENT_ACTION.HISTORY_SHARED }),
+      await ConsentEvent.countDocuments({ enrollment: enrollmentId, action: CONSENT_ACTION.SHARING_GIVEN }),
       1,
     );
   });
 
-  test('nobody but the patient answers it', async () => {
+  test('nobody but the patient answers it in the app', async () => {
     const { enrollmentId } = await connected();
     const stranger = await makePatient({ name: 'Other Patient', practices: [salt.practice] });
-    assert.equal((await as(stranger.token).post(`/sharing/prompts/${enrollmentId}`, { share: true, categories: ['readings'] })).status, 404);
-    assert.equal((await as(salt.owner.token).post(`/sharing/prompts/${enrollmentId}`, { share: true, categories: ['readings'] })).status, 403);
+    assert.equal((await as(stranger.token).post(`/sharing/prompts/${enrollmentId}`, { ownLogs: true, history: true })).status, 404);
+    assert.equal((await as(salt.owner.token).post(`/sharing/prompts/${enrollmentId}`, { ownLogs: true, history: true })).status, 403);
     assert.equal(await ShareGrant.countDocuments(), 0);
+  });
+
+  test('answers cannot be sent on their own at the desk, without the code', async () => {
+    const meera = await selfSignedUp();
+    const res = await register(salt.desk, meera.phone);
+    await plantCode(meera.phone);
+    const wrong = await as(salt.desk.token).post(`/enrolments/${res.body.enrollmentId}/confirm`, {
+      code: '000001',
+      share: { ownLogs: true, history: true },
+    });
+    assert.equal(wrong.status, 401);
+    assert.equal(await ShareGrant.countDocuments(), 0, 'a wrong code still recorded sharing');
   });
 });
 
@@ -324,6 +424,19 @@ describe('coming back keeps the original enrolment date', () => {
     const row = await withdrawAndReturn(patient, enrollment._id);
     assert.equal(row.status, ENROLLMENT_STATUS.ACTIVE);
     assert.ok(Math.abs(new Date(row.enrolledOn).getTime() - ago(100).getTime()) < 60_000, 'returning reset the enrolment date');
+
+    // The return is its own consent, dated now and marked for what it is.
+    const consents = await ConsentEvent.find({ enrollment: enrollment._id, action: CONSENT_ACTION.GRANTED })
+      .sort({ at: 1 })
+      .lean();
+    assert.equal(consents.length, 2);
+    assert.equal(consents[0].reconsent, undefined);
+    assert.equal(consents[1].reconsent, true, 'the return was not recorded as a re-consent');
+    assert.ok(Date.now() - new Date(consents[1].at).getTime() < 60_000);
+
+    const overview = await as(patient.token).get('/sharing');
+    assert.equal(overview.body.connected[0].reconsented, true);
+    assert.ok(new Date(overview.body.connected[0].consentedOn) > new Date(overview.body.connected[0].since));
   });
 
   test('a patient the migration enrolled, with no consent logged, who withdrew and returned', async () => {
@@ -343,5 +456,7 @@ describe('coming back keeps the original enrolment date', () => {
     // She withdraws the request instead of answering it, and later agrees.
     const row = await withdrawAndReturn({ ...meera, user: meera.user }, first.body.enrollmentId);
     assert.ok(Date.now() - new Date(row.enrolledOn).getTime() < 60_000, 'a request never agreed to opened thirty days back');
+    const consent = await ConsentEvent.findOne({ enrollment: first.body.enrollmentId, action: CONSENT_ACTION.GRANTED }).lean();
+    assert.equal(consent.reconsent, undefined, 'a first consent was recorded as a return');
   });
 });

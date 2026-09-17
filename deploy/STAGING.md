@@ -385,6 +385,13 @@ node scripts/backfillFeedbackRouting.js                                         
   new consent-log fields are optional, and the new unique indexes (one answer
   per consent, one open request per patient per practice, the idempotency keys)
   build themselves at startup over collections that cannot already break them.
+- **Nobody's sharing is answered for them.** The two questions — "share my own
+  health logs", "share my earlier history" — are asked once per desk consent.
+  A patient a desk enrolled before this release (their enrolment has a consent
+  event of method `otp_desk`) finds them waiting in the app; one the migration
+  enrolled (no such event) is not asked, and can share from "Who can see my
+  records?". Until somebody answers, nothing is shared beyond what the
+  enrolment gives. There is no script that answers for anybody.
 - **Admin console**: platform feedback is served at `/admin/feedback`, without
   the patient's identity. Until the console has a screen for it, it is readable
   with an operator's bearer token.

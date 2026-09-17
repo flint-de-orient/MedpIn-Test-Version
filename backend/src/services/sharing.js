@@ -3,6 +3,8 @@ import mongoose from 'mongoose';
 import {
   ShareGrant,
   SHARE_CATEGORY,
+  OWN_LOG_CATEGORIES,
+  HISTORY_CATEGORIES,
   GRANT_STATE,
   GRANT_ORIGIN,
   REVOKE_REASON,
@@ -22,10 +24,18 @@ import { logger } from '../config/logger.js';
 import { deliver } from './notifications.js';
 
 /**
- * Patient-controlled sharing: grants, requests, the one-time history question,
- * and the reads a grant widens.
+ * Patient-controlled sharing: grants, requests, the questions asked once at
+ * enrolment, and the reads a grant widens.
  *
- * ---- How a grant meets the enrolment window ------------------------------
+ * ---- The one question a read asks ------------------------------------------
+ *
+ * `readUnderGrant(req, category)`: does a grant in force let this caller read
+ * this category of this patient's record — and if so, write that down. Every
+ * widening goes through it, so there is one definition of "covered" and one
+ * audit trail, whatever the read is bounded by: the enrolment window today, or
+ * who wrote the record when reads are bounded that way.
+ *
+ * ---- How a grant meets the enrolment window, today --------------------------
  *
  * The narrowest reading that still does what a patient means by "share":
  *
@@ -74,15 +84,15 @@ export const SHARED_READS = Object.freeze([
   { route: new RegExp(`${PATIENT_ROUTE}/vitals(/weight-trend)?$`), field: 'recordedAt', category: SHARE_CATEGORY.READINGS },
   { route: new RegExp(`${PATIENT_ROUTE}/hba1c$`), field: 'testedOn', category: SHARE_CATEGORY.LAB_RESULTS },
   { route: new RegExp(`${PATIENT_ROUTE}/labs(/:id)?$`), field: 'testedOn', category: SHARE_CATEGORY.LAB_RESULTS },
-  { route: new RegExp(`${PATIENT_ROUTE}/ecg/reports(/:id)?$`), field: 'recordedOn', category: SHARE_CATEGORY.LAB_RESULTS },
-  { route: new RegExp(`${PATIENT_ROUTE}/eye/reports(/:id)?$`), field: 'createdAt', category: SHARE_CATEGORY.EXAMINATIONS },
+  { route: new RegExp(`${PATIENT_ROUTE}/ecg/reports(/:id)?$`), field: 'recordedOn', category: SHARE_CATEGORY.ECG },
+  { route: new RegExp(`${PATIENT_ROUTE}/eye/reports(/:id)?$`), field: 'createdAt', category: SHARE_CATEGORY.EYE },
   {
     route: new RegExp(`${PATIENT_ROUTE}/foot/(assessments(/:id)?|wounds/:woundKey/progression)$`),
     field: 'assessedAt',
-    category: SHARE_CATEGORY.EXAMINATIONS,
+    category: SHARE_CATEGORY.FOOT,
   },
-  { route: new RegExp(`${PATIENT_ROUTE}/lifestyle(/summary)?$`), field: 'loggedAt', category: SHARE_CATEGORY.LIFESTYLE },
-  { route: new RegExp(`${PATIENT_ROUTE}/food-log/?$`), field: 'createdAt', category: SHARE_CATEGORY.LIFESTYLE },
+  { route: new RegExp(`${PATIENT_ROUTE}/lifestyle(/summary)?$`), field: 'loggedAt', category: SHARE_CATEGORY.FOOD_LOGS },
+  { route: new RegExp(`${PATIENT_ROUTE}/food-log/?$`), field: 'createdAt', category: SHARE_CATEGORY.FOOD_LOGS },
 ]);
 
 /** The category a windowed read in this request belongs to, or null. */
@@ -115,19 +125,22 @@ export async function grantsForRead(req, patientId, practiceId) {
 }
 
 /**
- * Whether a grant lifts the enrolment window for this read, recording the
- * read if it does.
+ * The grant that lets this request read `category` of the patient in front of
+ * it, or null — and when there is one, the read is written down.
  *
- * Asked by `recordWindow`, which is synchronous — so everything it needs was
- * loaded by the gate beforehand.
+ * For any read that knows its own category. Synchronous, so it can be asked
+ * while a filter is being built: the gate loaded the grants beforehand, and
+ * only for a read (see `grantsForRead`). Refuses on every method but GET and
+ * HEAD whatever was loaded, because a grant is permission to read and a
+ * filter built for a write must not become wider than the enrolment.
+ *
+ * Returns the grant rather than a boolean so a caller that needs to say which
+ * grant it read under can.
  */
-export function sharedHistoryCovers(req, field) {
-  if (!READ_METHODS.has(req.method)) return false;
+export function readUnderGrant(req, category) {
+  if (!READ_METHODS.has(req.method)) return null;
   const grants = req.shareGrants;
-  if (!grants?.length || !req.enrollment?._id) return false;
-
-  const category = categoryOfRead(req, field);
-  if (!category) return false;
+  if (!category || !grants?.length || !req.enrollment?._id) return null;
 
   const now = new Date();
   const grant = grants.find(
@@ -136,10 +149,22 @@ export function sharedHistoryCovers(req, field) {
       String(g.enrollment) === String(req.enrollment._id) &&
       grantCovers(g, { category, userId: req.user?._id, now }),
   );
-  if (!grant) return false;
+  if (!grant) return null;
 
   noteSharedRead(req, grant, category);
-  return true;
+  return grant;
+}
+
+/**
+ * Whether a grant lifts the enrolment window for this read, recording the
+ * read if it does.
+ *
+ * Asked by `recordWindow`, which knows only the field it bounds — so the
+ * category comes from where the read is mounted. See SHARED_READS.
+ */
+export function sharedHistoryCovers(req, field) {
+  if (!READ_METHODS.has(req.method)) return false;
+  return Boolean(readUnderGrant(req, categoryOfRead(req, field)));
 }
 
 /**
@@ -442,42 +467,51 @@ export async function answerRequest({ actor, requestId, patientIds, approve, cat
   throw conflict('That request has already been answered.');
 }
 
-/* --------------------------------------------------- the history question */
+/* ----------------------------------------------- the questions at enrolment */
 
 function isCurrentRow(e) {
   return e.status === ENROLLMENT_STATUS.ACTIVE && e.revokedAt == null;
 }
 
 /**
- * The consent that still owes an answer to the history question, per
- * enrolment, from events already loaded in time order.
+ * The consent that still owes its sharing answers, from one enrolment's events
+ * in time order — or null.
  *
- * Asked only after a desk connected an account that already existed: a
- * `granted` that answered a `requested`. A brand-new account the desk made has
- * no earlier record to share, and a row the migration wrote asked nobody.
+ * Two questions, asked once per consent a desk recorded:
+ *
+ *   own health logs   — always. What the patient writes themselves (readings,
+ *                       food and lifestyle logs, photos and documents) is
+ *                       theirs to share, including with the clinic that has
+ *                       just enrolled them.
+ *   earlier history   — only when the desk connected an account that already
+ *                       existed (a `granted` answering a `requested`). A
+ *                       brand-new account the desk made has no earlier
+ *                       record to share.
+ *
+ * A row the migration wrote asked nobody and has no consent to answer.
  */
 function unansweredConsent(events) {
   let lastGrant = null;
-  let requestedBefore = false;
+  let historyApplies = false;
   let sawRequest = false;
   for (const e of events) {
     if (e.action === CONSENT_ACTION.REQUESTED) sawRequest = true;
     if (e.action === CONSENT_ACTION.GRANTED && e.method === CONSENT_METHOD.OTP_DESK) {
       lastGrant = e;
-      requestedBefore = sawRequest;
+      historyApplies = sawRequest;
     }
   }
-  if (!lastGrant || !requestedBefore) return null;
+  if (!lastGrant) return null;
   const answered = events.some(
     (e) =>
-      (e.action === CONSENT_ACTION.HISTORY_SHARED || e.action === CONSENT_ACTION.HISTORY_DECLINED) &&
+      (e.action === CONSENT_ACTION.SHARING_GIVEN || e.action === CONSENT_ACTION.SHARING_DECLINED) &&
       String(e.answers) === String(lastGrant._id),
   );
-  return answered ? null : lastGrant;
+  return answered ? null : { consent: lastGrant, historyApplies };
 }
 
-/** Every history question still waiting on these patients. */
-export async function pendingHistoryPrompts(patientIds) {
+/** Every enrolment still waiting on its sharing answers, across these patients. */
+export async function pendingSharingQuestions(patientIds) {
   const enrollments = (await Enrollment.find({ patient: { $in: patientIds } }).lean()).filter(isCurrentRow);
   if (!enrollments.length) return [];
 
@@ -492,8 +526,8 @@ export async function pendingHistoryPrompts(patientIds) {
   }
 
   const waiting = enrollments
-    .map((e) => ({ enrollment: e, consent: unansweredConsent(byEnrollment.get(String(e._id)) ?? []) }))
-    .filter((p) => p.consent);
+    .map((e) => ({ enrollment: e, open: unansweredConsent(byEnrollment.get(String(e._id)) ?? []) }))
+    .filter((p) => p.open);
   if (!waiting.length) return [];
 
   const [practices, patients] = await Promise.all([
@@ -503,86 +537,127 @@ export async function pendingHistoryPrompts(patientIds) {
   const practiceName = new Map(practices.map((p) => [String(p._id), p.name]));
   const patientName = new Map(patients.map((p) => [String(p._id), p.name]));
 
-  return waiting.map(({ enrollment, consent }) => ({
+  return waiting.map(({ enrollment, open }) => ({
     enrollmentId: String(enrollment._id),
     practice: { id: String(enrollment.practice), name: practiceName.get(String(enrollment.practice)) ?? null },
     patient: { id: String(enrollment.patient), name: patientName.get(String(enrollment.patient)) ?? null },
-    // From when the practice reads without being asked, so the question can
-    // say what "earlier" means.
+    // The date "earlier" means: the practice's enrolment.
     since: enrollment.enrolledOn,
-    connectedAt: consent.at,
+    connectedAt: open.consent.at,
+    asks: { ownLogs: true, history: open.historyApplies },
+    ownLogCategories: [...OWN_LOG_CATEGORIES],
+    historyCategories: open.historyApplies ? [...HISTORY_CATEGORIES] : [],
   }));
 }
 
 /**
- * The patient's one answer to the history question.
+ * The patient's answers to the questions asked at enrolment, each yes creating
+ * its own grant.
  *
- * The answer is written first and is unique per consent, so a double tap or
- * two devices answering at once produce one answer and at most one grant. The
- * grant's id is chosen before either is written, so the answer can name it.
+ * Given in two places, recorded the same way:
+ *
+ *   in the app      — the patient (or guardian) answering for themselves;
+ *                     `method` in_app, the login as actor and granter.
+ *   at the desk     — in the same request that spends the patient's code, so
+ *                     the answer travels with the proof the patient is at the
+ *                     counter; `method` otp_desk, the desk account as actor,
+ *                     the patient's login as granter. The patient sees these
+ *                     grants in "Who can see my records?" and can take either
+ *                     back.
+ *
+ * The answer is written first and is unique per consent, so a double tap, two
+ * devices, or the desk and the app answering at once produce one answer and
+ * the grants of one answer. The grant ids are chosen before anything is
+ * written, so the answer can name them.
  */
-export async function answerHistoryPrompt({ actor, enrollmentId, patientIds, share, categories = null, expiresAt = null }) {
-  if (!mongoose.isValidObjectId(enrollmentId)) throw notFound('That question was not found.');
-  const enrollment = await Enrollment.findOne({ _id: enrollmentId, patient: { $in: patientIds } });
-  if (!enrollment) throw notFound('That question was not found.');
-  if (!enrollment.isCurrent()) throw conflict('That practice is no longer connected to you.');
+export async function answerSharingQuestions({
+  actor,
+  enrollment,
+  ownLogs,
+  history,
+  method = CONSENT_METHOD.IN_APP,
+  grantedBy = actor._id,
+}) {
+  if (!enrollment?.isCurrent?.()) throw conflict('That practice is no longer connected to you.');
 
   const events = await ConsentEvent.find({ enrollment: enrollment._id }).sort({ at: 1, _id: 1 }).lean();
-  const consent = unansweredConsent(events);
-  if (!consent) throw conflict('That question has already been answered.');
+  const open = unansweredConsent(events);
+  if (!open) throw conflict('Those questions have already been answered.');
+  if (history && !open.historyApplies) {
+    throw badRequest('There is no earlier history to share with this practice: it made this account.');
+  }
 
-  const cats = share ? normaliseCategories(categories) : undefined;
-  const expiry = share ? normaliseExpiry(expiresAt) : null;
-  const grantId = share ? new mongoose.Types.ObjectId() : null;
+  const shareLogs = Boolean(ownLogs);
+  const shareHistory = Boolean(history);
+  const planned = [
+    ...(shareLogs ? [{ _id: new mongoose.Types.ObjectId(), categories: [...OWN_LOG_CATEGORIES] }] : []),
+    ...(shareHistory ? [{ _id: new mongoose.Types.ObjectId(), categories: [...HISTORY_CATEGORIES] }] : []),
+  ];
 
   let answer;
   try {
     answer = await ConsentEvent.record({
       enrollment: enrollment._id,
-      action: share ? CONSENT_ACTION.HISTORY_SHARED : CONSENT_ACTION.HISTORY_DECLINED,
+      action: planned.length ? CONSENT_ACTION.SHARING_GIVEN : CONSENT_ACTION.SHARING_DECLINED,
       actor: actor._id,
-      method: CONSENT_METHOD.IN_APP,
-      answers: consent._id,
-      categories: cats,
-      grant: grantId,
+      method,
+      answers: open.consent._id,
+      ownLogs: shareLogs,
+      history: open.historyApplies ? shareHistory : undefined,
+      categories: planned.flatMap((p) => p.categories),
+      grants: planned.map((p) => p._id),
     });
   } catch (err) {
-    if (err?.code === 11000) throw conflict('That question has already been answered.');
+    if (err?.code === 11000) throw conflict('Those questions have already been answered.');
     throw err;
   }
 
-  if (!share) return { answer, grant: null };
-
-  const grant = await ShareGrant.create({
-    _id: grantId,
-    patient: enrollment.patient,
-    practice: enrollment.practice,
-    enrollment: enrollment._id,
-    categories: cats,
-    state: GRANT_STATE.ACTIVE,
-    origin: GRANT_ORIGIN.HISTORY_PROMPT,
-    createdBy: actor._id,
-    createdByRole: actor.role,
-    grantedBy: actor._id,
-    grantedAt: new Date(),
-    expiresAt: expiry,
-    consentEvent: answer._id,
-  });
-  return { answer, grant };
+  const now = new Date();
+  const grants = [];
+  for (const p of planned) {
+    grants.push(
+      await ShareGrant.create({
+        _id: p._id,
+        patient: enrollment.patient,
+        practice: enrollment.practice,
+        enrollment: enrollment._id,
+        categories: p.categories,
+        state: GRANT_STATE.ACTIVE,
+        origin: GRANT_ORIGIN.ENROLMENT_CONSENT,
+        createdBy: actor._id,
+        createdByRole: actor.role,
+        grantedBy,
+        grantedAt: now,
+        consentEvent: answer._id,
+      }),
+    );
+  }
+  return { answer, grants };
 }
 
 /**
- * Tell a patient their new practice is connected, and ask the question.
- *
- * Fired once, from the confirmation that made the question exist. Nothing
- * waits on it: a push that fails leaves the question on the sharing screen.
+ * The same answers, from the app: the enrolment must be one this login decides
+ * for, found by its id.
  */
-export async function askHistoryQuestion(enrollment) {
+export async function answerSharingQuestionsInApp({ actor, enrollmentId, patientIds, ownLogs, history }) {
+  if (!mongoose.isValidObjectId(enrollmentId)) throw notFound('Those questions were not found.');
+  const enrollment = await Enrollment.findOne({ _id: enrollmentId, patient: { $in: patientIds } });
+  if (!enrollment) throw notFound('Those questions were not found.');
+  return answerSharingQuestions({ actor, enrollment, ownLogs, history });
+}
+
+/**
+ * Tell a patient their new practice is connected, and ask the questions.
+ *
+ * Fired once, from a confirmation the desk did not answer them in. Nothing
+ * waits on it: a push that fails leaves the questions on the sharing screen.
+ */
+export async function askSharingQuestions(enrollment) {
   const practice = await Practice.findById(enrollment.practice).select('name').lean();
   return notifyPatient(enrollment.patient, {
-    title: 'Share your earlier records?',
-    body: `${practice?.name ?? 'Your new clinic'} can now see what is recorded from today. Choose whether they may also see your earlier records.`,
-    data: { kind: 'share_history_prompt' },
+    title: 'Choose what your clinic can see',
+    body: `${practice?.name ?? 'Your new clinic'} is now connected. Choose whether it may see your own health logs and your earlier records.`,
+    data: { kind: 'sharing_question' },
   });
 }
 
@@ -639,10 +714,23 @@ export async function sharingOverview(patientId) {
   });
   const practice = (id) => ({ id: String(id), name: names.practice.get(String(id)) ?? null });
 
+  // When each relationship was last consented to — apart from `since`, which
+  // a patient who came back keeps from the first time.
+  const consents = await ConsentEvent.find({
+    enrollment: { $in: enrollments.map((e) => e._id) },
+    action: CONSENT_ACTION.GRANTED,
+  })
+    .sort({ at: 1 })
+    .select('enrollment at reconsent')
+    .lean();
+  const lastConsent = new Map(consents.map((c) => [String(c.enrollment), c]));
+
   const connected = enrollments.filter(isCurrentRow).map((e) => ({
     enrollmentId: String(e._id),
     practice: practice(e.practice),
     since: e.enrolledOn,
+    consentedOn: lastConsent.get(String(e._id))?.at ?? null,
+    reconsented: Boolean(lastConsent.get(String(e._id))?.reconsent),
     reason: 'registered',
     shared: grants
       .filter((g) => String(g.enrollment) === String(e._id) && grantStatus(g, now) === GRANT_STATE.ACTIVE)
@@ -703,17 +791,21 @@ export async function sharingHistory(patientId, { limit = 200 } = {}) {
     [CONSENT_ACTION.REQUESTED]: 'connection_requested',
     [CONSENT_ACTION.GRANTED]: 'connected',
     [CONSENT_ACTION.REVOKED]: 'disconnected',
-    [CONSENT_ACTION.HISTORY_SHARED]: 'history_shared',
-    [CONSENT_ACTION.HISTORY_DECLINED]: 'history_declined',
+    [CONSENT_ACTION.SHARING_GIVEN]: 'sharing_given',
+    [CONSENT_ACTION.SHARING_DECLINED]: 'sharing_declined',
   };
 
   const items = [
     ...events.map((e) => ({
       at: e.at,
-      kind: EVENT_KIND[e.action] ?? e.action,
+      kind: e.action === CONSENT_ACTION.GRANTED && e.reconsent ? 'reconnected' : (EVENT_KIND[e.action] ?? e.action),
       practice: practice(practiceOfEnrollment.get(String(e.enrollment))),
       by: e.method === CONSENT_METHOD.MIGRATION ? null : person(e.actor),
+      // Where it was decided: at the desk with the patient's code, or in the app.
+      method: e.method,
       categories: e.categories ?? null,
+      ...(e.ownLogs !== undefined ? { ownLogs: e.ownLogs } : {}),
+      ...(e.history !== undefined ? { history: e.history } : {}),
     })),
     ...grants.flatMap((g) => {
       const base = { practice: practice(g.practice), categories: [...(g.categories ?? [])], grantId: String(g._id) };
@@ -721,8 +813,8 @@ export async function sharingHistory(patientId, { limit = 200 } = {}) {
       if (g.origin === GRANT_ORIGIN.PRACTICE_REQUEST) {
         out.push({ ...base, at: g.createdAt, kind: 'share_requested', by: person(g.createdBy), note: g.requestNote ?? null });
       }
-      // A history answer is already in the consent log above.
-      if (g.grantedAt && g.origin !== GRANT_ORIGIN.HISTORY_PROMPT) {
+      // An answer at enrolment is already in the consent log above.
+      if (g.grantedAt && g.origin !== GRANT_ORIGIN.ENROLMENT_CONSENT) {
         out.push({ ...base, at: g.grantedAt, kind: 'shared', doctor: person(g.doctor), expiresAt: g.expiresAt ?? null });
       }
       if (g.declinedAt) out.push({ ...base, at: g.declinedAt, kind: 'request_declined' });
@@ -769,21 +861,42 @@ export async function doctorsAt(practiceId) {
 
 /**
  * What one practice has been given for one patient — its own grants and its
- * own open request, and nothing about any other practice.
+ * own open request, and nothing about any other practice — and, for the
+ * person asking, what they are not being shown.
+ *
+ * `notShared` is the clinic being told what it is not seeing: every category
+ * no grant in force covers for this caller. A grant narrowed to a colleague
+ * does not cover somebody else, so their list says so. `since` is the date the
+ * enrolment reads from without any grant.
  */
-export async function sharedWithPractice(patientId, practiceId) {
+export async function sharedWithPractice(patientId, practiceId, userId = null) {
   const now = new Date();
-  const grants = await ShareGrant.find({
-    patient: patientId,
-    practice: practiceId,
-    state: { $in: [GRANT_STATE.ACTIVE, GRANT_STATE.REQUESTED] },
-  })
-    .sort({ createdAt: -1 })
-    .lean();
+  const [grants, enrollment] = await Promise.all([
+    ShareGrant.find({
+      patient: patientId,
+      practice: practiceId,
+      state: { $in: [GRANT_STATE.ACTIVE, GRANT_STATE.REQUESTED] },
+    })
+      .sort({ createdAt: -1 })
+      .lean(),
+    Enrollment.findOne({ patient: patientId, practice: practiceId }).select('enrolledOn').lean(),
+  ]);
   const names = await namesFor({ practiceIds: [practiceId], userIds: grants.flatMap((g) => [g.doctor, g.createdBy]) });
+
+  const covered = new Set(
+    grants
+      .filter((g) => Object.values(SHARE_CATEGORY).some((category) => grantCovers(g, { category, userId, now })))
+      .flatMap((g) => g.categories ?? []),
+  );
+  const notShared = Object.values(SHARE_CATEGORY).filter((c) => !covered.has(c));
+
   return {
+    since: enrollment?.enrolledOn ?? null,
     shared: grants.filter((g) => grantStatus(g, now) === GRANT_STATE.ACTIVE).map((g) => publicGrant(g, names, now)),
     request: grants.filter((g) => g.state === GRANT_STATE.REQUESTED).map((g) => publicGrant(g, names, now))[0] ?? null,
+    notShared,
+    ownLogsShared: OWN_LOG_CATEGORIES.every((c) => covered.has(c)),
+    historyShared: HISTORY_CATEGORIES.every((c) => covered.has(c)),
   };
 }
 

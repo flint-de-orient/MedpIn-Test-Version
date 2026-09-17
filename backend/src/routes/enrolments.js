@@ -10,6 +10,7 @@ import { Patient } from '../models/Patient.js';
 import { ConsentEvent, CONSENT_ACTION } from '../models/ConsentEvent.js';
 import { confirmEnrolment } from '../services/enrolByPhone.js';
 import { revokeEnrolment, consentHistory, practicesFor } from '../services/enrollments.js';
+import { sharedWithPractice } from '../services/sharing.js';
 import { loginMayAccess } from '../services/patientsForLogin.js';
 import { practiceOf } from '../middleware/practiceScope.js';
 
@@ -113,7 +114,18 @@ router.get(
 router.post(
   '/:id/confirm',
   requireClinician,
-  validate({ body: z.object({ code: z.string().trim().regex(/^\d{4,8}$/) }) }),
+  validate({
+    body: z.object({
+      code: z.string().trim().regex(/^\d{4,8}$/),
+      /*
+       * The patient's answers to the two questions asked at enrolment, when
+       * the desk asked them at the counter: may this clinic see their own
+       * health logs, and their earlier history. Absent, the patient is asked
+       * in their own app. Sent with the code, never on its own.
+       */
+      share: z.object({ ownLogs: z.boolean(), history: z.boolean() }).optional(),
+    }),
+  }),
   audit('update', 'Enrollment'),
   asyncHandler(async (req, res) => {
     // Only the practice that asked may finish asking. With no practice there
@@ -125,19 +137,22 @@ router.post(
       enrollmentId: req.params.id,
       code: req.body.code,
       confirmedBy: req.user._id,
+      confirmer: req.user,
       practiceId,
+      share: req.body.share,
     });
     req.auditResourceId = enrollment._id;
 
     // The patient has said yes, so the practice may now know who it has
     // enrolled — and the desk needs the record to open. Before this moment the
     // desk has only ever been shown what it typed itself.
-    const patient = enrollment.isCurrent()
-      ? await Patient.findById(enrollment.patient).select('name').lean()
-      : null;
+    const current = enrollment.isCurrent();
+    const patient = current ? await Patient.findById(enrollment.patient).select('name').lean() : null;
     res.json({
       enrollment: enrollment.toPublic(),
       patient: patient ? { id: String(patient._id), name: patient.name } : null,
+      // And what it is not being shown, said at the moment it starts reading.
+      sharing: current ? await sharedWithPractice(enrollment.patient, practiceId, req.user._id) : null,
     });
   }),
 );

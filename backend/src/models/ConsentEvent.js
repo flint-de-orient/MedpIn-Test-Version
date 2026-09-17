@@ -30,16 +30,19 @@ export const CONSENT_ACTION = Object.freeze({
   REVOKED: 'revoked',
 
   /*
-   * The patient's answer to "may this practice see your earlier records?".
+   * The patient's answer to the two questions asked once per consent:
+   * "share my own health logs with this clinic" and "share my earlier history
+   * with this clinic".
    *
-   * Asked once, after a desk connects an account that already existed to a new
-   * practice — the moment that practice starts reading from today and the
-   * patient may want it to read further back. An answer is a consent decision
-   * like the three above, so it lives in the same log; it does not move the
-   * enrolment between states, which is why `latestFor` leaves it out.
+   * Asked when a practice enrols them — at the desk, in the same step as the
+   * code, or in their own app afterwards. `sharing_given` when either answer
+   * was yes (and `grants` names what that created), `sharing_declined` when
+   * both were no. An answer is a consent decision like the three above, so it
+   * lives in the same log; it does not move the enrolment between states,
+   * which is why `latestFor` leaves it out.
    */
-  HISTORY_SHARED: 'history_shared',
-  HISTORY_DECLINED: 'history_declined',
+  SHARING_GIVEN: 'sharing_given',
+  SHARING_DECLINED: 'sharing_declined',
 });
 
 /// The actions that move an enrolment between pending, active and revoked —
@@ -100,13 +103,27 @@ const consentEventSchema = new mongoose.Schema(
     requestedName: { type: String, trim: true, maxlength: 120, default: null },
     requestedPhone: { type: String, trim: true, maxlength: 20, default: null },
 
-    /// On a history answer: the `granted` event it answers. Unique, so one
+    /// On a sharing answer: the `granted` event it answers. Unique, so one
     /// consent is answered once however many times the button is pressed.
     answers: { type: mongoose.Schema.Types.ObjectId, ref: 'ConsentEvent', default: null },
 
-    /// On a history answer: what was shared, and the grant that carries it.
+    /// On a sharing answer: each question's answer, what was shared, and the
+    /// grants that carry it.
+    ownLogs: { type: Boolean, default: undefined },
+    history: { type: Boolean, default: undefined },
     categories: { type: [String], default: undefined },
-    grant: { type: mongoose.Schema.Types.ObjectId, ref: 'ShareGrant', default: null },
+    grants: { type: [{ type: mongoose.Schema.Types.ObjectId, ref: 'ShareGrant' }], default: undefined },
+
+    /*
+     * On a `granted` event: this is somebody coming back to a practice they
+     * had withdrawn from.
+     *
+     * The enrolment keeps its original `enrolledOn`, so the practice goes on
+     * reading its own history with them; this is where the new consent is
+     * recorded — its own event, its own date, marked for what it is — rather
+     * than by moving the enrolment's date.
+     */
+    reconsent: { type: Boolean, default: undefined },
 
     at: { type: Date, default: Date.now },
   },
@@ -141,8 +158,11 @@ consentEventSchema.statics.record = function record({
   requestedName = null,
   requestedPhone = null,
   answers = null,
+  ownLogs = undefined,
+  history = undefined,
   categories = undefined,
-  grant = null,
+  grants = undefined,
+  reconsent = undefined,
 }) {
   return this.create({
     enrollment,
@@ -154,8 +174,11 @@ consentEventSchema.statics.record = function record({
     requestedName,
     requestedPhone,
     answers,
+    ownLogs,
+    history,
     categories,
-    grant,
+    grants,
+    reconsent,
     at: new Date(),
   });
 };

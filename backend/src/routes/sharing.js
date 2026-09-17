@@ -19,8 +19,8 @@ import {
   revokeGrant,
   requestShare,
   answerRequest,
-  pendingHistoryPrompts,
-  answerHistoryPrompt,
+  pendingSharingQuestions,
+  answerSharingQuestionsInApp,
   sharingOverview,
   sharingHistory,
   doctorsAt,
@@ -177,44 +177,39 @@ router.post(
   }),
 );
 
-/** The one-time questions still waiting: "may this practice see your earlier records?" */
+/**
+ * The questions still waiting, asked once per consent: "share my own health
+ * logs with this clinic" and — when the desk connected an account that already
+ * existed — "share my earlier history with this clinic".
+ */
 router.get(
   '/prompts',
   requireRole(ROLES.PATIENT),
   audit('read', 'ConsentEvent'),
   asyncHandler(async (req, res) => {
-    res.json({ items: await pendingHistoryPrompts(await householdOf(req.user._id)) });
+    res.json({ items: await pendingSharingQuestions(await householdOf(req.user._id)) });
   }),
 );
 
-/** The patient's answer. Once per consent; a second answer is refused. */
+/**
+ * The patient's answers. Once per consent; a second answer is refused, and so
+ * is one arriving after the desk recorded the answers given at the counter.
+ */
 router.post(
   '/prompts/:enrollmentId',
   requireRole(ROLES.PATIENT),
-  validate({
-    body: z
-      .object({
-        share: z.boolean(),
-        categories: categories.optional(),
-        expiresAt: z.coerce.date().nullish(),
-      })
-      .refine((b) => !b.share || (b.categories?.length ?? 0) > 0, {
-        message: 'Choose what to share, or answer no',
-        path: ['categories'],
-      }),
-  }),
+  validate({ body: z.object({ ownLogs: z.boolean(), history: z.boolean() }) }),
   audit('create', 'ConsentEvent'),
   asyncHandler(async (req, res) => {
-    const { answer, grant } = await answerHistoryPrompt({
+    const { answer, grants } = await answerSharingQuestionsInApp({
       actor: req.user,
       enrollmentId: req.params.enrollmentId,
       patientIds: await householdOf(req.user._id),
-      share: req.body.share,
-      categories: req.body.categories ?? null,
-      expiresAt: req.body.expiresAt ?? null,
+      ownLogs: req.body.ownLogs,
+      history: req.body.history,
     });
     req.auditResourceId = answer._id;
-    res.status(201).json({ answer: answer.action, grant: grant ? grant.toPublic() : null });
+    res.status(201).json({ answer: answer.action, grants: grants.map((g) => g.toPublic()) });
   }),
 );
 
@@ -262,7 +257,8 @@ router.post(
 /* ----------------------------------------------------- the practice's side */
 
 /**
- * What this practice has been given for one patient, and whether it has asked.
+ * What this practice has been given for one patient, whether it has asked, and
+ * what the person asking is not being shown.
  *
  * Its own grants only. Which other practices a patient shares with is the
  * patient's business and nobody else's.
@@ -274,7 +270,7 @@ router.get(
   resolvePatientScope,
   audit('read', 'ShareGrant'),
   asyncHandler(async (req, res) => {
-    res.json(await sharedWithPractice(req.patientId, await practiceOf(req)));
+    res.json(await sharedWithPractice(req.patientId, await practiceOf(req), req.user._id));
   }),
 );
 

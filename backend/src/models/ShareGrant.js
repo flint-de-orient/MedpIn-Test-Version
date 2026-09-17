@@ -19,10 +19,13 @@ import { ROLES } from './User.js';
  *   - which categories of record      (prescriptions, readings, …)
  *   - optionally when it ends         (and it can be revoked at any moment)
  *
- * and widens nothing else. It lets that practice read those categories from
- * before its enrolment; it never lets anybody write, never opens a patient the
- * practice is not enrolled with, and gives nothing once it has expired or been
- * revoked — checked at the moment of every read, not by a sweep.
+ * and widens nothing else. It is permission to *read* those categories of the
+ * patient's record beyond what the practice gets by itself — today, the part
+ * from before its enrolment; once reads are bounded by who wrote a record,
+ * the part it did not write. It never lets anybody write, never opens a
+ * patient the practice is not enrolled with, and gives nothing once it has
+ * expired or been revoked — checked at the moment of every read, not by a
+ * sweep. See `readUnderGrant` in services/sharing.js, the one place a read asks.
  *
  * ---- The one rule the shape has to encode -------------------------------
  *
@@ -47,15 +50,48 @@ import { ROLES } from './User.js';
 export const SHARE_CATEGORY = Object.freeze({
   /// Prescriptions, and the tests they advised.
   PRESCRIPTIONS: 'prescriptions',
-  /// Blood sugar, blood pressure and weight.
-  READINGS: 'readings',
-  /// HbA1c, uploaded lab reports and ECGs.
+  /// HbA1c, and lab reports — uploaded by the patient or recorded by a clinic.
   LAB_RESULTS: 'lab_results',
-  /// Eye and foot examinations.
-  EXAMINATIONS: 'examinations',
-  /// Food photos and lifestyle logs.
-  LIFESTYLE: 'lifestyle',
+  /// Vitals and readings: blood sugar, blood pressure, weight.
+  READINGS: 'readings',
+  /// Eye examinations and retinal reports.
+  EYE: 'eye',
+  /// Diabetic foot assessments.
+  FOOT: 'foot',
+  /// ECG reports.
+  ECG: 'ecg',
+  /// Food photos and diaries, and the activity, water and sleep logs beside them.
+  FOOD_LOGS: 'food_logs',
+  /// Documents and photos the patient uploaded.
+  DOCUMENTS: 'documents',
+  /// Clinical notes.
+  NOTES: 'notes',
 });
+
+/**
+ * What the patient writes themselves: logs, diaries, photos, documents.
+ *
+ * One of the two questions asked at enrolment — "share my own health logs
+ * with this clinic" — grants exactly these.
+ */
+export const OWN_LOG_CATEGORIES = Object.freeze([
+  SHARE_CATEGORY.READINGS,
+  SHARE_CATEGORY.FOOD_LOGS,
+  SHARE_CATEGORY.DOCUMENTS,
+]);
+
+/**
+ * The clinical record other practices wrote. The other question — "share my
+ * earlier history with this clinic" — grants exactly these.
+ */
+export const HISTORY_CATEGORIES = Object.freeze([
+  SHARE_CATEGORY.PRESCRIPTIONS,
+  SHARE_CATEGORY.LAB_RESULTS,
+  SHARE_CATEGORY.EYE,
+  SHARE_CATEGORY.FOOT,
+  SHARE_CATEGORY.ECG,
+  SHARE_CATEGORY.NOTES,
+]);
 
 export const GRANT_STATE = Object.freeze({
   /// A practice asked. Grants nothing until the patient approves.
@@ -74,9 +110,10 @@ export const GRANT_STATE = Object.freeze({
 export const GRANT_ORIGIN = Object.freeze({
   /// The patient chose it from "Who can see my records?".
   PATIENT_APP: 'patient_app',
-  /// The patient answered the one-time question asked after a desk connected
-  /// an existing account to a new practice.
-  HISTORY_PROMPT: 'history_prompt',
+  /// The patient's answer to the questions asked once when a practice enrols
+  /// them — "share my own health logs", "share my earlier history" — given in
+  /// their own app, or at the desk in the same step as reading back their code.
+  ENROLMENT_CONSENT: 'enrolment_consent',
   /// A practice asked and the patient approved.
   PRACTICE_REQUEST: 'practice_request',
 });
@@ -119,16 +156,19 @@ const shareGrantSchema = new mongoose.Schema(
     state: { type: String, enum: Object.values(GRANT_STATE), required: true, index: true },
     origin: { type: String, enum: Object.values(GRANT_ORIGIN), required: true },
 
-    /// Who wrote the row: the patient (or their guardian) for a grant, the
-    /// clinician for a request.
+    /// Who wrote the row: the patient (or their guardian) for a grant they made
+    /// in the app, the clinician for a request, the desk account for choices
+    /// the patient gave at the counter with their code.
     createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
     createdByRole: { type: String, enum: Object.values(ROLES), required: true },
 
     /// What the practice said when it asked. Shown to the patient verbatim.
     requestNote: { type: String, trim: true, maxlength: 300, default: null },
 
-    /// Always the patient's login. Recorded rather than assumed, so the row can
-    /// be audited without inferring who must have acted.
+    /// Always the login of the patient (or guardian) whose decision it is —
+    /// including at the desk, where that decision is carried by the code their
+    /// handset received. Null while a request is unanswered. Recorded rather
+    /// than assumed, so the row can be audited without inferring who acted.
     grantedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
     grantedAt: { type: Date, default: null },
 

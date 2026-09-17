@@ -82,8 +82,11 @@ describe('consent is asked when a practice reaches, not when it starts', () => {
 
   test('the window opens at consent, unless the patient is returning', () => {
     // The practice's access begins when the patient says so. A patient coming
-    // back keeps the original date — see wasActiveBefore.
-    assert.match(src, /if \(!\(await wasActiveBefore\(enrollment\._id\)\)\) set\.enrolledOn = new Date\(\);/);
+    // back keeps the original date — see wasActiveBefore — and the return is
+    // recorded as its own consent rather than by moving the date.
+    assert.match(src, /const returning = await wasActiveBefore\(enrollment\._id\);/);
+    assert.match(src, /if \(!returning\) set\.enrolledOn = new Date\(\);/);
+    assert.match(src, /reconsent: true/);
   });
 
   test('enrol is its own OTP purpose', () => {

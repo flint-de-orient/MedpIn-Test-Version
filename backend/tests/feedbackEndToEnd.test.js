@@ -225,6 +225,24 @@ describe('who at a practice reads it, and what each of them has read', () => {
     }
   });
 
+  test('a role that may open patients, whose own grant withholds VIEW_PATIENT, is refused', async () => {
+    // The role alone is not the permission. A practice that took VIEW_PATIENT
+    // away from one person took patient feedback away with it.
+    const narrowed = await makeMember(salt.practice, {
+      name: 'Narrowed Bench',
+      role: ROLES.LAB_TECHNICIAN,
+      permissions: ['EDIT_RECORD'],
+    });
+    const res = await inbox(narrowed);
+    assert.equal(res.status, 403);
+    assert.ok(!allText(res.body).includes('Nobody called me back'));
+    assert.equal((await as(narrowed.token).get('/feedback/unread-count')).status, 403);
+    assert.ok(
+      !(await feedbackReaders(salt.practice._id)).some((u) => u.name === 'Narrowed Bench'),
+      'somebody without VIEW_PATIENT is pushed patient feedback',
+    );
+  });
+
   test('the push goes to exactly those readers, at that practice', async () => {
     const readers = (await feedbackReaders(salt.practice._id)).map((u) => u.name).sort();
     assert.deepEqual(readers, ['Dr Salt Lake Colleague', 'Dr Salt Lake Owner', 'Salt Lake Bench', 'Salt Lake Desk']);
