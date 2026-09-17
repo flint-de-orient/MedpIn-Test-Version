@@ -1,14 +1,17 @@
 import { Enrollment, ENROLLMENT_STATUS } from '../models/Enrollment.js';
 import { PatientProfile } from '../models/PatientProfile.js';
 import { memberIdsOf } from '../middleware/practiceScope.js';
+import { activeDieticianIds } from './dieticianAssignment.js';
 
 /**
  * Who at a practice answers for each of these patients.
  *
- * The patient's assigned doctor and assigned dietician, and the doctor the
- * practice enrolled them under — each only while they are a current member of
- * this practice. A doctor who has left answers for nobody here, and an
- * assignment made at another practice decides nothing at this one.
+ * The patient's assigned doctor, the doctor the practice enrolled them under,
+ * and the dietician this practice assigned them — each only while they are a
+ * current member of this practice. A doctor who has left answers for nobody
+ * here, and an assignment made at another practice decides nothing at this
+ * one: the dietician is read off this practice's enrolment, and must still be
+ * an active dietician here.
  *
  * ---- An empty set is a real answer ------------------------------------------
  *
@@ -23,27 +26,30 @@ export async function responsibleFor({ practiceId, patientIds }) {
   const out = new Map(wanted.map((id) => [id, new Set()]));
   if (!practiceId || !wanted.length) return out;
 
-  const members = new Set(((await memberIdsOf(practiceId)) ?? []).map(String));
-  const [profiles, enrolments] = await Promise.all([
-    PatientProfile.find({ user: { $in: wanted } }).select('user assignedDoctor assignedDietician').lean(),
+  const [memberIds, dieticianIds, profiles, enrolments] = await Promise.all([
+    memberIdsOf(practiceId),
+    activeDieticianIds(practiceId),
+    PatientProfile.find({ user: { $in: wanted } }).select('user assignedDoctor').lean(),
     Enrollment.find({
       practice: practiceId,
       patient: { $in: wanted },
       status: ENROLLMENT_STATUS.ACTIVE,
       revokedAt: null,
     })
-      .select('patient primaryDoctor')
+      .select('patient primaryDoctor dietician')
       .lean(),
   ]);
+  const members = new Set((memberIds ?? []).map(String));
+  const dieticians = new Set(dieticianIds.map(String));
 
-  const add = (patient, person) => {
-    if (person && members.has(String(person))) out.get(String(patient))?.add(String(person));
+  const add = (patient, person, allowed = members) => {
+    if (person && allowed.has(String(person))) out.get(String(patient))?.add(String(person));
   };
-  for (const p of profiles) {
-    add(p.user, p.assignedDoctor);
-    add(p.user, p.assignedDietician);
+  for (const p of profiles) add(p.user, p.assignedDoctor);
+  for (const e of enrolments) {
+    add(e.patient, e.primaryDoctor);
+    add(e.patient, e.dietician, dieticians);
   }
-  for (const e of enrolments) add(e.patient, e.primaryDoctor);
 
   return out;
 }

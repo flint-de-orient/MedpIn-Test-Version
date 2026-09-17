@@ -11,6 +11,7 @@ import { ChatSession } from '../src/models/ChatSession.js';
 import { ChatMessage } from '../src/models/ChatMessage.js';
 import { Clinic } from '../src/models/Clinic.js';
 import { PatientProfile } from '../src/models/PatientProfile.js';
+import { Enrollment, DIETICIAN_SOURCE } from '../src/models/Enrollment.js';
 import { ROLES } from '../src/models/User.js';
 import { PLAN, PRACTICE_TYPE } from '../src/models/Practice.js';
 
@@ -55,11 +56,12 @@ async function practice(name) {
   });
 
   const patient = await makePatient({ name: `${name} Patient`, practices: [p] });
-  await PatientProfile.create({
-    user: patient.user._id,
-    assignedDoctor: doctor.user._id,
-    assignedDietician: dietician.user._id,
-  });
+  await PatientProfile.create({ user: patient.user._id, assignedDoctor: doctor.user._id });
+  // This practice's dietician holds the patient, on this practice's enrolment.
+  await Enrollment.updateOne(
+    { _id: patient.enrollments[0]._id },
+    { $set: { dietician: dietician.user._id, dieticianSource: DIETICIAN_SOURCE.DOCTOR } },
+  );
 
   const prescription = await Prescription.create({
     patient: patient.user._id,

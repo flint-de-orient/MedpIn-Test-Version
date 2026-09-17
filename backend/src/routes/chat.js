@@ -35,6 +35,7 @@ import {
   relationshipSessions,
   relationshipOfSession,
   callerEnrolment,
+  currentEnrolments,
   enrolmentForPatientRead,
 } from '../services/conversationPractice.js';
 import { mayAssistantReply } from '../services/ai/allowance.js';
@@ -645,6 +646,12 @@ router.post(
 // The patient's nutrition thread — their side of the dietician conversation.
 // ---------------------------------------------------------------------------
 
+/** The practice of a patient's one current enrolment, or null for none or several. */
+async function onlyPracticeOf(patientId) {
+  const current = await currentEnrolments(patientId);
+  return current.length === 1 ? String(current[0].practice) : null;
+}
+
 /** Read the nutrition thread. Empty until the dietician writes the first time. */
 router.get(
   '/nutrition',
@@ -668,7 +675,15 @@ router.get(
     // It matters more now the clinic has two. Whoever answers first used to be
     // the answer; a patient deserves to know who is looking after them before
     // that person happens to type something.
-    const dietician = await dieticianFacingPatient(req.user._id);
+    //
+    // At the practice this conversation is with: a patient two practices care
+    // for has a dietician at each, and the header names the one they are
+    // talking to. With no conversation yet, their only practice — or, with
+    // several, nobody rather than a guess.
+    const practiceId = session
+      ? (await relationshipOfSession(session)).practiceId
+      : await onlyPracticeOf(req.user._id);
+    const dietician = await dieticianFacingPatient(req.user._id, { practiceId });
 
     if (!session) return res.json({ items: [], dietician });
 
@@ -783,10 +798,10 @@ router.post(
 
     // Tell the dietician a question has arrived. Fire-and-forget: a push
     // that fails must not fail the patient's message, which is already saved.
-    // Urgency goes with it: an urgent message reaches every covering
-    // dietician, a routine one only whoever is already in this conversation.
+    // The dietician this practice assigned, and only while they work there;
+    // an urgent message pages the practice's doctors through the alert below.
     notifyDieticianOfPatientMessage(patientId, req.user.name, text, {
-      urgency: triage.urgency,
+      practiceId: relationship.practiceId,
     }).catch(() => {});
 
     if (triage.urgency === 'emergency' || triage.urgency === 'urgent') {
@@ -1105,6 +1120,13 @@ async function threadFor(req, patientId, kind) {
   // whichever practice last wrote, so one practice could switch off the
   // assistant in a conversation another practice was relying on.
   const enrollment = await callerEnrolment(req, patientId);
+
+  // A dietician answers the patients assigned to them here, and nobody else's:
+  // the same caseload /dietician enforces. The practice alone let any
+  // dietician silence the assistant in a conversation they could not open.
+  if (req.user.role === ROLES.DIETICIAN && String(enrollment?.dietician ?? '') !== String(req.user._id)) {
+    throw notFound('No conversation with this patient');
+  }
   return ChatSession.findOne({
     ...(await relationshipSessions({ patientId, enrollment, kind: kind === 'nutrition' ? 'nutrition' : 'care' })),
     isArchived: false,

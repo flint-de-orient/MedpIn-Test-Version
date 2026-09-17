@@ -10,6 +10,7 @@ import { makePractice, makeMember, makePatient } from './helpers/factories.js';
 import { env } from '../src/config/env.js';
 import { MediaAsset } from '../src/models/MediaAsset.js';
 import { PatientProfile } from '../src/models/PatientProfile.js';
+import { Enrollment, DIETICIAN_SOURCE } from '../src/models/Enrollment.js';
 import { ChatSession } from '../src/models/ChatSession.js';
 import { ChatMessage } from '../src/models/ChatMessage.js';
 import { DirectMessage } from '../src/models/DirectMessage.js';
@@ -555,10 +556,11 @@ describe('a reply quotes only a message from its own conversation', () => {
       replyTo: quoted._id,
     });
     // A dietician sees the patients assigned to them, so this one has to hold
-    // the patient before their thread can be read at all.
-    await PatientProfile.updateOne(
-      { user: a.patient.user._id },
-      { assignedDietician: a.dietician.user._id },
+    // the patient — on this practice's enrolment — before their thread can be
+    // read at all.
+    await Enrollment.updateOne(
+      { patient: a.patient.patient._id, practice: a.practice._id },
+      { $set: { dietician: a.dietician.user._id, dieticianSource: DIETICIAN_SOURCE.DOCTOR } },
     );
     const dietician = await as(a.dietician.token).get(`/dietician/patients/${a.patient.user._id}/thread`);
     assert.equal(dietician.status, 200);

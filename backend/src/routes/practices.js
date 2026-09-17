@@ -20,6 +20,7 @@ import {
 } from '../services/memberships.js';
 import { phoneFromToken } from '../services/otp.js';
 import { toE164 } from '../utils/phone.js';
+import { dieticianArrived } from '../services/dieticianAssignment.js';
 import { callablePhone } from '../services/clinicContact.js';
 import { assertLogoAssets } from '../services/mediaAccess.js';
 import { badRequest, forbidden } from '../middleware/errors.js';
@@ -306,6 +307,9 @@ router.post(
       qualifications: req.body.qualifications,
       registrationNo: req.body.registrationNo,
     });
+    // A practice's first dietician takes on the patients waiting for one, as
+    // when they are added through /team. See services/dieticianAssignment.js.
+    await dieticianArrived(membership.practice, membership.role);
 
     res.status(201).json({
       member: {

@@ -17,6 +17,7 @@ import { practiceOf } from '../middleware/practiceScope.js';
 import { joinPractice, membersOf } from '../services/memberships.js';
 import { phoneFromToken, requestOtp, verifyOtp, signPhoneToken } from '../services/otp.js';
 import { toE164 } from '../utils/phone.js';
+import { dieticianArrived } from '../services/dieticianAssignment.js';
 
 /**
  * Who works here, in one place.
@@ -395,6 +396,7 @@ router.post(
         location: location?._id ?? null,
       });
       req.auditResourceId = existing._id;
+      await dieticianArrived(practiceId, joined.role);
 
       noticeUsage(
         practiceId,
@@ -453,6 +455,7 @@ router.post(
       await User.deleteOne({ _id: user._id });
       throw err;
     }
+    await dieticianArrived(practiceId, membership.role);
 
     /*
      * After the add, never before.
@@ -527,6 +530,9 @@ router.patch(
     if (membership.isOwner && (req.body.role || req.body.status)) {
       throw badRequest('The practice owner cannot be changed from here.');
     }
+
+    // Before anything below rewrites it: whether they arrive as a dietician.
+    const previousRole = membership.role;
 
     if (req.body.departmentId !== undefined) {
       if (req.body.departmentId === null) {
@@ -630,9 +636,17 @@ router.patch(
     }
     if (req.body.status) membership.status = req.body.status;
 
+    const becameDietician = req.body.role === ROLES.DIETICIAN && previousRole !== ROLES.DIETICIAN;
     await membership.save();
     if (req.body.role) {
       await User.updateOne({ _id: membership.user, role: { $ne: req.body.role } }, { $set: { role: req.body.role } });
+    }
+    // Arriving as a dietician — back from a suspension, back after leaving, or
+    // moved into the role — is arriving. Leaving is deliberately not: the
+    // patients a departed dietician held stay theirs on the record until the
+    // doctor chooses, and nobody else is handed them. See dieticianArrived.
+    if ((returning || becameDietician) && membership.isCurrent()) {
+      await dieticianArrived(membership.practice, membership.role);
     }
     res.json({ membership: membership.toPublic() });
   }),

@@ -5,7 +5,7 @@ import { boot, shutdown, wipe, as, allText } from './helpers/httpHarness.js';
 import { makePractice, makeMember, makePatient } from './helpers/factories.js';
 import { ChatSession } from '../src/models/ChatSession.js';
 import { ChatMessage } from '../src/models/ChatMessage.js';
-import { Enrollment, ENROLLMENT_STATUS } from '../src/models/Enrollment.js';
+import { Enrollment, ENROLLMENT_STATUS, DIETICIAN_SOURCE } from '../src/models/Enrollment.js';
 import { PatientProfile } from '../src/models/PatientProfile.js';
 import { Prescription } from '../src/models/Prescription.js';
 import { LabResult } from '../src/models/LabResult.js';
@@ -252,27 +252,27 @@ describe('a dietician reads and writes their own practice’s nutrition conversa
   lifecycle();
 
   /**
-   * Hand the patient to one practice's dietician.
+   * Hand the patient to one practice's dietician, at that practice.
    *
-   * A dietician now sees the patients assigned to them and nobody else, and
-   * `assignedDietician` is a single field on the profile — so a patient
-   * enrolled at two practices can be held by one practice's dietician at a
-   * time. That is a real limitation of where the field lives rather than
-   * anything this suite is testing; it belongs on the enrolment, beside the
-   * other per-practice facts. Until it moves, each half of this test assigns
-   * the dietician whose isolation it is checking.
+   * A dietician sees the patients assigned to them and nobody else. The
+   * assignment was a single field on the profile, so each half of this test
+   * had to take the patient off the other practice's dietician first; it is on
+   * the enrolment now, and both practices' dieticians hold the patient at once.
    */
-  const handTo = (dietician) =>
-    PatientProfile.updateOne({ user: w.pid }, { assignedDietician: dietician.user._id });
+  const handTo = (side) =>
+    Enrollment.updateOne(
+      { _id: side.enrollment._id },
+      { $set: { dietician: side.dietician.user._id, dieticianSource: DIETICIAN_SOURCE.DOCTOR } },
+    );
 
   test('each dietician’s thread holds only their practice’s conversation', async () => {
-    await handTo(w.a.dietician);
+    await handTo(w.a);
+    await handTo(w.b);
     const saltLake = await as(w.a.dietician.token).get(`/dietician/patients/${w.pid}/thread`);
     assert.equal(saltLake.status, 200);
     assert.ok(allText(saltLake.body).includes('Salt Lake dietician'), 'Salt Lake’s nutrition conversation is missing');
     assert.ok(!allText(saltLake.body).includes('Behala dietician'), 'Salt Lake’s dietician read Behala’s');
 
-    await handTo(w.b.dietician);
     const behala = await as(w.b.dietician.token).get(`/dietician/patients/${w.pid}/thread`);
     assert.equal(behala.status, 200);
     assert.ok(allText(behala.body).includes('Behala dietician'));
@@ -280,7 +280,7 @@ describe('a dietician reads and writes their own practice’s nutrition conversa
   });
 
   test('and a dietician’s message goes into their practice’s conversation', async () => {
-    await handTo(w.a.dietician);
+    await handTo(w.a);
     const sent = await as(w.a.dietician.token).post(`/dietician/patients/${w.pid}/message`, {
       content: 'Salt Lake dietician again',
     });
@@ -517,12 +517,10 @@ describe('a conversation from before this change is not handed to another practi
   });
 
   test('each practice’s dietician writes into that practice’s own nutrition conversation', async () => {
-    // Held by Behala's dietician for this one — see the note on `handTo`
-    // above: the assignment is a single field on the profile, so one practice
-    // at a time can hold a shared patient.
-    await PatientProfile.updateOne(
-      { user: w.pid },
-      { assignedDietician: w.b.dietician.user._id },
+    // Held by Behala's dietician, on Behala's enrolment.
+    await Enrollment.updateOne(
+      { _id: w.b.enrollment._id },
+      { $set: { dietician: w.b.dietician.user._id, dieticianSource: DIETICIAN_SOURCE.DOCTOR } },
     );
     const sent = await as(w.b.dietician.token).post(`/dietician/patients/${w.pid}/message`, {
       content: 'Behala dietician again',
@@ -556,6 +554,18 @@ describe('the bell, the counts and the inbox read the practice’s own conversat
 
   test('a dietician’s bell and badge clearing stay in the practice', async () => {
     await say(w.behalaNutrition, w.pid, 2, 'user', null, 'Behala nutrition question');
+    // Both practices' dieticians hold the patient — each on their own
+    // practice's enrolment — so the absence below is about the conversation,
+    // not about an empty caseload.
+    for (const side of [w.a, w.b]) {
+      await Enrollment.updateOne(
+        { _id: side.enrollment._id },
+        { $set: { dietician: side.dietician.user._id, dieticianSource: DIETICIAN_SOURCE.DOCTOR } },
+      );
+    }
+
+    const theirs = await as(w.b.dietician.token).get('/dietician/notifications');
+    assert.ok(allText(theirs.body).includes('Behala nutrition question'), 'Behala’s own dietician was not shown it');
 
     const bell = await as(w.a.dietician.token).get('/dietician/notifications');
     assert.equal(bell.status, 200);

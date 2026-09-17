@@ -243,33 +243,71 @@ node scripts/backfillMedicineLifecycle.js                                    # r
   always meant. The new build is what gives patients "Stop taking", and stops
   weekly, alternate-day and finished medicines ringing daily on the phone.
 
-### Once, after deploying the dietician caseload
+### Once, after deploying the dietician caseload (C1 + C7)
+
+Two changes to who looks after a patient's nutrition, and one migration for
+both.
 
 A dietician's caseload was "everyone at the practice, unless somebody has been
-assigned to me". Assignment was a restriction rather than a grant, so a
-practice with one dietician needed no assignments at all — and a second
-dietician, or a locum, inherited the whole practice the day they were hired.
+assigned to me", so a second dietician or a locum inherited the whole practice
+the day they were hired. It is now exactly the patients assigned to them.
 
-The caseload is now exactly what the assignments say, and a practice with one
-dietician assigns them as each patient joins. Without this, the dietician at a
-practice that never assigned anybody opens the app to an empty list on the
-morning this deploys — same people, same work, no way to see any of it:
+And the assignment moved. It was `PatientProfile.assignedDietician` — one field
+per patient — so a patient enrolled at two practices could be held by only one
+practice's dietician, and the second practice's choice took the patient from
+the first. It is now on the enrolment (`Enrollment.dietician`, with
+`dieticianSource`, `dieticianSince`, `dieticianBy` and `dieticianHistory`), and
+**nothing reads the profile field any more**. Without this migration, every
+assignment a doctor made before the release vanishes from the dietician's list,
+and a one-dietician practice's dietician opens the app to nobody.
 
 ```bash
 cd /var/www/clinq-staging/backend     # then /var/www/clinq/backend for production
-node scripts/backfillDieticianAssignments.js                                 # report
-mongodump --db medpin_staging --collection patientprofiles --out ~/dumps/diet-before-backfill
+# 1. Backup — the rollback. The profile field is left untouched, but take it too.
+mongodump --db medpin_staging --collection enrollments     --out ~/dumps/diet-before-c7
+mongodump --db medpin_staging --collection patientprofiles --out ~/dumps/diet-before-c7
+# 2. Dry run, and read it.
+node scripts/backfillDieticianAssignments.js
+# 3. Apply.
 node scripts/backfillDieticianAssignments.js --apply
+# 4. Verify: a second report should show 0 to carry and 0 to assign.
+node scripts/backfillDieticianAssignments.js
 ```
 
-It covers only practices with exactly one active dietician — precisely the set
-the old default served — and never overwrites an assignment a doctor made. A
-practice with two or more is reported and left alone: the old default gave
-both of them everybody, so there is no arrangement to write down faithfully,
-and the doctor assigns those patients on each profile.
+What the report means:
 
-**Run this in the same maintenance window as the deploy.** Between the restart
-and this script, a one-dietician practice's dietician sees nobody.
+1. **Carried over** — each profile assignment is written onto the enrolment at
+   the practice where that dietician works or worked (a dietician who has left
+   is carried too: it is history), marked `migration`, with no date because
+   none was recorded.
+2. **Not carried — never worked where the patient is enrolled**: the field
+   named another practice's dietician. It granted nothing before; it is left
+   behind so it grants nothing now.
+3. **Not carried — works at more than one of the patient's practices**: which
+   practice it was is not in the data. Listed by patient id; the doctor
+   assigns on the patient's profile.
+4. **Assigned by default** — at a practice with exactly one *active*
+   dietician, every current enrolment nobody has decided for. A practice with
+   two or more is listed and left alone: the choice is the doctor's.
+
+Every write repeats "nothing decided yet", so a doctor's decision made between
+the dry run and the apply — including deliberately unassigning — is kept, and
+a second run changes nothing.
+
+**Run it in the same maintenance window as the deploy**, and after the
+enrolment backfills (`backfillEnrollments.js`, `backfillDeskRegistrations.js`):
+it can only assign a relationship that exists.
+
+**The app.** Older builds keep working: the patient summary still sends
+`profile.assignedDietician` as `{ _id, name, phone }` (now from this
+practice's enrolment, and null for a dietician no longer active), and the
+assignment route still answers `assignedDietician` and `reviewIntervalDays`.
+What only the new build shows: a dietician who has left, the history of who
+held the patient, and "somebody changed this a moment ago" when two doctors
+choose at once.
+
+**Rollback**: restore `enrollments` from the dump, then roll the code back. The
+old code reads the profile field, which this never changed.
 
 ### Once, after deploying appointment isolation
 
