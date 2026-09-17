@@ -727,12 +727,14 @@ class _SenderRow extends StatelessWidget {
       ),
       // The patient's own words, read by a clinician.
       _ when isUser => (Icons.person_rounded, name ?? 'Patient'),
-      // Named for the clinic it answers on behalf of, because that is what it
-      // is: it replies only from Dr. Dey's own approved protocols. The
-      // assistant mark stays, though — a patient who believes their doctor
-      // personally wrote something does not question it and may not raise it at
-      // the next visit, and that is the whole reason the mark exists.
-      _ => (Icons.auto_awesome_rounded, 'Dr. Dey\'s Clinic · assistant'),
+      // The clinic's assistant, because that is what it is: it answers on the
+      // clinic's behalf from approved guidance. It read "Dr. Dey's Clinic" to
+      // every practice's patients; the thread's own header already names the
+      // clinic this conversation is with. The assistant mark stays, though — a
+      // patient who believes their doctor personally wrote something does not
+      // question it and may not raise it at the next visit, and that is the
+      // whole reason the mark exists.
+      _ => (Icons.auto_awesome_rounded, 'Clinic assistant'),
     };
 
     // The doctor gets their own face; the assistant gets the clinic's mark.

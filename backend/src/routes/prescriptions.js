@@ -6,6 +6,7 @@ import { validate, q } from '../middleware/validate.js';
 import { asyncHandler, notFound, badRequest } from '../middleware/errors.js';
 import { audit } from '../middleware/audit.js';
 import { Prescription } from '../models/Prescription.js';
+import { Practice, NEUTRAL_PRESCRIPTION_PREFIX } from '../models/Practice.js';
 import { Medication, PRESCRIPTION_STATE, TAKING_STATE } from '../models/Medication.js';
 import { PRESCRIPTION_STANDS, endMedicinesOfPrescription } from '../services/medicationLifecycle.js';
 import { notifyPatientOfPrescription } from '../services/notifications.js';
@@ -35,7 +36,16 @@ const router = Router({ mergeParams: true });
 router.use(requireAuth, resolvePatientScope);
 
 /**
- * Sequential per-year reference, e.g. AKD-2026-000412.
+ * Sequential per-year reference: `RX-2026-000412`, or the issuing practice's
+ * own prefix, `MHC-2026-000057`.
+ *
+ * ---- Whose initials ------------------------------------------------------
+ *
+ * Every reference started `AKD-` — the founding doctor's initials, printed on
+ * every practice's legal prescription. A practice now carries its own prefix,
+ * set by an operator (see Practice.prescriptionPrefix), and one that has none
+ * issues the neutral `RX`. References already issued are never rewritten: a
+ * patient holding `AKD-2026-000412` holds a document with that number on it.
  *
  * ---- Drawn from a counter, not counted -----------------------------------
  *
@@ -45,15 +55,25 @@ router.use(requireAuth, resolvePatientScope);
  * referenceNo already exists", and the prescription was never written. Eight
  * issued at once lost seven.
  *
- * The counter starts where the printed references left off — the highest
- * this year, not the count — so the first number it issues follows the last
- * one a patient was handed rather than repeating one from January.
+ * One counter per prefix per year, not per practice. Prefixes are unique
+ * across practices, and a prefix given up by one practice and taken by another
+ * continues the same series rather than starting it again at one — which is
+ * what keeps a reference unique however prefixes move. Every practice without
+ * a prefix shares the `RX` series for the same reason.
+ *
+ * The counter starts where the printed references with that prefix left off —
+ * the highest this year, not the count — so the first number it issues follows
+ * the last one a patient was handed rather than repeating one from January.
  */
-async function nextReference() {
+async function nextReference(practiceId) {
   const year = dayjs().year();
-  const prefix = `AKD-${year}-`;
+  const practice = practiceId
+    ? await Practice.findById(practiceId).select('prescriptionPrefix').lean()
+    : null;
+  const code = practice?.prescriptionPrefix || NEUTRAL_PRESCRIPTION_PREFIX;
+  const prefix = `${code}-${year}-`;
 
-  const n = await nextInSequence(`prescription:${year}`, {
+  const n = await nextInSequence(`prescription:${code}:${year}`, {
     seed: async () => {
       // Zero-padded to six digits, so the highest string is the highest number.
       const last = await Prescription.findOne({ referenceNo: new RegExp(`^${prefix}\\d{6}$`) })
@@ -225,15 +245,17 @@ router.post(
 
     let prescription;
     try {
+      // Whose prescription this is — and so whose medicines it puts on the
+      // patient's list (see services/medicationLifecycle.js), and whose prefix
+      // its reference carries.
+      const practice = await practiceOf(req);
       prescription = await Prescription.create({
         ...body,
         patient: req.patientId,
         doctor: req.user._id,
-        // Whose prescription this is — and so whose medicines it puts on the
-        // patient's list. See services/medicationLifecycle.js.
-        practice: await practiceOf(req),
+        practice,
         appointment: appointmentId,
-        referenceNo: await nextReference(),
+        referenceNo: await nextReference(practice),
         idempotencyKey: req.idempotency?.key ?? null,
         idempotencyHash: req.idempotency?.hash ?? null,
       });
@@ -646,11 +668,12 @@ router.post(
     const doctor = await resolveDoctor({ actingUser: req.user, required: true });
     if (!doctor) throw notFound('No doctor account to file this against');
 
+    const practice = await practiceOf(req);
     const created = await Prescription.create({
       patient: req.patientId,
       doctor: doctor._id,
-      practice: await practiceOf(req),
-      referenceNo: await nextReference(),
+      practice,
+      referenceNo: await nextReference(practice),
       // The date on the paper, when the desk knows it. A prescription filed a
       // week late and stamped today would put the visit on the wrong day in
       // every list that sorts by it.

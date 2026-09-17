@@ -2,7 +2,6 @@ import { Clinic } from '../models/Clinic.js';
 // Registered for `populate('practice')` below, and read directly for a practice
 // that has no location yet.
 import { Practice } from '../models/Practice.js';
-import { env } from '../config/env.js';
 import { callablePhone } from './clinicContact.js';
 
 /**
@@ -10,30 +9,35 @@ import { callablePhone } from './clinicContact.js';
  *
  * The clinic's name and the doctor's printed name were `CLINIC_NAME` and
  * `DOCTOR_DISPLAY_NAME` in the environment, read directly by the AI prompts,
- * the prescription PDF, the lab reader and the vision service. Two consequences
- * followed from that, and both are why this exists.
+ * the prescription PDF, the lab reader and the vision service. One process can
+ * hold one value, so every practice on the platform was introduced as the
+ * founding clinic and its doctor, and those two variables defaulted to
+ * Dr. Amit Kumar Dey's name for anybody who had not set them.
  *
- * Renaming the clinic took a redeploy, so "let the staff edit it" was not
- * possible however good the settings screen was. And one process can hold one
- * value, so a second clinic could never have a different name — the multi-
- * department plan was blocked by an env var.
+ * ---- Practice → Location → Head Doctor ----------------------------------
  *
- * The env vars survive as the seed for a clinic that has not filled its profile
- * in yet, which keeps an existing deployment working unchanged on the day this
- * ships.
+ * An identity starts from the practice, because the practice is the tenant: a
+ * location belongs to one, and a doctor is somebody's only through one.
  *
- * ---- Three places a value can come from ---------------------------------
+ *   the name        the practice's, then the location's — "Meridian Heart
+ *                   Centre", not "Park Street"; a branch is where the practice
+ *                   is, not who it is
+ *   the doctor      the practice's printed name, then the location's, then the
+ *                   head doctor's own account name
+ *   tagline, logo,  the location's where it has set its own, then the
+ *   registration    practice's — the branch override the practice screen
+ *                   describes (`overridesBrand`)
+ *   address, phone  the location's alone; a branch with no phone has no phone,
+ *                   and inheriting head office's sends patients to the wrong
+ *                   building
  *
- * Location, then practice, then the environment. First non-empty wins.
+ * ---- No practice is nobody --------------------------------------------------
  *
- * The order is the load-bearing part. The settings screen the clinic uses today
- * writes to the Clinic row; if the practice won, saving that screen would look
- * like it had done nothing. And it is the right semantics besides — the
- * practice brand is the default every branch inherits, and a branch with its
- * own phone number overrides it.
- *
- * A clinic with no practice resolves exactly as it did before this existed,
- * which is what makes the backfill safe to run and safe to half-run.
+ * With no practice there is no identity to borrow: every field is null and
+ * `neutral` is true. Callers say "your doctor" and "your clinic" rather than a
+ * name, and print no letterhead name rather than somebody else's. There is no
+ * environment fallback and no "first clinic on the platform" — both were how a
+ * second practice's patients met the founding clinic's doctor.
  */
 
 /**
@@ -47,53 +51,88 @@ const cache = new Map();
 const TTL_MS = 60_000;
 
 /**
- * Fold a location, its practice and the environment into one identity.
+ * The identity of nobody in particular.
  *
- * Pure, and exported for that reason: the fallback order is the part of this
- * file most likely to be got wrong in a hurry, and a test for it should not
- * need a database.
- *
- * `doc` is a lean Clinic with `practice` populated, or not populated, or
- * absent entirely. All three are ordinary.
+ * Frozen and complete, so a caller can read any field off it and get null
+ * rather than undefined — undefined is what used to fall through to an env var.
  */
-export function resolveIdentity(doc, fallbacks = {}) {
-  // Only when it was populated. An unpopulated ref is an ObjectId, and reading
-  // `.name` off one gives undefined — which would silently fall through to the
-  // env var and print the wrong clinic's name on a prescription.
-  const practice = doc?.practice && typeof doc.practice === 'object' && doc.practice.name !== undefined
-    ? doc.practice
-    : null;
+export const NEUTRAL_IDENTITY = Object.freeze({
+  id: null,
+  practiceId: null,
+  neutral: true,
+  clinicName: null,
+  locationName: null,
+  tagline: null,
+  doctorName: null,
+  phone: null,
+  altPhone: null,
+  addressLine: null,
+  city: null,
+  specialty: null,
+  registrationNo: null,
+  logoLightAssetId: null,
+  logoDarkAssetId: null,
+  logoNeedsDarkChip: false,
+  emergencyPhone: null,
+});
 
-  // `||` throughout, not `??`: a field saved as an empty string should fall
-  // through to the next source rather than print a blank letterhead.
-  return {
-    id: doc?._id ?? null,
-    practiceId: practice?._id ?? doc?.practice ?? null,
-    clinicName: doc?.name || practice?.name || fallbacks.CLINIC_NAME,
-    tagline: doc?.tagline || practice?.tagline || null,
+/** A populated ref, or null. An unpopulated one is an id, and has no `.name`. */
+function populated(ref) {
+  return ref && typeof ref === 'object' && ref.name !== undefined ? ref : null;
+}
+
+/**
+ * Fold a location and its practice into one identity.
+ *
+ * Pure, and exported for that reason: the order is the part of this file most
+ * likely to be got wrong in a hurry, and a test for it should not need a
+ * database.
+ *
+ * `doc` is a lean Clinic with `practice` (and the practice's `headDoctor`)
+ * populated, a bare `{ practice }` for a practice with no location yet, or null.
+ * A location whose practice did not populate supplies its own fields and never
+ * borrows a brand from anywhere else.
+ */
+export function resolveIdentity(doc) {
+  if (!doc) return { ...NEUTRAL_IDENTITY };
+
+  const practice = populated(doc.practice);
+  const head = populated(practice?.headDoctor);
+  const location = doc.name !== undefined || doc._id ? doc : null;
+
+  // `||` throughout, not `??`: a field saved as an empty string falls through to
+  // the next source rather than printing a blank line.
+  const identity = {
+    id: location?._id ?? null,
+    practiceId: practice?._id ?? (practice ? null : doc.practice ?? null),
+    clinicName: practice?.name || location?.name || null,
+    locationName: location?.name || null,
+    tagline: location?.tagline || practice?.tagline || null,
     doctorName:
-      doc?.doctorDisplayName || practice?.doctorDisplayName || fallbacks.DOCTOR_DISPLAY_NAME,
-    // Address and phone belong to the place and have no practice-level answer.
-    // A branch that has not filled its phone in has no phone, and inheriting
-    // head office's would send patients to the wrong building.
-    phone: doc?.phone || null,
-    altPhone: doc?.altPhone || null,
-    addressLine: doc?.addressLine || null,
-    city: doc?.city || null,
+      practice?.doctorDisplayName || location?.doctorDisplayName || head?.name || null,
+    phone: location?.phone || null,
+    altPhone: location?.altPhone || null,
+    addressLine: location?.addressLine || null,
+    city: location?.city || null,
     /// What this practice treats. Null on every practice created before the
     /// field, and null is a real answer — nothing may fill it with a guess.
     specialty: practice?.specialty || null,
-    registrationNo: doc?.registrationNo || practice?.registrationNo || null,
-    logoLightAssetId: doc?.logoLightAssetId ?? practice?.logoLightAssetId ?? null,
-    logoDarkAssetId: doc?.logoDarkAssetId ?? practice?.logoDarkAssetId ?? null,
+    registrationNo: location?.registrationNo || practice?.registrationNo || null,
+    logoLightAssetId: location?.logoLightAssetId ?? practice?.logoLightAssetId ?? null,
+    logoDarkAssetId: location?.logoDarkAssetId ?? practice?.logoDarkAssetId ?? null,
     // Reads from whichever row supplied the artwork. Taking the flag from the
     // practice while the logo came from the location would put a dark chip
     // behind a mark drawn for a white background.
-    logoNeedsDarkChip: doc?.logoLightAssetId
-      ? Boolean(doc.logoNeedsDarkChip)
-      : Boolean(practice?.logoNeedsDarkChip ?? doc?.logoNeedsDarkChip),
+    logoNeedsDarkChip: location?.logoLightAssetId
+      ? Boolean(location.logoNeedsDarkChip)
+      : Boolean(practice?.logoNeedsDarkChip ?? location?.logoNeedsDarkChip),
   };
+
+  return { ...identity, neutral: !practice && !identity.clinicName };
 }
+
+/** The practice, populated the way resolveIdentity reads it. */
+const WITH_PRACTICE = { path: 'practice', populate: { path: 'headDoctor', select: 'name' } };
 
 /**
  * Who a patient's clinic is, and the number they are told to ring.
@@ -102,37 +141,34 @@ export function resolveIdentity(doc, fallbacks = {}) {
  *
  * A location by id when the caller has one. Otherwise the practice's own first
  * active location, or — for a practice that has not added one yet — the
- * practice itself. With neither, the platform's first active location, which
- * is every case in a deployment that does not know its practices yet.
+ * practice itself. With neither, nobody: the neutral identity.
  *
- * That last fallback used to be the only answer, and every caller took it: the
- * assistant, the nutrition assistant, the foot and eye readers, lab extraction
- * and the prescription letterhead all introduced a second practice's patients
- * to the first practice's doctor. Callers that know the practice now say so.
+ * That last answer used to be the platform's first active location, and every
+ * caller that did not say whose patient this was took it — the assistant, the
+ * nutrition assistant, the foot and eye readers, lab extraction and the
+ * prescription letterhead all introduced a second practice's patients to the
+ * first practice's doctor.
  */
 export async function clinicIdentity(clinicId = null, { practiceId = null } = {}) {
-  const key = clinicId ? `clinic:${clinicId}` : practiceId ? `practice:${practiceId}` : 'primary';
+  if (!clinicId && !practiceId) return { ...NEUTRAL_IDENTITY };
+
+  const key = clinicId ? `clinic:${clinicId}` : `practice:${practiceId}`;
   const hit = cache.get(key);
   if (hit && Date.now() - hit.at < TTL_MS) return hit.identity;
 
   let doc;
   if (clinicId) {
-    doc = await Clinic.findById(clinicId).populate('practice').lean();
-  } else if (practiceId) {
+    doc = await Clinic.findById(clinicId).populate(WITH_PRACTICE).lean();
+  } else {
     doc =
       (await Clinic.findOne({ practice: practiceId, isActive: true })
         .sort({ sortIndex: 1, createdAt: 1 })
-        .populate('practice')
+        .populate(WITH_PRACTICE)
         .lean()) ?? (await practiceWithoutLocation(practiceId));
-  } else {
-    doc = await Clinic.findOne({ isActive: true })
-      .sort({ sortIndex: 1, createdAt: 1 })
-      .populate('practice')
-      .lean();
   }
 
   const identity = {
-    ...resolveIdentity(doc, env),
+    ...resolveIdentity(doc),
     emergencyPhone: await emergencyPhoneFor(doc, { clinicId, practiceId }),
   };
 
@@ -142,7 +178,7 @@ export async function clinicIdentity(clinicId = null, { practiceId = null } = {}
 
 /** A practice with no location yet still has a name, and it is not somebody else's. */
 async function practiceWithoutLocation(practiceId) {
-  const practice = await Practice.findById(practiceId).lean();
+  const practice = await Practice.findById(practiceId).populate('headDoctor', 'name').lean();
   return practice ? { practice } : null;
 }
 
@@ -167,10 +203,7 @@ async function practiceWithoutLocation(practiceId) {
  * rings nowhere, or rings a stranger, is worse than none.
  */
 async function emergencyPhoneFor(doc, { clinicId, practiceId }) {
-  const practice =
-    doc?.practice && typeof doc.practice === 'object' && doc.practice.name !== undefined
-      ? doc.practice
-      : null;
+  const practice = populated(doc?.practice);
 
   const own = callablePhone(practice?.emergencyPhone);
   if (own) return own;
@@ -222,4 +255,26 @@ export async function identitySnapshot(clinicId = null, { practiceId = null } = 
     logoAssetId: id.logoLightAssetId,
     emergencyPhone: id.emergencyPhone,
   };
+}
+
+/**
+ * The words a patient-facing sentence uses when there is no name to use.
+ *
+ * Per language, because "your doctor" dropped into a Bengali sentence is an
+ * English phrase in the middle of it. Used by the assistant's prompts and its
+ * outage replies; the app has its own copy in its localisations.
+ */
+export const NEUTRAL_WORDS = Object.freeze({
+  doctor: Object.freeze({ en: 'your doctor', bn: 'আপনার চিকিৎসক', hi: 'अपने डॉक्टर' }),
+  clinic: Object.freeze({ en: 'your clinic', bn: 'আপনার ক্লিনিক', hi: 'आपका क्लिनिक' }),
+});
+
+/** The doctor's name for a sentence, or the neutral words in that language. */
+export function doctorNameOr(identity, language = 'en') {
+  return identity?.doctorName || NEUTRAL_WORDS.doctor[language] || NEUTRAL_WORDS.doctor.en;
+}
+
+/** The clinic's name for a sentence, or the neutral words in that language. */
+export function clinicNameOr(identity, language = 'en') {
+  return identity?.clinicName || NEUTRAL_WORDS.clinic[language] || NEUTRAL_WORDS.clinic.en;
 }

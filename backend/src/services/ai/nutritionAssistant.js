@@ -5,8 +5,7 @@ import { Membership } from '../../models/Membership.js';
 import { generate, AiUnavailableError } from './gemini.js';
 import { retrieve, formatContext } from './rag.js';
 import { buildPatientContext } from '../patientContext.js';
-import { env } from '../../config/env.js';
-import { clinicIdentity } from '../clinicIdentity.js';
+import { clinicIdentity, clinicNameOr } from '../clinicIdentity.js';
 import { logger } from '../../config/logger.js';
 import { languagePrimer } from './prompts.js';
 import { countAiCall } from './allowance.js';
@@ -44,7 +43,7 @@ export function buildNutritionPrompt({
 }) {
   const lang = { en: 'English', bn: 'Bengali (বাংলা)', hi: 'Hindi (हिन्दी)' }[language] ?? 'English';
 
-  return `You are the nutrition assistant for ${identity?.clinicName || env.CLINIC_NAME}. You are answering inside the patient's conversation with their dietician.
+  return `You are the nutrition assistant for ${clinicNameOr(identity, 'en')}. You are answering inside the patient's conversation with their dietician.
 
 ## The only thing you may do
 ${

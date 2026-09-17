@@ -1,7 +1,7 @@
 {
   "@@locale": "bn",
   "appName": "MedPin",
-  "appTagline": "ডাঃ অমিত কুমার দে-র সঙ্গে ডায়াবেটিস পরিচর্যা",
+  "appTagline": "ভিজিটের মাঝেও আপনার পরিচর্যা",
   "commonRetry": "আবার চেষ্টা করুন",
   "commonCancel": "বাতিল",
   "commonSave": "সেভ করুন",
@@ -110,7 +110,7 @@
   "dashboardEmptyTitle": "এখনও কোনো তথ্য নেই",
   "dashboardEmptyBody": "আপনার স্বাস্থ্য সারাংশ দেখতে ব্লাড সুগার ও ওষুধের তথ্য দেওয়া শুরু করুন।",
   "dashboardErrorTitle": "ড্যাশবোর্ড লোড করা গেল না",
-  "chatTitle": "ডাঃ দে-র ক্লিনিক",
+  "chatTitle": "আপনার ক্লিনিক",
   "chatFromClinic": "ক্লিনিক থেকে",
   "appLockSubtitle": "আপনার বার্তা ও স্বাস্থ্য তথ্য দেখতে আনলক করুন।",
   "profileFeedback": "মতামত পাঠান",

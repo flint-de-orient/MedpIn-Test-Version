@@ -10,7 +10,7 @@ import { classifyGlucose } from '../triage/engine.js';
 import { raiseAlert } from '../alerts.js';
 import { recomputePatientRisk } from '../analytics.js';
 import { env } from '../../config/env.js';
-import { clinicIdentity } from '../clinicIdentity.js';
+import { clinicIdentity, clinicNameOr } from '../clinicIdentity.js';
 import { logger } from '../../config/logger.js';
 import { countAiCall } from './allowance.js';
 import { practiceForPatient } from '../../middleware/practiceScope.js';
@@ -93,7 +93,9 @@ export async function extractLabValues(assetId, practiceId = null) {
 
   const buffer = await assetBuffer(asset);
   const result = await generateFromImage({
-    system: buildSystem((await clinicIdentity(null, { practiceId })).clinicName || env.CLINIC_NAME),
+    // "the patient's clinic" when the practice is not known — never a name
+    // borrowed from another practice.
+    system: buildSystem(clinicNameOr(await clinicIdentity(null, { practiceId }), 'en')),
     prompt: 'Transcribe this pathology report.',
     images: [{ mimeType: asset.mimeType, base64: buffer.toString('base64') }],
     responseSchema: LAB_SCHEMA,

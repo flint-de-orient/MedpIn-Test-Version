@@ -7,7 +7,7 @@ import { requireAdmin } from '../middleware/requireAdmin.js';
 import adminBillingRoutes from './adminBilling.js';
 import adminApplicationRoutes from './adminApplications.js';
 import { validate, q } from '../middleware/validate.js';
-import { asyncHandler, unauthorized, notFound, badRequest } from '../middleware/errors.js';
+import { asyncHandler, unauthorized, notFound, badRequest, conflict } from '../middleware/errors.js';
 import { PlatformAdmin } from '../models/PlatformAdmin.js';
 import { AdminAuditLog } from '../models/AdminAuditLog.js';
 import {
@@ -25,7 +25,7 @@ import { PracticeApplication, APPLICATION_STATUS } from '../models/PracticeAppli
 import { Subscription, SUBSCRIPTION_STATUS } from '../models/Subscription.js';
 import { Membership, MEMBERSHIP_STATUS, PERMISSIONS, presetFor } from '../models/Membership.js';
 import { Department } from '../models/Department.js';
-import { explainCapabilities } from '../services/capabilities.js';
+import { explainCapabilities, BY_TYPE, CAPABILITIES } from '../services/capabilities.js';
 import {
   activePatientCount,
   everPatientCount,
@@ -48,9 +48,13 @@ import {
   sendEmailVerification,
   completeEmailVerification,
 } from '../services/adminReset.js';
-import { mailConfigured } from '../services/mailer.js';
+import { mailConfigured, sendMail, practiceReadyEmail } from '../services/mailer.js';
+import { notifyOwnerOfNewPractice } from '../services/notifications.js';
+import { logger } from '../config/logger.js';
 import { joinByPhone, membersOf } from '../services/memberships.js';
 import { provisionPractice } from '../services/provisionPractice.js';
+import { prefixAvailability, PREFIX_REFUSAL } from '../services/prescriptionPrefix.js';
+import { forgetClinicIdentity } from '../services/clinicIdentity.js';
 import { requestOtp, verifyOtp, signPhoneToken, phoneFromToken } from '../services/otp.js';
 import { toE164 } from '../utils/phone.js';
 import { ROLES } from '../models/User.js';
@@ -77,8 +81,10 @@ import {
  *
  * ---- Suspension stops the practice, not the patient ---------------------
  *
- * A suspended practice's staff cannot log in. Its patients keep their records,
- * their prescriptions and their dose reminders — a suspension that silenced a
+ * A suspended practice's staff are refused every route in it with
+ * PRACTICE_SUSPENDED (middleware/practiceStatus.js); they can sign in only to
+ * see that it is suspended. Its patients keep their records, their
+ * prescriptions and their dose reminders — a suspension that silenced a
  * diabetic's insulin alarm would punish the person who did nothing wrong.
  */
 const router = Router();
@@ -928,6 +934,8 @@ router.get(
           .map((w) => w[0].toUpperCase() + w.slice(1))
           .join(' '),
         responsibleLabel: RESPONSIBLE_LABEL[key],
+        // Whether to offer departments at all — from the table that grants them.
+        hasDepartments: BY_TYPE[key]?.includes(CAPABILITIES.DEPARTMENT) ?? false,
       })),
       specialties: shared.map((d) => ({
         key: d.key,
@@ -1049,6 +1057,41 @@ router.post(
       headDoctorPhoneToken: z.string().min(20),
       headDoctorQualifications: z.string().trim().max(120).optional(),
       headDoctorRegistrationNo: z.string().trim().max(60).optional(),
+      /// Where they are told the practice exists. Never a password: they sign in
+      /// with a code texted to the number they just proved.
+      headDoctorEmail: z.string().trim().toLowerCase().email().max(200).optional(),
+
+      /**
+       * Everything the application path already provisions, so a practice made
+       * here is as complete as an approved one: the departments it runs (kept
+       * only where its type can have any), the head doctor's department, the
+       * number its patients ring, and its first location with that location's
+       * phone and weekly hours. A practice made without a location could not
+       * take a booking.
+       */
+      departments: z.array(z.string().trim().min(1).max(80)).max(24).optional(),
+      headDoctorDepartment: z.string().trim().max(80).optional(),
+      emergencyPhone: z.string().trim().max(40).optional(),
+      prescriptionPrefix: z.string().trim().toUpperCase().max(8).optional(),
+      location: z
+        .object({
+          name: z.string().trim().max(160).optional(),
+          addressLine: z.string().trim().max(400).optional(),
+          city: z.string().trim().max(120).optional(),
+          phone: z.string().trim().max(40).optional(),
+          slotMinutes: z.number().int().min(5).max(120).optional(),
+          weeklyHours: z
+            .array(
+              z.object({
+                dayOfWeek: z.number().int().min(0).max(6),
+                start: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/),
+                end: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/),
+              }),
+            )
+            .max(42)
+            .optional(),
+        })
+        .optional(),
     }),
   }),
   asyncHandler(async (req, res) => {
@@ -1058,6 +1101,11 @@ router.post(
       headDoctorPhoneToken,
       headDoctorQualifications,
       headDoctorRegistrationNo,
+      headDoctorEmail,
+      departments,
+      headDoctorDepartment,
+      emergencyPhone,
+      location: locationInput,
       ...brand
     } = req.body;
 
@@ -1083,15 +1131,53 @@ router.post(
      * has to produce exactly the same thing, and a second copy of nine steps
      * is how one path ends up without a head doctor.
      *
-     * See [services/provisionPractice.js] for why each step is where it is.
+     * See [services/provisionPractice.js] for why each step is where it is —
+     * including why every refusal it can make comes before anything is written.
      */
-    const { practice, head } = await provisionPractice({
+    const { practice, head, location, department, departments: seeded } = await provisionPractice({
       brand,
       headDoctorName,
       headDoctorPhone,
       headDoctorQualifications,
       headDoctorRegistrationNo,
+      ownerEmail: headDoctorEmail ?? null,
+      // Proved a moment ago, through /admin/phone/verify — the token says so.
+      phoneVerifiedAt: new Date(),
+      departments: departments ?? [],
+      ownerDepartment: headDoctorDepartment ?? null,
+      emergencyPhone: emergencyPhone ?? null,
+      location: locationInput ?? null,
     });
+
+    /*
+     * The head doctor is told, through the ways MedPin has of reaching them:
+     * the phones their account is already signed in on, and the email the
+     * operator gave. Nothing else can reach somebody new — a text would need a
+     * template approved for it — so the console is told which of these went,
+     * and can say to ring them when neither did.
+     */
+    const pushed = await notifyOwnerOfNewPractice({
+      userId: head.user._id,
+      practiceName: practice.name,
+      managesOnly: false,
+    });
+    const emailTo = headDoctorEmail ?? null;
+    if (emailTo) {
+      sendMail({
+        to: emailTo,
+        ...practiceReadyEmail({ practiceName: practice.name, ownerName: head.user.name, phone: headDoctorPhone }),
+      }).catch((err) => logger.error({ err, practice: String(practice._id) }, 'could not email the head doctor'));
+    }
+
+    const outcome = {
+      headDoctorAccount: head.createdUser ? 'created' : 'existing',
+      signInPhone: headDoctorPhone,
+      locationCreated: Boolean(location),
+      departments: seeded,
+      headDoctorDepartment: department?.key ?? null,
+      notified: { devices: pushed.devices, emailTo, sms: 'not_available' },
+      mailConfigured: mailConfigured(),
+    };
 
     await AdminAuditLog.record({
       admin: req.admin,
@@ -1111,12 +1197,32 @@ router.post(
         // Whether this created an account or attached one that already existed
         // is the difference between onboarding a new doctor and adding a
         // practice to somebody already on the platform.
-        headDoctorAccount: head.createdUser ? 'created' : 'existing',
+        headDoctorAccount: outcome.headDoctorAccount,
+        location: location ? String(location._id) : null,
+        departments: seeded,
+        emergencyPhone: practice.emergencyPhone ?? null,
+        prescriptionPrefix: practice.prescriptionPrefix ?? null,
+        notified: outcome.notified,
       },
       req,
     });
 
-    res.status(201).json({ practice: practice.toPublic() });
+    res.status(201).json({
+      practice: practice.toPublic(),
+      location: location
+        ? {
+            id: String(location._id),
+            name: location.name,
+            phone: location.phone ?? null,
+            weeklyHours: (location.weeklyHours ?? []).map((w) => ({
+              dayOfWeek: w.dayOfWeek,
+              start: w.start,
+              end: w.end,
+            })),
+          }
+        : null,
+      outcome,
+    });
   }),
 );
 
@@ -1231,6 +1337,19 @@ router.post(
  * Separate from verification on purpose — see the note above. A practice can be
  * active and unverified, which is the honest state of one that is working while
  * its papers are read.
+ *
+ * ---- What suspension does, now that something reads it -------------------
+ *
+ * Its staff are refused every practice route with PRACTICE_SUSPENDED from their
+ * next request (middleware/practiceStatus.js). They can still sign in and see
+ * that the practice is suspended. Its patients keep their own records,
+ * prescriptions and reminders. Nothing is deleted, and reinstating restores
+ * access at once.
+ *
+ * Both directions need a reason. Stopping a clinic working is the decision a
+ * review reads six months later; letting it work again is the other half of
+ * the same story, and "reinstated" with nothing beside it cannot say whether
+ * whatever caused the suspension was resolved or simply forgotten.
  */
 router.post(
   '/practices/:id/status',
@@ -1244,10 +1363,14 @@ router.post(
     const practice = await Practice.findById(req.params.id);
     if (!practice) throw notFound('Practice not found');
 
-    // Suspending a practice stops people working. It should not be possible to
-    // do silently, and the reason is what a review reads six months later.
+    // Nothing to decide, and nothing to record as though something had been.
+    if (practice.status === req.body.status) return res.json({ practice: practice.toPublic() });
+
     if (req.body.status === PRACTICE_STATUS.SUSPENDED && !req.body.reason) {
       throw badRequest('A suspension needs a reason.');
+    }
+    if (practice.status === PRACTICE_STATUS.SUSPENDED && !req.body.reason) {
+      throw badRequest('Reinstating a suspended practice needs a reason.');
     }
 
     const before = { status: practice.status };
@@ -1653,11 +1776,31 @@ router.patch(
       notes: z.string().trim().max(2000).optional(),
       practiceType: z.enum(Object.values(PRACTICE_TYPE)).nullable().optional(),
       specialty: z.string().trim().max(80).nullable().optional(),
+      /**
+       * What this practice's prescription references start with. Null or empty
+       * goes back to the neutral RX. References already issued keep theirs.
+       */
+      prescriptionPrefix: z.string().trim().toUpperCase().max(8).nullable().optional(),
     }),
   }),
   asyncHandler(async (req, res) => {
     const practice = await Practice.findById(req.params.id);
     if (!practice) throw notFound('Practice not found');
+
+    // Checked before anything is written, so a refused prefix saves nothing
+    // else from the same form either.
+    if (req.body.prescriptionPrefix) {
+      const verdict = await prefixAvailability(req.body.prescriptionPrefix, practice._id);
+      if (!verdict.ok) {
+        throw verdict.reason === 'taken' || verdict.reason === 'issued'
+          ? conflict(
+              verdict.holder
+                ? `${req.body.prescriptionPrefix} is ${verdict.holder}'s prefix.`
+                : PREFIX_REFUSAL[verdict.reason],
+            )
+          : badRequest(PREFIX_REFUSAL[verdict.reason]);
+      }
+    }
 
     const fields = [
       'name',
@@ -1667,6 +1810,7 @@ router.patch(
       'notes',
       'practiceType',
       'specialty',
+      'prescriptionPrefix',
     ];
     const before = {};
     const after = {};
@@ -1683,7 +1827,18 @@ router.patch(
     }
     if (!Object.keys(after).length) return res.json({ practice: practice.toPublic() });
 
-    await practice.save();
+    try {
+      await practice.save();
+    } catch (err) {
+      // Two operators giving two practices one prefix in the same second: the
+      // unique index refuses the second, and it is told so in words.
+      if (err?.code === 11000 && err.keyPattern?.prescriptionPrefix) {
+        throw conflict(PREFIX_REFUSAL.taken);
+      }
+      throw err;
+    }
+    // The letterhead and the assistant read the practice through a cache.
+    forgetClinicIdentity();
     await AdminAuditLog.record({
       admin: req.admin,
       action: 'admin.practice.edit',

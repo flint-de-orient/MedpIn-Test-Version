@@ -29,6 +29,7 @@
  */
 import { connectDb, disconnectDb } from '../src/config/db.js';
 import { Clinic } from '../src/models/Clinic.js';
+import { Practice } from '../src/models/Practice.js';
 import { User, ROLES } from '../src/models/User.js';
 import { toE164 } from '../src/utils/phone.js';
 import { logger } from '../src/config/logger.js';
@@ -41,14 +42,19 @@ const flag = (name, fallback) => {
   return i > -1 && argv[i + 1] && !argv[i + 1].startsWith('--') ? argv[i + 1] : fallback;
 };
 
+/*
+ * Every value is the operator's, typed on the command line. These defaulted to
+ * one clinic's real name, doctor and switchboard, so a run that forgot a flag
+ * wrote that clinic's identity onto whichever location sorted first.
+ */
 const PROFILE = {
-  name: flag('name', "Dr. Dey's Diabetes Obesity & Metabolic Clinic"),
-  tagline: flag('tagline', 'Diabetes Obesity & Metabolic Clinic'),
-  doctorDisplayName: flag('doctor', 'Dr. Amit Kumar Dey'),
-  phone: flag('phone', '8981540690'),
-  altPhone: flag('alt-phone', '9674999327'),
+  name: flag('name', ''),
+  tagline: flag('tagline', ''),
+  doctorDisplayName: flag('doctor', ''),
+  phone: flag('phone', ''),
+  altPhone: flag('alt-phone', ''),
   addressLine: flag('address', ''),
-  city: flag('city', 'Kolkata'),
+  city: flag('city', ''),
   registrationNo: flag('reg-no', ''),
 };
 
@@ -58,6 +64,28 @@ const isSeeded = (c) =>
 
 async function main() {
   await connectDb();
+
+  /*
+   * A single-clinic tool, and it refuses to be anything else.
+   *
+   * It renames the first location and deactivates every other one on the
+   * database. With practices, "every other location" is other practices'
+   * buildings — their bookings would stop the moment it ran. A practice's
+   * identity is edited from the app and the operator console now.
+   */
+  if ((await Practice.estimatedDocumentCount()) > 0) {
+    logger.error(
+      'This database has practices. Edit a practice from the operator console or the app; ' +
+        'this script only ever applied to the single-clinic deployment.',
+    );
+    process.exitCode = 1;
+    return;
+  }
+  if (!PROFILE.name || !PROFILE.phone) {
+    logger.error('Say what to write: --name "<clinic name>" --phone <number> [--doctor "<printed name>"]');
+    process.exitCode = 1;
+    return;
+  }
 
   const doctor = await User.findOne({ role: ROLES.DOCTOR, isActive: true }).select('_id name').lean();
   if (!doctor) {

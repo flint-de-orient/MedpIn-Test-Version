@@ -35,28 +35,48 @@ function serviceFiles(dir = SERVICES) {
   });
 }
 
+/** Every .js under src, recursively — routes, middleware and models as well. */
+const SRC = fileURLToPath(new URL('../src/', import.meta.url));
+function sourceFiles(dir = SRC) {
+  return readdirSync(dir, { withFileTypes: true }).flatMap((e) => {
+    const full = path.join(dir, e.name);
+    if (e.isDirectory()) return sourceFiles(full);
+    return e.name.endsWith('.js') ? [full] : [];
+  });
+}
+
 describe('nothing reads the clinic brand out of the environment', () => {
-  test('every env read is a fallback behind the resolved identity', () => {
-    // The env vars are allowed to survive as the last resort — they are what a
-    // fresh deployment has before anyone fills in a profile. What is not
-    // allowed is reading them *instead of* asking.
+  test('not even as a fallback', () => {
+    /*
+     * These were allowed to survive as the last resort behind the resolved
+     * identity, and the last resort was the founding clinic: both variables
+     * defaulted to Dr. Amit Kumar Dey's name, and "the identity did not
+     * resolve" is exactly the case a second practice's patient, or a patient
+     * of no practice, is in. A missing identity is neutral now, and the only
+     * reader left is the one-off script that created the founding practice.
+     */
     const offenders = [];
 
-    for (const file of serviceFiles()) {
-      if (file.endsWith(path.join('services', 'clinicIdentity.js'))) continue;
+    for (const file of sourceFiles()) {
+      if (file.endsWith(path.join('config', 'env.js'))) continue;
       const src = readFileSync(file, 'utf8');
 
       src.split('\n').forEach((line, i) => {
-        if (!/env\.(CLINIC_NAME|DOCTOR_DISPLAY_NAME)/.test(line)) return;
-        // A fallback looks like `identity?.x || env.Y` or `a ?? b ?? env.Y`.
-        const isFallback = /(\|\||\?\?)\s*env\.(CLINIC_NAME|DOCTOR_DISPLAY_NAME)/.test(line);
-        if (!isFallback) {
-          offenders.push(`${path.relative(SERVICES, file)}:${i + 1}  ${line.trim().slice(0, 70)}`);
+        if (/^\s*(\/\/|\*|\/\*)/.test(line)) return;
+        if (/env\.(CLINIC_NAME|DOCTOR_DISPLAY_NAME)/.test(line)) {
+          offenders.push(`${path.relative(SRC, file)}:${i + 1}  ${line.trim().slice(0, 70)}`);
         }
       });
     }
 
     assert.deepEqual(offenders, [], `\n  ${offenders.join('\n  ')}\n`);
+  });
+
+  test('and neither has a default that names anybody', async () => {
+    const { env } = await import('../src/config/env.js');
+    for (const key of ['CLINIC_NAME', 'DOCTOR_DISPLAY_NAME']) {
+      assert.ok(!/dey|amit/i.test(env[key] ?? ''), `${key} still defaults to the founding clinic`);
+    }
   });
 
   test('the assistant asks for the identity before building a prompt', () => {
@@ -140,9 +160,11 @@ describe('a second practice gets its own assistant', () => {
     assert.ok(!reply.includes('Amit Kumar Dey'));
   });
 
-  test('with no identity it still reads as it always did', () => {
-    // The single-clinic deployment running today passes nothing and must be
-    // unchanged. This is the whole safety argument for the rewiring.
+  test('with no identity it names nobody', () => {
+    // This asserted the opposite: that a prompt built with no practice still
+    // introduced Dr. Dey, which was called the safety argument for the
+    // rewiring. It was the leak. With no practice the assistant works for "your
+    // doctor" at "your clinic", and a practice that is known says so itself.
     const prompt = buildSystemPrompt({
       language: 'en',
       triage: { urgency: 'routine' },
@@ -150,12 +172,14 @@ describe('a second practice gets its own assistant', () => {
       groundingContext: '',
       careTeamNotes: '',
     });
-    assert.ok(prompt.includes('Amit Kumar Dey'), 'the env fallback stopped working');
+    assert.ok(!/Amit|Dey\b/.test(prompt), 'a prompt with no practice still names the founding doctor');
+    assert.ok(prompt.includes('for your doctor at your clinic'));
   });
 
-  test('an empty saved name falls through instead of blanking the prompt', () => {
-    // `||` not `??`. A practice saved with an empty doctor name should read as
-    // the configured one, not introduce an assistant working for nobody.
+  test('an empty saved name falls through to the neutral words, not to blank', () => {
+    // `||` not `??`. A practice saved with an empty doctor name reads as "your
+    // doctor", not as an assistant working for nobody — and not as somebody
+    // else's doctor.
     const prompt = buildSystemPrompt({
       language: 'en',
       triage: { urgency: 'routine' },
@@ -164,6 +188,17 @@ describe('a second practice gets its own assistant', () => {
       careTeamNotes: '',
       identity: { doctorName: '', clinicName: '' },
     });
-    assert.ok(prompt.includes('Amit Kumar Dey'));
+    assert.ok(!/Amit|Dey\b/.test(prompt));
+    assert.ok(prompt.includes('only your doctor can change a prescription'));
+  });
+
+  test('the outage reply names nobody in each language', () => {
+    for (const language of ['en', 'bn', 'hi']) {
+      const reply = fallbackReply('unavailable', language, null);
+      assert.ok(!/Amit|Dey\b/.test(reply), `${language} outage reply names the founding doctor`);
+      assert.ok(!reply.includes('{{doctor}}'), `${language} outage reply left its placeholder`);
+    }
+    assert.ok(fallbackReply('unavailable', 'en', null).includes('book an appointment with your doctor'));
+    assert.ok(fallbackReply('unavailable', 'hi', null).includes('अपने डॉक्टर से'));
   });
 });

@@ -11,6 +11,7 @@ import {
 } from '../models/PracticeApplication.js';
 import { User, ROLES } from '../models/User.js';
 import { provisionPractice } from '../services/provisionPractice.js';
+import { notifyOwnerOfNewPractice } from '../services/notifications.js';
 import { applicationDecisionEmail, mailConfigured, sendMail } from '../services/mailer.js';
 import { logger } from '../config/logger.js';
 import { env } from '../config/env.js';
@@ -289,6 +290,37 @@ router.post(
        * used otherwise.
        */
       headDoctorName: z.string().trim().min(2).max(120).optional(),
+
+      /**
+       * What an application does not collect and a working practice needs,
+       * supplied by the operator at approval — the same fields the console's
+       * own create takes, so both paths make the same complete practice.
+       *
+       * The number patients ring, the prefix on its prescription references,
+       * and the first location's name, public phone and weekly hours. The
+       * address and city come from the application. All optional: a practice
+       * approved without them still gets its location, and adds the rest from
+       * its own settings.
+       */
+      emergencyPhone: z.string().trim().max(40).optional(),
+      prescriptionPrefix: z.string().trim().toUpperCase().max(8).optional(),
+      location: z
+        .object({
+          name: z.string().trim().max(160).optional(),
+          phone: z.string().trim().max(40).optional(),
+          slotMinutes: z.number().int().min(5).max(120).optional(),
+          weeklyHours: z
+            .array(
+              z.object({
+                dayOfWeek: z.number().int().min(0).max(6),
+                start: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/),
+                end: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/),
+              }),
+            )
+            .max(42)
+            .optional(),
+        })
+        .optional(),
     }),
   }),
   asyncHandler(async (req, res) => {
@@ -315,7 +347,9 @@ router.post(
           practiceType: a.practiceType ?? undefined,
           specialty: a.specialty ?? undefined,
           registrationNo: a.registrationNo ?? undefined,
+          ...(req.body.prescriptionPrefix ? { prescriptionPrefix: req.body.prescriptionPrefix } : {}),
         },
+        emergencyPhone: req.body.emergencyPhone ?? null,
         /*
          * The contact's own name, unless the contact is the doctor. It used to
          * be the doctor's name on the contact's number whoever the contact was,
@@ -337,7 +371,16 @@ router.post(
         ownerDepartment: contactIsDoctor
           ? a.doctorDepartment ?? (a.departments?.length === 1 ? a.departments[0] : null)
           : null,
-        location: { name: a.practiceName, addressLine: addressOf(a), city: a.city },
+        location: {
+          name: req.body.location?.name || a.practiceName,
+          addressLine: addressOf(a),
+          city: a.city,
+          // The operator's, never the application's `contactPhone`: that is the
+          // applicant's own mobile and how they sign in, not a desk to ring.
+          phone: req.body.location?.phone ?? null,
+          slotMinutes: req.body.location?.slotMinutes ?? null,
+          weeklyHours: req.body.location?.weeklyHours ?? [],
+        },
         namedDoctor: contactIsDoctor
           ? null
           : {
@@ -398,6 +441,19 @@ router.post(
     }
 
     const managesOnly = head.membership.role !== ROLES.DOCTOR;
+
+    /*
+     * The owner hears it on the phones their account is signed in on — which is
+     * none for somebody new, whose way in is the decision email below and the
+     * number they proved. Through the one push abstraction, which sends nothing
+     * under test and logs where push is not configured.
+     */
+    const pushed = await notifyOwnerOfNewPractice({
+      userId: head.user._id,
+      practiceName: practice.name,
+      managesOnly,
+    });
+
     const outcome = {
       ownerRole: head.membership.role,
       ownerName: head.user.name,
@@ -409,6 +465,7 @@ router.post(
       doctorToAdd: contactIsDoctor ? null : practice.namedDoctor?.name ?? null,
       emailTo: decided.contactEmail,
       mailConfigured: mailConfigured(),
+      notified: { devices: pushed.devices, emailTo: decided.contactEmail, sms: 'not_available' },
     };
 
     await AdminAuditLog.record({
@@ -432,6 +489,9 @@ router.post(
         location: location ? String(location._id) : null,
         department: outcome.department,
         namedDoctor: practice.namedDoctor?.name ?? null,
+        emergencyPhone: practice.emergencyPhone ?? null,
+        prescriptionPrefix: practice.prescriptionPrefix ?? null,
+        notified: outcome.notified,
       },
       req,
     });

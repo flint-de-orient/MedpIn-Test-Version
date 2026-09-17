@@ -236,6 +236,34 @@ export function applicationDecisionEmail({
   };
 }
 
+/**
+ * What the owner of a practice an operator made is told.
+ *
+ * The console path's counterpart to an approval's email, for the same reason:
+ * the person who will run the practice should hear it from MedPin rather than
+ * only from whoever typed it in. It says how to get in — the app, the number
+ * that was verified, a code texted to it — and that there is no password,
+ * because nobody set one on their behalf and a message implying otherwise is a
+ * message somebody could imitate.
+ */
+export function practiceReadyEmail({ practiceName, ownerName, phone, managesOnly = false }) {
+  return {
+    subject: `${practiceName} is set up on MedPin`,
+    text: [
+      `${ownerName ? `${ownerName}, ` : ''}${practiceName} now exists on MedPin${managesOnly ? ', with you as its practice manager' : ', with you as its head doctor'}.`,
+      '',
+      'To sign in, open the MedPin app and sign in with this mobile number:',
+      `${phone}. We text a one-time code to that number each time. There is no password to set up.`,
+      '',
+      managesOnly
+        ? 'From there you can add the practice’s doctors and staff, and check its locations and hours.'
+        : 'From there you can check your locations and opening hours, and add your staff.',
+      '',
+      'If you were not expecting this, reply to this email and we will look into it.',
+    ].join('\n'),
+  };
+}
+
 export function verifyEmail({ link, expiresHours }) {
   return {
     subject: 'Confirm your MedPin operator email',

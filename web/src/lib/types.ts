@@ -28,8 +28,31 @@ export type PracticeType =
  * responsible-person label travels with the type because it changes with it.
  */
 export type PracticeOptions = {
-  types: { key: PracticeType; label: string; responsibleLabel: string }[];
+  types: {
+    key: PracticeType;
+    label: string;
+    responsibleLabel: string;
+    /** Whether this kind of practice can have departments at all. Absent from older servers. */
+    hasDepartments?: boolean;
+  }[];
   specialties: { key: string; label: string }[];
+};
+
+/** One weekly opening window, as a location stores it. 0 is Sunday. */
+export type WeeklyHours = { dayOfWeek: number; start: string; end: string };
+
+/**
+ * What creating a practice reports back beyond the practice itself: whether
+ * the location and departments were made, and who was told.
+ */
+export type ProvisionOutcome = {
+  headDoctorAccount: "created" | "existing";
+  signInPhone: string;
+  locationCreated: boolean;
+  departments: string[];
+  headDoctorDepartment: string | null;
+  notified: { devices: number; emailTo: string | null; sms: "not_available" };
+  mailConfigured: boolean;
 };
 
 export type DuplicateCheck = {
@@ -43,6 +66,13 @@ export type Practice = {
   tagline: string | null;
   doctorDisplayName: string | null;
   registrationNo: string | null;
+  /**
+   * What its prescription references start with. Null is the neutral RX that
+   * every practice without its own shares. Absent from older servers.
+   */
+  prescriptionPrefix?: string | null;
+  /** The number its patients ring. Absent from older servers. */
+  emergencyPhone?: string | null;
   /** What kind of organisation. Null for every practice created before types existed. */
   practiceType: PracticeType | null;
   /** What it primarily treats. A shared Department key, or free text. */
@@ -466,6 +496,8 @@ export type ApprovalOutcome = {
   doctorToAdd: string | null;
   emailTo: string;
   mailConfigured: boolean;
+  /** Who else heard: the phones the owner's account is signed in on. Absent from older servers. */
+  notified?: { devices: number; emailTo: string | null; sms: "not_available" };
 };
 
 /** What each state means, said once, where the operator and the applicant both read it. */

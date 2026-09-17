@@ -577,6 +577,15 @@ class _ClinicianMoreScreenState extends ConsumerState<ClinicianMoreScreen> {
                   subtitle: 'What you are on, and what you are using',
                   onTap: () => context.push('/clinician/billing'),
                 ),
+              // The doctor's own day. Not gated on a plan: a summary of the
+              // consultations somebody did is part of doing them.
+              if (user?.role == 'doctor')
+                ProfileRow(
+                  icon: Icons.summarize_outlined,
+                  title: 'Daily report',
+                  subtitle: 'Who you saw, as a PDF to keep or share',
+                  onTap: () => context.push('/clinician/daily-report'),
+                ),
               ProfileRow(
                 icon: Icons.notification_important_outlined,
                 title: 'Clinical alerts',

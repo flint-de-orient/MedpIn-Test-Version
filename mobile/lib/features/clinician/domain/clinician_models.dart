@@ -314,7 +314,9 @@ class PrescriptionSummary {
 
   final String id;
 
-  /// Human-readable reference printed on the PDF, e.g. `AKD-2026-000412`.
+  /// Human-readable reference printed on the PDF: `RX-2026-000412`, or the
+  /// practice's own prefix. References issued before prefixes existed keep the
+  /// `AKD-` they were printed with.
   final String? referenceNo;
   final DateTime? issuedOn;
   final String? doctorName;

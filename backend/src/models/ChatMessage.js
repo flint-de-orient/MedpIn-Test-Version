@@ -9,8 +9,9 @@ const chatMessageSchema = new mongoose.Schema(
     role: { type: String, enum: ['user', 'assistant', 'system', 'clinician', 'dietician'], required: true },
 
     // Set only on `clinician` turns: which clinician wrote it, so the patient
-    // reads "Dr. Amit Kumar Dey" rather than an anonymous clinic voice, and an
-    // audit can attribute clinical advice to a named person.
+    // reads the name of the doctor who answered ("Dr. Meera Iyer") rather than
+    // an anonymous clinic voice, and an audit can attribute clinical advice to a
+    // named person. Always the sender's own account — never a practice default.
     sender: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
 
     // Not required: a message may be a photo (or voice note) with no caption.

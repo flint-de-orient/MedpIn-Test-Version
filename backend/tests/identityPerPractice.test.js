@@ -8,6 +8,7 @@ import { Clinic } from '../src/models/Clinic.js';
 import { Prescription } from '../src/models/Prescription.js';
 import { PatientProfile } from '../src/models/PatientProfile.js';
 import { User, ROLES } from '../src/models/User.js';
+import { Membership, MEMBERSHIP_STATUS, presetFor } from '../src/models/Membership.js';
 import { clinicIdentity, forgetClinicIdentity } from '../src/services/clinicIdentity.js';
 import { Practice } from '../src/models/Practice.js';
 import { env } from '../src/config/env.js';
@@ -78,9 +79,21 @@ describe('a practice is named as itself', () => {
     const { iyer } = await twoPractices();
     const id = await clinicIdentity(null, { practiceId: iyer._id });
 
-    assert.equal(id.clinicName, 'Lake Town Clinic');
+    // The practice's name, with its location beside it. See practiceIdentity
+    // for why the practice comes first.
+    assert.equal(id.clinicName, 'Lake Town Heart Centre');
+    assert.equal(id.locationName, 'Lake Town Clinic');
     assert.equal(id.doctorName, 'Dr. Meera Iyer', 'another practice’s doctor named');
     assert.equal(id.registrationNo, 'WBMC-67890');
+  });
+
+  test('a practice with no printed doctor names its head doctor, never another practice’s', async () => {
+    const { iyer } = await twoPractices();
+    const head = await makeMember(iyer, { name: 'Dr. Kavya Rao', isOwner: true });
+    await Practice.updateOne({ _id: iyer._id }, { $set: { doctorDisplayName: null, headDoctor: head.user._id } });
+
+    const id = await clinicIdentity(null, { practiceId: iyer._id });
+    assert.equal(id.doctorName, 'Dr. Kavya Rao');
   });
 
   test('and asking for one practice does not answer the next from the cache', async () => {
@@ -100,23 +113,29 @@ describe('a practice is named as itself', () => {
     assert.equal(id.doctorName, 'Dr. Rina Sen');
   });
 
-  test('a location asked for by id is that location', async () => {
+  test('a location asked for by id is that location, of that practice', async () => {
     const { iyerClinic } = await twoPractices();
-    assert.equal((await clinicIdentity(iyerClinic._id)).clinicName, 'Lake Town Clinic');
+    const id = await clinicIdentity(iyerClinic._id);
+    assert.equal(id.locationName, 'Lake Town Clinic');
+    assert.equal(id.clinicName, 'Lake Town Heart Centre');
   });
 
-  test('with nothing to go on, it answers as it always did', async () => {
-    // The single-practice deployment passes nothing anywhere this is not yet
-    // known, and must be unchanged.
+  test('with nothing to go on, it names nobody', async () => {
+    // This answered with the first active location on the platform — "as it
+    // always did" — and that was the founding clinic, for every caller that
+    // did not say whose patient this was. No practice is the neutral identity.
     await twoPractices();
-    assert.equal((await clinicIdentity()).clinicName, 'Salt Lake Clinic');
+    const id = await clinicIdentity();
+    assert.equal(id.neutral, true);
+    assert.equal(id.clinicName, null, 'a caller with no practice was given the first clinic’s name');
+    assert.equal(id.doctorName, null, 'a caller with no practice was given the founding doctor');
   });
 
   test('saving a practice’s profile forgets that practice’s cached name', async () => {
-    const { iyer, iyerClinic } = await twoPractices();
-    assert.equal((await clinicIdentity(null, { practiceId: iyer._id })).clinicName, 'Lake Town Clinic');
+    const { iyer } = await twoPractices();
+    assert.equal((await clinicIdentity(null, { practiceId: iyer._id })).clinicName, 'Lake Town Heart Centre');
 
-    await Clinic.updateOne({ _id: iyerClinic._id }, { name: 'Lake Town Heart Clinic' });
+    await Practice.updateOne({ _id: iyer._id }, { name: 'Lake Town Heart Clinic' });
     forgetClinicIdentity();
 
     assert.equal((await clinicIdentity(null, { practiceId: iyer._id })).clinicName, 'Lake Town Heart Clinic');
@@ -149,8 +168,40 @@ describe('a prescription is lettered by the practice that issued it', () => {
     const letterheadIdentityFor = await resolver();
     const id = await letterheadIdentityFor(await rx({ patient: patient.user._id, doctor: doctor.user._id }));
 
-    assert.equal(id.clinicName, 'Lake Town Clinic', 'a prescription was lettered with another practice’s name');
+    assert.equal(id.clinicName, 'Lake Town Heart Centre', 'a prescription was lettered with another practice’s name');
     assert.equal(id.registrationNo, 'WBMC-67890', 'a prescription carries another practice’s registration number');
+  });
+
+  test('the practice it records, before the doctor’s memberships', async () => {
+    // A doctor at two practices has two memberships, and the first one the
+    // database returns is not a decision about whose letterhead this is.
+    const { dey, iyer } = await twoPractices();
+    const doctor = await makeMember(dey, { name: 'Dr. Two Places', isOwner: true });
+    await Membership.create({
+      user: doctor.user._id,
+      practice: iyer._id,
+      role: ROLES.DOCTOR,
+      permissions: presetFor({ role: ROLES.DOCTOR }),
+      status: MEMBERSHIP_STATUS.ACTIVE,
+    });
+    const patient = await makePatient({ name: 'Two Place Patient', practices: [dey, iyer] });
+
+    const letterheadIdentityFor = await resolver();
+    const id = await letterheadIdentityFor(
+      await rx({ patient: patient.user._id, doctor: doctor.user._id, practice: iyer._id }),
+    );
+    assert.equal(id.clinicName, 'Lake Town Heart Centre');
+  });
+
+  test('and one whose practice nobody can tell is lettered by nobody', async () => {
+    await twoPractices();
+    const departed = await User.create({ name: 'Dr. Gone', phone: '+918800000009', role: ROLES.DOCTOR, isActive: true });
+    const stranger = await makePatient({ name: 'Nobody’s Patient' });
+
+    const letterheadIdentityFor = await resolver();
+    const id = await letterheadIdentityFor(await rx({ patient: stranger.user._id, doctor: departed._id }));
+    assert.equal(id.clinicName, null, 'an unplaceable prescription was lettered with the first clinic');
+    assert.equal(id.doctorName, null);
   });
 
   test('the patient’s practice when the doctor no longer belongs to one', async () => {
@@ -163,7 +214,7 @@ describe('a prescription is lettered by the practice that issued it', () => {
     const letterheadIdentityFor = await resolver();
     const id = await letterheadIdentityFor(await rx({ patient: patient.user._id, doctor: departed._id }));
 
-    assert.equal(id.clinicName, 'Lake Town Clinic');
+    assert.equal(id.clinicName, 'Lake Town Heart Centre');
   });
 
   test('and one already lettered keeps the letterhead it was issued under', async () => {

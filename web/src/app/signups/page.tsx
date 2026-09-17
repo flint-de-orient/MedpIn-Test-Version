@@ -25,6 +25,13 @@ import {
   fullWhen,
 } from "@/components/primitives";
 import { Modal, Field, textInput } from "@/components/form";
+import {
+  FirstLocationFields,
+  emptyFirstLocation,
+  hoursFrom,
+  hoursProblem,
+  type FirstLocation,
+} from "@/components/first-location";
 import { cn } from "@/lib/utils";
 
 /**
@@ -567,6 +574,9 @@ function NextSteps({ outcome }: { outcome: ApprovalOutcome }) {
           {outcome.mailConfigured
             ? `The same has been emailed to ${outcome.emailTo}.`
             : `No email could be sent — this server has no mail configured — so tell them on ${outcome.signInPhone}.`}
+          {outcome.notified?.devices
+            ? " Their account was already signed in on a phone, and that phone was told too."
+            : ""}
         </p>
       </div>
     </Panel>
@@ -621,10 +631,18 @@ function DecisionDialog({
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /*
+   * What an application does not collect and a working practice needs: the
+   * first location's public phone, its hours and the number patients ring. The
+   * same fields the console's own create asks for, so an approved practice is
+   * as complete as one made by hand. The address comes from the application.
+   */
+  const [location, setLocation] = useState<FirstLocation>(emptyFirstLocation);
 
   useEffect(() => {
     setNote("");
     setError(null);
+    setLocation(emptyFirstLocation());
   }, [ask]);
 
   if (!ask) return null;
@@ -660,12 +678,29 @@ function DecisionDialog({
       setError("A reason is required.");
       return;
     }
+    const problem = ask === "approve" ? hoursProblem(location) : null;
+    if (problem) {
+      setError(problem);
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
+      const body =
+        ask === "approve"
+          ? {
+              note: note.trim(),
+              emergencyPhone: location.emergencyPhone.trim() || undefined,
+              location: {
+                name: location.name.trim() || undefined,
+                phone: location.phone.trim() || undefined,
+                weeklyHours: hoursFrom(location),
+              },
+            }
+          : { note: note.trim() };
       const out = await api<{ application: ApplicationDetail; outcome?: ApprovalOutcome }>(
         `/admin/applications/${application.id}/${ask}`,
-        { method: "POST", body: { note: note.trim() } },
+        { method: "POST", body },
       );
       onDone(out.application, out.outcome);
     } catch (ex) {
@@ -697,6 +732,14 @@ function DecisionDialog({
           autoFocus
         />
       </Field>
+      {ask === "approve" ? (
+        <FirstLocationFields
+          value={location}
+          onChange={setLocation}
+          practiceName={application.practiceName}
+          showAddress={false}
+        />
+      ) : null}
     </Modal>
   );
 }

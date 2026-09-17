@@ -1,7 +1,7 @@
 {
   "@@locale": "hi",
   "appName": "MedPin",
-  "appTagline": "डॉ. अमित कुमार डे के साथ डायबिटीज़ की देखभाल",
+  "appTagline": "मुलाक़ातों के बीच आपकी देखभाल",
   "commonRetry": "फिर से कोशिश करें",
   "commonCancel": "रद्द करें",
   "commonSave": "सेव करें",
@@ -110,7 +110,7 @@
   "dashboardEmptyTitle": "अभी तक कोई जानकारी नहीं",
   "dashboardEmptyBody": "अपना स्वास्थ्य सारांश देखने के लिए ब्लड शुगर और दवाओं की जानकारी दर्ज करना शुरू करें।",
   "dashboardErrorTitle": "डैशबोर्ड लोड नहीं हो सका",
-  "chatTitle": "डॉ. डे का क्लिनिक",
+  "chatTitle": "आपका क्लिनिक",
   "chatFromClinic": "क्लिनिक से",
   "appLockSubtitle": "अपने संदेश और स्वास्थ्य रिकॉर्ड देखने के लिए अनलॉक करें।",
   "profileFeedback": "प्रतिक्रिया भेजें",

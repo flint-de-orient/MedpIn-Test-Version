@@ -109,7 +109,7 @@ abstract class AppLocalizations {
   /// No description provided for @appTagline.
   ///
   /// In en, this message translates to:
-  /// **'Diabetes care with Dr. Amit Kumar Dey'**
+  /// **'Your care, between visits'**
   String get appTagline;
 
   /// No description provided for @commonRetry.
@@ -709,7 +709,7 @@ abstract class AppLocalizations {
   /// No description provided for @chatTitle.
   ///
   /// In en, this message translates to:
-  /// **'Dr. Dey\'s Clinic'**
+  /// **'Your clinic'**
   String get chatTitle;
 
   /// No description provided for @chatFromClinic.

@@ -58,7 +58,30 @@ function Switch() {
 type Ask =
   | { kind: "reject"; name: string }
   | { kind: "suspend"; name: string }
+  | { kind: "reinstate"; name: string }
   | null;
+
+/**
+ * What each decision that needs a reason is called and says.
+ *
+ * A reinstatement joined suspending and rejecting: "reinstated" with nothing
+ * beside it cannot tell a review whether whatever caused the suspension was
+ * resolved or forgotten. The server refuses one without a reason.
+ */
+const ASKS = {
+  reject: {
+    verb: "Reject",
+    why: "Nobody at the practice sees this — it goes to the audit log. Write it for whoever asks in six months why this was refused.",
+  },
+  suspend: {
+    verb: "Suspend",
+    why: "From their next request its staff are refused everything in this practice except seeing that it is suspended. Patients keep their records, prescriptions and dose reminders, and nothing is deleted.",
+  },
+  reinstate: {
+    verb: "Reinstate",
+    why: "Its staff can work again from their next request. Say what was resolved — this goes to the audit log beside the suspension.",
+  },
+} as const;
 
 function Detail() {
   const id = useSearchParams().get("id");
@@ -254,9 +277,11 @@ function Detail() {
               </span>
             }
           >
-            Whether the practice&apos;s staff may sign in and work. A practice can
-            be active and unverified, which is the honest state of one that is
-            running while its paperwork is checked.
+            Whether the practice&apos;s staff may work in it. A suspended
+            practice&apos;s staff can sign in only to see that it is suspended;
+            its patients keep their own records. A practice can be active and
+            unverified, which is the honest state of one that is running while
+            its paperwork is checked.
           </Info>
         </div>
 
@@ -305,7 +330,7 @@ function Detail() {
             </Action>
           ) : null}
 
-          {p.status !== "active" ? (
+          {p.status === "onboarding" ? (
             <Action
               primary={p.verification === "verified"}
               onClick={() =>
@@ -318,6 +343,19 @@ function Detail() {
               busy={busy}
             >
               Activate
+            </Action>
+          ) : null}
+
+          {/* Its own action rather than Activate: bringing back a practice
+              somebody stopped is a decision with a reason, and the server
+              refuses it without one. */}
+          {p.status === "suspended" ? (
+            <Action
+              primary={p.verification === "verified"}
+              onClick={() => setAsk({ kind: "reinstate", name: p.name })}
+              busy={busy}
+            >
+              Reinstate
             </Action>
           ) : null}
 
@@ -655,13 +693,10 @@ function Detail() {
       <ReasonDialog
         open={ask !== null}
         busy={busy}
-        title={ask ? `${ask.kind === "reject" ? "Reject" : "Suspend"} ${ask.name}` : ""}
-        why={
-          ask?.kind === "reject"
-            ? "Nobody at the practice sees this — it goes to the audit log. Write it for whoever asks in six months why this was refused."
-            : "Staff will not be able to sign in. Patients keep their records, prescriptions and dose reminders — a suspension that silenced a diabetic's insulin alarm would punish the person who did nothing wrong."
-        }
-        confirmLabel={ask?.kind === "reject" ? "Reject" : "Suspend"}
+        title={ask ? `${ASKS[ask.kind].verb} ${ask.name}` : ""}
+        why={ask ? ASKS[ask.kind].why : ""}
+        confirmLabel={ask ? ASKS[ask.kind].verb : ""}
+        destructive={ask?.kind !== "reinstate"}
         onCancel={() => setAsk(null)}
         onConfirm={(reason) =>
           ask?.kind === "reject"
@@ -670,11 +705,17 @@ function Detail() {
                 { verification: "rejected", reason },
                 "Rejected",
               )
-            : void act(
-                `/admin/practices/${p.id}/status`,
-                { status: "suspended", reason },
-                "Suspended",
-              )
+            : ask?.kind === "reinstate"
+              ? void act(
+                  `/admin/practices/${p.id}/status`,
+                  { status: "active", reason },
+                  "Reinstated",
+                )
+              : void act(
+                  `/admin/practices/${p.id}/status`,
+                  { status: "suspended", reason },
+                  "Suspended",
+                )
         }
       />
 

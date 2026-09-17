@@ -12,7 +12,7 @@ class AppLocalizationsBn extends AppLocalizations {
   String get appName => 'MedPin';
 
   @override
-  String get appTagline => 'ডাঃ অমিত কুমার দে-র সঙ্গে ডায়াবেটিস পরিচর্যা';
+  String get appTagline => 'ভিজিটের মাঝেও আপনার পরিচর্যা';
 
   @override
   String get commonRetry => 'আবার চেষ্টা করুন';
@@ -329,7 +329,7 @@ class AppLocalizationsBn extends AppLocalizations {
   String get dashboardErrorTitle => 'ড্যাশবোর্ড লোড করা গেল না';
 
   @override
-  String get chatTitle => 'ডাঃ দে-র ক্লিনিক';
+  String get chatTitle => 'আপনার ক্লিনিক';
 
   @override
   String get chatFromClinic => 'ক্লিনিক থেকে';

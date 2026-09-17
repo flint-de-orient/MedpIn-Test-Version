@@ -81,7 +81,7 @@ Severe lows are more likely if you take insulin or sulfonylurea tablets, if you 
 If your blood sugar is above 250 mg/dL:
 - Drink plenty of plain water, unless your doctor has told you to limit fluids.
 - Do not do heavy exercise while your sugar is very high. It can push the level higher.
-- Take your medicines exactly as they are already prescribed. Do not take an extra dose to "correct" the reading unless Dr. Dey has given you a written plan to do so.
+- Take your medicines exactly as they are already prescribed. Do not take an extra dose to "correct" the reading unless your doctor has given you a written plan to do so.
 - Check again in 2 to 4 hours.
 - Think about what may have caused it: a missed dose, a large or high-carbohydrate meal, illness or infection, stress, or steroid medicines.
 
@@ -123,7 +123,7 @@ Do not wait to see if it improves on its own. DKA gets worse quickly and needs t
     category: 'insulin',
     language: 'en',
     tags: ['insulin', 'missed dose', 'forgot'],
-    sourceCitation: 'Clinic protocol — Dr. A. K. Dey',
+    sourceCitation: 'Clinic protocol',
     content: `Forgetting a dose happens to almost everyone at some point. What to do depends on the type of insulin and how much time has passed, so the safest step is always to contact the clinic before acting.
 
 General principles:
@@ -133,9 +133,9 @@ General principles:
 - If it is nearly time for the next scheduled dose, it is usually safer to skip the missed one and take the next dose at the normal time.
 - Check your blood sugar more often than usual for the next 24 hours.
 
-If you have missed several doses, or you feel unwell, contact Dr. Dey's clinic the same day.
+If you have missed several doses, or you feel unwell, contact your clinic the same day.
 
-Only Dr. Dey can tell you to change an insulin dose. This app cannot and will not give you a new dose.`,
+Only your doctor can tell you to change an insulin dose. This app cannot and will not give you a new dose.`,
   },
   {
     docId: 'insulin-technique',
@@ -158,7 +158,7 @@ Other points:
 - An insulin pen in use can usually be kept at room temperature for about 28 days, away from direct sunlight and heat.
 - Check the insulin before use. Clear insulin should be clear, not cloudy or discoloured.
 
-Show your injection sites to Dr. Dey at your next visit so any lumps can be found early.`,
+Show your injection sites to your doctor at your next visit so any lumps can be found early.`,
   },
 
   // -------------------------------------------------------------------------
@@ -187,7 +187,7 @@ Always:
 - Cut toenails straight across, not curved into the corners.
 - Never use a blade, razor or over-the-counter corn remover on a callus or corn. Have it treated properly.
 
-See Dr. Dey promptly for any new cut, blister, ulcer, colour change, swelling, or a wound that is not healing.`,
+See your doctor promptly for any new cut, blister, ulcer, colour change, swelling, or a wound that is not healing.`,
   },
   {
     docId: 'foot-danger-signs',
@@ -259,7 +259,7 @@ Have your eyes examined at least once a year, or more often if your specialist a
 
 These can be signs of bleeding inside the eye, a detached retina, or acute glaucoma. Vision can often be saved if treated quickly, but delay can make the loss permanent.
 
-Gradual blurring of vision over days can also happen when blood sugar changes quickly. This often settles once sugar levels are stable, but it still needs to be reported to Dr. Dey rather than ignored.`,
+Gradual blurring of vision over days can also happen when blood sugar changes quickly. This often settles once sugar levels are stable, but it still needs to be reported to your doctor rather than ignored.`,
   },
 
   // -------------------------------------------------------------------------
@@ -287,7 +287,7 @@ Practical principles:
 
 Do not fast or skip meals to lower your sugar, particularly if you take insulin or sulfonylurea tablets. It can cause a dangerous low.
 
-If you are planning to fast for religious reasons, speak to Dr. Dey beforehand so your medicines can be planned safely.`,
+If you are planning to fast for religious reasons, speak to your doctor beforehand so your medicines can be planned safely.`,
   },
   {
     docId: 'exercise-basics',
@@ -309,7 +309,7 @@ Staying safe:
 - Wear well-fitting shoes and check your feet afterwards.
 - Drink water before, during and after.
 
-If you have heart disease, eye disease, or numbness in your feet, ask Dr. Dey which activities are suitable before starting. Some exercises need to be avoided with advanced retinopathy or significant neuropathy.`,
+If you have heart disease, eye disease, or numbness in your feet, ask your doctor which activities are suitable before starting. Some exercises need to be avoided with advanced retinopathy or significant neuropathy.`,
   },
   {
     docId: 'sick-day-rules',
@@ -331,7 +331,7 @@ When you are unwell:
 
 Contact the clinic the same day if you cannot keep fluids down, if you have vomiting or diarrhoea lasting more than 6 hours, if your blood sugar stays above 250 mg/dL despite taking your medicines, if you have moderate or large ketones, or if you are becoming drowsy or confused.
 
-Some tablets, particularly metformin and SGLT2 inhibitors, may need to be paused during a serious illness with dehydration. Ask Dr. Dey — do not decide this yourself.`,
+Some tablets, particularly metformin and SGLT2 inhibitors, may need to be paused during a serious illness with dehydration. Ask your doctor — do not decide this yourself.`,
   },
   {
     docId: 'hba1c-explained',
@@ -348,13 +348,13 @@ It is reported as a percentage. As a general guide:
 - 5.7% to 6.4% — prediabetes
 - 6.5% or above — diabetes
 
-For most adults with diabetes the usual target is below 7%, but the right target is individual. Dr. Dey may set a higher target if you are older, have other medical conditions, or have had severe low sugars — because in those situations, pushing too hard can be more dangerous than a slightly higher number.
+For most adults with diabetes the usual target is below 7%, but the right target is individual. Your doctor may set a higher target if you are older, have other medical conditions, or have had severe low sugars — because in those situations, pushing too hard can be more dangerous than a slightly higher number.
 
 HbA1c is usually checked every three months while treatment is being adjusted, and every six months once you are stable.
 
 A rough guide to what your HbA1c means in everyday numbers: 6% is about an average of 126 mg/dL, 7% about 154 mg/dL, 8% about 183 mg/dL, 9% about 212 mg/dL, and 10% about 240 mg/dL.
 
-Remember that HbA1c can be misleading if you have anaemia, a haemoglobin disorder, or kidney disease. Discuss your result with Dr. Dey rather than judging it alone.`,
+Remember that HbA1c can be misleading if you have anaemia, a haemoglobin disorder, or kidney disease. Discuss your result with your doctor rather than judging it alone.`,
   },
   {
     docId: 'bp-diabetes',
@@ -366,7 +366,7 @@ Remember that HbA1c can be misleading if you have anaemia, a haemoglobin disorde
     sourceCitation: 'ADA Standards of Care 2025, Cardiovascular Disease',
     content: `High blood pressure and diabetes together greatly increase the risk of heart attack, stroke, kidney disease and eye damage. Controlling blood pressure is as important as controlling blood sugar.
 
-For most people with diabetes the target is below 140/90 mmHg, and Dr. Dey may set a lower target such as below 130/80 mmHg depending on your circumstances.
+For most people with diabetes the target is below 140/90 mmHg, and your doctor may set a lower target such as below 130/80 mmHg depending on your circumstances.
 
 How to measure correctly at home:
 - Sit quietly for 5 minutes first, with your back supported and feet flat on the floor.
@@ -387,11 +387,11 @@ Reducing salt, staying active, losing excess weight, and taking your prescribed 
     language: 'en',
     tags: ['clinic', 'contact', 'appointment', 'app'],
     sourceCitation: 'Clinic information',
-    content: `Dr. Amit Kumar Dey is a Consultant Physician and Diabetologist. This app helps you manage your diabetes between visits.
+    content: `This app helps you manage your diabetes between visits to your doctor.
 
-What this app can do: record your blood sugar, blood pressure, weight, medicines, meals and activity; remind you about doses; let you upload foot photographs and eye or laboratory reports; book appointments; and answer general health questions using guidance Dr. Dey has approved.
+What this app can do: record your blood sugar, blood pressure, weight, medicines, meals and activity; remind you about doses; let you upload foot photographs and eye or laboratory reports; book appointments; and answer general health questions using clinically reviewed guidance.
 
-What this app cannot do: it cannot examine you, it cannot diagnose a new condition, and it cannot change any medicine or dose. Only Dr. Dey can do those things.
+What this app cannot do: it cannot examine you, it cannot diagnose a new condition, and it cannot change any medicine or dose. Only your doctor can do those things.
 
 For an emergency, do not use the chat. Go to the nearest hospital emergency department, or call the clinic emergency number shown in the app.
 
@@ -467,7 +467,7 @@ To book, reschedule or cancel an appointment, use the Appointments section. If y
 
 সুগার কমানোর জন্য উপোস করবেন না বা খাবার বাদ দেবেন না, বিশেষ করে যদি ইনসুলিন বা সালফোনাইলইউরিয়া নেন। এতে বিপজ্জনকভাবে সুগার কমে যেতে পারে।
 
-ধর্মীয় কারণে উপোস করার পরিকল্পনা থাকলে আগেই ডাঃ দে-র সঙ্গে কথা বলুন, যাতে ওষুধ নিরাপদভাবে সাজানো যায়।`,
+ধর্মীয় কারণে উপোস করার পরিকল্পনা থাকলে আগেই আপনার চিকিৎসকের সঙ্গে কথা বলুন, যাতে ওষুধ নিরাপদভাবে সাজানো যায়।`,
   },
 
   // -------------------------------------------------------------------------
@@ -507,7 +507,7 @@ To book, reschedule or cancel an appointment, use the Appointments section. If y
 यदि आपकी रक्त शर्करा 250 mg/dL से ऊपर है:
 - खूब सादा पानी पिएँ, बशर्ते डॉक्टर ने तरल पदार्थ सीमित करने को न कहा हो।
 - शर्करा बहुत अधिक होने पर भारी व्यायाम न करें। इससे स्तर और बढ़ सकता है।
-- अपनी दवाएँ ठीक वैसे ही लें जैसे पहले से निर्धारित हैं। स्तर "ठीक" करने के लिए अतिरिक्त खुराक न लें, जब तक डॉ. दे ने लिखित योजना न दी हो।
+- अपनी दवाएँ ठीक वैसे ही लें जैसे पहले से निर्धारित हैं। स्तर "ठीक" करने के लिए अतिरिक्त खुराक न लें, जब तक आपके डॉक्टर ने लिखित योजना न दी हो।
 - 2 से 4 घंटे बाद दोबारा जाँचें।
 - कारण पर विचार करें: छूटी हुई खुराक, अधिक कार्बोहाइड्रेट वाला भोजन, बीमारी या संक्रमण, तनाव, या स्टेरॉयड दवाएँ।
 
@@ -538,7 +538,7 @@ To book, reschedule or cancel an appointment, use the Appointments section. If y
 - नाखून सीधे काटें, कोनों से गोल नहीं।
 - गट्टे या कॉर्न पर ब्लेड, उस्तरा या बाज़ार की दवा का प्रयोग कभी न करें।
 
-किसी भी नए कटाव, छाले, घाव, रंग परिवर्तन, सूजन, या न भरने वाले घाव के लिए तुरंत डॉ. दे को दिखाएँ।`,
+किसी भी नए कटाव, छाले, घाव, रंग परिवर्तन, सूजन, या न भरने वाले घाव के लिए तुरंत अपने डॉक्टर को दिखाएँ।`,
   },
 ];
 

@@ -12,7 +12,7 @@ class AppLocalizationsHi extends AppLocalizations {
   String get appName => 'MedPin';
 
   @override
-  String get appTagline => 'डॉ. अमित कुमार डे के साथ डायबिटीज़ की देखभाल';
+  String get appTagline => 'मुलाक़ातों के बीच आपकी देखभाल';
 
   @override
   String get commonRetry => 'फिर से कोशिश करें';
@@ -332,7 +332,7 @@ class AppLocalizationsHi extends AppLocalizations {
   String get dashboardErrorTitle => 'डैशबोर्ड लोड नहीं हो सका';
 
   @override
-  String get chatTitle => 'डॉ. डे का क्लिनिक';
+  String get chatTitle => 'आपका क्लिनिक';
 
   @override
   String get chatFromClinic => 'क्लिनिक से';

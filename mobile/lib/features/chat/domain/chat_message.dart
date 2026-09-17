@@ -181,7 +181,8 @@ class ChatMessage {
   final String content;
   final String language;
 
-  /// Who wrote a `clinician` turn, e.g. "Dr. Amit Kumar Dey". Null otherwise.
+  /// Who wrote a `clinician` turn — that clinician's own name, e.g.
+  /// "Dr. Meera Iyer". Null otherwise, and never a practice default.
   final String? senderName;
 
   /// `doctor` | `staff` | `dietician`, when a person wrote this turn.

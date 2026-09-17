@@ -17,8 +17,11 @@ import type { Practice, PracticeOptions, PracticeType } from "@/lib/types";
  * `prescriptionPdf.js` prefers the prescribing doctor's own name and council
  * number and reaches for the practice's only when the doctor has none:
  *
- *   doctor?.name ?? identity?.doctorName ?? env.DOCTOR_DISPLAY_NAME
+ *   doctor?.name || identity?.doctorName
  *   doctor?.registrationNo || identity?.registrationNo
+ *
+ * (There is no configured name beneath those any more: it was the founding
+ * doctor's, printed for any practice that had not filled this in.)
  *
  * So an operator correcting a registration number on a practice whose doctor
  * has their own was editing a field that changes nothing on any prescription,
@@ -48,6 +51,7 @@ export function EditPracticeDialog({
   const [tagline, setTagline] = useState(practice.tagline ?? "");
   const [doctor, setDoctor] = useState(practice.doctorDisplayName ?? "");
   const [reg, setReg] = useState(practice.registrationNo ?? "");
+  const [prefix, setPrefix] = useState(practice.prescriptionPrefix ?? "");
   const [practiceType, setPracticeType] = useState<PracticeType | "">(
     practice.practiceType ?? "",
   );
@@ -65,6 +69,7 @@ export function EditPracticeDialog({
     setTagline(practice.tagline ?? "");
     setDoctor(practice.doctorDisplayName ?? "");
     setReg(practice.registrationNo ?? "");
+    setPrefix(practice.prescriptionPrefix ?? "");
     setPracticeType(practice.practiceType ?? "");
     setSpecialty(practice.specialty ?? "");
     setNote(notes);
@@ -99,6 +104,9 @@ export function EditPracticeDialog({
           tagline: tagline.trim(),
           doctorDisplayName: doctor.trim(),
           registrationNo: reg.trim(),
+          // Blank is the neutral RX. The server refuses a prefix another
+          // practice holds or has issued references under, and says whose.
+          prescriptionPrefix: prefix.trim().toUpperCase() || null,
           notes: note.trim(),
           // Empty means "no answer", which the server stores as null — the
           // value the capability resolver reads as unclassified.
@@ -206,6 +214,26 @@ export function EditPracticeDialog({
           value={reg}
           onChange={(e) => setReg(e.target.value)}
           maxLength={60}
+        />
+      </Field>
+
+      {/*
+        The prefix on its prescription references.
+
+        Every practice's references began AKD- — the founding doctor's
+        initials. A practice with nothing here issues the neutral RX-, and
+        references already issued keep the prefix they were printed with.
+      */}
+      <Field
+        label="Prescription prefix"
+        hint="optional — MHC numbers them MHC-2026-000057; blank is RX"
+      >
+        <input
+          className={`${textInput} font-mono text-body uppercase`}
+          value={prefix}
+          onChange={(e) => setPrefix(e.target.value.replace(/[^a-zA-Z0-9]/g, "").slice(0, 8))}
+          maxLength={8}
+          placeholder="RX"
         />
       </Field>
 

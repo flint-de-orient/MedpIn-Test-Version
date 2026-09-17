@@ -4,7 +4,20 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { api, ApiError } from "@/lib/api";
 import { Modal, Field, Select, textInput } from "@/components/form";
 import { Alert, Info } from "@/components/primitives";
-import type { DuplicateCheck, PracticeOptions, PracticeType } from "@/lib/types";
+import {
+  FirstLocationFields,
+  emptyFirstLocation,
+  hoursFrom,
+  hoursProblem,
+  hoursSummary,
+  type FirstLocation,
+} from "@/components/first-location";
+import type {
+  DuplicateCheck,
+  PracticeOptions,
+  PracticeType,
+  ProvisionOutcome,
+} from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 /**
@@ -19,22 +32,30 @@ import { cn } from "@/lib/utils";
  *
  * A practice needs a head, and the head's number has to be answered rather than
  * typed — so there is a step that waits for a text. That cannot be one form,
- * because the middle of it is somebody reading a code off a phone.
+ * because the middle of it is somebody reading a code off a phone. Nobody sets
+ * a password: the head doctor signs in with a code texted to the number they
+ * just proved.
+ *
+ * ---- And somewhere to see patients ------------------------------------------
+ *
+ * The third step is the first location, its hours and the number patients
+ * ring. Without it the practice existed and could not take a booking, which the
+ * approval path already knew and this one did not — both ask the same questions
+ * now, with the same fields (see first-location.tsx).
  *
  * ---- What the type decides ----------------------------------------------
  *
  * Everything after step one. A hospital's responsible person is a medical
  * superintendent and a diagnostic centre's is a pathologist, so step two's
- * label comes from step one's answer — and the capabilities the practice will
- * have follow from it too, which is why the review step says what it will and
- * will not be able to do rather than leaving that to be discovered.
+ * label comes from step one's answer; whether departments are asked for at all
+ * comes from it too.
  *
  * The list of types and specialties is fetched, not hardcoded. Specialties are
  * the shared Department rows and an operator can add one; a list baked in here
  * would be a rebuild every time somebody opens a practice in a specialty
  * nobody anticipated.
  */
-type Step = 1 | 2 | 3;
+type Step = 1 | 2 | 3 | 4;
 
 export function NewPracticeDialog({
   open,
@@ -43,7 +64,8 @@ export function NewPracticeDialog({
 }: {
   open: boolean;
   onClose: () => void;
-  onCreated: () => void;
+  /** With what the server says it made and who it told, when it said. */
+  onCreated: (outcome: ProvisionOutcome | null) => void;
 }) {
   const [step, setStep] = useState<Step>(1);
   const [options, setOptions] = useState<PracticeOptions | null>(null);
@@ -53,6 +75,7 @@ export function NewPracticeDialog({
   const [practiceType, setPracticeType] = useState<PracticeType | "">("");
   const [specialty, setSpecialty] = useState("");
   const [reg, setReg] = useState("");
+  const [departments, setDepartments] = useState<string[]>([]);
   const [dupes, setDupes] = useState<DuplicateCheck | null>(null);
 
   // Step 2 — the responsible person
@@ -60,9 +83,14 @@ export function NewPracticeDialog({
   const [phone, setPhone] = useState("");
   const [quals, setQuals] = useState("");
   const [docReg, setDocReg] = useState("");
+  const [email, setEmail] = useState("");
+  const [docDepartment, setDocDepartment] = useState("");
   const [code, setCode] = useState("");
   const [sent, setSent] = useState<{ simulated: boolean } | null>(null);
   const [phoneToken, setPhoneToken] = useState<string | null>(null);
+
+  // Step 3 — where
+  const [location, setLocation] = useState<FirstLocation>(emptyFirstLocation);
 
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -75,14 +103,18 @@ export function NewPracticeDialog({
     setPracticeType("");
     setSpecialty("");
     setReg("");
+    setDepartments([]);
     setDupes(null);
     setDocName("");
     setPhone("");
     setQuals("");
     setDocReg("");
+    setEmail("");
+    setDocDepartment("");
     setCode("");
     setSent(null);
     setPhoneToken(null);
+    setLocation(emptyFirstLocation());
     setError(null);
 
     // Once per opening. The shared departments change about as often as a new
@@ -98,6 +130,11 @@ export function NewPracticeDialog({
 
   const chosen = options?.types.find((t) => t.key === practiceType);
   const responsible = chosen?.responsibleLabel ?? "Head doctor";
+  // Only a kind of practice that can have departments is asked for them. The
+  // server drops them for any other kind whatever is sent.
+  const asksDepartments = Boolean(chosen?.hasDepartments) && (options?.specialties.length ?? 0) > 0;
+  const chosenDepartments = asksDepartments ? departments : [];
+  const labelOf = (key: string) => options?.specialties.find((sp) => sp.key === key)?.label ?? key;
 
   /** Anything already here under this name or this licence. */
   const check = useCallback(async () => {
@@ -153,7 +190,7 @@ export function NewPracticeDialog({
     setBusy(true);
     setError(null);
     try {
-      await api("/admin/practices", {
+      const out = await api<{ outcome?: ProvisionOutcome }>("/admin/practices", {
         method: "POST",
         body: {
           name: name.trim(),
@@ -165,9 +202,25 @@ export function NewPracticeDialog({
           headDoctorPhoneToken: phoneToken,
           headDoctorQualifications: quals.trim() || undefined,
           headDoctorRegistrationNo: docReg.trim() || undefined,
+          headDoctorEmail: email.trim() || undefined,
+          departments: chosenDepartments.length ? chosenDepartments : undefined,
+          headDoctorDepartment:
+            chosenDepartments.length === 1
+              ? chosenDepartments[0]
+              : chosenDepartments.includes(docDepartment)
+                ? docDepartment
+                : undefined,
+          emergencyPhone: location.emergencyPhone.trim() || undefined,
+          location: {
+            name: location.name.trim() || undefined,
+            addressLine: location.addressLine.trim() || undefined,
+            city: location.city.trim() || undefined,
+            phone: location.phone.trim() || undefined,
+            weeklyHours: hoursFrom(location),
+          },
         },
       });
-      onCreated();
+      onCreated(out.outcome ?? null);
     } catch (ex) {
       setError((ex as ApiError).message);
     } finally {
@@ -192,8 +245,11 @@ export function NewPracticeDialog({
     if (step === 2) {
       if (docName.trim().length < 2) return setError(`The ${responsible.toLowerCase()} needs a name.`);
       if (phone.trim().length < 8) return setError("Enter their phone number.");
+      if (email.trim() && !/^\S+@\S+\.\S+$/.test(email.trim())) {
+        return setError("That email address does not look right.");
+      }
 
-      // Already answered. Coming back here from the review step used to land on
+      // Already answered. Coming back here from a later step used to land on
       // the code field holding a code the server had consumed, so Verify failed
       // on a number that was verified.
       if (phoneToken) {
@@ -205,11 +261,17 @@ export function NewPracticeDialog({
       if (!/^\d{4,8}$/.test(code.trim())) return setError("Enter the code that was texted.");
       return void confirmCode();
     }
+    if (step === 3) {
+      const problem = hoursProblem(location);
+      if (problem) return setError(problem);
+      setStep(4);
+      return;
+    }
     void create();
   }
 
   const confirmLabel =
-    step === 1
+    step === 1 || step === 3
       ? "Next"
       : step === 2
         ? busy
@@ -223,6 +285,8 @@ export function NewPracticeDialog({
           ? "Creating…"
           : "Create practice";
 
+  const hours = hoursFrom(location);
+
   return (
     <Modal
       open={open}
@@ -233,14 +297,16 @@ export function NewPracticeDialog({
           ? `Name it and say what kind it is. You will add its ${responsible.toLowerCase()} next.`
           : step === 2
             ? "They will own the practice and sign in with this number."
-            : "Confirm the details below. Everything except the phone number can be changed later."
+            : step === 3
+              ? "Where it sees patients, and when. Without a location it cannot take a booking."
+              : "Confirm the details below. Everything except the phone number can be changed later."
       }
       onSubmit={submit}
       confirmLabel={confirmLabel}
       cancelLabel={step === 1 ? "Cancel" : "Back"}
       busy={busy}
       error={error}
-      onCancel={step === 1 ? undefined : () => setStep((s) => (s === 3 ? 2 : 1) as Step)}
+      onCancel={step === 1 ? undefined : () => setStep((s) => (s - 1) as Step)}
     >
       <Steps current={step} />
 
@@ -284,6 +350,40 @@ export function NewPracticeDialog({
               ))}
             </Select>
           </Field>
+
+          {/* Only for a kind of practice that has departments. A clinic has
+              none on any plan, and a question with no answer is one somebody
+              stops to think about. */}
+          {asksDepartments ? (
+            <fieldset className="flex flex-col gap-1.5">
+              <legend className="text-muted-foreground text-micro font-medium tracking-[0.04em] uppercase">
+                Departments
+                <span className="ml-1.5 font-normal normal-case tracking-normal">
+                  optional — what it runs
+                </span>
+              </legend>
+              <div className="border-input mt-1.5 grid gap-1.5 rounded-sm border px-3 py-2.5 sm:grid-cols-2">
+                {options?.specialties.map((d) => {
+                  const checked = departments.includes(d.key);
+                  return (
+                    <label key={d.key} className="flex items-center gap-2.5 text-body">
+                      <input
+                        type="checkbox"
+                        className="accent-primary size-4"
+                        checked={checked}
+                        onChange={(e) =>
+                          setDepartments((cur) =>
+                            e.target.checked ? [...cur, d.key] : cur.filter((k) => k !== d.key),
+                          )
+                        }
+                      />
+                      {d.label}
+                    </label>
+                  );
+                })}
+              </div>
+            </fieldset>
+          ) : null}
 
           <Field
             label="Registration number"
@@ -415,6 +515,26 @@ export function NewPracticeDialog({
                   maxLength={60}
                 />
               </Field>
+              <Field label="Email" hint="optional — they are told here when it is ready">
+                <input
+                  className={textInput}
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  inputMode="email"
+                  maxLength={200}
+                />
+              </Field>
+              {chosenDepartments.length > 1 ? (
+                <Field label="Their department" hint="optional">
+                  <Select value={docDepartment} onChange={setDocDepartment} placeholder="Not saying">
+                    {chosenDepartments.map((key) => (
+                      <option key={key} value={key}>
+                        {labelOf(key)}
+                      </option>
+                    ))}
+                  </Select>
+                </Field>
+              ) : null}
               {!phoneToken ? (
                 <p className="text-muted-foreground text-caption leading-relaxed">
                   Continuing sends a verification code to this number.
@@ -426,6 +546,10 @@ export function NewPracticeDialog({
       ) : null}
 
       {step === 3 ? (
+        <FirstLocationFields value={location} onChange={setLocation} practiceName={name.trim()} />
+      ) : null}
+
+      {step === 4 ? (
         <dl className="border-border divide-border divide-y rounded-md border text-body">
           <Row label="Practice">{name.trim()}</Row>
           <Row label="Type">
@@ -436,6 +560,9 @@ export function NewPracticeDialog({
               <span className="text-muted-foreground">not set</span>
             )}
           </Row>
+          {chosenDepartments.length ? (
+            <Row label="Departments">{chosenDepartments.map(labelOf).join(", ")}</Row>
+          ) : null}
           <Row label="Registration">
             {reg.trim() || docReg.trim() || (
               <span className="text-muted-foreground">none</span>
@@ -446,6 +573,17 @@ export function NewPracticeDialog({
             {phone.trim()} <span className="text-ok text-micro">confirmed</span>
           </Row>
           {quals.trim() ? <Row label="Qualifications">{quals.trim()}</Row> : null}
+          {email.trim() ? <Row label="Email">{email.trim()}</Row> : null}
+          <Row label="Location">
+            {location.name.trim() || name.trim()}
+            {location.city.trim() ? `, ${location.city.trim()}` : ""}
+          </Row>
+          <Row label="Hours">
+            {hours.length ? hoursSummary(hours) : <span className="text-muted-foreground">no hours yet</span>}
+          </Row>
+          <Row label="Patient call number" mono>
+            {location.emergencyPhone.trim() || <span className="text-muted-foreground">none</span>}
+          </Row>
           <Row label="Plan">
             <span className="text-muted-foreground">trial</span>
           </Row>
@@ -460,8 +598,8 @@ export function NewPracticeDialog({
               </dt>
               <dd className="flex flex-wrap items-center justify-end gap-x-3 gap-y-1.5">
                 <Info term={<span className="text-waiting-ink">onboarding</span>}>
-                  Staff cannot sign in until you activate it, on the practice&apos;s
-                  own screen.
+                  Shown as not yet live until you activate it on the practice&apos;s
+                  own screen. Its staff can already sign in and set it up.
                 </Info>
                 <Info term={<span className="text-muted-foreground">unverified</span>}>
                   Nobody has checked the registration number against the medical
@@ -473,7 +611,7 @@ export function NewPracticeDialog({
         </dl>
       ) : null}
 
-      {step === 3 && !reg.trim() && !docReg.trim() ? (
+      {step === 4 && !reg.trim() && !docReg.trim() ? (
         <Alert
           title="No registration number"
           action={
@@ -490,10 +628,26 @@ export function NewPracticeDialog({
         </Alert>
       ) : null}
 
-      {step === 3 ? (
+      {step === 4 && !hours.length ? (
+        <Alert
+          title="No opening hours"
+          action={
+            <button
+              type="button"
+              onClick={() => setStep(3)}
+              className="border-border bg-card hover:bg-secondary rounded-sm border px-2.5 py-1 text-caption font-medium transition-colors"
+            >
+              Add them
+            </button>
+          }
+        >
+          Patients cannot book until the practice sets some.
+        </Alert>
+      ) : null}
+
+      {step === 4 ? (
         <p className="text-muted-foreground text-caption leading-relaxed">
-          The {responsible.toLowerCase()} becomes the owner and adds their own staff
-          and locations.
+          The {responsible.toLowerCase()} becomes the owner and adds their own staff.
         </p>
       ) : null}
     </Modal>
@@ -501,9 +655,9 @@ export function NewPracticeDialog({
 }
 
 function Steps({ current }: { current: Step }) {
-  const labels = ["Practice", "Responsible", "Review"];
+  const labels = ["Practice", "Responsible", "Location", "Review"];
   return (
-    <ol className="flex items-center gap-1.5 text-micro">
+    <ol className="flex flex-wrap items-center gap-1.5 text-micro">
       {labels.map((l, i) => {
         const n = (i + 1) as Step;
         const done = n < current;
