@@ -86,7 +86,7 @@ echo "Version ${PREV} -> ${NAME}+${BUILD}"
 # drifted to 570 across 86 files. Failing outright would block every release,
 # so this is a ratchet: the debt cannot grow, and every file cleaned lowers the
 # bar behind it. When the run reports a number below the ceiling, lower this.
-TOKEN_CEILING=555
+TOKEN_CEILING=314
 dart run tool/verify_tokens.dart --max="${TOKEN_CEILING}"
 
 APK="build/app/outputs/flutter-apk/app-arm64-v8a-release.apk"
