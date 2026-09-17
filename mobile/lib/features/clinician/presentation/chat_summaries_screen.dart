@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../core/capabilities/capabilities.dart';
 import '../../../core/network/api_exception.dart';
+import '../../../core/router/area.dart';
 import '../../../core/theme/tokens.dart';
 import '../../../shared/widgets/load_failed.dart';
 import '../../../shared/widgets/surfaces.dart';
@@ -10,6 +12,7 @@ import '../data/clinician_repository.dart';
 import '../domain/chat_summary.dart';
 import 'clinician_providers.dart';
 import 'widgets/chat_summary_card.dart';
+import 'widgets/inbox_states.dart';
 
 /// The day before [day], both `YYYY-MM-DD`: calendar arithmetic, never a clock.
 ///
@@ -32,6 +35,17 @@ String? previousClinicDay(String day) {
 /// a clinician, then the rest by who wrote last. Every point on a summary came
 /// from a message in that patient's conversation with this practice, and "Open
 /// conversation" is where the doctor reads it and answers.
+///
+/// ---- What changed, and why -------------------------------------------------
+///
+/// A day nobody wrote was a sentence under two rows of filter chips and then a
+/// blank screen, which is how a screen still loading looks too. It now says
+/// what the emptiness means and offers the obvious next look — the whole
+/// practice, or yesterday.
+///
+/// Every summary carried a large tinted button, so a busy day was a column of
+/// identical lavender slabs. The actions are quiet text buttons now; the
+/// patient's name and why they need a clinician are what the eye finds first.
 class ChatSummariesScreen extends ConsumerStatefulWidget {
   const ChatSummariesScreen({super.key});
 
@@ -43,6 +57,7 @@ class ChatSummariesScreen extends ConsumerStatefulWidget {
 class _ChatSummariesScreenState extends ConsumerState<ChatSummariesScreen> {
   String _scope = 'mine';
   bool _yesterday = false;
+  final _loadedAt = LoadedAt();
 
   /// The clinic's today, as the server named it in the last answer about today.
   String? _today;
@@ -52,6 +67,8 @@ class _ChatSummariesScreenState extends ConsumerState<ChatSummariesScreen> {
     scope: _scope,
     kind: 'care',
   );
+
+  void _reload() => ref.invalidate(chatSummariesProvider(_query));
 
   Future<void> _markRead(ChatSummary item, ChatSummaryQuery query) async {
     try {
@@ -72,90 +89,136 @@ class _ChatSummariesScreenState extends ConsumerState<ChatSummariesScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final caps = ref.watch(capabilitySetProvider);
+    final mayRead = mayReadConversations(caps);
+
+    return Scaffold(
+      backgroundColor: T.surface,
+      appBar: AppBar(title: const Text('Patient conversations')),
+      body:
+          !mayRead
+              ? ListView(
+                padding: const EdgeInsets.all(T.s4),
+                children: const [NotYourRole(what: 'patients’ conversations')],
+              )
+              : RefreshIndicator(
+                onRefresh: () async => _reload(),
+                child: ListView(
+                  padding: const EdgeInsets.fromLTRB(T.s4, T.s2, T.s4, T.s12),
+                  children: _body(),
+                ),
+              ),
+    );
+  }
+
+  List<Widget> _body() {
     final query = _query;
     final async = ref.watch(chatSummariesProvider(query));
+    _loadedAt.note(query, async);
     final data = async.valueOrNull;
     if (query.day == null && data != null) _today = data.day;
     final canGoBack = _today != null && previousClinicDay(_today!) != null;
 
-    return Scaffold(
-      appBar: AppBar(title: const Text('Patient conversations')),
-      body: RefreshIndicator(
-        onRefresh: () async => ref.invalidate(chatSummariesProvider(query)),
-        child: ListView(
-          padding: const EdgeInsets.fromLTRB(T.s4, T.s3, T.s4, T.s12),
-          children: [
-            // Bounded, known choices: wrapped, never scrolled out of sight.
-            Wrap(
-              spacing: T.s2,
-              runSpacing: T.s2,
-              children: [
-                _choice(
-                  'My patients',
-                  selected: _scope == 'mine',
-                  onSelected: () => setState(() => _scope = 'mine'),
-                ),
-                _choice(
-                  'Whole practice',
-                  selected: _scope == 'practice',
-                  onSelected: () => setState(() => _scope = 'practice'),
-                ),
-              ],
-            ),
-            const SizedBox(height: T.s2),
-            Wrap(
-              spacing: T.s2,
-              runSpacing: T.s2,
-              children: [
-                _choice(
-                  'Today',
-                  selected: !_yesterday,
-                  onSelected: () => setState(() => _yesterday = false),
-                ),
-                _choice(
-                  'Yesterday',
-                  selected: _yesterday,
-                  onSelected:
-                      canGoBack ? () => setState(() => _yesterday = true) : null,
-                ),
-              ],
-            ),
-            const SizedBox(height: T.s4),
-            if (data == null && async.hasError)
-              LoadFailed(
-                what: 'the conversations',
-                onRetry: () => ref.invalidate(chatSummariesProvider(query)),
-              )
-            else if (data == null)
-              const Padding(
-                padding: EdgeInsets.all(T.s8),
-                child: Center(child: CircularProgressIndicator()),
-              )
-            else ...[
-              Text(_heading(data), style: T.bodyStrong.copyWith(color: T.ink)),
-              for (final item in data.items) ...[
-                const SizedBox(height: T.s3),
-                _SummaryTile(
-                  item: item,
-                  onRead: () => _markRead(item, query),
-                ),
-              ],
-            ],
-          ],
-        ),
+    final filters = <Widget>[
+      // Bounded, known choices: wrapped, never scrolled out of sight.
+      ChoicePills<String>(
+        options: const [
+          ('mine', 'My patients'),
+          ('practice', 'Whole practice'),
+        ],
+        selected: _scope,
+        onSelected: (v) => setState(() => _scope = v),
       ),
-    );
+      const SizedBox(height: T.s2),
+      ChoicePills<bool>(
+        options: const [(false, 'Today'), (true, 'Yesterday')],
+        selected: _yesterday,
+        // Yesterday is worked out from the server's today, so it waits for one.
+        onSelected:
+            canGoBack || _yesterday
+                ? (v) => setState(() => _yesterday = v)
+                : null,
+      ),
+      const SizedBox(height: T.s4),
+    ];
+
+    if (data == null) {
+      return [
+        ...filters,
+        if (async.hasError)
+          refusedForRole(async.error)
+              ? const NotYourRole(what: 'patients’ conversations')
+              : LoadFailed(what: 'the conversations', onRetry: _reload)
+        else
+          const ListSkeleton(rows: 3, avatar: false),
+      ];
+    }
+
+    return [
+      ...filters,
+      if (async.hasError) ...[
+        StaleNotice.english(
+          context: context,
+          what: 'the conversations',
+          loadedAt: _loadedAt[query],
+          onRetry: _reload,
+        ),
+        const SizedBox(height: T.s4),
+      ],
+      if (data.items.isEmpty)
+        _empty(canGoBack)
+      else ...[
+        Text(_heading(data), style: T.bodyStrong.copyWith(color: T.ink)),
+        for (final item in data.items) ...[
+          const SizedBox(height: T.s3),
+          _SummaryTile(
+            item: item,
+            onOpen:
+                () => context.push(
+                  '${areaPrefix(ref)}/patients/${item.patientId}/thread',
+                  extra: item.patientName,
+                ),
+            onRead: () => _markRead(item, query),
+          ),
+        ],
+      ],
+    ];
   }
 
-  Widget _choice(
-    String label, {
-    required bool selected,
-    required VoidCallback? onSelected,
-  }) {
-    return ChoiceChip(
-      label: Text(label),
-      selected: selected,
-      onSelected: onSelected == null ? null : (_) => onSelected(),
+  Widget _empty(bool canGoBack) {
+    final when = _yesterday ? 'yesterday' : 'today';
+    if (_scope == 'mine') {
+      return InboxEmpty(
+        icon: Icons.forum_outlined,
+        title: 'None of your patients wrote $when.',
+        body:
+            'When one of your patients writes to the clinic, the day’s messages '
+            'are summarised here. Patients seen by colleagues are under Whole '
+            'practice.',
+        action: OutlinedButton(
+          onPressed: () => setState(() => _scope = 'practice'),
+          child: const Text('Show the whole practice'),
+        ),
+      );
+    }
+    return InboxEmpty(
+      icon: Icons.forum_outlined,
+      title: 'Nobody wrote to the practice $when.',
+      body:
+          'A summary appears here for every patient who writes to the clinic, '
+          'worst first.',
+      action:
+          _yesterday
+              ? OutlinedButton(
+                onPressed: () => setState(() => _yesterday = false),
+                child: const Text('Back to today'),
+              )
+              : canGoBack
+              ? OutlinedButton(
+                onPressed: () => setState(() => _yesterday = true),
+                child: const Text('Show yesterday'),
+              )
+              : null,
     );
   }
 
@@ -163,11 +226,6 @@ class _ChatSummariesScreenState extends ConsumerState<ChatSummariesScreen> {
   /// waiting on the reader; on the whole practice, of those needing anyone.
   String _heading(ChatSummaryDay d) {
     final when = _yesterday ? 'yesterday' : 'today';
-    if (d.patients == 0) {
-      return _scope == 'mine'
-          ? 'None of your patients wrote $when.'
-          : 'Nobody wrote to the practice $when.';
-    }
     final wrote =
         '${d.patients} ${d.patients == 1 ? 'patient' : 'patients'} wrote $when.';
     if (_scope == 'mine') {
@@ -184,9 +242,14 @@ class _ChatSummariesScreenState extends ConsumerState<ChatSummariesScreen> {
 }
 
 class _SummaryTile extends StatelessWidget {
-  const _SummaryTile({required this.item, required this.onRead});
+  const _SummaryTile({
+    required this.item,
+    required this.onOpen,
+    required this.onRead,
+  });
 
   final ChatSummary item;
+  final VoidCallback onOpen;
   final VoidCallback onRead;
 
   /// What each point is, in the reader's words.
@@ -205,6 +268,7 @@ class _SummaryTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SectionCard(
+      padding: const EdgeInsets.fromLTRB(T.s4, T.s4, T.s4, T.s2),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -214,7 +278,7 @@ class _SummaryTile extends StatelessWidget {
               Expanded(
                 child: Text(
                   item.patientName,
-                  style: T.title.copyWith(fontSize: 16),
+                  style: T.bodyStrong.copyWith(color: T.ink),
                 ),
               ),
               const SizedBox(width: T.s2),
@@ -226,7 +290,7 @@ class _SummaryTile extends StatelessWidget {
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Icon(Icons.flag_outlined, size: 18, color: T.warning),
+                const Icon(Icons.flag_outlined, size: T.s5, color: T.warning),
                 const SizedBox(width: T.s2),
                 Expanded(
                   child: Text(
@@ -272,7 +336,7 @@ class _SummaryTile extends StatelessWidget {
             item.writtenByAssistant
                 ? 'Summarised by the assistant from the day’s messages'
                 : 'Put together from the day’s messages',
-            style: T.small.copyWith(color: T.inkFaint),
+            style: T.small.copyWith(color: T.inkMuted),
           ),
           if (item.reviewed) ...[
             const SizedBox(height: T.s1),
@@ -281,20 +345,20 @@ class _SummaryTile extends StatelessWidget {
               style: T.small.copyWith(color: T.success),
             ),
           ],
-          const SizedBox(height: T.s3),
+          const SizedBox(height: T.s1),
           Wrap(
             spacing: T.s2,
-            runSpacing: T.s2,
             children: [
-              FilledButton.tonal(
-                onPressed:
-                    () => context.push(
-                      '/clinician/patients/${item.patientId}/thread',
-                    ),
+              TextButton(
+                onPressed: onOpen,
                 child: const Text('Open conversation'),
               ),
               if (!item.reviewed)
-                TextButton(onPressed: onRead, child: const Text('Mark as read')),
+                TextButton(
+                  onPressed: onRead,
+                  style: TextButton.styleFrom(foregroundColor: T.inkMuted),
+                  child: const Text('Mark as read'),
+                ),
             ],
           ),
         ],

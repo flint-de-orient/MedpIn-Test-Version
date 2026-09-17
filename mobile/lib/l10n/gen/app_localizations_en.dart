@@ -1658,6 +1658,160 @@ class AppLocalizationsEn extends AppLocalizations {
   String get deskNobodyToCheckIn => 'Nobody is waiting to be checked in.';
 
   @override
+  String get deskOpenConversation => 'Open conversation';
+
+  @override
+  String get deskComingInToday => 'Coming in today';
+
+  @override
+  String get deskNext => 'Next';
+
+  @override
+  String deskInMinutes(int count) {
+    return 'in $count min';
+  }
+
+  @override
+  String get deskNoMoreToday => 'No one else is booked for later today.';
+
+  @override
+  String deskMoreLaterToday(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count more later today',
+      one: '1 more later today',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get deskSoFarToday => 'So far today';
+
+  @override
+  String deskBookedCount(int count) {
+    return '$count booked';
+  }
+
+  @override
+  String deskSeenCount(int count) {
+    return '$count seen';
+  }
+
+  @override
+  String deskNoShowCount(int count) {
+    return '$count did not come';
+  }
+
+  @override
+  String deskCancelledCount(int count) {
+    return '$count cancelled';
+  }
+
+  @override
+  String get deskInTheClinic => 'In the clinic';
+
+  @override
+  String get deskArrivedWaiting => 'Arrived, waiting';
+
+  @override
+  String deskToken(int number) {
+    return 'Token $number';
+  }
+
+  @override
+  String deskWaitingForTimeTitle(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count patients waiting for a time',
+      one: '1 patient waiting for a time',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String deskUnreadMessagesTitle(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count unread messages',
+      one: '1 unread message',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String deskNewMessages(int count) {
+    return '$count new';
+  }
+
+  @override
+  String get deskNutritionChat => 'Nutrition chat';
+
+  @override
+  String deskWaitingOnCode(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count patients are waiting on their code',
+      one: '1 patient is waiting on their code',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get deskCaughtUp =>
+      'No urgent reports, no one waiting for a time and no unread messages.';
+
+  @override
+  String get deskStaleTitle => 'Could not refresh';
+
+  @override
+  String deskStaleAt(String time) {
+    return 'Showing what loaded at $time.';
+  }
+
+  @override
+  String get deskStaleEarlier => 'Showing what loaded earlier.';
+
+  @override
+  String get deskThisWeekSoFar => 'This week so far';
+
+  @override
+  String get deskNothingThisWeek => 'Nothing booked this week.';
+
+  @override
+  String get deskJustNow => 'Just now';
+
+  @override
+  String deskAgoMinutes(int count) {
+    return '$count min ago';
+  }
+
+  @override
+  String deskAgoHours(int count) {
+    return '$count h ago';
+  }
+
+  @override
+  String deskAgoDays(int count) {
+    return '$count d ago';
+  }
+
+  @override
+  String deskNotificationsWaiting(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'Notifications, $count waiting',
+      one: 'Notifications, 1 waiting',
+      zero: 'Notifications',
+    );
+    return '$_temp0';
+  }
+
+  @override
   String get nutritionLoadFailed => 'Could not load the conversation';
 
   @override

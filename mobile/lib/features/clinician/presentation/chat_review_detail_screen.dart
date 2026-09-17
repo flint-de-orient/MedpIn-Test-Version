@@ -4,12 +4,15 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../../core/capabilities/capabilities.dart';
 import '../../../core/network/api_exception.dart';
-import '../../../core/theme/app_colors.dart';
-import '../../../core/theme/app_spacing.dart';
+import '../../../core/router/area.dart';
+import '../../../core/theme/tokens.dart';
 import '../../../shared/widgets/auto_refresh.dart';
 import '../../../shared/widgets/chat_background.dart';
+import '../../../shared/widgets/load_failed.dart';
 import '../../../shared/widgets/markdown_text.dart';
+import '../../../shared/widgets/surfaces.dart' show Status;
 import '../../../shared/widgets/user_avatar.dart';
 import '../../chat/data/chat_repository.dart';
 import '../../chat/presentation/widgets/care_composer.dart';
@@ -20,12 +23,28 @@ import '../../chat/presentation/widgets/voice_note_player.dart';
 import '../data/clinician_repository.dart';
 import '../domain/chat_review.dart';
 import 'clinician_providers.dart';
+import 'widgets/inbox_states.dart';
 
-/// One conversation, opened from the review queue — now the real chat, not a
-/// read-only audit view: the doctor can reply with photos and voice, pin, reply
-/// to and delete messages, exactly as on the Patients-tab thread. The safety
-/// audit trail (triage verdict, grounding, latency) stays on every AI reply,
-/// because judging those answers is why this screen exists.
+/// One conversation, opened from the review queue or the nutrition inbox — the
+/// real chat: the doctor can reply with photos and voice, pin, reply to and
+/// delete messages. The safety audit trail (triage verdict, grounding, speed)
+/// stays under every assistant reply, because judging those answers is why this
+/// screen exists.
+///
+/// ---- What changed, and why -------------------------------------------------
+///
+/// The app bar held the photo, the name, a record button and a "Reviewed"
+/// button, and the name was cut to "Kalyani Bandyopa…". "Reviewed" also read
+/// as a state rather than an action. The name has the bar to itself now, the
+/// photo and name lead to the record, and a flagged conversation says so in a
+/// strip under the bar with "Mark reviewed" beside it.
+///
+/// The audit trail was a row of grey capsules — URGENT, rule-driven, fallback,
+/// 2.4s. It is a sentence now, and the urgency is a word with its colour.
+///
+/// A message deleted by the patient left its tombstone on the right, the
+/// doctor's side, because it still followed an old convention. It stays on the
+/// side of whoever wrote it.
 class ChatReviewDetailScreen extends ConsumerStatefulWidget {
   const ChatReviewDetailScreen({super.key, required this.sessionId});
 
@@ -40,17 +59,17 @@ class _ChatReviewDetailScreenState
     extends ConsumerState<ChatReviewDetailScreen> {
   final _controller = TextEditingController();
   final _scroll = ScrollController();
+  final _loadedAt = LoadedAt();
 
   /// The message being quoted in the next reply.
   ChatReviewMessage? _replyingTo;
   bool _sending = false;
 
   /// So the one-time jump to the flagged message runs only on the first load,
-  /// not on every three-second refetch under the doctor's scrolling.
+  /// not on every refetch under the doctor's scrolling.
   bool _didAutoScroll = false;
 
-  /// Whether the newest message has scrolled out of view — drives the
-  /// jump-to-latest button, the same affordance the care thread has.
+  /// Whether the newest message has scrolled out of view.
   bool _showJump = false;
 
   @override
@@ -59,8 +78,7 @@ class _ChatReviewDetailScreenState
     _scroll.addListener(_onScroll);
   }
 
-  /// This list is bottom-anchored (newest last), so "away from latest" means
-  /// there is still a screenful or more below the current offset.
+  /// Newest last, so "away from latest" means a screenful or more below.
   void _onScroll() {
     if (!_scroll.hasClients) return;
     final away = _scroll.position.maxScrollExtent - _scroll.offset > 300;
@@ -93,9 +111,9 @@ class _ChatReviewDetailScreenState
           .read(clinicianRepositoryProvider)
           .markReviewed(widget.sessionId);
       _refresh();
-      ref.invalidate(
-        chatReviewProvider((flagged: true, urgency: null, kind: 'care')),
-      );
+      // Both lists: the flagged queue it leaves, and "All" where it now reads
+      // Reviewed.
+      ref.invalidate(chatReviewProvider);
       messenger.showSnackBar(
         const SnackBar(content: Text('Marked as reviewed')),
       );
@@ -179,10 +197,8 @@ class _ChatReviewDetailScreenState
     }
   }
 
-  /// Brings the flagged turn into view once the thread has laid out — the doctor
-  /// opened this row to read that message, so land near it rather than at the
-  /// top of a long history. Falls back to the bottom (newest) when nothing is
-  /// specifically flagged.
+  /// Brings the flagged turn into view once the thread has laid out — the
+  /// doctor opened this row to read that message. Falls back to the newest.
   void _autoScroll(List<ChatReviewMessage> messages) {
     if (_didAutoScroll || messages.isEmpty) return;
     _didAutoScroll = true;
@@ -198,150 +214,243 @@ class _ChatReviewDetailScreenState
 
   @override
   Widget build(BuildContext context) {
+    final caps = ref.watch(capabilitySetProvider);
+
+    if (!mayReadConversations(caps)) {
+      return Scaffold(
+        backgroundColor: T.surface,
+        appBar: AppBar(title: const Text('Conversation')),
+        body: ListView(
+          padding: const EdgeInsets.all(T.s4),
+          children: const [NotYourRole(what: 'patients’ conversations')],
+        ),
+      );
+    }
+
     final async = ref.watch(chatReviewDetailProvider(widget.sessionId));
+    _loadedAt.note(widget.sessionId, async);
+    final detail = async.valueOrNull;
+    final mayReply = mayReplyInConversations(caps);
+
+    // The bar grows with the text size, so a two-line name is never cut.
+    final barHeight = MediaQuery.textScalerOf(
+      context,
+    ).scale(T.s12 + T.s4).clamp(kToolbarHeight, T.s12 * 2);
 
     return Scaffold(
+      backgroundColor: T.surface,
       appBar: AppBar(
+        toolbarHeight: barHeight,
         titleSpacing: 0,
-        title: async.maybeWhen(
-          data: (d) => _ChatHeader(session: d.session),
-          orElse: () => const Text('Conversation'),
-        ),
+        title:
+            detail == null
+                ? const Text('Conversation')
+                : _ChatHeader(session: detail.session),
         actions: [
-          async.maybeWhen(
-            data:
-                (d) =>
-                    d.session.flaggedForReview
-                        ? Padding(
-                          padding: const EdgeInsets.only(right: AppSpacing.sm),
-                          child: TextButton.icon(
-                            onPressed: _markReviewed,
-                            icon: const Icon(Icons.check_rounded, size: 18),
-                            label: const Text('Reviewed'),
-                          ),
-                        )
-                        : const SizedBox.shrink(),
-            orElse: () => const SizedBox.shrink(),
-          ),
+          if (detail != null) _CallAction(session: detail.session),
+          const SizedBox(width: T.s1),
         ],
       ),
       resizeToAvoidBottomInset: true,
-      // A live conversation. The doctor reading a flagged thread should see a
-      // message that arrives while they are reading it.
+      // A live conversation: a message that arrives while the doctor is
+      // reading appears without leaving the screen.
       body: AutoRefresh(
         onTick:
             (ref) => ref.invalidate(chatReviewDetailProvider(widget.sessionId)),
-        child: async.when(
-          loading: () => const Center(child: CircularProgressIndicator()),
-          error:
-              (_, _) => Center(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Text('Could not load conversation'),
-                    const SizedBox(height: AppSpacing.sm),
-                    OutlinedButton(
-                      onPressed: _refresh,
-                      child: const Text('Retry'),
-                    ),
-                  ],
-                ),
-              ),
-          data: (detail) {
-            _autoScroll(detail.messages);
-            final pinned =
-                detail.messages
-                    .where((m) => m.pinned && !m.deletedForEveryone)
-                    .toList();
-            return Column(
+        child: _body(async, detail, mayReply),
+      ),
+    );
+  }
+
+  Widget _body(
+    AsyncValue<ChatReviewDetail> async,
+    ChatReviewDetail? detail,
+    bool mayReply,
+  ) {
+    if (detail == null) {
+      if (async.hasError) {
+        return ListView(
+          padding: const EdgeInsets.all(T.s4),
+          children: [
+            if (refusedForRole(async.error))
+              const NotYourRole(what: 'patients’ conversations')
+            else
+              LoadFailed(what: 'the conversation', onRetry: _refresh),
+          ],
+        );
+      }
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    _autoScroll(detail.messages);
+    final pinned =
+        detail.messages
+            .where((m) => m.pinned && !m.deletedForEveryone)
+            .toList();
+    final nutrition = detail.session.kind == 'nutrition';
+    final dietician =
+        detail.messages
+            .where(
+              (x) => x.role == 'dietician' && (x.senderName ?? '').isNotEmpty,
+            )
+            .lastOrNull
+            ?.senderName;
+
+    return Column(
+      children: [
+        if (detail.session.flaggedForReview)
+          _ReviewStrip(onMarkReviewed: _markReviewed),
+        if (async.hasError)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(T.s4, T.s2, T.s4, 0),
+            child: StaleNotice.english(
+              context: context,
+              what: 'the conversation',
+              loadedAt: _loadedAt[widget.sessionId],
+              onRetry: _refresh,
+            ),
+          ),
+        if (pinned.isNotEmpty) _PinnedBanner(messages: pinned),
+        Expanded(
+          child: ChatBackground(
+            child: Stack(
               children: [
-                // The old session banner is gone: it repeated the patient's name
-                // — now in the app bar with their photo — and stamped ROUTINE on
-                // a thread where almost every message is routine, which told the
-                // doctor nothing and cost a strip of the conversation.
-                if (pinned.isNotEmpty) _PinnedBanner(messages: pinned),
-                Expanded(
-                  // Same WhatsApp-style wallpaper as the Patients-tab thread.
-                  child: ChatBackground(
-                    child: Stack(
-                      children: [
-                        ListView.builder(
-                          controller: _scroll,
-                          padding: const EdgeInsets.all(AppSpacing.md),
-                          itemCount: detail.messages.length,
-                          itemBuilder: (context, i) {
-                            final m = detail.messages[i];
-                            final dietician =
-                                detail.messages
-                                    .lastWhere(
-                                      (x) =>
-                                          x.role == 'dietician' &&
-                                          (x.senderName ?? '').isNotEmpty,
-                                      orElse: () => m,
-                                    )
-                                    .senderName;
-                            return _MessageBubble(
-                              isNutrition: detail.session.kind == 'nutrition',
-                              dieticianName:
-                                  detail.session.kind == 'nutrition'
-                                      ? dietician
-                                      : null,
-                              message: m,
-                              repliedTo:
-                                  m.replyToId == null
-                                      ? null
-                                      : detail.messages
-                                          .where((x) => x.id == m.replyToId)
-                                          .firstOrNull,
-                              onReply: () => setState(() => _replyingTo = m),
-                              onTogglePin: () => _togglePin(m),
-                              onHide: () => _hide(m),
-                              // Only the doctor's own clinician turns are theirs to
-                              // delete for everyone; the server enforces the same rule.
-                              onDeleteForEveryone:
-                                  m.isClinician
-                                      ? () => _deleteForEveryone(m)
-                                      : null,
-                            );
-                          },
-                        ),
-                        Positioned(
-                          right: 0,
-                          bottom: 0,
-                          child: JumpToLatest(
-                            visible: _showJump,
-                            onTap: _toLatest,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
+                ListView.builder(
+                  controller: _scroll,
+                  padding: const EdgeInsets.all(T.s4),
+                  itemCount: detail.messages.length,
+                  itemBuilder: (context, i) {
+                    final m = detail.messages[i];
+                    return _MessageBubble(
+                      message: m,
+                      isNutrition: nutrition,
+                      dieticianName: nutrition ? dietician : null,
+                      repliedTo:
+                          m.replyToId == null
+                              ? null
+                              : detail.messages
+                                  .where((x) => x.id == m.replyToId)
+                                  .firstOrNull,
+                      onReply:
+                          mayReply
+                              ? () => setState(() => _replyingTo = m)
+                              : null,
+                      onTogglePin: () => _togglePin(m),
+                      onHide: () => _hide(m),
+                      // Only the clinic's own turns may be deleted for
+                      // everyone; the server enforces the same rule.
+                      onDeleteForEveryone:
+                          m.isClinician ? () => _deleteForEveryone(m) : null,
+                    );
+                  },
                 ),
-                if (_replyingTo != null)
-                  _ReplyBar(
-                    message: _replyingTo!,
-                    onCancel: () => setState(() => _replyingTo = null),
-                  ),
-                // The real chat box — text, photos, documents and voice — posting
-                // as role:'clinician' into the patient's own thread (by session id,
-                // so this works for a nutrition thread the doctor is guiding too).
-                CareComposer(
-                  controller: _controller,
-                  hint: 'Reply to this patient…',
-                  sending: _sending,
-                  onSend: _send,
-                  onSendAttachment: _sendAttachment,
+                Positioned(
+                  right: 0,
+                  bottom: 0,
+                  child: JumpToLatest(visible: _showJump, onTap: _toLatest),
                 ),
               ],
-            );
-          },
+            ),
+          ),
+        ),
+        if (_replyingTo != null)
+          _ReplyBar(
+            message: _replyingTo!,
+            onCancel: () => setState(() => _replyingTo = null),
+          ),
+        if (mayReply)
+          // The real chat box — text, photos, documents and voice — posting as
+          // the clinic into the patient's own thread, by session id, so it
+          // works for a nutrition thread the doctor is guiding too.
+          CareComposer(
+            controller: _controller,
+            hint: 'Reply to this patient…',
+            sending: _sending,
+            onSend: _send,
+            onSendAttachment: _sendAttachment,
+          )
+        else
+          const _ReadOnlyNote(),
+      ],
+    );
+  }
+}
+
+/// A flagged conversation, said under the bar, with the one thing to do about
+/// it.
+class _ReviewStrip extends StatelessWidget {
+  const _ReviewStrip({required this.onMarkReviewed});
+
+  final VoidCallback onMarkReviewed;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(T.s4, T.s2, T.s2, T.s2),
+      decoration: const BoxDecoration(
+        color: T.warningTint,
+        border: Border(bottom: BorderSide(color: T.line)),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.flag_outlined, color: T.warning),
+          const SizedBox(width: T.s3),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Flagged for review',
+                  style: T.small.copyWith(
+                    color: T.ink,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                Text(
+                  'Read it, then mark it reviewed to take it off the list.',
+                  style: T.small.copyWith(color: T.inkMuted),
+                ),
+              ],
+            ),
+          ),
+          TextButton(
+            onPressed: onMarkReviewed,
+            child: const Text('Mark reviewed'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Where the composer would be, for a role that may read but not answer.
+class _ReadOnlyNote extends StatelessWidget {
+  const _ReadOnlyNote();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      decoration: const BoxDecoration(
+        color: T.surfaceRaised,
+        border: Border(top: BorderSide(color: T.line)),
+      ),
+      child: SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.all(T.s4),
+          child: Text(
+            'Your role can read this conversation but not reply to it.',
+            style: T.small.copyWith(color: T.inkMuted),
+          ),
         ),
       ),
     );
   }
 }
 
-/// The quoted-turn strip shown above the composer while the doctor is replying.
+/// The quoted-turn strip shown above the composer while the doctor replies.
 class _ReplyBar extends StatelessWidget {
   const _ReplyBar({required this.message, required this.onCancel});
 
@@ -350,24 +459,26 @@ class _ReplyBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
     final who =
         message.isUser
-            ? 'Patient'
+            ? 'the patient'
             : message.isClinician
-            ? 'You'
-            : (message.senderName ?? 'Assistant');
+            ? (message.senderName ?? 'the clinic')
+            : (message.senderName ?? 'the assistant');
     final preview =
         message.content.trim().isNotEmpty
             ? message.content.trim()
             : (message.voiceNotes.isNotEmpty ? 'Voice message' : 'Attachment');
     return Container(
-      color: scheme.surfaceContainerHigh.withValues(alpha: 0.6),
-      padding: const EdgeInsets.fromLTRB(AppSpacing.md, 8, AppSpacing.sm, 8),
+      decoration: const BoxDecoration(
+        color: T.surfaceRaised,
+        border: Border(top: BorderSide(color: T.line)),
+      ),
+      padding: const EdgeInsets.fromLTRB(T.s4, T.s2, T.s1, T.s2),
       child: Row(
         children: [
-          Container(width: 3, height: 34, color: AppColors.accentOn(context)),
-          const SizedBox(width: 8),
+          Container(width: T.s1, height: T.s8, color: T.primary),
+          const SizedBox(width: T.s2),
           Expanded(
             child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -375,27 +486,20 @@ class _ReplyBar extends StatelessWidget {
               children: [
                 Text(
                   'Replying to $who',
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700,
-                    color: AppColors.accentOn(context),
-                  ),
+                  style: T.label.copyWith(color: T.primary),
                 ),
                 Text(
                   preview,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: 14,
-                    color: scheme.onSurfaceVariant,
-                  ),
+                  style: T.small.copyWith(color: T.inkMuted),
                 ),
               ],
             ),
           ),
           IconButton(
             tooltip: 'Cancel reply',
-            icon: const Icon(Icons.close_rounded, size: 20),
+            icon: const Icon(Icons.close_rounded),
             onPressed: onCancel,
           ),
         ],
@@ -404,8 +508,7 @@ class _ReplyBar extends StatelessWidget {
   }
 }
 
-/// The pinned messages, kept at the top of the thread — the "current pin
-/// message" the doctor asked to see, tappable to unpin.
+/// The pinned messages, kept at the top of the thread.
 class _PinnedBanner extends StatelessWidget {
   const _PinnedBanner({required this.messages});
 
@@ -413,7 +516,6 @@ class _PinnedBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
     final m = messages.first;
     final text =
         m.content.trim().isNotEmpty
@@ -421,25 +523,21 @@ class _PinnedBanner extends StatelessWidget {
             : (m.voiceNotes.isNotEmpty ? 'Voice message' : 'Attachment');
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.symmetric(
-        horizontal: AppSpacing.md,
-        vertical: 8,
+      padding: const EdgeInsets.symmetric(horizontal: T.s4, vertical: T.s2),
+      decoration: const BoxDecoration(
+        color: T.surfaceRaised,
+        border: Border(bottom: BorderSide(color: T.line)),
       ),
-      color: scheme.surfaceContainerHighest.withValues(alpha: 0.5),
       child: Row(
         children: [
-          Icon(
-            Icons.push_pin_rounded,
-            size: 15,
-            color: AppColors.accentOn(context),
-          ),
-          const SizedBox(width: 8),
+          const Icon(Icons.push_pin_outlined, size: T.s4, color: T.primary),
+          const SizedBox(width: T.s2),
           Expanded(
             child: Text(
               messages.length > 1 ? '${messages.length} pinned · $text' : text,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: TextStyle(fontSize: 14, color: scheme.onSurfaceVariant),
+              style: T.small.copyWith(color: T.inkMuted),
             ),
           ),
         ],
@@ -448,12 +546,7 @@ class _PinnedBanner extends StatelessWidget {
   }
 }
 
-/// The conversation's own header: who this is, straight through to their
-/// record, and a way to phone them.
-///
-/// The screen used to be titled "Conversation" over an audit panel, which read
-/// as a log viewer rather than a chat — the doctor could not see at a glance
-/// whose words they were reading, and had to go back out to reach the record.
+/// Who this is — photo and name leading to their record — and which thread.
 class _ChatHeader extends ConsumerWidget {
   const _ChatHeader({required this.session});
 
@@ -461,71 +554,79 @@ class _ChatHeader extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final scheme = Theme.of(context).colorScheme;
     final id = session.patientId;
+    final name = session.patientName ?? 'Patient';
     final summary =
         id == null ? null : ref.watch(patientSummaryProvider(id)).valueOrNull;
 
-    return Row(
+    final content = Row(
       children: [
-        GestureDetector(
-          onTap:
-              id == null ? null : () => context.push('/clinician/patients/$id'),
-          child: UserAvatar(
-            name: session.patientName ?? '',
-            avatarUrl: summary?.avatarUrl,
-            accent: AppColors.accentOn(context),
-            size: 38,
-          ),
+        UserAvatar(
+          name: nameForInitial(name),
+          avatarUrl: summary?.avatarUrl,
+          accent: T.primary,
+          size: T.s8 + T.s1,
         ),
-        const SizedBox(width: AppSpacing.sm),
+        const SizedBox(width: T.s3),
         Expanded(
-          child: GestureDetector(
-            onTap:
-                id == null
-                    ? null
-                    : () => context.push('/clinician/patients/$id'),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  session.patientName ?? 'Patient',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-                Text(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                name,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: T.bodyStrong.copyWith(color: T.ink, height: 1.25),
+              ),
+              Text(
+                [
                   session.kind == 'nutrition' ? 'Nutrition chat' : 'Care chat',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: scheme.onSurfaceVariant,
-                  ),
-                ),
-              ],
-            ),
+                  if (id != null) 'View record',
+                ].join(' · '),
+                style: T.label.copyWith(color: T.primary, letterSpacing: 0),
+              ),
+            ],
           ),
         ),
-        // An explicit way into the record. Tapping the name works too, but a
-        // name is not obviously a link — the icon says the record is one tap
-        // away without the doctor having to discover it.
-        if (id != null)
-          IconButton(
-            tooltip: 'Open patient record',
-            onPressed: () => context.push('/clinician/patients/$id'),
-            icon: const Icon(Icons.account_circle_outlined),
-          ),
-        if (summary?.phone.isNotEmpty == true)
-          IconButton(
-            tooltip: 'Call patient',
-            onPressed:
-                () => launchUrl(Uri(scheme: 'tel', path: summary!.phone)),
-            icon: const Icon(Icons.call_rounded),
-          ),
       ],
+    );
+
+    if (id == null) return content;
+    return Semantics(
+      button: true,
+      label: 'Open $name’s record',
+      excludeSemantics: true,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(T.rControl),
+        onTap: () => context.push('${areaPrefix(ref)}/patients/$id'),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: T.s1),
+          child: content,
+        ),
+      ),
+    );
+  }
+}
+
+/// Ring the patient, when the record has a number.
+class _CallAction extends ConsumerWidget {
+  const _CallAction({required this.session});
+
+  final ChatReviewSession session;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final id = session.patientId;
+    final phone =
+        id == null
+            ? null
+            : ref.watch(patientSummaryProvider(id)).valueOrNull?.phone;
+    if (phone == null || phone.isEmpty) return const SizedBox.shrink();
+    return IconButton(
+      tooltip: 'Call ${session.patientName ?? 'the patient'}',
+      onPressed: () => launchUrl(Uri(scheme: 'tel', path: phone)),
+      icon: const Icon(Icons.call_outlined, color: T.primary),
     );
   }
 }
@@ -557,11 +658,12 @@ class _MessageBubble extends StatelessWidget {
   final VoidCallback? onDeleteForEveryone;
 
   /// Long-press sheet: copy, reply, pin, delete-for-me, and (own turns only)
-  /// delete-for-everyone — the same set the patient and doctor threads offer.
+  /// delete-for-everyone.
   Future<void> _showActions(BuildContext context) async {
     final messenger = ScaffoldMessenger.of(context);
     await showModalBottomSheet<void>(
       context: context,
+      showDragHandle: true,
       builder:
           (sheet) => SafeArea(
             child: Column(
@@ -605,9 +707,9 @@ class _MessageBubble extends StatelessWidget {
                   ListTile(
                     leading: const Icon(Icons.visibility_off_outlined),
                     title: const Text('Delete for me'),
-                    subtitle: const Text(
+                    subtitle: Text(
                       'Stays in the record; only removed from your view',
-                      style: TextStyle(fontSize: 12),
+                      style: T.small.copyWith(color: T.inkMuted),
                     ),
                     onTap: () {
                       Navigator.pop(sheet);
@@ -616,13 +718,13 @@ class _MessageBubble extends StatelessWidget {
                   ),
                 if (onDeleteForEveryone != null)
                   ListTile(
-                    leading: Icon(
+                    leading: const Icon(
                       Icons.delete_outline_rounded,
-                      color: AppColors.danger,
+                      color: T.danger,
                     ),
                     title: Text(
                       'Delete for everyone',
-                      style: TextStyle(color: AppColors.danger),
+                      style: T.body.copyWith(color: T.danger),
                     ),
                     onTap: () async {
                       Navigator.pop(sheet);
@@ -631,9 +733,10 @@ class _MessageBubble extends StatelessWidget {
                         context: context,
                         builder:
                             (dialog) => AlertDialog(
-                              title: const Text('Delete for everyone'),
+                              title: const Text('Delete for everyone?'),
                               content: const Text(
-                                "This message will be removed for everyone in the chat. This can't be undone.",
+                                'This message will be removed for everyone in '
+                                'the chat. This cannot be undone.',
                               ),
                               actions: [
                                 TextButton(
@@ -643,7 +746,7 @@ class _MessageBubble extends StatelessWidget {
                                 TextButton(
                                   onPressed: () => Navigator.pop(dialog, true),
                                   style: TextButton.styleFrom(
-                                    foregroundColor: AppColors.danger,
+                                    foregroundColor: T.danger,
                                   ),
                                   child: const Text('Delete for everyone'),
                                 ),
@@ -661,46 +764,46 @@ class _MessageBubble extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
     final m = message;
     final isUser = m.isUser;
     final isClinician = m.isClinician;
     // Without this a dietician's message fell through to the assistant branch
-    // and was labelled "Assistant" — the doctor reviewing the thread would have
-    // read a human colleague's words as machine output.
+    // and was labelled "Assistant" — a colleague's words read as machine
+    // output.
     final isDietician = m.role == 'dietician';
-    final isPerson = isClinician || isDietician;
+    final isAssistant = !isUser && !isClinician && !isDietician;
 
-    // Deleted for everyone: a muted tombstone in place of the turn.
+    // Sides follow whose screen this is: the clinic's replies on the right,
+    // the patient, the assistant and the dietician together on the left.
+    final isMine = isClinician;
+    final maxWidth = MediaQuery.sizeOf(context).width * 0.82;
+
+    // Deleted for everyone: a muted tombstone on its author's side.
     if (m.deletedForEveryone) {
       return Padding(
-        padding: const EdgeInsets.only(bottom: AppSpacing.md),
+        padding: const EdgeInsets.only(bottom: T.s4),
         child: Align(
-          alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
+          alignment: isMine ? Alignment.centerRight : Alignment.centerLeft,
           child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            padding: const EdgeInsets.symmetric(
+              horizontal: T.s3,
+              vertical: T.s2,
+            ),
             decoration: BoxDecoration(
-              color: scheme.surfaceContainerLow,
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(
-                color: scheme.outlineVariant.withValues(alpha: 0.3),
-              ),
+              color: T.surfaceRaised,
+              borderRadius: BorderRadius.circular(T.rControl),
+              border: Border.all(color: T.line),
             ),
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(
-                  Icons.block_rounded,
-                  size: 15,
-                  color: scheme.onSurfaceVariant,
-                ),
-                const SizedBox(width: 8),
+                const Icon(Icons.block_rounded, size: T.s4, color: T.inkMuted),
+                const SizedBox(width: T.s2),
                 Text(
                   'This message was deleted',
-                  style: TextStyle(
-                    fontSize: 14,
+                  style: T.small.copyWith(
                     fontStyle: FontStyle.italic,
-                    color: scheme.onSurfaceVariant,
+                    color: T.inkMuted,
                   ),
                 ),
               ],
@@ -710,238 +813,199 @@ class _MessageBubble extends StatelessWidget {
       );
     }
 
-    // Sides follow whose screen this is, as every messaging app does: the
-    // reader's own words on the right, everyone else's on the left. This is the
-    // doctor's screen, so the clinic's replies go right and the patient, the
-    // assistant and the dietician all sit left together.
-    //
-    // It used to be the other way round — the patient's messages on the right —
-    // which read as though the doctor were looking at the patient's phone.
-    final isMine = isClinician;
-    final align = isMine ? CrossAxisAlignment.end : CrossAxisAlignment.start;
-    final bubbleColor =
-        isMine ? AppColors.bubbleMine(context) : scheme.surfaceContainerHighest;
-    final onBubble = isMine ? Colors.white : scheme.onSurface;
+    final who =
+        isUser
+            ? 'Patient'
+            : isDietician
+            ? '${m.senderName ?? 'Dietician'} · Dietician'
+            : isClinician
+            ? (m.senderName ?? 'Clinic')
+            // Named for whose protocols it is quoting. In a nutrition thread
+            // that is the dietician's plan, so their name goes on it.
+            : (isNutrition
+                ? '${dieticianName ?? 'Dietician'}’s assistant'
+                : 'Assistant');
+
+    final (Color fill, Color? border, Color ink) =
+        isMine
+            ? (T.primary, null, T.surfaceRaised)
+            : isAssistant
+            ? (T.primaryTint, null, T.ink)
+            : (T.surfaceRaised, T.line, T.ink);
+
+    final textStyle = T.body.copyWith(color: ink);
 
     return Padding(
-      padding: const EdgeInsets.only(bottom: AppSpacing.md),
+      padding: const EdgeInsets.only(bottom: T.s4),
       child: Column(
-        crossAxisAlignment: align,
+        crossAxisAlignment:
+            isMine ? CrossAxisAlignment.end : CrossAxisAlignment.start,
         children: [
           Row(
-            mainAxisAlignment:
-                isMine ? MainAxisAlignment.end : MainAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
             children: [
-              // Who spoke, drawn the way the care thread draws it: a real
-              // face for a real person, the app's own mark for the assistant,
-              // and nothing at all for the patient — whose photo and name are
-              // already in the app bar above.
-              if (isDietician)
+              if (isDietician) ...[
                 UserAvatar(
-                  name: m.senderName ?? '',
+                  name: nameForInitial(m.senderName ?? ''),
                   avatarUrl: m.senderAvatarUrl,
-                  accent: AppColors.accentOn(context),
-                  size: 22,
-                )
-              else if (isClinician)
-                Icon(
-                  Icons.medical_information_rounded,
-                  size: 15,
-                  color: AppColors.accentOn(context),
-                )
-              else if (!isUser)
-                Container(
-                  width: 22,
-                  height: 22,
-                  padding: const EdgeInsets.all(4),
-                  decoration: BoxDecoration(
-                    color: AppColors.accentSoftOn(context),
-                    shape: BoxShape.circle,
-                  ),
-                  child: Image.asset(
-                    'assets/brand/medpin_emblem.png',
-                    errorBuilder:
-                        (_, _, _) => Icon(
-                          Icons.smart_toy_outlined,
-                          size: 13,
-                          color: AppColors.accentOn(context),
-                        ),
-                  ),
+                  accent: T.primary,
+                  size: T.s6,
                 ),
-              if (!isUser) const SizedBox(width: 4),
+                const SizedBox(width: T.s1),
+              ] else if (isAssistant) ...[
+                const Icon(
+                  Icons.auto_awesome_rounded,
+                  size: T.s4,
+                  color: T.primary,
+                ),
+                const SizedBox(width: T.s1),
+              ],
               Flexible(
                 child: Text(
-                  isUser
-                      ? 'Patient'
-                      : isDietician
-                      ? '${m.senderName ?? 'Dietician'} · Dietician'
-                      : isClinician
-                      ? 'You / clinic'
-                      // Named for whose protocols it is quoting. In a nutrition
-                      // thread that is the dietician's plan, so their name goes
-                      // on it — "Assistant" alone said nothing about whose
-                      // advice the doctor was reading.
-                      : (isNutrition
-                          ? '${dieticianName ?? 'Dietitian'} Assistant'
-                          : 'Assistant'),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700,
-                    color:
-                        isPerson
-                            ? AppColors.accentOn(context)
-                            : scheme.onSurfaceVariant,
+                  who,
+                  style: T.label.copyWith(
+                    color: isUser ? T.inkMuted : T.primary,
+                    letterSpacing: 0,
                   ),
                 ),
               ),
               if (m.flaggedByPatient) ...[
-                const SizedBox(width: 4),
-                Icon(
-                  Icons.flag_rounded,
-                  size: 14,
-                  color: AppColors.warningOn(context),
-                ),
-                Text(
-                  ' reported',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: AppColors.warningOn(context),
-                  ),
+                const SizedBox(width: T.s2),
+                TonePill(
+                  label: 'Reported by the patient',
+                  status: Status.watch,
+                  icon: Icons.flag_outlined,
                 ),
               ],
             ],
           ),
-          const SizedBox(height: 4),
+          const SizedBox(height: T.s1),
           // The quoted turn this message answers.
           if (repliedTo != null || m.replyPreviewContent != null)
             Container(
-              margin: const EdgeInsets.only(bottom: 4),
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-              constraints: BoxConstraints(
-                maxWidth: MediaQuery.of(context).size.width * 0.82,
-              ),
+              margin: const EdgeInsets.only(bottom: T.s1),
+              padding: const EdgeInsets.all(T.s2),
+              constraints: BoxConstraints(maxWidth: maxWidth),
               decoration: BoxDecoration(
-                color: scheme.surfaceContainerHighest,
-                borderRadius: BorderRadius.circular(12),
-                border: Border(
-                  left: BorderSide(
-                    color: AppColors.accentOn(context),
-                    width: 3,
-                  ),
+                color: T.surfaceRaised,
+                borderRadius: BorderRadius.circular(T.rControl),
+                border: const Border(
+                  left: BorderSide(color: T.primary, width: 3),
                 ),
               ),
               child: Text(
                 repliedTo?.content ?? m.replyPreviewContent!,
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
-                style: TextStyle(fontSize: 14, color: scheme.onSurfaceVariant),
+                style: T.small.copyWith(color: T.inkMuted),
               ),
             ),
           GestureDetector(
             onLongPress: () => _showActions(context),
             child: Container(
-              constraints: BoxConstraints(
-                maxWidth: MediaQuery.of(context).size.width * 0.82,
-              ),
-              padding: const EdgeInsets.all(AppSpacing.md),
+              constraints: BoxConstraints(maxWidth: maxWidth),
+              padding: const EdgeInsets.all(T.s3),
               decoration: BoxDecoration(
-                color: bubbleColor,
-                borderRadius: BorderRadius.circular(16),
+                color: fill,
+                borderRadius: BorderRadius.circular(T.rControl),
+                border: border == null ? null : Border.all(color: border),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  // A photo is often the whole message. Rendering only the text
-                  // left an empty bubble above the assistant's reply about a
-                  // meal the doctor could not see.
+                  // A photo is often the whole message.
                   if (m.imagePaths.isNotEmpty)
                     ChatAttachmentThumbs(paths: m.imagePaths),
                   for (final note in m.voiceNotes)
-                    VoiceNotePlayer(note: note, onDark: false),
+                    VoiceNotePlayer(note: note, onDark: isMine),
                   for (final doc in m.documents)
                     Padding(
-                      padding: const EdgeInsets.only(bottom: 4),
-                      child: ChatDocumentCard(doc: doc, onDark: false),
+                      padding: const EdgeInsets.only(bottom: T.s1),
+                      child: ChatDocumentCard(doc: doc, onDark: isMine),
                     ),
                   if (m.content.trim().isNotEmpty)
                     isUser || isClinician
-                        ? Text(
-                          m.content,
-                          style: TextStyle(
-                            fontSize: 14,
-                            height: 1.4,
-                            color: onBubble,
-                          ),
-                        )
+                        ? Text(m.content, style: textStyle)
                         : MarkdownText(
                           data: m.content,
                           selectable: true,
-                          style: TextStyle(
-                            fontSize: 14,
-                            height: 1.4,
-                            color: onBubble,
-                          ),
+                          style: textStyle,
                         ),
                 ],
               ),
             ),
           ),
-          // Audit chips describe an assistant answer — a human reply has no
-          // triage verdict, grounding or latency to account for.
-          if (!isUser && !isClinician) ...[
-            const SizedBox(height: 4),
-            Wrap(
-              spacing: 4,
-              runSpacing: 4,
-              children: [
-                if (m.urgency != 'routine')
-                  _chip(
-                    m.urgency.toUpperCase(),
-                    AppColors.forUrgencyOn(context, m.urgency),
-                  ),
-                if (m.ruleDriven) _chip('rule-driven', AppColors.primary),
-                if (m.isFallback) _chip('fallback', AppColors.warning),
-                if (m.citations.isNotEmpty)
-                  _chip(
-                    '${m.citations.length} source${m.citations.length == 1 ? '' : 's'}',
-                    const Color(0xFF6B7280),
-                  ),
-                if (m.latencyMs != null)
-                  _chip(
-                    '${(m.latencyMs! / 1000).toStringAsFixed(1)}s',
-                    const Color(0xFF6B7280),
-                  ),
-              ],
+          // The audit trail describes an assistant answer — a human reply has
+          // no triage verdict, grounding or speed to account for.
+          if (isAssistant) ...[
+            const SizedBox(height: T.s1),
+            ConstrainedBox(
+              constraints: BoxConstraints(maxWidth: maxWidth),
+              child: _AuditLine(message: m),
             ),
-            if (m.citations.isNotEmpty)
-              Padding(
-                padding: const EdgeInsets.only(top: 4),
-                child: Text(
-                  'Sources: ${m.citations.join(', ')}',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: scheme.onSurfaceVariant,
-                  ),
-                ),
-              ),
           ],
         ],
       ),
     );
   }
+}
 
-  Widget _chip(String label, Color color) => Container(
-    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 0),
-    decoration: BoxDecoration(
-      color: color.withValues(alpha: 0.14),
-      borderRadius: BorderRadius.circular(12),
-    ),
-    child: Text(
-      label,
-      style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: color),
-    ),
-  );
+/// What the doctor needs to judge an assistant answer, as one sentence.
+class _AuditLine extends StatelessWidget {
+  const _AuditLine({required this.message});
+
+  final ChatReviewMessage message;
+
+  @override
+  Widget build(BuildContext context) {
+    final m = message;
+    final muted = T.small.copyWith(color: T.inkMuted);
+    final urgency = switch (m.urgency) {
+      'emergency' => ('Triage: emergency', T.danger),
+      'urgent' => ('Triage: urgent', T.danger),
+      'advice' => ('Triage: advice given', T.inkMuted),
+      _ => null,
+    };
+
+    final parts = <InlineSpan>[
+      if (urgency != null)
+        TextSpan(
+          text: urgency.$1,
+          style: muted.copyWith(color: urgency.$2, fontWeight: FontWeight.w600),
+        ),
+      if (m.ruleDriven) const TextSpan(text: 'Answered by a safety rule'),
+      if (m.isFallback)
+        TextSpan(
+          text: 'Fallback reply',
+          style: muted.copyWith(color: T.warning, fontWeight: FontWeight.w600),
+        ),
+      // Non-breaking spaces bind each figure to its unit: "2" at the end of
+      // one line and "sources" at the start of the next reads as two facts.
+      if (m.citations.isNotEmpty)
+        TextSpan(
+          text:
+              '${m.citations.length} ${m.citations.length == 1 ? 'source' : 'sources'}',
+        ),
+      if (m.latencyMs != null)
+        TextSpan(text: '${(m.latencyMs! / 1000).toStringAsFixed(1)} s'),
+    ];
+    if (parts.isEmpty) return const SizedBox.shrink();
+
+    final joined = <InlineSpan>[
+      for (var i = 0; i < parts.length; i++) ...[
+        if (i > 0) const TextSpan(text: ' · '),
+        parts[i],
+      ],
+    ];
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text.rich(TextSpan(children: joined), style: muted),
+        if (m.citations.isNotEmpty)
+          Text('Sources: ${m.citations.join(', ')}', style: muted),
+      ],
+    );
+  }
 }
