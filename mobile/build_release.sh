@@ -98,11 +98,25 @@ echo "Building ${NAME}+${BUILD}"
 # for an x86_64 APK that is never produced and exits non-zero after the ARM
 # APKs have built fine. Obfuscated like every release since 2026-08-18, with
 # the symbols kept so a crash can still be read.
+#
+# Which server the build talks to. Unset is production — the address built into
+# the app. Staging is one variable away, with every other flag unchanged:
+#
+#   API_BASE_URL=https://test.medpin.in/api/v1 ./build_release.sh patch
+#
+# A staging build shares the package id with the production one, so it replaces
+# it on the phone; sign in again on the server it points at.
+SERVER_DEFINE=()
+if [ -n "${API_BASE_URL:-}" ]; then
+  SERVER_DEFINE=(--dart-define="API_BASE_URL=${API_BASE_URL}")
+  echo "Server: ${API_BASE_URL}"
+fi
 flutter build apk --release --split-per-abi \
   --target-platform android-arm,android-arm64 \
   --obfuscate --split-debug-info=build/symbols \
   --dart-define="APP_BUILD=${BUILD}" \
-  --dart-define="APP_VERSION=${NAME}"
+  --dart-define="APP_VERSION=${NAME}" \
+  "${SERVER_DEFINE[@]}"
 
 # Proof, not an exit code.
 #
@@ -122,4 +136,5 @@ cat <<EOF
 Built ${NAME}
 
 On the server:  ANDROID_LATEST_VERSION=${NAME}
+Talks to:       ${API_BASE_URL:-https://clinq.flintdeorient.in/api/v1 (built in)}
 EOF
