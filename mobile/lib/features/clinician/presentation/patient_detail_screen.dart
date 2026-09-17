@@ -1,203 +1,166 @@
+import 'dart:ui' show FontFeature;
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart'; // FilteringTextInputFormatter, LengthLimitingTextInputFormatter
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:open_filex/open_filex.dart';
 import 'package:path_provider/path_provider.dart';
 
-import '../../../core/capabilities/capabilities.dart';
 import '../../../core/config/app_config.dart';
-import '../../../core/router/area.dart';
-import '../../../core/theme/tokens.dart';
+import '../../../core/theme/app_colors.dart';
+import '../../../core/theme/app_spacing.dart';
 import '../../../shared/providers/core_providers.dart';
 import '../../../shared/widgets/authed_image.dart';
-import '../../../shared/widgets/disclosure_tile.dart';
 import '../../../shared/widgets/fullscreen_photo.dart';
-import '../../../shared/widgets/surfaces.dart';
 import '../data/clinician_repository.dart';
+import '../domain/clinician_models.dart';
 import '../domain/patient_summary.dart';
 import 'clinician_providers.dart';
-import 'widgets/current_medicines.dart';
+import 'widgets/clinician_visuals.dart';
+import 'widgets/sparkline.dart';
 import 'widgets/ecg_section.dart';
+import '../../../core/theme/tokens.dart';
+import '../../../shared/widgets/disclosure_tile.dart';
+import '../../../shared/widgets/surfaces.dart';
 import '../../../core/network/api_exception.dart';
 import '../domain/nutrition_care.dart';
-import 'widgets/load_states.dart';
-import 'widgets/record_focus.dart';
-import 'widgets/record_ui.dart';
-import 'widgets/sparkline.dart';
 
-/// The patient record under its header: what needs attention, what this visit
-/// turns on, then the history behind it.
+/// The read side of a patient: health score, adherence, glucose control, HbA1c
+/// history, test reports, recent alerts, the dietician's review cadence, and
+/// the same context the AI assistant is given before it answers.
 ///
-/// ---- The order is the argument ----------------------------------------------
-///
-/// This was a stack of equal cards in the order they were built: six metric
-/// tiles, measurements, the dietician, HbA1c history, every uploaded report,
-/// ECGs, alerts, twelve past consultations and the assistant's context — and
-/// only then, five screens down, the medicines the patient is on. A doctor
-/// reads top-down and stops when the patient sits down, so the order has to
-/// survive that:
-///
-///  1. open alerts, if there are any;
-///  2. the card for the reader's department — glucose control, heart and blood
-///     pressure, or vitals (see record_focus.dart);
-///  3. medicines, the last consultation, tests ordered and what came back;
-///  4. measurements the leading card did not show, and the other departments'
-///     cards where the patient has something in them;
-///  5. history and details, folded.
-///
-/// ---- One fact, one place ------------------------------------------------------
-///
-/// The old record said "3 active medicines" in a tile above a list of three
-/// medicines, showed the latest HbA1c in a tile and again at the top of the
-/// HbA1c history, and repeated every report's values under the tests ordered.
-/// Each fact is now said once: the history of a figure opens from the figure,
-/// and the values of a report live with the report.
+/// A section list rather than a screen of its own. It sits underneath the
+/// prescribing form on the Patient Profile, so one screen holds everything
+/// about a patient — what you read and what you then do about it — instead of
+/// splitting them across a navigation step.
 class PatientRecordSections extends ConsumerWidget {
   const PatientRecordSections({
     super.key,
     required this.summary,
     required this.patientId,
-    this.isDesk = false,
   });
 
   final PatientSummary summary;
   final String patientId;
 
-  /// The front desk reads the record and changes no prescription.
-  final bool isDesk;
-
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final p = summary;
-    final caps = ref.watch(capabilitySetProvider);
-    final focus = recordFocusFor(caps, p);
-    final canStop = !isDesk && caps.can(Perm.prescribe);
-
-    void openAdherence() => _showAdherenceSheet(context, p);
-    void openHba1c() => _showHba1cSheet(context, p.hba1cHistory);
-
-    // Decided here rather than by each card shrinking itself, so the gaps
-    // between cards stay even when one has nothing to say.
-    final ecgs = ref.watch(patientEcgsProvider(patientId));
-    final showEcgCard =
-        focus != RecordFocus.cardiology &&
-        (caps.can(Perm.editRecord) ||
-            ecgs.hasError ||
-            (ecgs.valueOrNull?.isNotEmpty ?? false));
-    final hasOpenAlerts = p.alerts.any((a) => a.status == 'open');
-
-    final alerts = hasOpenAlerts ? OpenAlertsCard(alerts: p.alerts) : null;
-    final lead = switch (focus) {
-      RecordFocus.diabetes => GlucoseControlCard(
-        summary: p,
-        onOpenAdherence: openAdherence,
-        onOpenHba1c: openHba1c,
-      ),
-      RecordFocus.cardiology => HeartCard(
-        summary: p,
-        onOpenAdherence: openAdherence,
-      ),
-      RecordFocus.general => VitalsCard(
-        summary: p,
-        onOpenAdherence: openAdherence,
-      ),
-    };
-    final medicines = MedicinesCard(patientId: patientId, allowStop: canStop);
-    final lastVisit = _LastConsultationCard(
-      patientId: patientId,
-      patientName: p.name,
-    );
-    final tests = p.advisedTests.isEmpty ? null : OrderedTestsCard(summary: p);
-    final reports =
-        p.labResults.isEmpty ? null : _TestReportsCard(reports: p.labResults);
-    final measurements =
-        _hasMeasurements(p, focus)
-            ? MeasurementsCard(summary: p, focus: focus)
-            : null;
-    final glucose =
-        focus != RecordFocus.diabetes && hasDiabetesRecord(p)
-            ? GlucoseControlCard(
-              summary: p,
-              onOpenAdherence: openAdherence,
-              onOpenHba1c: openHba1c,
-              leading: false,
-            )
-            : null;
-    final ecg = showEcgCard ? EcgSection(patientId: patientId, framed: true) : null;
-    // In a card of its own, so it sits on the record the way every other
-    // section does. The section itself is unchanged.
-    final dietician = SectionCard(
-      padding: const EdgeInsets.all(T.s4),
-      child: _DieticianSection(summary: p, patientId: patientId),
-    );
-    final history = _HistoryCard(summary: p);
-
-    final ordered = switch (focus) {
-      RecordFocus.diabetes => [
-        alerts, lead, medicines, lastVisit, tests, reports, measurements, ecg,
-        dietician, history,
-      ],
-      RecordFocus.cardiology => [
-        alerts, lead, medicines, lastVisit, tests, reports, measurements,
-        glucose, dietician, history,
-      ],
-      // A general consultation starts from the vitals and from what was
-      // decided last time — the follow-up — and the recent results.
-      RecordFocus.general => [
-        alerts, lead, lastVisit, tests, reports, medicines, measurements,
-        glucose, ecg, dietician, history,
-      ],
-    }.whereType<Widget>().toList();
-
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        for (var i = 0; i < ordered.length; i++) ...[
-          if (i > 0) const SizedBox(height: T.s4),
-          ordered[i],
+        _MetricsGrid(summary: p),
+        _MeasurementsSection(summary: p),
+        const SizedBox(height: AppSpacing.lg),
+        _DieticianSection(summary: p, patientId: patientId),
+        if (p.hba1cHistory.isNotEmpty) ...[
+          const SizedBox(height: AppSpacing.lg),
+          Row(
+            children: [
+              const Expanded(child: _SectionTitle('HbA1c history')),
+              if (p.hba1cHistory.length > 4)
+                TextButton(
+                  onPressed: () => _showAllHba1c(context, p.hba1cHistory),
+                  child: Text('View all (${p.hba1cHistory.length})'),
+                ),
+            ],
+          ),
+          const SizedBox(height: AppSpacing.sm),
+          // Latest four; the rest are behind "View all".
+          _Hba1cList(points: p.hba1cHistory.take(4).toList()),
+        ],
+        if (p.labResults.isNotEmpty) ...[
+          const SizedBox(height: AppSpacing.lg),
+          Row(
+            children: [
+              const Expanded(child: _SectionTitle('Test reports')),
+              if (p.labResults.length > 4)
+                TextButton(
+                  onPressed: () => _showAllReports(context, p.labResults),
+                  child: Text('View all (${p.labResults.length})'),
+                ),
+            ],
+          ),
+          const SizedBox(height: AppSpacing.sm),
+          // Latest four, like the HbA1c history above it. Ten reports each
+          // carrying a summary and a row of analyte chips ran to several
+          // screens, and pushed the alerts and the consultation history below
+          // them out of sight entirely.
+          for (final r in p.labResults.take(4))
+            Padding(
+              padding: const EdgeInsets.only(bottom: AppSpacing.sm),
+              child: _LabReportRow(report: r),
+            ),
+          // Trends read every report, not just the four on show: a trend drawn
+          // from a quarter of the data would be a different trend.
+          _AnalyteTrends(reports: p.labResults),
+        ],
+        // ECGs, read and filed by a clinician. Its own request, and it hides
+        // itself when empty for somebody who could not file one.
+        const SizedBox(height: AppSpacing.lg),
+        EcgSection(patientId: patientId),
+        if (p.alerts.isNotEmpty) ...[
+          const SizedBox(height: AppSpacing.lg),
+          const _SectionTitle('Recent alerts'),
+          const SizedBox(height: AppSpacing.sm),
+          for (final a in p.alerts.take(8))
+            Padding(
+              padding: const EdgeInsets.only(bottom: AppSpacing.sm),
+              child: _AlertMini(
+                title: a.title,
+                severity: a.severity,
+                status: a.status,
+                when: a.createdAt,
+              ),
+            ),
+        ],
+        _ConsultationHistory(patientId: patientId),
+        if (p.aiContext != null && p.aiContext!.isNotEmpty) ...[
+          const SizedBox(height: AppSpacing.lg),
+          _AiContextCard(text: p.aiContext!),
         ],
       ],
     );
   }
 
-  static bool _hasMeasurements(PatientSummary p, RecordFocus focus) {
-    final leadHasVitals = focus != RecordFocus.diabetes;
-    final leadHasWeight = focus == RecordFocus.general;
-    return (!leadHasVitals &&
-            ((p.systolic != null && p.diastolic != null) ||
-                p.pulse != null ||
-                p.spo2 != null)) ||
-        (!leadHasWeight && p.weightKg != null) ||
-        p.waistCm != null ||
-        p.heightCm != null;
-  }
-
-  /// Doses taken, by week, month or year, with the caveat about what the
-  /// number can and cannot mean.
-  static void _showAdherenceSheet(BuildContext context, PatientSummary p) {
+  /// Every uploaded report, in the same sheet the HbA1c history uses.
+  void _showAllReports(BuildContext context, List<LabReport> reports) {
     showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
       showDragHandle: true,
       builder:
-          (ctx) => _AdherenceSheet(
-            patientId: p.id,
-            // The summary's 30-day figures, so the sheet opens with an answer.
-            initial: AdherenceReport(
-              taken: p.adherenceTaken ?? 0,
-              expected: p.adherenceExpected ?? 0,
-              percentage: p.adherencePercent,
-              perMed: p.adherencePerMed,
-            ),
+          (ctx) => DraggableScrollableSheet(
+            expand: false,
+            initialChildSize: 0.7,
+            maxChildSize: 0.95,
+            builder:
+                (ctx, controller) => ListView(
+                  controller: controller,
+                  padding: const EdgeInsets.fromLTRB(
+                    AppSpacing.md,
+                    0,
+                    AppSpacing.md,
+                    AppSpacing.lg,
+                  ),
+                  children: [
+                    const _SectionTitle('Test reports'),
+                    const SizedBox(height: AppSpacing.md),
+                    for (final r in reports)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: AppSpacing.sm),
+                        child: _LabReportRow(report: r),
+                      ),
+                  ],
+                ),
           ),
     );
   }
 
-  /// Every HbA1c result, from the figure that opens it.
-  static void _showHba1cSheet(BuildContext context, List<Hba1cPoint> points) {
+  /// The full HbA1c history in a scrollable sheet, behind the "View all" action.
+  void _showAllHba1c(BuildContext context, List<Hba1cPoint> points) {
     showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
@@ -210,20 +173,16 @@ class PatientRecordSections extends ConsumerWidget {
             builder:
                 (ctx, controller) => ListView(
                   controller: controller,
-                  padding: const EdgeInsets.fromLTRB(T.s4, 0, T.s4, T.s8),
+                  padding: const EdgeInsets.fromLTRB(
+                    AppSpacing.md,
+                    0,
+                    AppSpacing.md,
+                    AppSpacing.lg,
+                  ),
                   children: [
-                    Text('HbA1c results', style: T.title.copyWith(color: T.ink)),
-                    Text(
-                      points.length == 1
-                          ? '1 result, newest first'
-                          : '${points.length} results, newest first',
-                      style: T.small.copyWith(color: T.inkMuted),
-                    ),
-                    const SizedBox(height: T.s4),
-                    for (var i = 0; i < points.length; i++) ...[
-                      if (i > 0) const Divider(height: T.s5, color: T.line),
-                      _Hba1cRow(point: points[i]),
-                    ],
+                    const _SectionTitle('HbA1c history'),
+                    const SizedBox(height: AppSpacing.md),
+                    _Hba1cList(points: points),
                   ],
                 ),
           ),
@@ -231,250 +190,260 @@ class PatientRecordSections extends ConsumerWidget {
   }
 }
 
-class _Hba1cRow extends StatelessWidget {
-  const _Hba1cRow({required this.point});
-
-  final Hba1cPoint point;
-
-  @override
-  Widget build(BuildContext context) {
-    final reading = hba1cReading(point.percentage);
-    return ConstrainedBox(
-      constraints: const BoxConstraints(minHeight: T.tap),
-      child: Row(
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                MetricValue(value: figure(point.percentage), unit: '%'),
-                if (point.testedOn != null)
-                  Text(
-                    'Tested ${DateFormat('d MMM y').format(point.testedOn!)}',
-                    style: T.small.copyWith(color: T.inkMuted),
-                  ),
-              ],
-            ),
-          ),
-          StatusPill(label: reading.word, status: reading.status),
-        ],
-      ),
-    );
-  }
-}
-
-// ---- the last consultation -----------------------------------------------------
-
-/// What was decided at the last visit: the diagnosis, the tests, the advice,
-/// and when the patient is due back.
-///
-/// A follow-up visit starts from here. It used to be the eleventh section of
-/// twelve, as one of a dozen folded dates.
-class _LastConsultationCard extends ConsumerWidget {
-  const _LastConsultationCard({
-    required this.patientId,
-    required this.patientName,
-  });
+/// The record's consultation history — past prescriptions latest-first, each
+/// collapsible to reveal that visit's diagnosis, advice, tests and follow-up.
+/// Renders nothing until at least one prescription exists.
+class _ConsultationHistory extends ConsumerWidget {
+  const _ConsultationHistory({required this.patientId});
 
   final String patientId;
-  final String patientName;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final async = ref.watch(patientPrescriptionsProvider(patientId));
-    void retry() => ref.invalidate(patientPrescriptionsProvider(patientId));
-    void openAll() => GoRouter.of(context).push(
-      '${areaPrefix(ref)}/patients/$patientId/prescriptions',
-      extra: patientName,
-    );
-    const what = 'the consultations';
-
-    final list = async.valueOrNull;
-    final error = async.hasError && !async.isLoading ? async.error : null;
-    final refused =
-        error != null && !Failure.of(error, what: what).keepsData;
-
-    if (list == null || refused) {
-      return RecordCard(
-        icon: Icons.event_note_outlined,
-        title: 'Last visit',
-        child:
-            error != null
-                ? FailureNotice(error: error, what: what, onRetry: retry)
-                : const Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    SkeletonLine(width: 220),
-                    SizedBox(height: T.s2),
-                    SkeletonLine(width: 160),
-                  ],
-                ),
-      );
-    }
-
-    if (list.isEmpty) {
-      return RecordCard(
-        icon: Icons.event_note_outlined,
-        title: 'Last visit',
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            if (error != null) ...[
-              StaleNotice(error: error, what: 'this card', onRetry: retry),
-              const SizedBox(height: T.s3),
-            ],
-            const RecordNote(
-              icon: Icons.event_note_outlined,
-              text: 'No consultation or prescription on record yet.',
-            ),
-            const SizedBox(height: T.s3),
-            // Where a prescription written on paper is filed, which is how a
-            // practice starting on paper gets its first one onto the record.
-            Align(
-              alignment: Alignment.centerLeft,
-              child: QuietAction(
-                icon: Icons.document_scanner_outlined,
-                label: 'File a paper prescription',
-                onPressed: openAll,
-              ),
-            ),
-          ],
-        ),
-      );
-    }
-
-    final rx = list.first;
-    final status = prescriptionStatus(rx);
-    final today = DateUtils.dateOnly(DateTime.now());
-    final due = rx.followUpOn;
-    final overdue = due != null && DateUtils.dateOnly(due).isBefore(today);
-    final by = [
-      if (rx.issuedOn != null) DateFormat('d MMM y').format(rx.issuedOn!),
-      if (rx.isScanned)
-        rx.uploadedByName == null
-            ? 'written on paper'
-            : 'written on paper, filed by ${rx.uploadedByName}'
-      else if (rx.doctorName != null)
-        rx.doctorName!,
-    ].join(' · ');
-
-    return RecordCard(
-      icon: Icons.event_note_outlined,
-      title: 'Last visit',
-      subtitle: by.isEmpty ? null : by,
-      // Every prescription, with its PDF — one tap from the latest.
-      trailing: ActionLink(label: 'View all', onTap: openAll),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          if (error != null) ...[
-            StaleNotice(error: error, what: 'this card', onRetry: retry),
-            const SizedBox(height: T.s3),
-          ],
-          // Said only when it is not the ordinary answer: a last prescription
-          // that was voided or replaced changes how everything under it reads.
-          if (status != null && status.word != 'Current') ...[
-            Align(
-              alignment: Alignment.centerLeft,
-              child: StatusPill(label: status.word, status: status.status),
-            ),
-            const SizedBox(height: T.s3),
-          ],
-          if (due != null) ...[
-            InnerTile(
-              tone: overdue ? T.warningTint : null,
-              child: Row(
-                children: [
-                  Icon(
-                    Icons.event_available_outlined,
-                    color: overdue ? T.warning : T.primary,
-                  ),
-                  const SizedBox(width: T.s3),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          overdue ? 'Follow-up was due' : 'Follow-up due',
-                          style: T.label.copyWith(color: T.inkMuted),
-                        ),
-                        Text(
-                          [
-                            DateFormat('EEE d MMM y').format(due),
-                            if (isRelativeWhen(whenLabel(due))) whenLabel(due),
-                          ].join(' · '),
-                          style: T.bodyStrong.copyWith(color: T.ink),
-                        ),
-                      ],
-                    ),
-                  ),
-                  if (overdue)
-                    const StatusPill(label: 'Overdue', status: Status.watch),
-                ],
-              ),
-            ),
-            const SizedBox(height: T.s3),
-          ],
-          if (rx.diagnosis.isNotEmpty)
-            _Fact(label: 'Diagnosis', value: rx.diagnosis.join(', ')),
-          if (rx.labTestsAdvised.isNotEmpty)
-            _Fact(
-              label: 'Tests advised',
-              value: rx.labTestsAdvised.join(', '),
-            ),
-          if ((rx.generalAdvice ?? '').trim().isNotEmpty)
-            _Fact(label: 'Advice', value: rx.generalAdvice!.trim()),
-          if ((rx.endedReason ?? '').trim().isNotEmpty)
-            _Fact(label: 'Why it ended', value: rx.endedReason!.trim()),
-          // A paper prescription has nothing typed in to show here, which is
-          // "not entered", never "nothing was decided".
-          if (rx.isScanned &&
-              rx.diagnosis.isEmpty &&
-              rx.labTestsAdvised.isEmpty &&
-              (rx.generalAdvice ?? '').trim().isEmpty)
-            const RecordNote(
-              icon: Icons.document_scanner_outlined,
-              text:
-                  'Written on paper, and not typed in. Open it from '
-                  'Prescriptions to read it.',
-            )
-          else if (!rx.isScanned &&
-              rx.diagnosis.isEmpty &&
-              rx.labTestsAdvised.isEmpty &&
-              (rx.generalAdvice ?? '').trim().isEmpty &&
-              due == null)
-            const RecordNote(
-              text: 'No diagnosis, tests, advice or follow-up were written.',
-            ),
-        ],
-      ),
+    final list =
+        ref.watch(patientPrescriptionsProvider(patientId)).valueOrNull ??
+        const [];
+    if (list.isEmpty) return const SizedBox.shrink();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const SizedBox(height: AppSpacing.lg),
+        const _SectionTitle('Previous consultations'),
+        const SizedBox(height: AppSpacing.sm),
+        for (final rx in list.take(12))
+          Padding(
+            padding: const EdgeInsets.only(bottom: AppSpacing.sm),
+            child: _ConsultationTile(rx: rx),
+          ),
+      ],
     );
   }
 }
 
-/// A label over its value, the way the record states a fact in words.
-class _Fact extends StatelessWidget {
-  const _Fact({required this.label, required this.value});
+class _ConsultationTile extends StatelessWidget {
+  const _ConsultationTile({required this.rx});
 
-  final String label;
-  final String value;
+  final PrescriptionSummary rx;
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final date =
+        rx.issuedOn != null
+            ? DateFormat('d MMM yyyy').format(rx.issuedOn!)
+            : '—';
+    final dx =
+        rx.diagnosis.isNotEmpty
+            ? rx.diagnosis.join(', ')
+            : 'No diagnosis recorded';
+
+    return Container(
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(AppSpacing.cardRadius),
+        border: Border.all(color: scheme.outlineVariant.withValues(alpha: 0.6)),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Theme(
+        data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+        child: DisclosureTile(
+          tilePadding: const EdgeInsets.symmetric(
+            horizontal: AppSpacing.md,
+            vertical: 0,
+          ),
+          childrenPadding: const EdgeInsets.fromLTRB(
+            AppSpacing.md,
+            0,
+            AppSpacing.md,
+            AppSpacing.md,
+          ),
+          crossAxisAlignment: CrossAxisAlignment.start,
+          title: Text(
+            date,
+            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
+          ),
+          subtitle: Text(
+            dx,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant),
+          ),
+          children: [
+            if (rx.diagnosis.isNotEmpty)
+              _kv(context, 'Diagnosis', rx.diagnosis.join('\n')),
+            if (rx.medicines.isNotEmpty)
+              _kv(context, 'Medicines', rx.medicines.join('\n'))
+            else if (rx.itemCount > 0)
+              _kv(context, 'Medicines', '${rx.itemCount} prescribed'),
+            if (rx.labTestsAdvised.isNotEmpty)
+              _kv(context, 'Tests advised', rx.labTestsAdvised.join(', ')),
+            if (rx.generalAdvice != null)
+              _kv(context, 'Advice', rx.generalAdvice!),
+            if (rx.followUpOn != null)
+              _kv(
+                context,
+                'Follow-up',
+                DateFormat('d MMM yyyy').format(rx.followUpOn!),
+              ),
+            if (rx.doctorName != null) _kv(context, 'By', rx.doctorName!),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _kv(BuildContext context, String k, String v) {
+    final scheme = Theme.of(context).colorScheme;
     return Padding(
-      padding: const EdgeInsets.only(bottom: T.s3),
+      padding: const EdgeInsets.only(top: 8),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(label, style: T.label.copyWith(color: T.inkMuted)),
-          Text(value, style: T.body.copyWith(color: T.ink)),
+          Text(
+            k.toUpperCase(),
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 0.5,
+              color: scheme.onSurfaceVariant,
+            ),
+          ),
+          const SizedBox(height: 0),
+          Text(v, style: const TextStyle(fontSize: 14, height: 1.3)),
         ],
       ),
     );
   }
 }
 
-// ---- doses taken ----------------------------------------------------------------
+/// The colour an HbA1c should be shown in.
+///
+/// These two tiles sat side by side in fixed purple and cyan, so a last HbA1c
+/// of 5.6% and an estimated one of 9.8% read as equally unremarkable — which is
+/// the one pairing on this screen a clinician must not skim past. Colour now
+/// follows the value: at or above 8% it is red, 7–8% amber, below 7% green.
+///
+/// Thresholds are the ordinary adult targets, matching the ones the patient's
+/// own screens already colour against, so the same number is never green for
+/// one reader and red for another.
+Color _hba1cTone(num? value) {
+  if (value == null) return T.inkFaint;
+  if (value >= 8) return T.danger;
+  if (value >= 7) return T.warning;
+  return T.success;
+}
+
+class _MetricsGrid extends StatelessWidget {
+  const _MetricsGrid({required this.summary});
+  final PatientSummary summary;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = summary;
+    // Adherence: the percentage as the headline. The doses breakdown lives in
+    // the tap-through sheet, so the tile stays clean.
+    final adherenceValue =
+        p.adherencePercent != null ? '${p.adherencePercent}%' : '—';
+
+    final tiles = <Widget>[
+      _Metric(
+        label: 'Health score',
+        value: p.healthScore?.toString() ?? '—',
+        color: AppColors.toneOn(context, healthBandColor(p.healthBand)),
+        icon: Icons.favorite_rounded,
+      ),
+      _Metric(
+        label: 'Adherence',
+        value: adherenceValue,
+        color: AppColors.accentOn(context),
+        icon: Icons.medication_rounded,
+        onTap: () => _showAdherenceSheet(context, p),
+      ),
+      _Metric(
+        label: 'Medicines',
+        value: p.medicationCount?.toString() ?? '—',
+        unit: (p.medicationCount ?? 0) > 0 ? 'active' : null,
+        color: AppColors.primary,
+        icon: Icons.local_pharmacy_rounded,
+      ),
+      _Metric(
+        label: 'Fasting sugar',
+        value: p.lastFasting != null ? '${p.lastFasting}' : '—',
+        unit: p.lastFasting != null ? 'mg/dL' : null,
+        color: AppColors.warningOn(context),
+        icon: Icons.bloodtype_rounded,
+      ),
+      _Metric(
+        label: 'Last HbA1c',
+        value: p.lastHba1c != null ? p.lastHba1c!.toStringAsFixed(1) : '—',
+        unit: p.lastHba1c != null ? '%' : null,
+        color: _hba1cTone(p.lastHba1c),
+        icon: Icons.science_rounded,
+      ),
+      _Metric(
+        label: 'Est. HbA1c',
+        value:
+            p.estimatedHba1c != null
+                ? p.estimatedHba1c!.toStringAsFixed(1)
+                : '—',
+        unit: p.estimatedHba1c != null ? '%' : null,
+        color: _hba1cTone(p.estimatedHba1c),
+        icon: Icons.auto_graph_rounded,
+      ),
+    ];
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      // Two columns that size to their content, not a grid with a fixed
+      // aspect ratio. childAspectRatio pinned every tile to width/2.1, which
+      // was a few pixels short of the text at anything above the default font
+      // scale — so the values were clipped and the tiles painted the overflow
+      // stripes. A ratio that fits one device's text settings is a ratio that
+      // breaks on another's.
+      children: [
+        for (var i = 0; i < tiles.length; i += 2) ...[
+          if (i > 0) const SizedBox(height: AppSpacing.sm),
+          IntrinsicHeight(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Expanded(child: tiles[i]),
+                const SizedBox(width: AppSpacing.sm),
+                Expanded(
+                  child:
+                      i + 1 < tiles.length
+                          ? tiles[i + 1]
+                          : const SizedBox.shrink(),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+
+  /// The adherence breakdown — with a week/month/year filter, overall doses,
+  /// per-medicine, and the honest caveat about what the number captures.
+  void _showAdherenceSheet(BuildContext context, PatientSummary p) {
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder:
+          (ctx) => _AdherenceSheet(
+            patientId: p.id,
+            // Seed with the summary's 30-day figures so the sheet opens instantly.
+            initial: AdherenceReport(
+              taken: p.adherenceTaken ?? 0,
+              expected: p.adherenceExpected ?? 0,
+              percentage: p.adherencePercent,
+              perMed: p.adherencePerMed,
+            ),
+          ),
+    );
+  }
+}
 
 class _AdherenceSheet extends ConsumerStatefulWidget {
   const _AdherenceSheet({required this.patientId, required this.initial});
@@ -487,47 +456,34 @@ class _AdherenceSheet extends ConsumerStatefulWidget {
 
 class _AdherenceSheetState extends ConsumerState<_AdherenceSheet> {
   static const _periods = [
-    (label: 'Week', days: 7, words: 'the last week'),
-    (label: 'Month', days: 30, words: 'the last 30 days'),
-    (label: 'Year', days: 365, words: 'the last year'),
+    (label: 'Week', days: 7),
+    (label: 'Month', days: 30),
+    (label: 'Year', days: 365),
   ];
-
-  /// The period asked for, and the one whose figures are on screen. They
-  /// differ while a period loads, and after one fails.
-  int _asked = 30;
-  int _shown = 30;
+  int _days = 30;
   late AdherenceReport _report = widget.initial;
   bool _loading = false;
-  bool _failed = false;
-
-  String _words(int days) =>
-      _periods.firstWhere((p) => p.days == days).words;
 
   Future<void> _select(int days) async {
     setState(() {
-      _asked = days;
+      _days = days;
       _loading = true;
-      _failed = false;
     });
     try {
       final r = await ref
           .read(clinicianRepositoryProvider)
           .patientAdherence(widget.patientId, days: days);
-      if (!mounted || _asked != days) return;
-      setState(() {
-        _report = r;
-        _shown = days;
-      });
+      if (mounted) setState(() => _report = r);
     } catch (_) {
-      // Said, not swallowed: the figures still on screen are another period's.
-      if (mounted && _asked == days) setState(() => _failed = true);
+      // Keep whatever was showing.
     } finally {
-      if (mounted && _asked == days) setState(() => _loading = false);
+      if (mounted) setState(() => _loading = false);
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     final r = _report;
     return DraggableScrollableSheet(
       expand: false,
@@ -537,78 +493,433 @@ class _AdherenceSheetState extends ConsumerState<_AdherenceSheet> {
       builder:
           (ctx, controller) => ListView(
             controller: controller,
-            padding: const EdgeInsets.fromLTRB(T.s4, 0, T.s4, T.s8),
+            padding: const EdgeInsets.fromLTRB(
+              AppSpacing.md,
+              0,
+              AppSpacing.md,
+              AppSpacing.xl,
+            ),
             children: [
-              Text('Doses taken', style: T.title.copyWith(color: T.ink)),
-              const SizedBox(height: T.s3),
-              Wrap(
-                spacing: T.s2,
-                runSpacing: T.s2,
+              Row(
                 children: [
-                  for (final period in _periods)
-                    ChoiceChip(
-                      label: Text(period.label),
-                      selected: _asked == period.days,
-                      onSelected: (_) => _select(period.days),
-                      materialTapTargetSize: MaterialTapTargetSize.padded,
+                  Icon(
+                    Icons.medication_rounded,
+                    color: AppColors.accentOn(context),
+                  ),
+                  const SizedBox(width: 8),
+                  const Text(
+                    'Adherence',
+                    style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
+                  ),
+                  const Spacer(),
+                  if (_loading)
+                    const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2),
                     ),
                 ],
               ),
-              const SizedBox(height: T.s3),
-              if (_loading)
-                const LinearProgressIndicator()
-              else if (_failed)
-                InnerTile(
-                  tone: T.warningTint,
-                  child: Text(
-                    'Could not load ${_words(_asked)}. Showing '
-                    '${_words(_shown)}.',
-                    style: T.small.copyWith(color: T.ink),
+              const SizedBox(height: AppSpacing.md),
+              Row(
+                children: [
+                  for (final period in _periods) ...[
+                    _PeriodChip(
+                      label: period.label,
+                      selected: _days == period.days,
+                      onTap: () => _select(period.days),
+                    ),
+                    const SizedBox(width: 8),
+                  ],
+                ],
+              ),
+              const SizedBox(height: AppSpacing.md),
+              Container(
+                padding: const EdgeInsets.all(AppSpacing.md),
+                decoration: BoxDecoration(
+                  color: scheme.surfaceContainerLow,
+                  borderRadius: BorderRadius.circular(AppSpacing.cardRadius),
+                  border: Border.all(
+                    color: scheme.outlineVariant.withValues(alpha: 0.6),
                   ),
                 ),
-              const SizedBox(height: T.s3),
-              InnerTile(
                 child:
                     r.expected == 0
                         ? Text(
-                          'No scheduled doses came due in ${_words(_shown)}.',
-                          style: T.body.copyWith(color: T.inkMuted),
+                          'No scheduled doses have come due in this period.',
+                          style: TextStyle(color: scheme.onSurfaceVariant),
                         )
-                        : Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
+                        : Row(
+                          crossAxisAlignment: CrossAxisAlignment.end,
                           children: [
                             Text(
-                              _words(_shown)[0].toUpperCase() +
-                                  _words(_shown).substring(1),
-                              style: T.label.copyWith(color: T.inkMuted),
+                              '${r.taken}/${r.expected}',
+                              style: TextStyle(
+                                fontSize: 32,
+                                fontWeight: FontWeight.w800,
+                                color: AppColors.accentOn(context),
+                              ),
                             ),
-                            MetricValue(
-                              value: '${r.taken} of ${r.expected}',
-                              unit: 'doses',
+                            const SizedBox(width: 4),
+                            Padding(
+                              padding: const EdgeInsets.only(bottom: 4),
+                              child: Text(
+                                'doses taken',
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  color: scheme.onSurfaceVariant,
+                                ),
+                              ),
                             ),
+                            const Spacer(),
                             if (r.percentage != null)
                               Text(
-                                '${r.percentage}% marked taken',
-                                style: T.body.copyWith(color: T.ink),
+                                '${r.percentage}%',
+                                style: const TextStyle(
+                                  fontSize: 32,
+                                  fontWeight: FontWeight.w800,
+                                ),
                               ),
                           ],
                         ),
               ),
               if (r.perMed.isNotEmpty) ...[
-                const SizedBox(height: T.s5),
-                Text('By medicine', style: T.label.copyWith(color: T.inkMuted)),
-                const SizedBox(height: T.s2),
+                const SizedBox(height: AppSpacing.lg),
+                Text(
+                  'By medicine',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    color: scheme.onSurfaceVariant,
+                  ),
+                ),
+                const SizedBox(height: AppSpacing.sm),
                 for (final m in r.perMed) _AdherenceRow(med: m),
               ],
-              const SizedBox(height: T.s4),
-              const RecordNote(
-                text:
-                    'Counts only doses whose time has passed, and only those the '
-                    'patient marked as taken in the app. A low figure can mean '
-                    'doses were not logged, not necessarily that they were missed.',
+              const SizedBox(height: AppSpacing.lg),
+              Container(
+                padding: const EdgeInsets.all(AppSpacing.sm),
+                decoration: BoxDecoration(
+                  color: scheme.surfaceContainerHighest.withValues(alpha: 0.5),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(
+                      Icons.info_outline_rounded,
+                      size: 16,
+                      color: scheme.onSurfaceVariant,
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Counts only doses whose time has already passed, and only those the patient marked as taken in the app. A low figure can mean doses were not logged, not necessarily missed.',
+                        style: TextStyle(
+                          fontSize: 12,
+                          height: 1.35,
+                          color: scheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ],
           ),
+    );
+  }
+}
+
+class _PeriodChip extends StatelessWidget {
+  const _PeriodChip({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(20),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        decoration: BoxDecoration(
+          color:
+              selected
+                  ? AppColors.primary
+                  : scheme.surfaceContainerHighest.withValues(alpha: 0.5),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color:
+                selected
+                    ? AppColors.primary
+                    : scheme.outlineVariant.withValues(alpha: 0.5),
+          ),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 14,
+            fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+            color: selected ? Colors.white : scheme.onSurface,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// The patient's physical measurements — height, weight, BMI, waist, BP, pulse,
+/// SpO2 — from registration and the latest consult. Hidden until at least one
+/// value exists.
+class _MeasurementsSection extends StatelessWidget {
+  const _MeasurementsSection({required this.summary});
+  final PatientSummary summary;
+
+  static String _n(double v) =>
+      v == v.roundToDouble() ? v.round().toString() : v.toStringAsFixed(1);
+
+  /// BMI bands (WHO). The colour carries the reading, so the doctor does not
+  /// have to remember where 27.4 falls while scanning a screen.
+  static (Color, String) _bmiBand(BuildContext c, double bmi) {
+    if (bmi < 18.5) return (AppColors.warningOn(c), 'Underweight');
+    if (bmi < 25) return (AppColors.successOn(c), 'Normal');
+    if (bmi < 30) return (AppColors.warningOn(c), 'Overweight');
+    return (AppColors.dangerOn(c), 'Obese');
+  }
+
+  /// Only clearly abnormal readings are coloured. Tinting every borderline
+  /// figure would leave a screen of amber that says nothing.
+  static (Color, String) _bpBand(BuildContext c, int sys, int dia) {
+    if (sys >= 180 || dia >= 120) return (AppColors.dangerOn(c), 'Crisis');
+    if (sys >= 140 || dia >= 90) return (AppColors.dangerOn(c), 'High');
+    if (sys >= 130 || dia >= 80) return (AppColors.warningOn(c), 'Elevated');
+    if (sys < 90 || dia < 60) return (AppColors.warningOn(c), 'Low');
+    return (AppColors.successOn(c), 'Normal');
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final p = summary;
+    final tiles = <Widget>[];
+
+    if (p.heightCm != null) {
+      tiles.add(
+        _MeasureTile(
+          icon: Icons.straighten_rounded,
+          label: 'Height',
+          value: _n(p.heightCm!.toDouble()),
+          unit: 'cm',
+        ),
+      );
+    }
+    if (p.weightKg != null) {
+      tiles.add(
+        _MeasureTile(
+          icon: Icons.monitor_weight_outlined,
+          label: 'Weight',
+          value: _n(p.weightKg!.toDouble()),
+          unit: 'kg',
+        ),
+      );
+    }
+    if (p.bmi != null) {
+      final band = _bmiBand(context, p.bmi!.toDouble());
+      tiles.add(
+        _MeasureTile(
+          icon: Icons.accessibility_new_rounded,
+          label: 'BMI',
+          value: p.bmi!.toStringAsFixed(1),
+          note: band.$2,
+          tone: band.$1,
+        ),
+      );
+    }
+    if (p.waistCm != null) {
+      tiles.add(
+        _MeasureTile(
+          icon: Icons.radio_button_unchecked_rounded,
+          label: 'Waist',
+          value: _n(p.waistCm!.toDouble()),
+          unit: 'cm',
+        ),
+      );
+    }
+    if (p.systolic != null && p.diastolic != null) {
+      final band = _bpBand(context, p.systolic!, p.diastolic!);
+      tiles.add(
+        _MeasureTile(
+          icon: Icons.favorite_outline_rounded,
+          label: 'Blood pressure',
+          value: '${p.systolic}/${p.diastolic}',
+          unit: 'mmHg',
+          note: band.$2,
+          tone: band.$1,
+        ),
+      );
+    }
+    if (p.pulse != null) {
+      tiles.add(
+        _MeasureTile(
+          icon: Icons.monitor_heart_outlined,
+          label: 'Pulse',
+          value: '${p.pulse}',
+          unit: 'bpm',
+        ),
+      );
+    }
+    if (p.spo2 != null) {
+      tiles.add(
+        _MeasureTile(
+          icon: Icons.air_rounded,
+          label: 'SpO2',
+          value: '${p.spo2}',
+          unit: '%',
+          tone: p.spo2! < 94 ? AppColors.dangerOn(context) : null,
+          note: p.spo2! < 94 ? 'Low' : null,
+        ),
+      );
+    }
+
+    if (tiles.isEmpty) return const SizedBox.shrink();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SizedBox(height: AppSpacing.lg),
+        const _SectionTitle('Measurements'),
+        const SizedBox(height: AppSpacing.sm),
+        // A real two-column grid, not a Wrap of label/value pairs. Wrapped,
+        // they landed wherever they fitted, so the same patient's card changed
+        // shape between visits and nothing lined up down the column.
+        LayoutBuilder(
+          builder: (context, c) {
+            const gap = AppSpacing.sm;
+            final w = (c.maxWidth - gap) / 2;
+            return Wrap(
+              spacing: gap,
+              runSpacing: gap,
+              children: [for (final t in tiles) SizedBox(width: w, child: t)],
+            );
+          },
+        ),
+      ],
+    );
+  }
+}
+
+/// One measurement: what it is, what it reads, and — where it means something
+/// clinically — which side of normal it falls on.
+class _MeasureTile extends StatelessWidget {
+  const _MeasureTile({
+    required this.icon,
+    required this.label,
+    required this.value,
+    this.unit,
+    this.note,
+    this.tone,
+  });
+
+  final IconData icon;
+  final String label;
+  final String value;
+  final String? unit;
+  final String? note;
+  final Color? tone;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final accent = tone ?? scheme.onSurface;
+
+    return Container(
+      padding: const EdgeInsets.all(AppSpacing.md),
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerLowest,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: scheme.outlineVariant.withValues(alpha: 0.55),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(
+            children: [
+              Icon(icon, size: 15, color: tone ?? scheme.onSurfaceVariant),
+              const SizedBox(width: 4),
+              Expanded(
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: scheme.onSurfaceVariant,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.baseline,
+            textBaseline: TextBaseline.alphabetic,
+            children: [
+              Flexible(
+                child: Text(
+                  value,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.w800,
+                    height: 1,
+                    color: accent,
+                  ),
+                ),
+              ),
+              if (unit != null) ...[
+                const SizedBox(width: 4),
+                Text(
+                  unit!,
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: scheme.onSurfaceVariant,
+                  ),
+                ),
+              ],
+            ],
+          ),
+          if (note != null) ...[
+            const SizedBox(height: 4),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 0),
+              decoration: BoxDecoration(
+                color: (tone ?? scheme.onSurfaceVariant).withValues(
+                  alpha: 0.12,
+                ),
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Text(
+                note!,
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w800,
+                  color: tone ?? scheme.onSurfaceVariant,
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
     );
   }
 }
@@ -619,45 +930,209 @@ class _AdherenceRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     final frac =
         med.expected > 0 ? (med.taken / med.expected).clamp(0.0, 1.0) : 0.0;
+    final pct = med.percentage;
+    final color =
+        pct == null
+            ? scheme.onSurfaceVariant
+            : (pct >= 80
+                ? AppColors.success
+                : (pct >= 50 ? AppColors.warning : AppColors.danger));
     return Padding(
-      padding: const EdgeInsets.only(bottom: T.s3),
+      padding: const EdgeInsets.only(bottom: AppSpacing.sm),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Expanded(
-                child: Text(med.name, style: T.bodyStrong.copyWith(color: T.ink)),
+                child: Text(
+                  med.name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
               ),
-              const SizedBox(width: T.s2),
-              Text(
-                med.expected == 0
-                    ? 'None due'
-                    : '${med.taken} of ${med.expected}'
-                        '${med.percentage == null ? '' : ' · ${med.percentage}%'}',
-                style: T.small.copyWith(
-                  color: T.inkMuted,
-                  fontFeatures: const [FontFeature.tabularFigures()],
+              // Right-aligned in a fixed box, with tabular figures. Ragged
+              // against the medicine name, "9/17" and "6/11" refuse to line up
+              // and the column cannot be read down — which is the only way
+              // anyone reads a list of fractions.
+              SizedBox(
+                width: 104,
+                child: Text(
+                  '${med.taken}/${med.expected}${pct != null ? '  ·  $pct%' : ''}',
+                  textAlign: TextAlign.right,
+                  maxLines: 1,
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: scheme.onSurfaceVariant,
+                    fontFeatures: const [FontFeature.tabularFigures()],
+                  ),
                 ),
               ),
             ],
           ),
-          const SizedBox(height: T.s1),
-          // One colour for every medicine: the figure beside the bar is the
-          // reading, and a red bar with no word would be a verdict nobody
-          // wrote down.
+          const SizedBox(height: 4),
           ClipRRect(
-            borderRadius: T.rFull,
+            borderRadius: BorderRadius.circular(12),
             child: LinearProgressIndicator(
               value: frac,
-              minHeight: T.s2,
-              backgroundColor: T.line,
-              color: T.primary,
+              minHeight: 6,
+              backgroundColor: scheme.surfaceContainerHighest,
+              color: color,
             ),
           ),
+        ],
+      ),
+    );
+  }
+}
+
+class _Metric extends StatelessWidget {
+  const _Metric({
+    required this.label,
+    required this.value,
+    required this.color,
+    required this.icon,
+    this.unit,
+    this.onTap,
+  });
+
+  final String label;
+  final String value;
+  final String? unit;
+  final Color color;
+  final IconData icon;
+
+  /// When set, the tile is tappable (a chevron hints it) — used to open the
+  /// adherence breakdown sheet.
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final tile = Container(
+      padding: const EdgeInsets.all(AppSpacing.md),
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(AppSpacing.cardRadius),
+        border: Border.all(color: scheme.outlineVariant.withValues(alpha: 0.6)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisAlignment: MainAxisAlignment.center,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(
+            children: [
+              Icon(icon, size: 16, color: color),
+              const SizedBox(width: 4),
+              Expanded(
+                child: Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: scheme.onSurfaceVariant,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              if (onTap != null)
+                Icon(
+                  Icons.chevron_right_rounded,
+                  size: 18,
+                  color: scheme.onSurfaceVariant,
+                ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.baseline,
+            textBaseline: TextBaseline.alphabetic,
+            children: [
+              Text(
+                value,
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w800,
+                  color: color,
+                ),
+              ),
+              if (unit != null) ...[
+                const SizedBox(width: 4),
+                Text(
+                  unit!,
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: scheme.onSurfaceVariant,
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ],
+      ),
+    );
+
+    if (onTap == null) return tile;
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(AppSpacing.cardRadius),
+      child: tile,
+    );
+  }
+}
+
+class _Hba1cList extends StatelessWidget {
+  const _Hba1cList({required this.points});
+  final List<Hba1cPoint> points;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(AppSpacing.cardRadius),
+        border: Border.all(color: scheme.outlineVariant.withValues(alpha: 0.6)),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        children: [
+          for (var i = 0; i < points.length; i++) ...[
+            if (i > 0)
+              Divider(
+                height: 1,
+                color: scheme.outlineVariant.withValues(alpha: 0.5),
+              ),
+            ListTile(
+              dense: true,
+              leading: Icon(
+                Icons.science_outlined,
+                color:
+                    points[i].percentage >= 9
+                        ? AppColors.danger
+                        : (points[i].percentage >= 7
+                            ? AppColors.warning
+                            : AppColors.success),
+              ),
+              title: Text(
+                '${points[i].percentage}%',
+                style: const TextStyle(fontWeight: FontWeight.w700),
+              ),
+              trailing: Text(
+                points[i].testedOn != null
+                    ? DateFormat('MMM yyyy').format(points[i].testedOn!)
+                    : '',
+              ),
+            ),
+          ],
         ],
       ),
     );
@@ -1074,165 +1549,30 @@ class _DieticianChoiceState extends State<_DieticianChoice> {
   }
 }
 
-// ---- test reports ----------------------------------------------------------------
-
-/// What came back from the lab: each report's verdict in a line, its values
-/// one tap below, and the trend of any value measured more than once.
-class _TestReportsCard extends StatelessWidget {
-  const _TestReportsCard({required this.reports});
-
-  final List<LabReport> reports;
-
-  static const _shown = 3;
-
-  @override
-  Widget build(BuildContext context) {
-    final trended = _trendedAnalytes(reports);
-    return RecordCard(
-      icon: Icons.description_outlined,
-      title: 'Test reports',
-      subtitle:
-          reports.length == 1 ? '1 uploaded' : '${reports.length} uploaded',
-      trailing:
-          reports.length > _shown
-              ? ActionLink(
-                label: 'View all',
-                onTap: () => _showAll(context, reports),
-              )
-              : null,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          for (var i = 0; i < reports.length && i < _shown; i++) ...[
-            if (i > 0) const Divider(height: T.s4, color: T.line),
-            _ReportRow(report: reports[i]),
-          ],
-          if (trended.isNotEmpty) ...[
-            const Divider(height: T.s4, color: T.line),
-            DisclosureTile(
-              tilePadding: const EdgeInsets.symmetric(vertical: T.s3),
-              childrenPadding: EdgeInsets.zero,
-              title: Text(
-                'Trends across reports',
-                style: T.bodyStrong.copyWith(color: T.ink),
-              ),
-              subtitle: Text(
-                trended.length == 1
-                    ? '1 value measured more than once'
-                    : '${trended.length} values measured more than once',
-                style: T.small.copyWith(color: T.inkMuted),
-              ),
-              children: [
-                for (var i = 0; i < trended.length; i++) ...[
-                  if (i > 0) const Divider(height: T.s4, color: T.line),
-                  _AnalyteTrendRow(readings: trended[i]),
-                ],
-              ],
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-
-  static void _showAll(BuildContext context, List<LabReport> reports) {
-    showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      showDragHandle: true,
-      builder:
-          (ctx) => DraggableScrollableSheet(
-            expand: false,
-            initialChildSize: 0.75,
-            maxChildSize: 0.95,
-            builder:
-                (ctx, controller) => ListView(
-                  controller: controller,
-                  padding: const EdgeInsets.fromLTRB(T.s4, 0, T.s4, T.s8),
-                  children: [
-                    Text('Test reports', style: T.title.copyWith(color: T.ink)),
-                    Text(
-                      '${reports.length} uploaded, newest first',
-                      style: T.small.copyWith(color: T.inkMuted),
-                    ),
-                    const SizedBox(height: T.s4),
-                    for (var i = 0; i < reports.length; i++) ...[
-                      if (i > 0) const Divider(height: T.s4, color: T.line),
-                      _ReportRow(report: reports[i]),
-                    ],
-                  ],
-                ),
-          ),
-    );
-  }
-}
-
-/// Every value read off more than one report, oldest reading first.
-List<List<Analyte>> _trendedAnalytes(List<LabReport> reports) {
-  final sorted = [...reports]..sort(
-    (a, b) => (a.testedOn ?? a.createdAt ?? DateTime(0)).compareTo(
-      b.testedOn ?? b.createdAt ?? DateTime(0),
-    ),
-  );
-  final series = <String, List<Analyte>>{};
-  for (final r in sorted) {
-    for (final a in r.analytes) {
-      (series[a.code] ??= []).add(a);
-    }
-  }
-  return series.values.where((s) => s.length >= 2).toList();
-}
-
-/// A report's verdict in words, before its values.
-({String text, Status status})? _reportVerdict(LabReport r) {
-  if (r.analytes.isNotEmpty) {
-    final out = r.analytes.where((a) => a.abnormal).length;
-    return out == 0
-        ? (
-          text:
-              r.analytes.length == 1
-                  ? 'In range'
-                  : 'All ${r.analytes.length} values in range',
-          status: Status.ok,
-        )
-        : (
-          text:
-              out == 1
-                  ? '1 value out of range'
-                  : '$out values out of range',
-          status: Status.alert,
-        );
-  }
-  return switch (r.analysisStatus) {
-    'failed' || 'unsupported' => (
-      text: 'Could not be read automatically — needs a look',
-      status: Status.watch,
-    ),
-    'pending' => (text: 'Still being read', status: Status.neutral),
-    _ => null,
-  };
-}
-
-/// One report: its name, when, and its verdict; its values and file behind a
-/// tap.
-class _ReportRow extends ConsumerStatefulWidget {
-  const _ReportRow({required this.report});
+class _LabReportRow extends ConsumerStatefulWidget {
+  const _LabReportRow({required this.report});
 
   final LabReport report;
 
   @override
-  ConsumerState<_ReportRow> createState() => _ReportRowState();
+  ConsumerState<_LabReportRow> createState() => _LabReportRowState();
 }
 
-class _ReportRowState extends ConsumerState<_ReportRow> {
-  bool _open = false;
+class _LabReportRowState extends ConsumerState<_LabReportRow> {
   bool _busy = false;
 
   LabReport get report => widget.report;
 
-  /// A photo opens full-screen; a PDF is downloaded with the auth header — an
-  /// in-browser open would be refused — and handed to the phone's viewer.
-  Future<void> _openFile() async {
+  IconData _fileIcon() {
+    final m = report.mimeType ?? '';
+    if (m == 'application/pdf') return Icons.picture_as_pdf_rounded;
+    if (m.startsWith('image/')) return Icons.image_rounded;
+    return Icons.description_rounded;
+  }
+
+  /// A photo opens full-screen; a PDF/document is downloaded (with the auth
+  /// header — an in-browser open would 403) and handed to the phone's viewer.
+  Future<void> _open() async {
     if (!report.hasFile || report.photoUrl == null) return;
     if (report.isImage) {
       FullscreenPhoto.show(context, report.photoUrl);
@@ -1240,7 +1580,6 @@ class _ReportRowState extends ConsumerState<_ReportRow> {
     }
     if (_busy) return;
     setState(() => _busy = true);
-    final messenger = ScaffoldMessenger.of(context);
     try {
       final dir = await getTemporaryDirectory();
       final ext = report.mimeType == 'application/pdf' ? 'pdf' : 'bin';
@@ -1253,17 +1592,18 @@ class _ReportRowState extends ConsumerState<_ReportRow> {
         await cached.writeAsBytes(bytes, flush: true);
       }
       final res = await OpenFilex.open(cached.path);
-      if (res.type != ResultType.done) {
-        messenger.showSnackBar(
+      if (res.type != ResultType.done && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('No app on this phone can open that report'),
           ),
         );
       }
     } catch (_) {
-      messenger.showSnackBar(
-        const SnackBar(content: Text('Could not open the report')),
-      );
+      if (mounted)
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not open the report')),
+        );
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -1271,350 +1611,537 @@ class _ReportRowState extends ConsumerState<_ReportRow> {
 
   @override
   Widget build(BuildContext context) {
-    final r = report;
-    final verdict = _reportVerdict(r);
-    final when = r.testedOn ?? r.createdAt;
-    final canOpen = r.analytes.isNotEmpty || r.hasFile || r.note.isNotEmpty;
+    final scheme = Theme.of(context).colorScheme;
+    final showThumb = report.hasFile && report.isImage;
+    // The out-of-range markers, for the red summary line.
+    final abnormal = report.analytes.where((a) => a.abnormal).toList();
 
-    final head = Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        if (r.hasFile && r.isImage)
-          AuthedImage(
-            path: r.photoUrl!,
-            width: T.s12,
-            height: T.s12,
-            radius: T.rCard,
-          )
-        else
-          Container(
-            width: T.s12,
-            height: T.s12,
-            decoration: BoxDecoration(
-              color: T.primaryTint,
-              borderRadius: BorderRadius.circular(T.rCard),
-            ),
-            child: Icon(
-              r.mimeType == 'application/pdf'
-                  ? Icons.picture_as_pdf_outlined
-                  : Icons.description_outlined,
-              color: T.primary,
-            ),
+    final tile = Container(
+      padding: const EdgeInsets.all(AppSpacing.sm),
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(AppSpacing.cardRadius),
+        border: Border.all(color: scheme.outlineVariant.withValues(alpha: 0.6)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.only(right: AppSpacing.sm),
+            child:
+                showThumb
+                    ? AuthedImage(
+                      path: report.photoUrl!,
+                      width: 52,
+                      height: 52,
+                      radius: 10,
+                    )
+                    : Container(
+                      width: 52,
+                      height: 52,
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        color: scheme.surfaceContainerHigh,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child:
+                          _busy
+                              ? const SizedBox(
+                                width: 20,
+                                height: 22,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2.4,
+                                ),
+                              )
+                              : Icon(
+                                _fileIcon(),
+                                color: scheme.onSurfaceVariant,
+                                size: 24,
+                              ),
+                    ),
           ),
-        const SizedBox(width: T.s3),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(r.testName, style: T.bodyStrong.copyWith(color: T.ink)),
-              if (when != null)
-                Text(
-                  r.testedOn != null
-                      ? 'Tested ${whenLabel(when)}'
-                      : 'Uploaded ${whenLabel(when)}',
-                  style: T.small.copyWith(color: T.inkMuted),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        report.testName,
+                        style: const TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                    if (report.createdAt != null)
+                      Text(
+                        DateFormat('d MMM').format(report.createdAt!),
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: scheme.onSurfaceVariant,
+                        ),
+                      ),
+                  ],
                 ),
-              if (verdict != null) ...[
-                const SizedBox(height: T.s1),
-                StatusPill(label: verdict.text, status: verdict.status),
+                if (report.note.isNotEmpty) ...[
+                  const SizedBox(height: 4),
+                  Text(report.note, style: const TextStyle(fontSize: 14)),
+                ],
+                if (report.hasFile) ...[
+                  const SizedBox(height: 4),
+                  Row(
+                    children: [
+                      Icon(
+                        showThumb
+                            ? Icons.visibility_outlined
+                            : Icons.open_in_new_rounded,
+                        size: 13,
+                        color: AppColors.accentOn(context),
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        showThumb
+                            ? 'Tap to view'
+                            : (report.mimeType == 'application/pdf'
+                                ? 'Tap to open PDF'
+                                : 'Tap to open'),
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: AppColors.accentOn(context),
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+                // Red at-a-glance summary of what's out of range.
+                if (abnormal.isNotEmpty) ...[
+                  const SizedBox(height: 4),
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Icon(
+                        Icons.warning_amber_rounded,
+                        size: 14,
+                        color: AppColors.dangerOn(context),
+                      ),
+                      const SizedBox(width: 4),
+                      Expanded(
+                        child: Text(
+                          'Out of range: ${abnormal.map((a) => '${a.label} ${a.flag == 'low' ? '↓' : '↑'}').join(', ')}',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                            color: AppColors.dangerOn(context),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+                // The structured values transcribed off the report, each with
+                // its reference range and a low/high flag.
+                if (report.analytes.isNotEmpty) ...[
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 4,
+                    runSpacing: 4,
+                    children: [
+                      for (final a in report.analytes) _AnalyteChip(analyte: a),
+                    ],
+                  ),
+                ] else if (report.analysisStatus == 'failed' ||
+                    report.analysisStatus == 'unsupported') ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    'Could not read automatically — needs a look',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.warningOn(context),
+                    ),
+                  ),
+                ],
               ],
-            ],
+            ),
           ),
-        ),
-        if (canOpen)
-          Icon(
-            _open ? Icons.expand_less_rounded : Icons.expand_more_rounded,
-            color: T.inkMuted,
-          ),
-      ],
+        ],
+      ),
     );
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Semantics(
-          button: canOpen,
-          expanded: canOpen ? _open : null,
-          child: InkWell(
-            onTap: canOpen ? () => setState(() => _open = !_open) : null,
-            borderRadius: BorderRadius.circular(T.rControl),
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(minHeight: T.tap),
-              child: head,
-            ),
-          ),
-        ),
-        if (_open) ...[
-          if (r.note.isNotEmpty) ...[
-            const SizedBox(height: T.s2),
-            Text(r.note, style: T.body.copyWith(color: T.ink)),
-          ],
-          if (r.analytes.isNotEmpty) ...[
-            const SizedBox(height: T.s3),
-            Wrap(
-              spacing: T.s2,
-              runSpacing: T.s2,
-              children: [for (final a in r.analytes) _AnalyteChip(analyte: a)],
-            ),
-          ],
-          if (r.hasFile) ...[
-            const SizedBox(height: T.s3),
-            Align(
-              alignment: Alignment.centerLeft,
-              child: QuietAction(
-                icon:
-                    r.isImage
-                        ? Icons.image_outlined
-                        : Icons.picture_as_pdf_outlined,
-                label: _busy ? 'Opening…' : 'Open the report',
-                onPressed: _busy ? null : _openFile,
-              ),
-            ),
-          ],
-        ],
-      ],
+    // The whole tile is tappable when there's a file — image → full-screen,
+    // PDF/doc → download and open in the phone's viewer.
+    if (!report.hasFile) return tile;
+    return InkWell(
+      borderRadius: BorderRadius.circular(AppSpacing.cardRadius),
+      onTap: _open,
+      child: tile,
     );
   }
 }
 
-/// A value read off a report: what, how much, and — when it is out of range —
-/// which way, in a word.
+/// One transcribed value: "HbA1c 9.9 %" with a coloured border + arrow when it
+/// is out of its reference range.
 class _AnalyteChip extends StatelessWidget {
   const _AnalyteChip({required this.analyte});
 
   final Analyte analyte;
 
+  static String _fmt(num v) =>
+      v == v.roundToDouble() ? v.toInt().toString() : v.toStringAsFixed(1);
+
   @override
   Widget build(BuildContext context) {
-    final a = analyte;
-    final (word, status) = switch (a.flag) {
-      'critical' => ('critical', Status.alert),
-      'high' => ('high', Status.alert),
-      'low' => ('low', Status.watch),
-      _ => (null, Status.neutral),
+    final scheme = Theme.of(context).colorScheme;
+    final abnormal = analyte.abnormal;
+    final color = switch (analyte.flag) {
+      'high' || 'critical' => AppColors.dangerOn(context),
+      'low' => AppColors.warningOn(context),
+      _ => AppColors.successOn(context),
     };
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: T.s3, vertical: T.s1),
-      decoration: BoxDecoration(color: status.tint, borderRadius: T.rFull),
-      child: Text.rich(
-        TextSpan(
-          children: [
-            TextSpan(text: '${a.label} '),
-            TextSpan(
-              text: figure(a.value),
-              style: const TextStyle(fontWeight: FontWeight.w700),
-            ),
-            if ((a.unit ?? '').isNotEmpty) TextSpan(text: ' ${a.unit}'),
-            if (word != null)
-              TextSpan(
-                text: ' · $word',
-                style: TextStyle(
-                  fontWeight: FontWeight.w700,
-                  color: status.tone,
-                ),
-              ),
-          ],
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color:
+            abnormal
+                ? color.withValues(alpha: 0.12)
+                : scheme.surfaceContainerHigh,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color:
+              abnormal
+                  ? color.withValues(alpha: 0.4)
+                  : scheme.outlineVariant.withValues(alpha: 0.5),
         ),
-        style: T.small.copyWith(color: T.ink),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            '${analyte.label} ',
+            style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant),
+          ),
+          Text(
+            _fmt(analyte.value),
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w800,
+              color: abnormal ? color : scheme.onSurface,
+            ),
+          ),
+          if (analyte.unit != null && analyte.unit!.isNotEmpty)
+            Text(
+              ' ${analyte.unit}',
+              style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant),
+            ),
+          if (abnormal) ...[
+            const SizedBox(width: 4),
+            Icon(
+              analyte.flag == 'low'
+                  ? Icons.arrow_downward_rounded
+                  : Icons.arrow_upward_rounded,
+              size: 12,
+              color: color,
+            ),
+          ],
+        ],
       ),
     );
   }
 }
 
-/// One value across reports: its reference range, the line, and the latest.
-class _AnalyteTrendRow extends StatelessWidget {
-  const _AnalyteTrendRow({required this.readings});
+/// Per-analyte trends across the patient's uploaded reports — for any marker
+/// that appears on two or more reports, its history sparkline + latest value.
+class _AnalyteTrends extends StatelessWidget {
+  const _AnalyteTrends({required this.reports});
 
-  final List<Analyte> readings;
+  final List<LabReport> reports;
 
   @override
   Widget build(BuildContext context) {
-    final latest = readings.last;
-    final (word, status) = switch (latest.flag) {
-      'critical' => ('Critical', Status.alert),
-      'high' => ('High', Status.alert),
-      'low' => ('Low', Status.watch),
-      _ => (null, Status.neutral),
-    };
-    return Row(
+    final scheme = Theme.of(context).colorScheme;
+    final sorted = [...reports]..sort(
+      (a, b) =>
+          (a.createdAt ?? DateTime(0)).compareTo(b.createdAt ?? DateTime(0)),
+    );
+    final series = <String, List<Analyte>>{};
+    final labels = <String, String>{};
+    for (final r in sorted) {
+      for (final a in r.analytes) {
+        (series[a.code] ??= []).add(a);
+        labels[a.code] = a.label;
+      }
+    }
+    final trended = series.entries.where((e) => e.value.length >= 2).toList();
+    if (trended.isEmpty) return const SizedBox.shrink();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(latest.label, style: T.bodyStrong.copyWith(color: T.ink)),
-              if (latest.rangeText.isNotEmpty)
-                Text(
-                  'Reference ${latest.rangeText}${latest.unit != null ? ' ${latest.unit}' : ''}',
-                  style: T.small.copyWith(color: T.inkMuted),
-                ),
-              Text(
-                readings.map((a) => figure(a.value)).join(' → '),
-                style: T.small.copyWith(color: T.ink),
-              ),
-            ],
+        const SizedBox(height: AppSpacing.md),
+        Text(
+          'LAB TRENDS',
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w700,
+            letterSpacing: 0.5,
+            color: scheme.onSurfaceVariant,
           ),
         ),
-        const SizedBox(width: T.s2),
-        // Drawn from the readings alone, without the glucose band: this is a
-        // marker's own scale, and a 70–180 band behind an LDL would mean
-        // nothing.
-        Sparkline(
-          values: [for (final a in readings) a.value.toDouble()],
-          color: T.primary,
-          width: T.s12 + T.s4,
-          height: T.s6,
-          showBand: false,
-        ),
-        const SizedBox(width: T.s3),
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.end,
-          children: [
-            MetricValue(value: figure(latest.value), unit: latest.unit, size: T.s5),
-            if (word != null) StatusPill(label: word, status: status),
-          ],
+        const SizedBox(height: AppSpacing.sm),
+        Container(
+          padding: const EdgeInsets.symmetric(
+            horizontal: AppSpacing.md,
+            vertical: 4,
+          ),
+          decoration: BoxDecoration(
+            color: scheme.surfaceContainerLow,
+            borderRadius: BorderRadius.circular(AppSpacing.cardRadius),
+            border: Border.all(
+              color: scheme.outlineVariant.withValues(alpha: 0.6),
+            ),
+          ),
+          child: Column(
+            children: [
+              for (var i = 0; i < trended.length; i++) ...[
+                if (i > 0)
+                  Divider(
+                    height: 1,
+                    color: scheme.outlineVariant.withValues(alpha: 0.4),
+                  ),
+                _AnalyteTrendRow(
+                  label: labels[trended[i].key]!,
+                  readings: trended[i].value,
+                ),
+              ],
+            ],
+          ),
         ),
       ],
     );
   }
 }
 
-// ---- history and details -------------------------------------------------------
+class _AnalyteTrendRow extends StatelessWidget {
+  const _AnalyteTrendRow({required this.label, required this.readings});
 
-/// What is worth knowing and not worth a card: contact details and notes,
-/// alerts already dealt with, and what the assistant is told. Folded, because
-/// none of it is what a visit turns on.
-class _HistoryCard extends StatelessWidget {
-  const _HistoryCard({required this.summary});
-
-  final PatientSummary summary;
-
-  static String? _language(String? code) => switch (code) {
-    'en' => 'English',
-    'bn' => 'Bengali',
-    'hi' => 'Hindi',
-    null || '' => null,
-    _ => code,
-  };
+  final String label;
+  final List<Analyte> readings;
 
   @override
   Widget build(BuildContext context) {
-    final p = summary;
-    final d = p.details;
-    final settled =
-        p.alerts.where((a) => a.status != 'open').toList(growable: false);
-    final ai = (p.aiContext ?? '').trim();
-
-    final about = <({String label, String value})>[
-      if ((p.email ?? '').trim().isNotEmpty) (label: 'Email', value: p.email!.trim()),
-      if ((p.address ?? '').trim().isNotEmpty)
-        (label: 'Address', value: p.address!.trim()),
-      if (_language(p.language) != null)
-        (label: 'Language', value: _language(p.language)!),
-      if (d.emergencyPhone != null)
-        (
-          label: 'Emergency contact',
-          value: [
-            [
-              if ((d.emergencyName ?? '').isNotEmpty) d.emergencyName!,
-              if ((d.emergencyRelation ?? '').isNotEmpty)
-                '(${d.emergencyRelation})',
-            ].join(' '),
-            d.emergencyPhone!,
-          ].where((s) => s.isNotEmpty).join(' · '),
-        ),
-      if (d.diagnosedOn != null)
-        (
-          label: 'Diagnosed',
-          value: DateFormat('MMM y').format(d.diagnosedOn!),
-        ),
-      if (p.healthScore != null)
-        (
-          label: 'Health score',
-          value:
-              '${p.healthScore} of 100${_healthBand(p.healthBand)} — worked out '
-              'from readings in range, doses, HbA1c, blood pressure and '
-              'activity over 30 days',
-        ),
-      if ((d.notes ?? '').trim().isNotEmpty)
-        (label: 'Notes', value: d.notes!.trim()),
-    ];
-
-    final folds = <Widget>[
-      if (about.isNotEmpty)
-        _Fold(
-          title: 'About this patient',
-          subtitle: 'Contact, emergency contact and notes',
-          children: [
-            for (final f in about) _Fact(label: f.label, value: f.value),
-          ],
-        ),
-      if (settled.isNotEmpty)
-        _Fold(
-          title: 'Past alerts',
-          subtitle:
-              settled.length == 1
-                  ? '1 resolved or dismissed'
-                  : '${settled.length} resolved or dismissed',
-          children: [
-            for (var i = 0; i < settled.length; i++) ...[
-              if (i > 0) const SizedBox(height: T.s2),
-              AlertRow(alert: settled[i]),
-            ],
-          ],
-        ),
-      if (ai.isNotEmpty)
-        _Fold(
-          title: 'What the assistant is told',
-          subtitle: 'The summary the assistant reads before it answers',
-          children: [Text(ai, style: T.body.copyWith(color: T.ink))],
-        ),
-    ];
-    if (folds.isEmpty) return const SizedBox.shrink();
-
-    return RecordCard(
-      icon: Icons.folder_open_outlined,
-      title: 'History and details',
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
+    final scheme = Theme.of(context).colorScheme;
+    final latest = readings.last;
+    final abnormal = latest.abnormal;
+    final color = switch (latest.flag) {
+      'high' || 'critical' => AppColors.dangerOn(context),
+      'low' => AppColors.warningOn(context),
+      _ => AppColors.successOn(context),
+    };
+    String fmt(num v) =>
+        v == v.roundToDouble() ? v.toInt().toString() : v.toStringAsFixed(1);
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Row(
         children: [
-          for (var i = 0; i < folds.length; i++) ...[
-            if (i > 0) const Divider(height: 1, color: T.line),
-            folds[i],
-          ],
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                if (latest.rangeText.isNotEmpty)
+                  // The reference range is what makes the number beside it
+                  // mean anything, so it stops being the faintest text on the
+                  // row. Lower-case "target" at the theme's muted grey read as
+                  // a caption on a screen full of captions.
+                  Text(
+                    'Target ${latest.rangeText}${latest.unit != null ? ' ${latest.unit}' : ''}',
+                    style: TextStyle(
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w600,
+                      color: scheme.onSurface.withValues(alpha: 0.72),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          Sparkline(
+            values: [for (final a in readings) a.value.toDouble()],
+            color: AppColors.accentOn(context),
+            width: 64,
+            height: 24,
+            showBand: false,
+          ),
+          const SizedBox(width: 8),
+          Text.rich(
+            TextSpan(
+              children: [
+                TextSpan(text: fmt(latest.value)),
+                if (latest.unit != null)
+                  TextSpan(
+                    text: ' ${latest.unit}',
+                    style: const TextStyle(
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+              ],
+            ),
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w800,
+              // A bare 126 beside "Target 70–100 mg/dL" is a number the reader
+              // has to assume shares the range's unit.
+              color: abnormal ? color : scheme.onSurface,
+            ),
+          ),
         ],
       ),
     );
   }
-
-  static String _healthBand(String? band) => switch (band) {
-    'good' => ', good',
-    'fair' => ', fair',
-    'needs_attention' => ', needs attention',
-    'poor' => ', poor',
-    _ => '',
-  };
 }
 
-class _Fold extends StatelessWidget {
-  const _Fold({
+class _AlertMini extends StatelessWidget {
+  const _AlertMini({
     required this.title,
-    required this.subtitle,
-    required this.children,
+    required this.severity,
+    required this.status,
+    this.when,
   });
-
   final String title;
-  final String subtitle;
-  final List<Widget> children;
+  final String severity;
+  final String status;
+  final DateTime? when;
 
   @override
   Widget build(BuildContext context) {
-    return DisclosureTile(
-      tilePadding: const EdgeInsets.symmetric(vertical: T.s3),
-      childrenPadding: const EdgeInsets.only(bottom: T.s3),
-      title: Text(title, style: T.bodyStrong.copyWith(color: T.ink)),
-      subtitle: Text(subtitle, style: T.small.copyWith(color: T.inkMuted)),
-      children: children,
+    final scheme = Theme.of(context).colorScheme;
+    // The same rule as the alerts screen: severity says how bad it was, status
+    // says whether it still needs anyone. A closed emergency in emergency red
+    // spends the loudest colour in the app on something already dealt with.
+    final settled = status == 'resolved' || status == 'dismissed';
+    final color = settled ? scheme.outline : alertSeverityColor(severity);
+    return Container(
+      padding: const EdgeInsets.all(AppSpacing.md),
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(AppSpacing.cardRadius),
+        border: Border(left: BorderSide(color: color, width: 4)),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                  ),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                if (when != null)
+                  Text(
+                    DateFormat('d MMM, h:mm a').format(when!),
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: scheme.onSurfaceVariant,
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          MiniPill(
+            label:
+                status == 'open'
+                    ? severity.toUpperCase()
+                    : status.toUpperCase(),
+            color: status == 'open' ? color : const Color(0xFF6B7280),
+          ),
+        ],
+      ),
     );
   }
+}
+
+/// The AI assistant's view of this patient — collapsible, like the previous
+/// consultations, so it stays out of the way until the doctor wants to see why
+/// the assistant answered the way it did.
+class _AiContextCard extends StatelessWidget {
+  const _AiContextCard({required this.text});
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(AppSpacing.cardRadius),
+        border: Border.all(color: scheme.outlineVariant.withValues(alpha: 0.6)),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Theme(
+        data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+        child: DisclosureTile(
+          tilePadding: const EdgeInsets.symmetric(
+            horizontal: AppSpacing.md,
+            vertical: 0,
+          ),
+          childrenPadding: const EdgeInsets.fromLTRB(
+            AppSpacing.md,
+            0,
+            AppSpacing.md,
+            AppSpacing.md,
+          ),
+          crossAxisAlignment: CrossAxisAlignment.start,
+          leading: Icon(
+            Icons.smart_toy_outlined,
+            size: 20,
+            color: scheme.onSurfaceVariant,
+          ),
+          title: const Text(
+            'Assistant context',
+            style: TextStyle(fontSize: 14, fontWeight: FontWeight.w800),
+          ),
+          subtitle: Text(
+            'What the AI assistant sees',
+            style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant),
+          ),
+          children: [
+            Text(
+              text,
+              style: TextStyle(
+                fontSize: 14,
+                height: 1.5,
+                color: scheme.onSurface,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _SectionTitle extends StatelessWidget {
+  const _SectionTitle(this.text);
+  final String text;
+
+  @override
+  Widget build(BuildContext context) => Text(
+    text,
+    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
+  );
 }

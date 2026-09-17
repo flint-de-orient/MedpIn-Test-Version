@@ -101,18 +101,12 @@ export const WIDGETS = Object.freeze({
   /*
    * ---- the caseload, from routes/panels.js -------------------------------
    *
-   * What a general physician, a cardiologist and a diabetologist read across
-   * their patients, from records the platform already holds and nothing it
-   * would have to invent: each patient's latest blood pressure band, the
-   * follow-up date the doctor wrote, the conditions a clinician diagnosed, the
-   * pulse that was measured, the sugars patients logged and the HbA1c results
-   * on file. All name patients, so all need VIEW_PATIENT.
+   * What a general physician and a cardiologist read across their patients,
+   * from records the platform already holds and nothing it would have to
+   * invent: each patient's latest blood pressure band, the follow-up date the
+   * doctor wrote, the conditions a clinician diagnosed, the pulse that was
+   * measured. All name patients, so all need VIEW_PATIENT.
    */
-  /// GET /doctor/panels/glucose — lows and very highs in the window, by patient.
-  GLUCOSE_FLAGS: { needs: { permission: P.VIEW_PATIENT } },
-  /// GET /doctor/panels/hba1c — latest HbA1c against each patient's target,
-  /// and who has had no result in the window.
-  HBA1C_CONTROL: { needs: { permission: P.VIEW_PATIENT } },
   /// GET /doctor/panels/blood-pressure — latest band per patient, crises first.
   BP_CONTROL: { needs: { permission: P.VIEW_PATIENT } },
   /// GET /doctor/panels/follow-ups — due this week, and overdue.
@@ -154,14 +148,8 @@ export const WIDGETS = Object.freeze({
   },
 
   // ---- nutrition ----------------------------------------------------------
-  /// The diet plans falling due for review, and the way to the nutrition
-  /// conversations.
-  ///
-  /// `nutritionStream`: only where something answers in those conversations —
-  /// an active dietician at this practice, or the nutrition assistant. The
-  /// same two reasons the app's navigation has always used; a practice with
-  /// neither was shown an empty diet-review card forever.
-  NUTRITION_REVIEWS: { needs: { permission: P.VIEW_PATIENT, nutritionStream: true } },
+  /// The diet plans falling due for review.
+  NUTRITION_REVIEWS: { needs: { permission: P.VIEW_PATIENT } },
 });
 
 /**
@@ -210,96 +198,59 @@ export const QUICK_ACTIONS = Object.freeze({
 });
 
 /**
- * What a doctor's home offers to do, in every clinical preset.
+ * What a department shows when nobody has configured it.
  *
- * One primary action and one that is genuinely different. The list used to be
- * five: Start consultation, Record vitals and Write prescription all opened
- * the same patient list, because vitals and a prescription are steps of the
- * consultation rather than separate errands, and Alerts repeated the bell and
- * the triage card beside it. Five equal pills with no primary is a screen that
- * has not decided what it is for.
- *
- * The other identifiers stay registered — an operator may have configured
- * them, and the app still draws them — but no default offers them.
+ * A starting point an operator edits, not a rule. A department absent from
+ * this map gets the general set — which is the honest default: the components
+ * every clinical area uses are the ones that describe a caseload, and a new
+ * department is a caseload before it is anything else.
  */
-const CLINICAL_ACTIONS = Object.freeze(['START_CONSULTATION', 'ADD_PATIENT']);
-
-/**
- * The neutral clinical set: for a doctor whose specialty the platform has no
- * preset for, or cannot tell.
- *
- * ---- What every caseload has, and nothing a specialty measures ----------
- *
- * The day, who needs attention, who is due back, what patients are being
- * treated for, and the conversations. No blood sugar and no ECG: a glucose
- * chart on a dermatologist's home is the diabetes-clinic default this file
- * exists to stop handing everybody.
- *
- * It was the founding clinic's arrangement transcribed, snapshot chart first,
- * so that moving the arrangement to the server did not move anything on Dr
- * Dey's screen. That promise was kept, and it is the user's own redesign that
- * retires it: a diabetology practice now gets DIABETOLOGY below, which is where
- * the chart went. A practice with no specialty on record gets this — see
- * specialtyOf for how it is found, and set the practice's specialty in the
- * console rather than widening this back into a diabetes screen.
- *
- * Ordered by what a doctor asks first: who is booked and waiting, who needs
- * attention, who is due back — then context.
- */
-const GENERAL = Object.freeze({
+const GENERAL = {
+  /*
+   * The order the existing dashboard already draws, component for component.
+   *
+   * Not a redesign. This default is what Dr. Dey's clinic opens onto every
+   * morning, and the deploy that moves the arrangement to the server must not
+   * be the deploy that rearranges his screen — so the list is the old
+   * hardcoded one transcribed, in its own order, including the snapshot chart
+   * at the top.
+   *
+   * ANALYTICS_SUMMARY was missing from the first draft of this, which would
+   * have taken the chart off the home screen of the one practice using the
+   * product. It was wrapped in `if (analytics != null)` before, which is the
+   * same thing the capability gate does now: a practice without the plan does
+   * not see it, and one with the plan does.
+   *
+   * The reasoning the old comments carried still holds and lives here now:
+   * clinical work above operational summary, context last. A doctor does not
+   * open this to learn they have seven patients.
+   */
   widgets: [
-    'TODAYS_CLINIC',
-    'TRIAGE_QUEUE',
-    'FOLLOW_UPS_DUE',
-    'CONDITION_REGISTRY',
-    // Doctors are pushed emergencies and high-risk alerts only, so the day's
-    // other conversations reach them here or not at all.
-    'CHAT_SUMMARIES',
-    'NUTRITION_REVIEWS',
-  ],
-  quickActions: CLINICAL_ACTIONS,
-});
-
-/**
- * A diabetologist's caseload, from what the platform records.
- *
- * Sugars patients log (lows and very highs, and how much of the time they sit
- * in range), the HbA1c results on file against each patient's own target, and
- * who is due back. The chart is the practice's glucose trend, and it is behind
- * the analytics plan like everywhere else. No foot or eye screening: nothing
- * files those records — see routes/panels.js.
- */
-const DIABETOLOGY = Object.freeze({
-  widgets: [
-    'TODAYS_CLINIC',
-    'TRIAGE_QUEUE',
-    'GLUCOSE_FLAGS',
-    'HBA1C_CONTROL',
-    'FOLLOW_UPS_DUE',
     'ANALYTICS_SUMMARY',
-    'NUTRITION_REVIEWS',
-    'CHAT_SUMMARIES',
-  ],
-  quickActions: CLINICAL_ACTIONS,
-});
-
-/**
- * A general physician's caseload: who is out of control, who is due back, what
- * they are being treated for, and what came back from the lab.
- */
-const GENERAL_PHYSICIAN = Object.freeze({
-  widgets: [
-    'TODAYS_CLINIC',
     'TRIAGE_QUEUE',
-    'FOLLOW_UPS_DUE',
+    'TODAYS_CLINIC',
+    // A general physician's caseload, read across it: who is out of control,
+    // who is due back, and what they are being treated for.
     'BP_CONTROL',
+    'FOLLOW_UPS_DUE',
     'CONDITION_REGISTRY',
-    'RECENT_LAB_REPORTS',
-    'CHAT_SUMMARIES',
+    'ACTION_QUEUE',
     'NUTRITION_REVIEWS',
+    'OPEN_ALERTS',
+    // The one addition to the transcribed list, and deliberate: doctors are
+    // pushed emergencies and high-risk alerts only, so the day's other
+    // conversations reach them here or not at all.
+    'CHAT_SUMMARIES',
+    'LIVE_ACTIVITY',
   ],
-  quickActions: CLINICAL_ACTIONS,
-});
+  quickActions: [
+    'START_CONSULTATION',
+    'ADD_PATIENT',
+    'RECORD_VITALS',
+    'WRITE_PRESCRIPTION',
+    'VIEW_ALERTS',
+  ],
+};
 
 /** What the bench sees. Shared by laboratory and pathology — see below. */
 const BENCH = Object.freeze({
@@ -371,8 +322,8 @@ export const DEPARTMENT_DEFAULTS = Object.freeze({
    */
   cardiology: {
     widgets: [
-      'TODAYS_CLINIC',
       'TRIAGE_QUEUE',
+      'TODAYS_CLINIC',
       // What a cardiology caseload is measured by, from what the platform
       // records: blood pressure control and heart rate outside its limits, the
       // ECGs clinicians read, and LDL from the lab reports patients uploaded.
@@ -382,20 +333,21 @@ export const DEPARTMENT_DEFAULTS = Object.freeze({
       'LIPID_CONTROL',
       'FOLLOW_UPS_DUE',
       'RECENT_LAB_REPORTS',
+      'ACTION_QUEUE',
+      'OPEN_ALERTS',
       // For the reason the general set carries it: a cardiologist is pushed
       // emergencies and high-risk alerts only, so the rest of the day's
       // conversations reach them here.
       'CHAT_SUMMARIES',
-      'NUTRITION_REVIEWS',
     ],
-    // Lab reports are read on the patient's record and on the panel above;
-    // the old "Lab reports" button opened the patient list and said otherwise.
-    quickActions: CLINICAL_ACTIONS,
+    quickActions: [
+      'START_CONSULTATION',
+      'RECORD_VITALS',
+      'WRITE_PRESCRIPTION',
+      'VIEW_LAB_REPORTS',
+      'VIEW_ALERTS',
+    ],
   },
-
-  diabetology: DIABETOLOGY,
-
-  general_physician: GENERAL_PHYSICIAN,
 
   /*
    * A laboratory is not a caseload.
@@ -416,71 +368,10 @@ export const DEPARTMENT_DEFAULTS = Object.freeze({
   pathology: BENCH,
 
   nutrition: {
-    widgets: ['TODAYS_CLINIC', 'NUTRITION_REVIEWS', 'TRIAGE_QUEUE', 'ACTION_QUEUE'],
-    quickActions: CLINICAL_ACTIONS,
+    widgets: ['NUTRITION_REVIEWS', 'TRIAGE_QUEUE', 'ACTION_QUEUE'],
+    quickActions: ['START_CONSULTATION', 'RECORD_VITALS'],
   },
 });
-
-/**
- * The other names a specialty is written under, mapped to the preset's key.
- *
- * A practice's specialty is normally a shared department key — the console's
- * picker offers only those — but older rows and a doctor's own letterhead are
- * free text: "Diabetes & Endocrinology", "Consultant Cardiologist". Matched
- * narrowly, and only for the specialties that have a preset: a guess that
- * turns "General Surgeon" into a physician's home is worse than the neutral
- * set.
- */
-const SPECIALTY_PATTERNS = Object.freeze([
-  ['diabetology', /\b(diabet\w*|endocrin\w*)/i],
-  ['cardiology', /\bcardi\w*/i],
-  [
-    'general_physician',
-    /\b(general[\s_-]*(physician|medicine|practi\w*)|family[\s_-]*(medicine|physician|doctor)|internal[\s_-]*medicine)\b/i,
-  ],
-]);
-
-/** A specialty written any of the ways above, as a preset key, or null. */
-export function specialtyKey(text) {
-  if (typeof text !== 'string' || !text.trim()) return null;
-  const key = text.trim().toLowerCase();
-  if (DEPARTMENT_DEFAULTS[key]) return key;
-  for (const [preset, pattern] of SPECIALTY_PATTERNS) {
-    if (pattern.test(text)) return preset;
-  }
-  return null;
-}
-
-/**
- * Which specialty a person's home is composed for, and what said so.
- *
- * ---- In this order, most specific first -----------------------------------
- *
- *   1. their department here — where the practice put them
- *   2. what they practise — the specialty on their own letterhead
- *   3. what the practice treats — `Practice.specialty`
- *   4. nothing known: the neutral set
- *
- * A department decides even when it has no preset of its own. A neurologist
- * placed in Neurology at a diabetes polyclinic gets the neutral set, not the
- * diabetes home the practice's specialty would suggest — the department is
- * the more specific fact, and the practice's is a guess about them.
- *
- * The letterhead comes before the practice for the same reason in the other
- * direction: a cardiologist at a general practice with no departments (a
- * clinic cannot have them) is still a cardiologist, and says so on every
- * prescription they sign.
- */
-export function specialtyOf({ department = null, personSpecialty = null, practiceSpecialty = null } = {}) {
-  if (department?.key) {
-    return { key: DEPARTMENT_DEFAULTS[department.key] ? department.key : null, from: 'department' };
-  }
-  const own = specialtyKey(personSpecialty);
-  if (own) return { key: own, from: 'personSpecialty' };
-  const practice = specialtyKey(practiceSpecialty);
-  if (practice) return { key: practice, from: 'practiceSpecialty' };
-  return { key: null, from: null };
-}
 
 /**
  * What this department shows, before anybody is standing in front of it.
@@ -496,15 +387,13 @@ export function specialtyOf({ department = null, personSpecialty = null, practic
  * shows every department as configured-to-show-nothing, and an operator then
  * "fixes" what was already correct.
  */
-export function composeFor(department, role = null, { personSpecialty = null, practiceSpecialty = null } = {}) {
+export function composeFor(department, role = null) {
   /*
    * ---- Precedence, in four tiers -------------------------------------
    *
    *   1. what an operator configured on this department
    *   2. the platform's default for this role
-   *   3. the platform's default for this specialty — the department's, or
-   *      failing a department the person's own, or the practice's (see
-   *      specialtyOf)
+   *   3. the platform's default for this department
    *   4. the general clinical set
    *
    * Two rules produce that order, and both are worth stating because the
@@ -532,15 +421,8 @@ export function composeFor(department, role = null, { personSpecialty = null, pr
     widgets: department?.widgets?.length ? department.widgets : null,
     quickActions: department?.quickActions?.length ? department.quickActions : null,
   };
-  const specialty = specialtyOf({ department, personSpecialty, practiceSpecialty });
-  const fallback = ROLE_DEFAULTS[role] ?? DEPARTMENT_DEFAULTS[specialty.key] ?? GENERAL;
-
-  let source = 'general';
-  if (configured.widgets || configured.quickActions) source = 'department';
-  else if (ROLE_DEFAULTS[role]) source = 'role';
-  else if (DEPARTMENT_DEFAULTS[specialty.key]) {
-    source = specialty.from === 'department' ? 'departmentDefault' : specialty.from;
-  }
+  const fallback =
+    ROLE_DEFAULTS[role] ?? DEPARTMENT_DEFAULTS[department?.key] ?? GENERAL;
 
   return {
     widgets: configured.widgets ?? fallback.widgets,
@@ -548,13 +430,14 @@ export function composeFor(department, role = null, { personSpecialty = null, pr
     /// Whether anybody here chose this, as opposed to the platform.
     usingDefault: !configured.widgets && !configured.quickActions,
     /// Which tier answered, so the console can say so rather than leaving an
-    /// operator to work out why two people in one department differ:
-    /// department · role · departmentDefault · personSpecialty ·
-    /// practiceSpecialty · general.
-    source,
-    /// The specialty preset that answered, when one did — null for the neutral
-    /// set, a role's own screen, or an arrangement somebody configured.
-    specialty: source === 'department' || source === 'role' || source === 'general' ? null : specialty.key,
+    /// operator to work out why two people in one department differ.
+    source: configured.widgets || configured.quickActions
+      ? 'department'
+      : ROLE_DEFAULTS[role]
+        ? 'role'
+        : DEPARTMENT_DEFAULTS[department?.key]
+          ? 'departmentDefault'
+          : 'general',
   };
 }
 
@@ -568,25 +451,10 @@ export function composeFor(department, role = null, { personSpecialty = null, pr
  * screen on the deploy that added the field. `effectiveCapabilities` already
  * reads a null membership that way; so does this.
  */
-function allowed({ needs }, { capabilities, permissions, hasDietician }) {
+function allowed({ needs }, { capabilities, permissions }) {
   if (needs.capability && capabilities && !capabilities.has(needs.capability)) return false;
   if (needs.permission && permissions && !permissions.has(needs.permission)) return false;
-  if (needs.nutritionStream && !hasNutritionStream({ capabilities, hasDietician })) return false;
   return true;
-}
-
-/**
- * Whether anything answers in this practice's nutrition conversations: an
- * active dietician, or the assistant.
- *
- * Unknown permits, as everywhere in this file. A caller that did not say
- * whether there is a dietician (`undefined`) is not the same as one that said
- * there is none (`false`), and only the second may hide a panel.
- */
-function hasNutritionStream({ capabilities, hasDietician }) {
-  if (hasDietician === true) return true;
-  if (!capabilities || capabilities.has(C.AI_ASSISTANT)) return true;
-  return hasDietician == null;
 }
 
 /** A Set, an array, or null meaning "unknown — do not narrow". */
@@ -615,28 +483,19 @@ function asSet(value) {
  * Either set may be null, meaning "unknown, do not narrow". An empty set is a
  * different answer and means exactly what it says — see [allowed].
  */
-export function resolveUi({
-  department = null,
-  role = null,
-  capabilities,
-  permissions,
-  personSpecialty = null,
-  practiceSpecialty = null,
-  hasDietician = undefined,
-}) {
+export function resolveUi({ department = null, role = null, capabilities, permissions }) {
   const caps = asSet(capabilities);
   const perms = asSet(permissions);
 
-  const composed = composeFor(department, role, { personSpecialty, practiceSpecialty });
-  const held = { capabilities: caps, permissions: perms, hasDietician };
+  const composed = composeFor(department, role);
 
   const widgets = composed.widgets
     .filter((id) => WIDGETS[id])
-    .filter((id) => allowed(WIDGETS[id], held));
+    .filter((id) => allowed(WIDGETS[id], { capabilities: caps, permissions: perms }));
 
   const quickActions = composed.quickActions
     .filter((id) => QUICK_ACTIONS[id])
-    .filter((id) => allowed(QUICK_ACTIONS[id], held));
+    .filter((id) => allowed(QUICK_ACTIONS[id], { capabilities: caps, permissions: perms }));
 
   return {
     department: department?.key ?? null,
@@ -647,9 +506,5 @@ export function resolveUi({
     /// colleagues with different screens can find out why without reading
     /// this file.
     source: composed.source,
-    /// The specialty the home was composed for — `diabetology`, `cardiology`,
-    /// `general_physician` — or null. The app names it under the doctor's
-    /// name, so a physician who opens onto a cardiology screen can see why.
-    specialty: composed.specialty,
   };
 }

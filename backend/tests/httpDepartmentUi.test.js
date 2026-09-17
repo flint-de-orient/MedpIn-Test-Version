@@ -178,9 +178,7 @@ describe('and the practice that has no departments still has a screen', () => {
 
     assert.equal(res.body.ui.department, null);
     assert.ok(res.body.ui.widgets.includes('TODAYS_CLINIC'));
-    // The consultation is the one way to prescribe since the doctor's home and
-    // record were redesigned, so it is the action a working clinic must have.
-    assert.ok(res.body.ui.quickActions.includes('START_CONSULTATION'));
+    assert.ok(res.body.ui.quickActions.includes('WRITE_PRESCRIPTION'));
   });
 
   test('and Essential is not offered what Essential does not include', async () => {

@@ -5,12 +5,14 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../../../core/network/api_exception.dart';
 import '../../../../core/network/submission_keys.dart';
-import '../../../../core/theme/tokens.dart';
+import '../../../../core/theme/app_colors.dart';
+import '../../../../core/theme/app_spacing.dart';
 import '../../../../l10n/gen/app_localizations.dart';
 import '../../../../shared/widgets/user_avatar.dart';
 import '../../../appointments/data/appointment_repository.dart';
 import '../../../appointments/domain/appointment.dart';
 import '../../../appointments/presentation/widgets/appointment_time_picker.dart';
+import 'desk_geometry.dart';
 
 /// A patient who asked for an appointment and has no time yet.
 class RequestCard extends ConsumerStatefulWidget {
@@ -18,15 +20,10 @@ class RequestCard extends ConsumerStatefulWidget {
     super.key,
     required this.appointment,
     required this.onConfirmed,
-    this.gapBelow = T.s2,
   });
 
   final Appointment appointment;
   final Future<void> Function() onConfirmed;
-
-  /// The space under the card. The diary stacks requests one after another
-  /// and needs it; a section that separates them with rules does not.
-  final double gapBelow;
 
   @override
   ConsumerState<RequestCard> createState() => _RequestCardState();
@@ -59,6 +56,7 @@ class _RequestCardState extends ConsumerState<RequestCard> {
     final l10n = AppLocalizations.of(context);
     final waited = _waitedIn(l10n);
     final a = widget.appointment;
+    final scheme = Theme.of(context).colorScheme;
     // The day name reads in the chosen language too — DateFormat with no
     // locale uses Intl's global default, which is not what MaterialApp sets.
     final locale = Localizations.localeOf(context).toString();
@@ -67,46 +65,49 @@ class _RequestCardState extends ConsumerState<RequestCard> {
             DateTime.now().difference(a.createdAt!).inDays >= 1);
 
     return Container(
-      margin: EdgeInsets.only(bottom: widget.gapBelow),
-      padding: EdgeInsets.all(stale ? T.s3 : 0),
-      // Only washed once it has gone stale.
+      margin: const EdgeInsets.only(bottom: AppSpacing.sm),
+      padding: EdgeInsets.all(stale ? AppSpacing.sm + 2 : 0),
+      // Only bordered once it has gone stale.
       //
-      // The card sits inside a section, so an outline on every request was a
-      // box drawn inside a box — two frames around one patient. The amber wash
-      // is kept for the request nobody has answered in a day, because that is
-      // the one that has to catch an eye scanning past, and it says so in
-      // words ("asked 2d ago") as well. Not red: nobody is unwell, somebody is
-      // unanswered.
+      // The card now sits inside the queue card, so its own outline was a box
+      // drawn inside a box — two frames around one patient. The amber border is
+      // kept for the request nobody has answered in a day, because that is the
+      // one that has to catch an eye scanning past. Not red: nobody is unwell,
+      // somebody is unanswered.
       decoration:
           stale
               ? BoxDecoration(
-                color: T.warningTint,
-                borderRadius: BorderRadius.circular(T.rControl),
-                border: Border.all(color: T.warning.withValues(alpha: 0.22)),
+                color: AppColors.warningBgOn(context),
+                borderRadius: BorderRadius.circular(kInnerRadius),
+                border: Border.all(
+                  color: AppColors.warning.withValues(alpha: 0.5),
+                ),
               )
               : null,
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               UserAvatar(
                 name: a.patientName ?? '',
                 avatarUrl: a.patientAvatarUrl,
-                accent: T.primary,
-                size: T.s8 + T.s2,
+                accent: AppColors.primary,
+                size: 38,
               ),
-              const SizedBox(width: T.s3),
+              const SizedBox(width: AppSpacing.sm),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // Wraps. A name is how the desk tells two requests apart,
-                    // and "Kalyani Bandy…" does not.
                     Text(
-                      a.patientName ?? l10n.deskPatientFallback,
-                      style: T.bodyStrong.copyWith(color: T.ink),
+                      a.patientName ?? 'Patient',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                      ),
                     ),
                     // How long they have waited, then what they asked for.
                     //
@@ -119,9 +120,17 @@ class _RequestCardState extends ConsumerState<RequestCard> {
                     if (waited.isNotEmpty)
                       Text(
                         waited,
-                        style: T.small.copyWith(
-                          color: stale ? T.warning : T.inkMuted,
-                          fontWeight: stale ? FontWeight.w600 : null,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 13,
+                          height: 1.25,
+                          color:
+                              stale
+                                  ? AppColors.warningOn(context)
+                                  : scheme.onSurfaceVariant,
+                          fontWeight:
+                              stale ? FontWeight.w700 : FontWeight.w400,
                         ),
                       ),
                     if (a.preferredFor != null)
@@ -130,18 +139,17 @@ class _RequestCardState extends ConsumerState<RequestCard> {
                         // evening" is one answer to one question. Absent when
                         // they said any time — which is most of them, and
                         // printing "any time" would be noise on every row.
-                        l10n.deskAskedFor(
-                          [
-                            DateFormat(
-                              'EEE, d MMM',
-                              locale,
-                            ).format(a.preferredFor!),
-                            if (a.preferredTime != null) a.preferredTime!,
-                          ].join(' · '),
-                        ),
-                        style: T.small.copyWith(
-                          color: T.primary,
+                        [
+                          'for ${DateFormat('EEE, d MMM', locale).format(a.preferredFor!)}',
+                          if (a.preferredTime != null) a.preferredTime!,
+                        ].join(' · '),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 13,
+                          height: 1.25,
                           fontWeight: FontWeight.w600,
+                          color: AppColors.primary,
                         ),
                       ),
                   ],
@@ -155,21 +163,27 @@ class _RequestCardState extends ConsumerState<RequestCard> {
                   // desk's whole job is ringing people back, that did nothing
                   // at all when pressed.
                   onPressed:
-                      () => launchUrl(Uri(scheme: 'tel', path: a.patientPhone)),
-                  icon: const Icon(Icons.call_outlined, color: T.primary),
+                      () => launchUrl(
+                        Uri(scheme: 'tel', path: a.patientPhone),
+                      ),
+                  icon: Icon(
+                    Icons.call_outlined,
+                    color: AppColors.primary,
+                    size: 20,
+                  ),
                 ),
             ],
           ),
           if ((a.reason ?? '').isNotEmpty) ...[
-            const SizedBox(height: T.s2),
+            const SizedBox(height: AppSpacing.sm),
             Text(
               a.reason!,
               maxLines: 3,
               overflow: TextOverflow.ellipsis,
-              style: T.body.copyWith(color: T.ink),
+              style: const TextStyle(fontSize: 14, height: 1.35),
             ),
           ],
-          const SizedBox(height: T.s2),
+          const SizedBox(height: AppSpacing.sm),
           // The same trap as the header, and worse here: a Row of
           // [TextButton, Spacer, FilledButton] where the filled one demands
           // infinite width leaves nothing for the Spacer, and an overflowing
@@ -180,32 +194,37 @@ class _RequestCardState extends ConsumerState<RequestCard> {
             children: [
               TextButton(
                 onPressed: _busy ? null : _decline,
-                style: TextButton.styleFrom(foregroundColor: T.inkMuted),
+                style: TextButton.styleFrom(
+                  foregroundColor: scheme.onSurfaceVariant,
+                  minimumSize: const Size(0, AppSpacing.minTapTarget),
+                ),
                 child: Text(l10n.deskDecline),
               ),
-              const SizedBox(width: T.s2),
+              const SizedBox(width: AppSpacing.sm),
               // Expanded rather than a Spacer: the action takes the room that
               // is left instead of competing for it, and a longer label in
               // Hindi or Bengali makes the button wider, never the row.
-              //
-              // Outlined, not filled. A morning with four requests drew four
-              // filled blue buttons, each as loud as the screen's one primary
-              // action, so none of them was primary. It says what it does,
-              // too: it was "Schedule", while the sheet it opens is titled
-              // "Give a time".
               Expanded(
-                child: OutlinedButton.icon(
+                child: FilledButton.icon(
                   onPressed: _busy ? null : _pickTime,
                   icon:
                       _busy
-                          ? const SizedBox.square(
-                            dimension: T.s4,
+                          ? const SizedBox(
+                            width: 15,
+                            height: 15,
                             child: CircularProgressIndicator(strokeWidth: 2),
                           )
-                          : const Icon(Icons.event_available_rounded),
-                  label: Text(l10n.deskGiveTime),
-                  style: OutlinedButton.styleFrom(
-                    minimumSize: const Size.fromHeight(T.tap),
+                          : const Icon(Icons.event_available_rounded, size: 18),
+                  label: Text(l10n.deskOfferTime),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: AppColors.primary,
+                    foregroundColor: Colors.white,
+                    minimumSize: const Size(0, AppSpacing.minTapTarget),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(
+                        AppSpacing.buttonRadius,
+                      ),
+                    ),
                   ),
                 ),
               ),
@@ -235,11 +254,9 @@ class _RequestCardState extends ConsumerState<RequestCard> {
                 child: Text(l10n.deskKeepIt),
               ),
               TextButton(
-                style: TextButton.styleFrom(foregroundColor: T.danger),
+                style: TextButton.styleFrom(foregroundColor: AppColors.danger),
                 onPressed: () => Navigator.pop(ctx, true),
-                // Through the localisations like the rest of the dialog. This
-                // was the one English word left in a Bengali confirmation.
-                child: Text(l10n.deskDecline),
+                child: const Text('Decline'),
               ),
             ],
           ),

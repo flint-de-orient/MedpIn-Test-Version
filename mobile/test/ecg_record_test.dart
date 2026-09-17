@@ -101,8 +101,7 @@ void main() {
 
     testWidgets('a failed load says so, to everyone, and never that there are none', (tester) async {
       await pump(tester, mayFile: false, items: () async => throw Exception('offline'));
-      // Said by the record's shared failure notice since the redesign.
-      expect(find.textContaining('Could not load the ECGs'), findsOneWidget);
+      expect(find.text('Could not load ECGs.'), findsOneWidget);
       expect(find.textContaining('No ECGs'), findsNothing, reason: 'a list that did not arrive was read as an empty record');
     });
 

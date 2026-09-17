@@ -4,36 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/config/app_config.dart';
 import '../providers/core_providers.dart';
 
-/// Titles a name can begin with that are not the person.
-///
-/// "Dr. Amit Dey" drew a "D" — and so did every other doctor on the platform,
-/// which is the one thing an avatar exists to tell apart.
-const _honorifics = {
-  'dr', 'doctor', 'prof', 'professor', 'mr', 'mrs', 'ms', 'mx', 'miss',
-  'shri', 'sri', 'smt', 'kumari', 'sir', 'madam',
-};
-
-/// Up to two initials from a name, first and last, skipping titles.
-///
-/// "Dr. Amit Kumar Dey" → "AD"; "Rahul" → "R"; "" → "?".
-String initialsOf(String name) {
-  final words = name
-      .split(RegExp(r'[\s.,]+'))
-      .where((w) => w.isNotEmpty)
-      .toList();
-  while (words.length > 1 && _honorifics.contains(words.first.toLowerCase())) {
-    words.removeAt(0);
-  }
-  final letters = words
-      .map((w) => w.characters.firstWhere((c) => RegExp(r'\p{L}', unicode: true).hasMatch(c), orElse: () => ''))
-      .where((c) => c.isNotEmpty)
-      .toList();
-  if (letters.isEmpty) return '?';
-  if (letters.length == 1) return letters.first.toUpperCase();
-  return (letters.first + letters.last).toUpperCase();
-}
-
-/// The person's profile photo when set, otherwise their initials on a tinted
+/// The patient's profile photo when set, otherwise their initial on a tinted
 /// disc. The photo is owner-protected, so it is fetched with the bearer token.
 class UserAvatar extends ConsumerWidget {
   const UserAvatar({
@@ -46,14 +17,14 @@ class UserAvatar extends ConsumerWidget {
 
   final String name;
 
-  /// Relative `/api/v1/uploads/:id/raw` path, or null for the initials.
+  /// Relative `/api/v1/uploads/:id/raw` path, or null for the initial.
   final String? avatarUrl;
   final Color accent;
   final double size;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final initials = initialsOf(name);
+    final initial = (name.isNotEmpty ? name[0] : '?').toUpperCase();
     final headers = ref.watch(imageAuthHeaderProvider).valueOrNull;
 
     Widget fallback() => Container(
@@ -66,17 +37,8 @@ class UserAvatar extends ConsumerWidget {
       ),
       child: Center(
         child: Text(
-          initials,
-          // Two letters set a little smaller than one, so "AD" fits the disc
-          // it used to hold a single "D" in. Never scaled by the reader's text
-          // size: the disc is not, and the letters are a picture of a name.
-          textScaler: TextScaler.noScaling,
-          style: TextStyle(
-            fontSize: size * (initials.length > 1 ? 0.36 : 0.42),
-            fontWeight: FontWeight.w700,
-            letterSpacing: 0,
-            color: accent,
-          ),
+          initial,
+          style: TextStyle(fontSize: size * 0.4, fontWeight: FontWeight.w800, color: accent),
         ),
       ),
     );

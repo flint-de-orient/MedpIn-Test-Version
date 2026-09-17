@@ -1,5 +1,3 @@
-import 'dart:convert';
-
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -7,14 +5,8 @@ import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 
-import '../../../core/capabilities/capabilities.dart';
-import '../../../core/router/area.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
-import '../../../core/theme/tokens.dart';
-import '../../../shared/providers/core_providers.dart';
-import '../../../shared/widgets/surfaces.dart';
-import 'widgets/current_medicines.dart';
 import '../../../shared/widgets/authed_image.dart';
 import '../../../core/utils/vitals_validators.dart';
 import '../../../shared/data/upload_repository.dart';
@@ -48,9 +40,7 @@ class ConsultScreen extends ConsumerStatefulWidget {
 }
 
 class _ConsultScreenState extends ConsumerState<ConsultScreen> {
-  // "Prescription", not "Advice": the last step is medicines, tests, advice,
-  // follow-up and the signature, and it ends in the prescription.
-  static const _steps = ['Vitals', 'Diagnosis', 'Prescription'];
+  static const _steps = ['Vitals', 'Diagnosis', 'Advice'];
   int _step = 0;
 
   /// This consultation's identity for the server, for as long as the screen is
@@ -97,97 +87,6 @@ class _ConsultScreenState extends ConsumerState<ConsultScreen> {
   bool _uploadingSignature = false;
   bool _submitting = false;
   String? _error;
-
-  /// What was issued, once it has been — the screen then says so in full
-  /// rather than in a toast that is gone before it is read.
-  ({DateTime at, int medicines, int tests, DateTime? followUp})? _issued;
-
-  /// When a draft saved on this phone was put back into the form.
-  DateTime? _restoredDraftFrom;
-
-  /// Where the patient record used to park an unsent prescription. The record
-  /// no longer has its own form, so its drafts are picked up here instead of
-  /// being stranded.
-  String get _draftKey => 'rx_draft_${widget.patientId}';
-
-  @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) _restoreDraft();
-    });
-  }
-
-  /// Puts a draft saved from the record's old prescribing form into this one.
-  ///
-  /// The old draft kept medicines by name, strength, frequency and days, the
-  /// diagnosis one per line, advice, tests and a follow-up date. Anything it
-  /// did not keep stays at this form's defaults.
-  void _restoreDraft() {
-    final raw = ref.read(sharedPreferencesProvider).getString(_draftKey);
-    if (raw == null) return;
-    try {
-      final d = jsonDecode(raw) as Map<String, dynamic>;
-      final meds = [
-        for (final m in (d['meds'] as List?) ?? const [])
-          if (m is Map && (m['name']?.toString().trim() ?? '').isNotEmpty) m,
-      ];
-      final diagnosis =
-          (d['diagnosis']?.toString() ?? '')
-              .split('\n')
-              .map((s) => s.trim())
-              .where((s) => s.isNotEmpty)
-              .toList();
-      final tests = <String>{
-        for (final t in (d['tests'] as List?) ?? const []) t.toString(),
-      };
-      final advice = d['advice']?.toString().trim() ?? '';
-      final followUp = DateTime.tryParse(d['followUp']?.toString() ?? '');
-      if (meds.isEmpty &&
-          diagnosis.isEmpty &&
-          tests.isEmpty &&
-          advice.isEmpty &&
-          followUp == null) {
-        return;
-      }
-      setState(() {
-        if (meds.isNotEmpty) {
-          for (final m in _meds) {
-            m.dispose();
-          }
-          _meds
-            ..clear()
-            ..addAll([
-              for (final m in meds)
-                _MedDraft()
-                  ..name.text = m['name'].toString()
-                  ..strength.text = m['dosage']?.toString() ?? ''
-                  ..duration.text = m['duration']?.toString() ?? ''
-                  ..frequency = DoseFrequency.values.firstWhere(
-                    (f) => f.name == m['frequency']?.toString(),
-                    orElse: () => DoseFrequency.od,
-                  ),
-            ]);
-        }
-        _diagnoses.addAll(diagnosis);
-        _labs.addAll(tests);
-        if (advice.isNotEmpty && _advice.text.trim().isEmpty) {
-          _advice.text = advice;
-        }
-        _followUp ??= followUp;
-        _restoredDraftFrom =
-            DateTime.tryParse(d['savedAt']?.toString() ?? '') ?? DateTime.now();
-      });
-    } catch (_) {
-      // A draft that will not read is not worth an error: the form simply
-      // opens empty, which is where the doctor would have started.
-    }
-  }
-
-  Future<void> _discardDraft() async {
-    await ref.read(sharedPreferencesProvider).remove(_draftKey);
-    if (mounted) setState(() => _restoredDraftFrom = null);
-  }
 
   @override
   void dispose() {
@@ -341,7 +240,6 @@ class _ConsultScreenState extends ConsumerState<ConsultScreen> {
     // Software that silently rewrites a dose is worse than software that shows
     // an inconsistency, because the inconsistency is visible and gets caught.
     if (!await _confirmStrengths()) return;
-    if (!mounted) return;
 
     // A prescription without medicines is legitimate — a visit can end in tests,
     // diet advice or reassurance and nothing to dispense. It is also the shape a
@@ -448,19 +346,15 @@ class _ConsultScreenState extends ConsumerState<ConsultScreen> {
       ref.invalidate(patientPrescriptionsProvider(widget.patientId));
       ref.invalidate(patientSummaryProvider(widget.patientId));
       ref.invalidate(patientMedicationsProvider(widget.patientId));
-      // Issued, so a draft of it is no longer a draft of anything.
-      await ref.read(sharedPreferencesProvider).remove(_draftKey);
       if (!mounted) return;
-      // Said on the screen, in full, with the way to the PDF — not a toast
-      // and a jump to another screen the doctor did not ask for.
-      setState(() {
-        _issued = (
-          at: DateTime.now(),
-          medicines: items.length,
-          tests: labs.length,
-          followUp: _followUp,
-        );
-      });
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Prescription created')));
+      // Land on the prescription list so the doctor can download the PDF.
+      context.pushReplacement(
+        '/clinician/patients/${widget.patientId}/prescriptions',
+        extra: widget.patientName,
+      );
     } catch (e) {
       if (!mounted) return;
       setState(() => _error = ErrorView.messageFor(context, e));
@@ -471,108 +365,38 @@ class _ConsultScreenState extends ConsumerState<ConsultScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final issued = _issued;
     return Scaffold(
       appBar: AppBar(
-        // Who, first: a consultation for the wrong patient is the mistake to
-        // make impossible, and the name was a centred grey line under "Consult".
-        title: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              widget.patientName ?? 'Consultation',
-              style: T.title.copyWith(color: T.ink),
-            ),
-            if (widget.patientName != null)
-              Text('Consultation', style: T.small.copyWith(color: T.inkMuted)),
-          ],
-        ),
+        title: const Text('Consult'),
+        bottom:
+            widget.patientName == null
+                ? null
+                : PreferredSize(
+                  preferredSize: const Size.fromHeight(20),
+                  child: Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: Text(
+                      widget.patientName!,
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ),
+                ),
       ),
       // The nav bar lives here (not in the body Column) so Flutter always keeps
       // it pinned above the system bar and lifts it above the keyboard — the
       // Next/Generate action is never scrolled off or hidden behind a field.
-      bottomNavigationBar: issued == null ? _navBar() : null,
-      body:
-          issued != null
-              ? _IssuedPanel(
-                patientName: widget.patientName,
-                issued: issued,
-                onOpenPrescriptions:
-                    () => context.pushReplacement(
-                      '${areaPrefix(ref)}/patients/${widget.patientId}/prescriptions',
-                      extra: widget.patientName,
-                    ),
-                onBack: () => Navigator.of(context).maybePop(),
-              )
-              : Column(
-                children: [
-                  _StepBar(step: _step, labels: _steps),
-                  if (_restoredDraftFrom != null)
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(T.s4, 0, T.s4, T.s2),
-                      child: InnerTile(
-                        tone: T.primaryTint,
-                        child: Row(
-                          children: [
-                            const Icon(Icons.restore_rounded, color: T.primary),
-                            const SizedBox(width: T.s3),
-                            Expanded(
-                              child: Text(
-                                'Picked up the draft saved on this phone on '
-                                '${DateFormat('d MMM, h:mm a').format(_restoredDraftFrom!)}.',
-                                style: T.small.copyWith(color: T.ink),
-                              ),
-                            ),
-                            TextButton(
-                              onPressed: _discardDraft,
-                              style: TextButton.styleFrom(
-                                minimumSize: const Size(T.tap, T.tap),
-                              ),
-                              child: const Text('Discard'),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  Expanded(
-                    child: IndexedStack(
-                      index: _step,
-                      children: [
-                        _vitalsStep(),
-                        _diagnosisStep(),
-                        _adviceStep(),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-    );
-  }
-
-  /// A chip's label in the app's own face. The chip theme's label style names
-  /// no family, so a bare style on top of it drew in the platform default.
-  static TextStyle? _chipText(BuildContext context) =>
-      Theme.of(context).textTheme.bodyMedium?.copyWith(color: T.ink);
-
-  /// What the patient is already on, where the new prescription is written —
-  /// with the doctor's Stop, what the patient stopped on their own, and where
-  /// two prescriptions name the same medicine.
-  Widget _currentMedicines() {
-    final caps = ref.watch(capabilitySetProvider);
-    return Padding(
-      padding: const EdgeInsets.only(bottom: T.s6),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
+      bottomNavigationBar: _navBar(),
+      body: Column(
         children: [
-          const _StepTitle(
-            'Currently on',
-            'Stop what should not continue before adding to it',
-          ),
-          const SizedBox(height: T.s2),
-          CurrentMedicinesList(
-            patientId: widget.patientId,
-            allowStop: caps.can(Perm.prescribe),
+          _StepBar(step: _step, labels: _steps),
+          Expanded(
+            child: IndexedStack(
+              index: _step,
+              children: [_vitalsStep(), _diagnosisStep(), _adviceStep()],
+            ),
           ),
         ],
       ),
@@ -812,7 +636,7 @@ class _ConsultScreenState extends ConsumerState<ConsultScreen> {
                   (d) => kDiagnosisCatalog.every((o) => o.label != d),
                 ))
                   Chip(
-                    label: Text(d, style: _chipText(context)),
+                    label: Text(d),
                     onDeleted: () => setState(() => _diagnoses.remove(d)),
                   ),
               ],
@@ -950,9 +774,8 @@ class _ConsultScreenState extends ConsumerState<ConsultScreen> {
           .split('\n')
           .map((l) => l.trim())
           .where((l) => l.isNotEmpty)) {
-        if (!lines.any((e) => e.toLowerCase() == line.toLowerCase())) {
+        if (!lines.any((e) => e.toLowerCase() == line.toLowerCase()))
           lines.add(line);
-        }
       }
       _advice.text = lines.join('\n');
     });
@@ -987,9 +810,6 @@ class _ConsultScreenState extends ConsumerState<ConsultScreen> {
     return ListView(
       padding: const EdgeInsets.all(AppSpacing.md),
       children: [
-        // Prescribing without what the patient is already on is prescribing
-        // blind: a repeat or an interaction is invisible until reported.
-        _currentMedicines(),
         // The patient's last prescription, for reference while writing this one.
         _previousRxCard(),
         // A recap of what was diagnosed in step 2, so the doctor writes the
@@ -1015,9 +835,7 @@ class _ConsultScreenState extends ConsumerState<ConsultScreen> {
             children: [
               for (final d in _diagnoses)
                 Chip(
-                  // The theme's face, sized: a bare TextStyle here named no
-                  // family and drew the diagnosis in Roboto.
-                  label: Text(d, style: _chipText(context)),
+                  label: Text(d, style: const TextStyle(fontSize: 12)),
                   visualDensity: VisualDensity.compact,
                   materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
                 ),
@@ -1039,7 +857,7 @@ class _ConsultScreenState extends ConsumerState<ConsultScreen> {
                     (it.strength != null && it.strength!.isNotEmpty)
                         ? '${it.name} · ${formatStrength(it.strength)}'
                         : it.name,
-                    style: _chipText(context),
+                    style: const TextStyle(fontSize: 12),
                   ),
                   visualDensity: VisualDensity.compact,
                   onPressed: () => _addPreviousMed(it),
@@ -1081,7 +899,7 @@ class _ConsultScreenState extends ConsumerState<ConsultScreen> {
             children: [
               for (final t in _labs)
                 InputChip(
-                  label: Text(t, style: _chipText(context)),
+                  label: Text(t),
                   onDeleted: () => setState(() => _labs.remove(t)),
                   deleteIcon: const Icon(Icons.close_rounded, size: 16),
                 ),
@@ -1194,7 +1012,7 @@ class _ConsultScreenState extends ConsumerState<ConsultScreen> {
               for (final a in _adviceSuggestions)
                 ActionChip(
                   avatar: const Icon(Icons.add_rounded, size: 16),
-                  label: Text(a.text, style: _chipText(context)),
+                  label: Text(a.text),
                   onPressed: () => _completeAdvice(a.text),
                 ),
             ],
@@ -1518,11 +1336,10 @@ class _ConsultScreenState extends ConsumerState<ConsultScreen> {
       ref.read(authControllerProvider.notifier).replaceUser(user);
       messenger.showSnackBar(const SnackBar(content: Text('Signature saved')));
     } catch (_) {
-      if (mounted) {
+      if (mounted)
         messenger.showSnackBar(
           const SnackBar(content: Text('Could not upload the signature')),
         );
-      }
     } finally {
       if (mounted) setState(() => _uploadingSignature = false);
     }
@@ -1851,12 +1668,6 @@ class _MedCard extends StatelessWidget {
   }
 }
 
-/// Where the consultation is: three steps, each named, with the one being
-/// filled in marked in words as well as colour.
-///
-/// Numbered dots joined by hairlines put the labels in 14px grey beside
-/// 26px circles, and at raised text the labels were the first thing cut.
-/// Three equal segments give each label its own width to wrap in.
 class _StepBar extends StatelessWidget {
   const _StepBar({required this.step, required this.labels});
 
@@ -1865,160 +1676,67 @@ class _StepBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Semantics(
-      label: 'Step ${step + 1} of ${labels.length}, ${labels[step]}',
-      excludeSemantics: true,
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(T.s4, T.s2, T.s4, T.s3),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            for (var i = 0; i < labels.length; i++) ...[
-              if (i > 0) const SizedBox(width: T.s2),
-              Expanded(child: _segment(i)),
-            ],
-          ],
-        ),
+    final scheme = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+        AppSpacing.md,
+        AppSpacing.sm,
+        AppSpacing.md,
+        AppSpacing.sm,
       ),
-    );
-  }
-
-  Widget _segment(int i) {
-    final done = i < step;
-    final active = i == step;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Container(
-          height: T.s1,
-          decoration: BoxDecoration(
-            color: done || active ? T.primary : T.line,
-            borderRadius: T.rFull,
-          ),
-        ),
-        const SizedBox(height: T.s2),
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            if (done) ...[
-              const Icon(Icons.check_rounded, size: T.s4, color: T.primary),
-              const SizedBox(width: T.s1),
-            ],
-            Expanded(
-              child: Text(
-                done ? labels[i] : '${i + 1}  ${labels[i]}',
-                style: T.label.copyWith(
-                  color: active ? T.ink : T.inkMuted,
-                  fontWeight: active ? FontWeight.w700 : FontWeight.w600,
+      child: Row(
+        children: [
+          for (var i = 0; i < labels.length; i++) ...[
+            _dot(context, i),
+            if (i < labels.length - 1)
+              Expanded(
+                child: Container(
+                  height: 2,
+                  margin: const EdgeInsets.symmetric(horizontal: 4),
+                  color: i < step ? AppColors.primary : scheme.outlineVariant,
                 ),
               ),
-            ),
           ],
-        ),
-      ],
-    );
-  }
-}
-
-/// The consultation, finished: what was issued, and the two ways onward.
-class _IssuedPanel extends StatelessWidget {
-  const _IssuedPanel({
-    required this.patientName,
-    required this.issued,
-    required this.onOpenPrescriptions,
-    required this.onBack,
-  });
-
-  final String? patientName;
-  final ({DateTime at, int medicines, int tests, DateTime? followUp}) issued;
-  final VoidCallback onOpenPrescriptions;
-  final VoidCallback onBack;
-
-  @override
-  Widget build(BuildContext context) {
-    final lines = [
-      issued.medicines == 0
-          ? 'No medicines'
-          : issued.medicines == 1
-          ? '1 medicine'
-          : '${issued.medicines} medicines',
-      if (issued.tests > 0)
-        issued.tests == 1 ? '1 test advised' : '${issued.tests} tests advised',
-      if (issued.followUp != null)
-        'Follow-up ${DateFormat('EEE d MMM y').format(issued.followUp!)}',
-    ];
-    return SafeArea(
-      child: ListView(
-        padding: const EdgeInsets.all(T.s4),
-        children: [
-          SectionCard(
-            child: Semantics(
-              liveRegion: true,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Container(
-                    width: T.s12,
-                    height: T.s12,
-                    decoration: const BoxDecoration(
-                      color: T.successTint,
-                      shape: BoxShape.circle,
-                    ),
-                    child: const Icon(
-                      Icons.check_rounded,
-                      color: T.success,
-                      size: T.s8,
-                    ),
-                  ),
-                  const SizedBox(height: T.s4),
-                  Text(
-                    'Prescription issued',
-                    style: T.title.copyWith(color: T.ink),
-                  ),
-                  Text(
-                    [
-                      if (patientName != null) patientName!,
-                      DateFormat('d MMM y, h:mm a').format(issued.at),
-                    ].join(' · '),
-                    style: T.body.copyWith(color: T.inkMuted),
-                  ),
-                  const SizedBox(height: T.s4),
-                  for (final line in lines)
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: T.s1),
-                      child: Text(line, style: T.body.copyWith(color: T.ink)),
-                    ),
-                  const SizedBox(height: T.s2),
-                  Text(
-                    'Saved to the record. Medicines are on the patient’s list '
-                    'with their reminders.',
-                    style: T.small.copyWith(color: T.inkMuted),
-                  ),
-                  const SizedBox(height: T.s5),
-                  FilledButton.icon(
-                    onPressed: onOpenPrescriptions,
-                    style: FilledButton.styleFrom(
-                      backgroundColor: T.primary,
-                      foregroundColor: Colors.white,
-                      minimumSize: const Size.fromHeight(T.hControl),
-                    ),
-                    icon: const Icon(Icons.picture_as_pdf_outlined),
-                    label: const Text('Open the prescription'),
-                  ),
-                  const SizedBox(height: T.s2),
-                  OutlinedButton(
-                    onPressed: onBack,
-                    style: OutlinedButton.styleFrom(
-                      minimumSize: const Size.fromHeight(T.tap),
-                    ),
-                    child: const Text('Back to the record'),
-                  ),
-                ],
-              ),
-            ),
-          ),
         ],
       ),
+    );
+  }
+
+  Widget _dot(BuildContext context, int i) {
+    final scheme = Theme.of(context).colorScheme;
+    final done = i < step;
+    final active = i == step;
+    final color =
+        (done || active) ? AppColors.primary : scheme.surfaceContainerHighest;
+    return Row(
+      children: [
+        Container(
+          width: 26,
+          height: 26,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+          child:
+              done
+                  ? const Icon(Icons.check, size: 15, color: Colors.white)
+                  : Text(
+                    '${i + 1}',
+                    style: TextStyle(
+                      color: active ? Colors.white : scheme.onSurfaceVariant,
+                      fontWeight: FontWeight.w800,
+                      fontSize: 14,
+                    ),
+                  ),
+        ),
+        const SizedBox(width: 4),
+        Text(
+          labels[i],
+          style: TextStyle(
+            fontSize: 14,
+            fontWeight: active ? FontWeight.w800 : FontWeight.w500,
+            color: active ? scheme.onSurface : scheme.onSurfaceVariant,
+          ),
+        ),
+      ],
     );
   }
 }

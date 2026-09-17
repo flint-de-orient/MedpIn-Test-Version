@@ -13,18 +13,14 @@ import { Prescription } from '../models/Prescription.js';
 import { PatientCondition, CONDITION_STATUS } from '../models/PatientCondition.js';
 import { User, ROLES, CLINICIAN_ROLES } from '../models/User.js';
 import { bloodPressureBand } from '../services/clinicalReadings.js';
-import { GLUCOSE, HBA1C, VITALS } from '../services/triage/thresholds.js';
+import { VITALS } from '../services/triage/thresholds.js';
 import { RECORD_STATE } from '../models/plugins/clinicalRecord.js';
 import { LabResult } from '../models/LabResult.js';
 import { EcgReport } from '../models/EcgReport.js';
-import { GlucoseReading } from '../models/GlucoseReading.js';
-import { Hba1cRecord } from '../models/Hba1cRecord.js';
-import { PatientProfile } from '../models/PatientProfile.js';
 import { ANALYTES } from '../services/analyteCatalog.js';
 
 /**
- * The caseload panels a doctor's home is made of: a general physician's, a
- * cardiologist's and a diabetologist's.
+ * The caseload panels a general physician and a cardiologist open onto.
  *
  * ---- Every panel reads data the platform already holds -------------------
  *
@@ -34,13 +30,7 @@ import { ANALYTES } from '../services/analyteCatalog.js';
  * arithmetic, and a number labelled that way would be read as validated. What
  * is here is what the record already says: the band of each patient's latest
  * blood pressure, the follow-up date the doctor wrote on the prescription, the
- * conditions a clinician diagnosed, the pulse that was measured, the sugars
- * patients logged and the HbA1c results on file.
- *
- * Nor are there foot or eye screening panels, though `/patients/:id/foot` and
- * `/eye` exist: no screen in the app or the console files either record, so a
- * "screening due" panel would name every patient on every practice, forever,
- * and read as a clinic that screens nobody.
+ * conditions a clinician diagnosed, and the pulse that was measured.
  *
  * ---- Bounded twice ----------------------------------------------------------
  *
@@ -63,8 +53,6 @@ router.use(requireAuth, requireRole(...PANEL_ROLES), requireRecordAccess());
 
 /** How many named patients a panel returns before it only counts. */
 const NAMED = 10;
-
-const DAY = 24 * 60 * 60 * 1000;
 
 /**
  * This practice's active caseload: patient id → the date this practice's
@@ -497,236 +485,6 @@ router.get(
       impressions,
       flagged: named.map((f) => ({ ...f, name: names.get(f.patientId) ?? null })),
       flaggedTotal: flagged.length,
-    });
-  }),
-);
-
-// ---------------------------------------------------------------------------
-// Glucose: lows and very highs
-// ---------------------------------------------------------------------------
-
-/**
- * Who had a low or a very high sugar in the window, and how the caseload's
- * readings sat against the range.
- *
- * ---- By the value, against the triage engine's own thresholds ------------
- *
- * Not by the flag stored on the reading. That flag depends on the context the
- * patient chose — "high" after a meal is not "high" fasting — and it is missing
- * on readings written before it existed. Below 70 and above 250 mean the same
- * thing whatever the context, and they are the numbers that page a doctor, so a
- * panel counting them cannot disagree with the alert that already did.
- *
- * "In range" is 70–180, the band the practice's glucose chart
- * (services/analytics.js) already draws, so the two never say different
- * percentages about the same readings.
- *
- * ---- Every low, not only the latest ---------------------------------------
- *
- * The other panels read each patient's latest record. A hypo on Tuesday is not
- * answered by a normal reading on Wednesday — it is the thing a diabetologist
- * changes the prescription for — so this counts them all within the window.
- */
-router.get(
-  '/glucose',
-  validate({ query: z.object({ days: z.coerce.number().int().min(7).max(90).default(14) }) }),
-  audit('read', 'GlucoseReading'),
-  asyncHandler(async (req, res) => {
-    const { days } = q(req);
-    const since = new Date(Date.now() - days * DAY);
-    const patients = await caseload(req);
-
-    const rows = patients.size
-      ? await GlucoseReading.find({
-          patient: { $in: [...patients.keys()] },
-          measuredAt: { $gte: since },
-        })
-          .select('patient valueMgDl measuredAt')
-          .sort({ measuredAt: -1 })
-          .lean()
-      : [];
-
-    let readings = 0;
-    let inRange = 0;
-    const measured = new Set();
-    const lows = new Map();
-    const highs = new Map();
-
-    for (const r of rows) {
-      const patientId = String(r.patient);
-      // Each patient's enrolment date, here: a hypo recorded before this
-      // practice took them on is another practice's reading.
-      if (!visible(patients, patientId, r.measuredAt)) continue;
-
-      const value = r.valueMgDl;
-      readings += 1;
-      measured.add(patientId);
-      if (value >= GLUCOSE.LOW && value <= GLUCOSE.POST_PRANDIAL_TARGET_MAX) inRange += 1;
-
-      // Rows arrive newest first, so the first one seen is the latest.
-      if (value < GLUCOSE.LOW) {
-        const low = lows.get(patientId) ?? { patientId, count: 0, severe: 0, lowest: value, lastAt: r.measuredAt };
-        low.count += 1;
-        if (value < GLUCOSE.SEVERE_LOW) low.severe += 1;
-        low.lowest = Math.min(low.lowest, value);
-        lows.set(patientId, low);
-      } else if (value > GLUCOSE.HIGH) {
-        const high = highs.get(patientId) ?? { patientId, count: 0, critical: 0, highest: value, lastAt: r.measuredAt };
-        high.count += 1;
-        if (value > GLUCOSE.CRITICAL_HIGH) high.critical += 1;
-        high.highest = Math.max(high.highest, value);
-        highs.set(patientId, high);
-      }
-    }
-
-    // A severe low before a mild one, then the lowest value, then the newest.
-    const lowList = [...lows.values()].sort(
-      (a, b) =>
-        Number(b.severe > 0) - Number(a.severe > 0) ||
-        a.lowest - b.lowest ||
-        new Date(b.lastAt) - new Date(a.lastAt),
-    );
-    // Above 400 before above 250, then the highest value, then the newest.
-    const highList = [...highs.values()].sort(
-      (a, b) =>
-        Number(b.critical > 0) - Number(a.critical > 0) ||
-        b.highest - a.highest ||
-        new Date(b.lastAt) - new Date(a.lastAt),
-    );
-
-    const namedLows = lowList.slice(0, NAMED);
-    const namedHighs = highList.slice(0, NAMED);
-    const names = await namesFor([...namedLows, ...namedHighs].map((e) => e.patientId));
-    const withName = (e) => ({ ...e, name: names.get(e.patientId) ?? null });
-
-    res.json({
-      days,
-      unit: 'mg/dL',
-      thresholds: {
-        low: GLUCOSE.LOW,
-        severeLow: GLUCOSE.SEVERE_LOW,
-        veryHigh: GLUCOSE.HIGH,
-        criticalHigh: GLUCOSE.CRITICAL_HIGH,
-        rangeLow: GLUCOSE.LOW,
-        rangeHigh: GLUCOSE.POST_PRANDIAL_TARGET_MAX,
-      },
-      caseload: patients.size,
-      // Stated, never folded into "no lows": a patient who logged nothing had
-      // no chance to record one.
-      withReadings: measured.size,
-      withoutReadings: patients.size - measured.size,
-      readings,
-      inRange,
-      lows: namedLows.map(withName),
-      lowsTotal: lowList.length,
-      highs: namedHighs.map(withName),
-      highsTotal: highList.length,
-    });
-  }),
-);
-
-// ---------------------------------------------------------------------------
-// HbA1c control
-// ---------------------------------------------------------------------------
-
-/**
- * Each patient's latest HbA1c against their own target, and who has had none.
- *
- * ---- Their target, not one number for everybody ---------------------------
- *
- * `PatientProfile.targets.hba1cMax` is set per patient — 8% is a reasonable
- * target for a frail eighty-year-old and a dangerous one to push below — and
- * the triage engine and the risk score already read it. A panel that called
- * that patient "above target" at 7.4% would be the one screen disagreeing with
- * the doctor who set it. 9% and over is poor control whatever the target: the
- * same line services/analytics.js draws.
- *
- * ---- "Not tested", said as a window rather than as overdue ---------------
- *
- * How often somebody should be tested depends on how they are doing, and
- * nothing records a schedule. What is true and checkable is that there is no
- * result in the last N days, so that is what this says — with the date of the
- * last one this practice may read, or none.
- */
-router.get(
-  '/hba1c',
-  validate({ query: z.object({ days: z.coerce.number().int().min(90).max(730).default(180) }) }),
-  audit('read', 'Hba1cRecord'),
-  asyncHandler(async (req, res) => {
-    const { days } = q(req);
-    const since = new Date(Date.now() - days * DAY);
-    const patients = await caseload(req);
-    const ids = [...patients.keys()];
-
-    const [rows, profiles] = patients.size
-      ? await Promise.all([
-          // Every result, not only the window's: a patient with none in the
-          // window is still told apart from one who has never been tested.
-          Hba1cRecord.find({ patient: { $in: ids } })
-            .select('patient percentage testedOn')
-            .sort({ testedOn: -1 })
-            .lean(),
-          PatientProfile.find({ user: { $in: ids } }).select('user targets.hba1cMax').lean(),
-        ])
-      : [[], []];
-
-    const targetOf = new Map(
-      profiles.map((p) => [String(p.user), p.targets?.hba1cMax ?? HBA1C.TARGET_MAX]),
-    );
-    // The latest result this practice may read, by test date against enrolment
-    // — the rule the patient's own HbA1c record is read by (routes/tracking.js).
-    const latest = latestPerPatient(rows, patients, 'testedOn');
-
-    let atTarget = 0;
-    const above = [];
-    const untested = [];
-
-    for (const patientId of ids) {
-      const r = latest.get(patientId);
-      if (!r || new Date(r.testedOn) < since) {
-        untested.push({ patientId, lastTestedOn: r?.testedOn ?? null, lastPercentage: r?.percentage ?? null });
-        continue;
-      }
-      const target = targetOf.get(patientId) ?? HBA1C.TARGET_MAX;
-      if (r.percentage > target) {
-        above.push({
-          patientId,
-          percentage: r.percentage,
-          target,
-          testedOn: r.testedOn,
-          poorControl: r.percentage >= HBA1C.POOR_CONTROL,
-        });
-      } else {
-        atTarget += 1;
-      }
-    }
-
-    // The highest first: that is who a diabetologist rings.
-    above.sort((a, b) => b.percentage - a.percentage || new Date(b.testedOn) - new Date(a.testedOn));
-    // Never tested before tested long ago, then the longest since a result.
-    untested.sort((a, b) => {
-      if (!a.lastTestedOn || !b.lastTestedOn) return Number(Boolean(a.lastTestedOn)) - Number(Boolean(b.lastTestedOn));
-      return new Date(a.lastTestedOn) - new Date(b.lastTestedOn);
-    });
-
-    const namedAbove = above.slice(0, NAMED);
-    const namedUntested = untested.slice(0, NAMED);
-    const names = await namesFor([...namedAbove, ...namedUntested].map((e) => e.patientId));
-    const withName = (e) => ({ ...e, name: names.get(e.patientId) ?? null });
-
-    res.json({
-      days,
-      unit: '%',
-      target: { default: HBA1C.TARGET_MAX, poorControl: HBA1C.POOR_CONTROL, individual: true },
-      caseload: patients.size,
-      withResult: atTarget + above.length,
-      atTarget,
-      aboveTarget: above.filter((a) => !a.poorControl).length,
-      poorControl: above.filter((a) => a.poorControl).length,
-      above: namedAbove.map(withName),
-      aboveTotal: above.length,
-      untested: namedUntested.map(withName),
-      untestedTotal: untested.length,
     });
   }),
 );

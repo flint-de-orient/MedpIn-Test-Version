@@ -51,9 +51,9 @@ class BillingScreen extends ConsumerWidget {
         onRefresh: () async => ref.refresh(billingStatusProvider.future),
         child: async.when(
           loading: () => const Center(child: CircularProgressIndicator()),
-          error:
-              (_, __) =>
-                  _Failed(onRetry: () => ref.invalidate(billingStatusProvider)),
+          error: (_, __) => _Failed(
+            onRetry: () => ref.invalidate(billingStatusProvider),
+          ),
           data: (status) => _Body(status: status, mayPay: mayPay),
         ),
       ),
@@ -241,15 +241,9 @@ class _CurrentPlan extends ConsumerWidget {
             ),
           ],
 
-          // A trial does not renew; its date is when it ends. The admin
-          // console's "extend trial" writes the same field, and "Renews on"
-          // beside Trial promised a practice something nothing will do.
           if (status.renewsOn != null) ...[
             const SizedBox(height: T.s3),
-            _Fact(
-              label: status.plan == 'trial' ? 'Trial ends on' : 'Renews on',
-              value: _day(status.renewsOn!),
-            ),
+            _Fact(label: 'Renews on', value: _day(status.renewsOn!)),
           ],
 
           if (sub != null) ...[
@@ -287,7 +281,10 @@ class _CurrentPlan extends ConsumerWidget {
   }
 
   static String _day(DateTime d) =>
-      '${d.day} ${const ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'][d.month - 1]} ${d.year}';
+      '${d.day} ${const [
+        'January', 'February', 'March', 'April', 'May', 'June', 'July',
+        'August', 'September', 'October', 'November', 'December',
+      ][d.month - 1]} ${d.year}';
 
   Future<void> _refresh(BuildContext context, WidgetRef ref) async {
     final messenger = ScaffoldMessenger.of(context);
@@ -307,28 +304,27 @@ class _CurrentPlan extends ConsumerWidget {
   Future<void> _confirmCancel(BuildContext context, WidgetRef ref) async {
     final ok = await showDialog<bool>(
       context: context,
-      builder:
-          (dialogContext) => AlertDialog(
-            title: const Text('Cancel this subscription?'),
-            // What it does and what it does not. Cancelling at the end of the
-            // period is not the same as losing the plan today, and a dialog that
-            // did not say so would be asking for a decision nobody has the facts
-            // for.
-            content: const Text(
-              'Billing stops at the end of the period you have already paid for. '
-              'Nothing changes about your practice today.',
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(dialogContext).pop(false),
-                child: const Text('Keep it'),
-              ),
-              FilledButton(
-                onPressed: () => Navigator.of(dialogContext).pop(true),
-                child: const Text('Cancel subscription'),
-              ),
-            ],
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Cancel this subscription?'),
+        // What it does and what it does not. Cancelling at the end of the
+        // period is not the same as losing the plan today, and a dialog that
+        // did not say so would be asking for a decision nobody has the facts
+        // for.
+        content: const Text(
+          'Billing stops at the end of the period you have already paid for. '
+          'Nothing changes about your practice today.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Keep it'),
           ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('Cancel subscription'),
+          ),
+        ],
+      ),
     );
     if (ok != true || !context.mounted) return;
 
@@ -355,7 +351,11 @@ class _SubscriptionState extends StatelessWidget {
     // Every state gets a word as well as a colour. Red-green deficiency runs
     // alongside diabetes and half this app's readers are its clinicians.
     final (label, tone, detail) = switch (sub.status) {
-      'active' => ('Active', T.success, 'Billing normally.'),
+      'active' => (
+        'Active',
+        T.success,
+        'Billing normally.',
+      ),
       'pending' => (
         'Payment retrying',
         T.warning,
@@ -433,7 +433,9 @@ class _Fact extends StatelessWidget {
     children: [
       Text(label, style: T.small.copyWith(color: T.inkFaint)),
       const SizedBox(width: T.s3),
-      Expanded(child: Text(value, style: T.small, textAlign: TextAlign.end)),
+      Expanded(
+        child: Text(value, style: T.small, textAlign: TextAlign.end),
+      ),
     ],
   );
 }
@@ -476,10 +478,9 @@ class _Meter extends StatelessWidget {
   Widget build(BuildContext context) {
     final f = allowance.fraction;
 
-    final (word, tone) =
-        allowance.full
-            ? ('Full', T.danger)
-            : allowance.nearlyFull
+    final (word, tone) = allowance.full
+        ? ('Full', T.danger)
+        : allowance.nearlyFull
             ? ('Nearly full', T.warning)
             : (null, T.inkMuted);
 
@@ -519,8 +520,8 @@ class _Meter extends StatelessWidget {
                   allowance.full
                       ? T.danger
                       : allowance.nearlyFull
-                      ? T.warning
-                      : T.primary,
+                          ? T.warning
+                          : T.primary,
                 ),
               ),
             ),
@@ -577,10 +578,9 @@ class _PlansState extends ConsumerState<_Plans> {
               plan: plan,
               isCurrent: plan.id == current,
               busy: _busy == plan.id,
-              onPick:
-                  widget.mayPay && plan.id != current
-                      ? () => _start(plan)
-                      : null,
+              onPick: widget.mayPay && plan.id != current
+                  ? () => _start(plan)
+                  : null,
             ),
             if (plan != PlanOption.all.last) const SizedBox(height: T.s3),
           ],
@@ -657,11 +657,7 @@ class _PlansState extends ConsumerState<_Plans> {
 
         case CheckoutOutcome.failed:
           messenger.showSnackBar(
-            SnackBar(
-              content: Text(
-                result.message ?? 'The payment did not go through.',
-              ),
-            ),
+            SnackBar(content: Text(result.message ?? 'The payment did not go through.')),
           );
 
         case CheckoutOutcome.paid:
@@ -714,9 +710,7 @@ class _PlansState extends ConsumerState<_Plans> {
     final url = handle.url;
     if (url == null) {
       messenger.showSnackBar(
-        const SnackBar(
-          content: Text('Razorpay did not return a checkout page.'),
-        ),
+        const SnackBar(content: Text('Razorpay did not return a checkout page.')),
       );
       return;
     }
@@ -763,7 +757,10 @@ class _PlanTile extends StatelessWidget {
             children: [
               Expanded(child: Text(plan.name, style: T.bodyStrong)),
               if (isCurrent)
-                Text('Current', style: T.small.copyWith(color: T.primary)),
+                Text(
+                  'Current',
+                  style: T.small.copyWith(color: T.primary),
+                ),
             ],
           ),
           const SizedBox(height: T.s1),
@@ -778,31 +775,25 @@ class _PlanTile extends StatelessWidget {
                   const Icon(Icons.check_rounded, size: 16, color: T.inkFaint),
                   const SizedBox(width: T.s2),
                   Expanded(
-                    child: Text(
-                      add,
-                      style: T.small.copyWith(color: T.inkMuted),
-                    ),
+                    child: Text(add, style: T.small.copyWith(color: T.inkMuted)),
                   ),
                 ],
               ),
             ),
           if (onPick != null) ...[
             const SizedBox(height: T.s3),
-            // Outlined, not filled. Three filled buttons stacked down one
-            // card made none of them the primary action, and nothing here is
-            // a recommendation the screen should push.
             SizedBox(
               width: double.infinity,
               height: scaled,
-              child: OutlinedButton(
+              child: FilledButton(
                 onPressed: busy ? null : onPick,
-                child:
-                    busy
-                        ? const SizedBox.square(
-                          dimension: T.s4,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                        : Text('Choose ${plan.name}'),
+                child: busy
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : Text('Choose ${plan.name}'),
               ),
             ),
           ],

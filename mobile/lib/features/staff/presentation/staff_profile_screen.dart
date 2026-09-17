@@ -50,9 +50,6 @@ class _StaffProfileScreenState extends ConsumerState<StaffProfileScreen> {
   /// stuck with an initial for good.
   Future<void> _changeAvatar() async {
     final messenger = ScaffoldMessenger.of(context);
-    // Read before the awaits: the sheet, the picker and the upload all sit
-    // between here and the snackbar, and this screen may be gone by then.
-    final photoUpdated = AppLocalizations.of(context).deskPhotoUpdated;
 
     final source = await showModalBottomSheet<ImageSource>(
       context: context,
@@ -102,7 +99,9 @@ class _StaffProfileScreenState extends ConsumerState<StaffProfileScreen> {
           .read(authRepositoryProvider)
           .updateMe(avatarAssetId: asset.id);
       ref.read(authControllerProvider.notifier).replaceUser(updated);
-      messenger.showSnackBar(SnackBar(content: Text(photoUpdated)));
+      messenger.showSnackBar(
+        SnackBar(content: Text(AppLocalizations.of(context).deskPhotoUpdated)),
+      );
     } catch (e) {
       // The reason, not just the fact — a picture too large and an expired
       // session are different problems with different answers.
@@ -131,14 +130,15 @@ class _StaffProfileScreenState extends ConsumerState<StaffProfileScreen> {
     final messenger = ScaffoldMessenger.of(context);
     final controller = ref.read(appLockProvider.notifier);
     final unavailable = AppLocalizations.of(context).deskNoDeviceLock;
-    final prompt = AppLocalizations.of(context).appLockPrompt;
 
     if (enable) {
       if (!await controller.canUse()) {
         messenger.showSnackBar(SnackBar(content: Text(unavailable)));
         return;
       }
-      final ok = await controller.enable(prompt);
+      final ok = await controller.enable(
+        AppLocalizations.of(context).appLockPrompt,
+      );
       if (!ok) {
         messenger.showSnackBar(SnackBar(content: Text(unavailable)));
       }
@@ -236,11 +236,15 @@ class _StaffProfileScreenState extends ConsumerState<StaffProfileScreen> {
                   // onto one screen is the lie the Patients and Messages tabs
                   // told: whoever taps both learns the list is not describing
                   // what sits behind it.
-                  // What the row opens, always. It was the clinic's phone
-                  // numbers and city glued together with runs of spaces and
-                  // the words "Opening hours" — data that wrapped mid-number,
-                  // in link blue, beside a destination it did not describe.
-                  subtitle: l10n.deskClinicDetailsSub,
+                  subtitle:
+                      primary == null
+                          ? l10n.deskClinicDetailsSub
+                          : [
+                            if (primary.phones.isNotEmpty)
+                              primary.phones.join('   '),
+                            if (primary.city != null) primary.city!,
+                            l10n.deskOpeningHours,
+                          ].join('    '),
                   showDivider: false,
                   onTap:
                       () =>

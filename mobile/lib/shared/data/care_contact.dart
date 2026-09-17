@@ -1,7 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../features/shell/presentation/care_access.dart';
 import '../providers/core_providers.dart';
 
 /// Who this person rings: their own practice, and its number when it has one.
@@ -44,16 +43,7 @@ class CareContact {
 /// Not auto-disposed: the emergency card reads it, and it should already be
 /// there when the card appears rather than start loading at that moment.
 /// Invalidate after a practice or location phone changes.
-///
-/// A patient is given a practice only while they are enrolled at one. The
-/// endpoint falls back to an assigned doctor's practice, which put a clinic's
-/// name and a button to ring its desk in front of people who had no
-/// relationship with it (see `clinicCareProvider`). Gated here, at the source,
-/// so no screen that reads a number can show one it should not.
 final careContactProvider = FutureProvider<CareContact>((ref) async {
-  if (ref.watch(clinicCareProvider) != ClinicCare.enrolled) {
-    return const CareContact(practiceName: null, phone: null);
-  }
   final json = await ref.watch(apiClientProvider).getJson('/auth/me/contact');
   return CareContact.fromJson(json);
 });

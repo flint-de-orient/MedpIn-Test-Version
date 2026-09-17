@@ -10,10 +10,6 @@ import 'package:share_plus/share_plus.dart';
 import '../../../core/config/app_config.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
-import '../../../core/theme/tokens.dart';
-import '../../../shared/widgets/surfaces.dart';
-import 'widgets/load_states.dart';
-import 'widgets/record_ui.dart';
 import '../../../shared/providers/core_providers.dart';
 import '../../medications/domain/strength.dart';
 import '../domain/clinician_models.dart';
@@ -258,91 +254,64 @@ class _PrescriptionListScreenState
       body: RefreshIndicator(
         onRefresh:
             () async => ref.invalidate(patientPrescriptionsProvider(patientId)),
-        child: _states(
-          async,
+        child: async.when(
           loading: () => const Center(child: CircularProgressIndicator()),
-          failed:
-              (e) => ListView(
+          error:
+              (e, _) => ListView(
                 children: [
-                  FailurePanel(
-                    error: e,
-                    what: 'the prescriptions',
-                    onRetry:
-                        () => ref.invalidate(
-                          patientPrescriptionsProvider(patientId),
-                        ),
+                  const SizedBox(height: 120),
+                  Center(
+                    child: Text(
+                      'Could not load prescriptions',
+                      style: TextStyle(color: scheme.onSurfaceVariant),
+                    ),
                   ),
                 ],
               ),
           data: (items) {
             if (items.isEmpty) {
               return ListView(
-                padding: const EdgeInsets.all(T.s6),
                 children: [
-                  const SizedBox(height: T.s12),
-                  const Icon(
+                  const SizedBox(height: 120),
+                  Icon(
                     Icons.receipt_long_outlined,
-                    size: T.s12,
-                    color: T.inkMuted,
+                    size: 52,
+                    color: scheme.outlineVariant,
                   ),
-                  const SizedBox(height: T.s4),
-                  Text(
-                    'No prescriptions yet',
-                    textAlign: TextAlign.center,
-                    style: T.title.copyWith(color: T.ink),
+                  const SizedBox(height: AppSpacing.md),
+                  Center(
+                    child: Text(
+                      'No prescriptions yet',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                        color: scheme.onSurfaceVariant,
+                      ),
+                    ),
                   ),
-                  const SizedBox(height: T.s2),
-                  Text(
-                    'A consultation adds one here. A prescription written on '
-                    'paper can be filed with Scan paper prescription.',
-                    textAlign: TextAlign.center,
-                    style: T.body.copyWith(color: T.inkMuted),
+                  const SizedBox(height: 4),
+                  Center(
+                    child: Text(
+                      'A consultation will add one here',
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: scheme.onSurfaceVariant,
+                      ),
+                    ),
                   ),
                 ],
               );
             }
-            final stale = async.hasError && !async.isLoading;
             return ListView.separated(
-              padding: const EdgeInsets.fromLTRB(T.s4, T.s4, T.s4, T.s12 * 2),
-              itemCount: items.length + (stale ? 1 : 0),
-              separatorBuilder: (_, _) => const SizedBox(height: T.s4),
-              itemBuilder:
-                  (_, i) =>
-                      stale && i == 0
-                          // A refresh that could not connect keeps the list.
-                          ? StaleNotice(
-                            error: async.error!,
-                            what: 'the list',
-                            onRetry:
-                                () => ref.invalidate(
-                                  patientPrescriptionsProvider(patientId),
-                                ),
-                          )
-                          : _PrescriptionCard(rx: items[stale ? i - 1 : i]),
+              padding: const EdgeInsets.all(AppSpacing.md),
+              itemCount: items.length,
+              separatorBuilder: (_, _) => const SizedBox(height: AppSpacing.md),
+              itemBuilder: (_, i) => _PrescriptionCard(rx: items[i]),
             );
           },
         ),
       ),
     );
-  }
-
-  /// Loading, failed and answered, told apart — and a refresh that could not
-  /// connect answered with the list it already had rather than an error. A
-  /// refusal is not kept: it replaces the list.
-  Widget _states(
-    AsyncValue<List<PrescriptionSummary>> async, {
-    required Widget Function() loading,
-    required Widget Function(Object error) failed,
-    required Widget Function(List<PrescriptionSummary> items) data,
-  }) {
-    final items = async.valueOrNull;
-    final error = async.hasError && !async.isLoading ? async.error : null;
-    if (error != null) {
-      final keeps = Failure.of(error, what: 'the prescriptions').keepsData;
-      if (!keeps || items == null) return failed(error);
-    }
-    if (items == null) return loading();
-    return data(items);
   }
 }
 
@@ -507,33 +476,21 @@ class _PrescriptionCardState extends ConsumerState<_PrescriptionCard> {
                         fontWeight: FontWeight.w800,
                       ),
                     ),
-                    if (rx.referenceNo != null)
+                    if (rx.referenceNo != null) ...[
+                      const SizedBox(height: 0),
                       Text(
                         rx.referenceNo!,
-                        style: T.small.copyWith(color: T.inkMuted),
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: scheme.onSurfaceVariant,
+                        ),
                       ),
-                    // Where it stands, in words: current, superseded, voided
-                    // or corrected — or, from a server that only says it
-                    // ended, that it is no longer current.
-                    if (prescriptionStatus(rx) case final status?) ...[
-                      const SizedBox(height: T.s1),
-                      StatusPill(label: status.word, status: status.status),
                     ],
                   ],
                 ),
               ),
             ],
           ),
-          if ((rx.endedReason ?? '').trim().isNotEmpty) ...[
-            const SizedBox(height: T.s2),
-            Text(
-              rx.endedAt == null
-                  ? 'Why it ended: ${rx.endedReason!.trim()}'
-                  : 'Ended ${DateFormat('d MMM y').format(rx.endedAt!)}: '
-                      '${rx.endedReason!.trim()}',
-              style: T.small.copyWith(color: T.ink),
-            ),
-          ],
           if (rx.diagnosis.isNotEmpty) ...[
             const SizedBox(height: AppSpacing.sm),
             _line(

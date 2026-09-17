@@ -1,23 +1,6 @@
 import 'clinician_models.dart';
 import 'nutrition_care.dart';
 
-/// A nested object, whichever map type the decoder handed over.
-///
-/// `as Map<String, dynamic>?` throws on a `Map<dynamic, dynamic>`, and a throw
-/// inside the summary's parser turns the whole record into "Could not load" —
-/// one oddly typed block taking every other section down with it.
-Map<String, dynamic> _map(Object? v) =>
-    v is Map ? Map<String, dynamic>.from(v) : const <String, dynamic>{};
-
-List<Map<String, dynamic>> _maps(Object? v) => [
-  if (v is List)
-    for (final e in v)
-      if (e is Map) Map<String, dynamic>.from(e),
-];
-
-DateTime? _date(Object? v) =>
-    v == null ? null : DateTime.tryParse(v.toString())?.toLocal();
-
 /// A quarterly HbA1c point on the patient's record.
 class Hba1cPoint {
   const Hba1cPoint({required this.percentage, this.testedOn});
@@ -28,30 +11,6 @@ class Hba1cPoint {
     percentage: (j['percentage'] as num?) ?? 0,
     testedOn: DateTime.tryParse(j['testedOn']?.toString() ?? '')?.toLocal(),
   );
-
-  /// Null for a row with no figure on it.
-  ///
-  /// [Hba1cPoint.fromJson] reads a missing percentage as 0, and a record
-  /// listing "HbA1c 0%" states a result nobody measured — worse than leaving
-  /// the row out, because 0 is a number a reader acts on.
-  static Hba1cPoint? tryParse(Map<String, dynamic> j) =>
-      j['percentage'] is num ? Hba1cPoint.fromJson(j) : null;
-}
-
-/// One foot assessment: when, and the risk the assessor settled on.
-class FootAssessmentPoint {
-  const FootAssessmentPoint({this.assessedAt, this.riskLevel});
-
-  final DateTime? assessedAt;
-
-  /// low | moderate | high | urgent, as the assessment recorded it.
-  final String? riskLevel;
-
-  factory FootAssessmentPoint.fromJson(Map<String, dynamic> j) =>
-      FootAssessmentPoint(
-        assessedAt: _date(j['assessedAt']),
-        riskLevel: j['finalRiskLevel']?.toString(),
-      );
 }
 
 /// One medicine's dose adherence over the window — taken vs due doses.
@@ -153,9 +112,8 @@ class Analyte {
   String get rangeText {
     String n(num v) =>
         v == v.roundToDouble() ? v.toInt().toString() : v.toString();
-    if (refLow != null && refHigh != null) {
+    if (refLow != null && refHigh != null)
       return '${n(refLow!)}–${n(refHigh!)}';
-    }
     if (refHigh != null) return '<${n(refHigh!)}';
     if (refLow != null) return '>${n(refLow!)}';
     return '';
@@ -185,18 +143,12 @@ class LabReport {
     this.analysisStatus,
     this.analysisSummary,
     this.analytes = const [],
-    this.testedOn,
   });
   final String id;
   final String testName;
   final String note;
   final String? photoUrl;
   final DateTime? createdAt;
-
-  /// The date printed on the report, when the reader found one. Different
-  /// from [createdAt], which is when it was uploaded — a report from March
-  /// uploaded in September is a March result.
-  final DateTime? testedOn;
   final String? mimeType;
   final String? originalName;
 
@@ -226,13 +178,12 @@ class LabReport {
     originalName: j['originalName']?.toString(),
     analysisStatus: j['analysisStatus']?.toString(),
     analysisSummary: j['analysisSummary']?.toString(),
-    // Only values that carry a figure. `Analyte.fromJson` reads a missing
-    // value as 0, and "LDL 0 mg/dL" on a record is a result nobody measured.
-    analytes: [
-      for (final a in _maps(j['analytes']))
-        if (a['value'] is num) Analyte.fromJson(a),
-    ],
-    testedOn: _date(j['testedOn']),
+    analytes:
+        (j['analytes'] as List?)
+            ?.whereType<Map<String, dynamic>>()
+            .map(Analyte.fromJson)
+            .toList() ??
+        const [],
   );
 }
 
@@ -278,8 +229,7 @@ class PatientDetails {
       (notes ?? '').isEmpty;
 
   factory PatientDetails.fromJson(Map<String, dynamic> j) {
-    final ec =
-        j['emergencyContact'] is Map ? _map(j['emergencyContact']) : null;
+    final ec = j['emergencyContact'] as Map<String, dynamic>?;
     return PatientDetails(
       diagnosedOn:
           DateTime.tryParse(j['diagnosedOn']?.toString() ?? '')?.toLocal(),
@@ -314,16 +264,12 @@ class PatientSummary {
     this.diabetesType,
     this.riskBand,
     this.riskScore,
-    this.riskReasons = const [],
-    this.riskComputedAt,
     this.healthScore,
     this.healthBand,
     this.adherencePercent,
     this.glucoseAverage,
     this.timeInRangePercent,
     this.estimatedHba1c,
-    this.glucoseReadingCount,
-    this.glucoseWindowDays,
     this.hba1cHistory = const [],
     this.glucoseDaily = const [],
     this.labResults = const [],
@@ -344,16 +290,11 @@ class PatientSummary {
     this.lastFastingAt,
     this.heightCm,
     this.weightKg,
-    this.weightMeasuredAt,
     this.systolic,
     this.diastolic,
     this.pulse,
     this.spo2,
     this.waistCm,
-    this.vitalsAt,
-    this.lastFootScreeningAt,
-    this.lastEyeScreeningAt,
-    this.footAssessments = const [],
   });
 
   final String id;
@@ -378,17 +319,6 @@ class PatientSummary {
   final String? riskBand;
   final int? riskScore;
 
-  /// Why the patient is in [riskBand], in the server's words — "HbA1c 9.4%",
-  /// "1 unresolved emergency alert(s)". Empty until the server sends them, and
-  /// the record then says nothing rather than guessing at reasons of its own.
-  final List<String> riskReasons;
-
-  /// When the band was last worked out from readings, alerts and reports.
-  ///
-  /// Null means never: the profile's band is then the schema's default "low",
-  /// which is not a finding about this patient and must not be shown as one.
-  final DateTime? riskComputedAt;
-
   final int? healthScore;
   final String? healthBand;
   final int? adherencePercent;
@@ -396,12 +326,6 @@ class PatientSummary {
   final int? glucoseAverage;
   final int? timeInRangePercent;
   final double? estimatedHba1c;
-
-  /// How many glucose readings [glucoseAverage] and [timeInRangePercent] were
-  /// made from, over [glucoseWindowDays] days. A percentage of three readings
-  /// and one of ninety are different claims.
-  final int? glucoseReadingCount;
-  final int? glucoseWindowDays;
 
   final List<Hba1cPoint> hba1cHistory;
 
@@ -449,26 +373,11 @@ class PatientSummary {
   /// VitalRecord. Shown in the profile's measurements section.
   final double? heightCm;
   final double? weightKg;
-
-  /// When [weightKg] was measured — null when it is the weight given at
-  /// registration rather than one taken at a visit.
-  final DateTime? weightMeasuredAt;
   final int? systolic;
   final int? diastolic;
   final int? pulse;
   final int? spo2;
   final double? waistCm;
-
-  /// When the latest vitals above were recorded. A blood pressure without its
-  /// date cannot be told from one taken this morning.
-  final DateTime? vitalsAt;
-
-  /// The last foot and eye checks, from the diabetic foot and eye modules.
-  final DateTime? lastFootScreeningAt;
-  final DateTime? lastEyeScreeningAt;
-
-  /// Foot assessments, newest first.
-  final List<FootAssessmentPoint> footAssessments;
 
   /// Body-mass index from height + weight, or null if either is missing.
   double? get bmi {
@@ -484,16 +393,13 @@ class PatientSummary {
       hba1cHistory.isNotEmpty ? hba1cHistory.first.percentage : null;
 
   factory PatientSummary.fromJson(Map<String, dynamic> j) {
-    final patient = _map(j['patient']);
-    final profile = _map(j['profile']);
-    final health = _map(j['healthScore']);
-    final adherence = _map(j['adherence']);
-    final vitals = _map(j['latestVitals']);
-    final trends = _map(j['trends']);
-    final stats = trends['stats'] is Map ? _map(trends['stats']) : null;
-    final vitalsAt = _date(vitals['at']);
-    final fasting = j['lastFasting'] is Map ? _map(j['lastFasting']) : null;
-    final dietician = profile['assignedDietician'];
+    final patient = j['patient'] as Map<String, dynamic>? ?? const {};
+    final profile = j['profile'] as Map<String, dynamic>? ?? const {};
+    final health = j['healthScore'] as Map<String, dynamic>? ?? const {};
+    final adherence = j['adherence'] as Map<String, dynamic>? ?? const {};
+    final vitals = j['latestVitals'] as Map<String, dynamic>? ?? const {};
+    final trends = j['trends'] as Map<String, dynamic>? ?? const {};
+    final stats = trends['stats'] as Map<String, dynamic>?;
 
     return PatientSummary(
       id: patient['id']?.toString() ?? '',
@@ -509,23 +415,28 @@ class PatientSummary {
       diabetesType: profile['diabetesType']?.toString(),
       riskBand: profile['riskBand']?.toString(),
       riskScore: (profile['riskScore'] as num?)?.toInt(),
-      riskReasons: _reasons(j['riskReasons'] ?? profile['riskReasons']),
-      riskComputedAt: _date(profile['lastRiskComputedAt']),
       assignedDieticianId:
-          dietician is Map
-              ? dietician['_id']?.toString()
-              : dietician?.toString(),
+          profile['assignedDietician'] is Map
+              ? (profile['assignedDietician'] as Map)['_id']?.toString()
+              : profile['assignedDietician']?.toString(),
       assignedDieticianName:
-          dietician is Map ? dietician['name']?.toString() : null,
+          profile['assignedDietician'] is Map
+              ? (profile['assignedDietician'] as Map)['name']?.toString()
+              : null,
       nutritionCare:
           j['nutritionCare'] is Map<String, dynamic>
               ? NutritionCare.fromJson(j['nutritionCare'] as Map<String, dynamic>)
               : null,
       reviewIntervalDays: (profile['dietReviewIntervalDays'] as num?)?.toInt(),
-      labResults: [
-        for (final r in _maps(j['labResults'])) LabReport.fromJson(r),
-      ],
-      details: PatientDetails.fromJson(_map(j['details'])),
+      labResults:
+          (j['labResults'] as List?)
+              ?.whereType<Map<String, dynamic>>()
+              .map(LabReport.fromJson)
+              .toList() ??
+          const [],
+      details: PatientDetails.fromJson(
+        j['details'] as Map<String, dynamic>? ?? const {},
+      ),
       advisedTests:
           (j['labTestsAdvised'] as List?)?.map((e) => e.toString()).toList() ??
           const [],
@@ -535,67 +446,54 @@ class PatientSummary {
       glucoseAverage: (stats?['average'] as num?)?.toInt(),
       timeInRangePercent: (stats?['timeInRangePercent'] as num?)?.toInt(),
       estimatedHba1c: (stats?['estimatedHba1c'] as num?)?.toDouble(),
-      glucoseReadingCount: (trends['count'] as num?)?.toInt(),
-      glucoseWindowDays: (trends['days'] as num?)?.toInt(),
-      hba1cHistory: [
-        for (final h in _maps(j['hba1cHistory']))
-          if (Hba1cPoint.tryParse(h) case final point?) point,
-      ],
-      glucoseDaily: [
-        for (final d in _maps(trends['daily'])) GlucoseDailyPoint.fromJson(d),
-      ],
-      alerts: [for (final a in _maps(j['alerts'])) ClinicalAlert.fromJson(a)],
+      hba1cHistory:
+          (j['hba1cHistory'] as List?)
+              ?.whereType<Map<String, dynamic>>()
+              .map(Hba1cPoint.fromJson)
+              .toList() ??
+          const [],
+      glucoseDaily:
+          (trends['daily'] as List?)
+              ?.whereType<Map<String, dynamic>>()
+              .map(GlucoseDailyPoint.fromJson)
+              .toList() ??
+          const [],
+      alerts:
+          (j['alerts'] as List?)
+              ?.whereType<Map<String, dynamic>>()
+              .map(ClinicalAlert.fromJson)
+              .toList() ??
+          const [],
       aiContext: j['aiContext']?.toString(),
       adherenceTaken: (adherence['taken'] as num?)?.toInt(),
       adherenceExpected: (adherence['expected'] as num?)?.toInt(),
       adherenceMissed: (adherence['missed'] as num?)?.toInt(),
-      adherencePerMed: [
-        for (final m in _maps(adherence['perMedication']))
-          MedAdherence.fromJson(m),
-      ],
+      adherencePerMed:
+          (adherence['perMedication'] as List?)
+              ?.whereType<Map<String, dynamic>>()
+              .map(MedAdherence.fromJson)
+              .toList() ??
+          const [],
       medicationCount: (j['medicationCount'] as num?)?.toInt(),
-      lastFasting: (fasting?['value'] as num?)?.toInt(),
-      lastFastingAt: _date(fasting?['at']),
+      lastFasting:
+          j['lastFasting'] is Map
+              ? ((j['lastFasting'] as Map)['value'] as num?)?.toInt()
+              : null,
+      lastFastingAt:
+          j['lastFasting'] is Map
+              ? DateTime.tryParse(
+                (j['lastFasting'] as Map)['at']?.toString() ?? '',
+              )?.toLocal()
+              : null,
       heightCm: (profile['heightCm'] as num?)?.toDouble(),
       weightKg:
           (vitals['weightKg'] as num?)?.toDouble() ??
           (profile['baselineWeightKg'] as num?)?.toDouble(),
-      weightMeasuredAt: vitals['weightKg'] is num ? vitalsAt : null,
       systolic: (vitals['systolic'] as num?)?.toInt(),
       diastolic: (vitals['diastolic'] as num?)?.toInt(),
       pulse: (vitals['pulse'] as num?)?.toInt(),
       spo2: (vitals['spo2'] as num?)?.toInt(),
       waistCm: (vitals['waistCm'] as num?)?.toDouble(),
-      vitalsAt: vitalsAt,
-      lastFootScreeningAt: _date(profile['lastFootScreeningAt']),
-      lastEyeScreeningAt: _date(profile['lastEyeScreeningAt']),
-      footAssessments: [
-        for (final f in _maps(j['footAssessments']))
-          FootAssessmentPoint.fromJson(f),
-      ],
     );
-  }
-
-  /// Reasons as plain sentences, whichever shape they arrive in: a string, or
-  /// an object carrying one under a common key.
-  static List<String> _reasons(Object? v) {
-    if (v is! List) return const [];
-    final out = <String>[];
-    for (final e in v) {
-      final text = switch (e) {
-        final String s => s,
-        final Map m =>
-          (m['label'] ??
-                  m['text'] ??
-                  m['reason'] ??
-                  m['message'] ??
-                  m['summary'])
-              ?.toString(),
-        _ => null,
-      };
-      final trimmed = text?.trim() ?? '';
-      if (trimmed.isNotEmpty) out.add(trimmed);
-    }
-    return out;
   }
 }

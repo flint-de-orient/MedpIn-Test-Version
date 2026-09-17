@@ -378,8 +378,7 @@ void main() {
       ),
     );
 
-    // The staff redesign named the button for what it opens.
-    await tester.tap(find.text('Give a time'));
+    await tester.tap(find.text('Schedule'));
     await tester.pumpAndSettle();
     expect(find.text('No active clinic to book into. Add one in Profile.'), findsNothing);
 

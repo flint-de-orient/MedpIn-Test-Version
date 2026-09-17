@@ -16,25 +16,11 @@ class Appointment {
     required this.mode,
     this.reason,
     this.isPriority = false,
-    this.doctorId,
-    this.doctorName,
-    this.patientAvatarUrl,
   });
 
   final String id;
   final String patientId;
   final String patientName;
-
-  /// Whose appointment it is.
-  ///
-  /// The diary a doctor reads is the practice's — every doctor's patients —
-  /// so "who is waiting" without this is "who is waiting for somebody", and a
-  /// Start consultation button naming a colleague's patient would be wrong.
-  final String? doctorId;
-  final String? doctorName;
-
-  /// The patient's photo, when they set one.
-  final String? patientAvatarUrl;
 
   /// When the appointment is — null while it is still only a request.
   ///
@@ -126,9 +112,6 @@ class Appointment {
               ? null
               : j['reason'].toString().trim(),
       isPriority: j['isPriority'] == true,
-      doctorId: j['doctorId']?.toString(),
-      doctorName: j['doctorName']?.toString(),
-      patientAvatarUrl: j['patientAvatarUrl']?.toString(),
     );
   }
 }

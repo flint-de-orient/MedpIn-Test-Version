@@ -56,12 +56,9 @@ void main() {
       ]);
 
       expect(find.text('Rahul Bose'), findsOneWidget);
-      // The reading keeps its slash together with word joiners, so it never
-      // breaks across a line.
-      expect(find.textContaining(RegExp('190⁠?/⁠?120 mmHg')), findsOneWidget);
-      expect(find.text('Crisis'), findsOneWidget, reason: 'the band on the row is only a colour');
-      expect(find.text('1 in crisis'), findsOneWidget, reason: 'the band in the counts is only a colour');
-      expect(find.text('1 not measured in the last 90 days.'), findsOneWidget);
+      expect(find.textContaining('190/120 · Crisis'), findsOneWidget);
+      expect(find.text('Crisis 1'), findsOneWidget, reason: 'the band is only a colour');
+      expect(find.textContaining('1 not measured in 90 days'), findsOneWidget);
     });
 
     testWidgets('a panel that did not load says so, not that everyone is fine', (tester) async {
@@ -79,19 +76,16 @@ void main() {
         bpControlProvider(BpControlCard.days).overrideWith((ref) => never.future),
       ]);
 
-      // Placeholder shapes, not a spinner, since the redesign — and still no
-      // claim about anybody while nothing has arrived.
+      expect(find.byType(CircularProgressIndicator), findsOneWidget);
       expect(find.textContaining('Nobody'), findsNothing);
-      expect(find.textContaining('patients had a reading'), findsNothing);
-      expect(find.textContaining('Could not load'), findsNothing);
     });
 
     testWidgets('an answered empty says what it counted', (tester) async {
       await pump(tester, const BpControlCard(), [
         bpControlProvider(BpControlCard.days).overrideWith((ref) async => bp(bands: {'normal': 4})),
       ]);
-      expect(find.text('Nobody’s latest reading is in crisis, at stage 2 or low.'), findsOneWidget);
-      expect(find.text('4 of 5 patients had a reading in the last 90 days.'), findsOneWidget);
+      expect(find.textContaining('Nobody’s latest reading is in crisis, stage 2 or low'), findsOneWidget);
+      expect(find.textContaining('4 of 5 patients measured'), findsOneWidget);
     });
   });
 
@@ -127,7 +121,7 @@ void main() {
           (ref) async => FollowUps.fromJson({'days': 7, 'overdue': [], 'overdueTotal': 0, 'due': [], 'dueTotal': 0}),
         ),
       ]);
-      expect(find.text('None due in the next 7 days, and none overdue.'), findsOneWidget);
+      expect(find.textContaining('No follow-ups are due in the next 7 days'), findsOneWidget);
     });
   });
 
@@ -146,7 +140,7 @@ void main() {
       ]);
       expect(find.text('Hypertension'), findsOneWidget);
       expect(find.text('2'), findsOneWidget);
-      expect(find.text('1 patient with no diagnosed condition recorded.'), findsOneWidget);
+      expect(find.textContaining('1 patients have no diagnosed condition recorded'), findsOneWidget);
     });
   });
 
@@ -168,7 +162,7 @@ void main() {
           }),
         ),
       ]);
-      expect(find.text('Below 50'), findsOneWidget, reason: 'the limit is only a colour');
+      expect(find.text('1 below 50 bpm'), findsOneWidget);
       expect(find.text('Slow Pulse'), findsOneWidget);
       expect(find.textContaining('44 bpm'), findsOneWidget);
     });
@@ -205,9 +199,8 @@ void main() {
         ),
       ]);
 
-      expect(find.text('1 abnormal'), findsOneWidget, reason: 'the impression in the counts is only a colour');
-      expect(find.text('Abnormal'), findsOneWidget, reason: 'the impression on the row is only a colour');
-      expect(find.text('Atrial fibrillation · 118 bpm'), findsOneWidget);
+      expect(find.text('Abnormal 1'), findsOneWidget, reason: 'the impression is only a colour');
+      expect(find.text('Abnormal · Atrial fibrillation · 118 bpm'), findsOneWidget);
       expect(find.textContaining('3 of 5 patients have an ECG'), findsOneWidget);
       final abnormal = tester.getTopLeft(find.text('Fast Irregular')).dy;
       final borderline = tester.getTopLeft(find.text('Long QT')).dy;
@@ -218,7 +211,8 @@ void main() {
       await pump(tester, const RecentEcgsCard(), [
         ecgPanelProvider(RecentEcgsCard.days).overrideWith((ref) async => ecg(impressions: {'unknown': 2, 'normal': 1})),
       ]);
-      expect(find.text('2 not yet read'), findsOneWidget, reason: 'tracings nobody has read were hidden');
+      expect(find.text('Not yet read 2'), findsOneWidget);
+      expect(find.text('2 filed without a reading yet.'), findsOneWidget);
       expect(find.text('No latest ECG was read as abnormal or borderline.'), findsOneWidget);
     });
 
@@ -251,10 +245,10 @@ void main() {
       ]);
 
       expect(find.textContaining('Read automatically from uploaded lab reports'), findsOneWidget);
+      expect(find.text('2 above 100 mg/dL'), findsOneWidget);
       expect(find.text('High LDL'), findsOneWidget);
-      expect(find.textContaining(RegExp('LDL 190.5 mg⁠?/⁠?dL')), findsOneWidget);
-      expect(find.text('Above target'), findsOneWidget);
-      expect(find.text('1 more above 100 mg/dL'), findsOneWidget, reason: 'the second patient above the limit went uncounted');
+      expect(find.text('LDL 190.5 mg/dL'), findsOneWidget);
+      expect(find.text('+1 more above 100 mg/dL'), findsOneWidget);
       expect(find.text('1 at or below 100 mg/dL.'), findsOneWidget);
     });
 
@@ -273,7 +267,7 @@ void main() {
           }),
         ),
       ]);
-      expect(find.text('Above target'), findsOneWidget);
+      expect(find.text('1 above target'), findsOneWidget);
       expect(find.textContaining('100'), findsNothing, reason: 'a limit the server never sent was drawn');
     });
 

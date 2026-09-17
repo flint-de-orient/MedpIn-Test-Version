@@ -239,17 +239,6 @@ final lipidControlProvider = FutureProvider.autoDispose.family<LipidControl, int
   (ref, days) => ref.watch(clinicianRepositoryProvider).lipidControl(days: days),
 );
 
-/// Every low and very high sugar across the caseload, over the last [days] days.
-final glucoseFlagsProvider = FutureProvider.autoDispose.family<GlucoseFlags, int>(
-  (ref, days) => ref.watch(clinicianRepositoryProvider).glucoseFlags(days: days),
-);
-
-/// Latest HbA1c per patient against their target, and who has had none in
-/// [days] days.
-final hba1cControlProvider = FutureProvider.autoDispose.family<Hba1cControl, int>(
-  (ref, days) => ref.watch(clinicianRepositoryProvider).hba1cControl(days: days),
-);
-
 /// The ECGs this practice may read for one patient.
 final patientEcgsProvider = FutureProvider.autoDispose.family<List<EcgReport>, String>(
   (ref, patientId) => ref.watch(clinicianRepositoryProvider).ecgReports(patientId),
