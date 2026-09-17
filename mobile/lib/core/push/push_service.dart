@@ -164,6 +164,14 @@ class PushService {
         case 'appointment_tomorrow':
         case 'slot_freed':
           router.go('/appointments');
+        // A clinic or MedPin answered their feedback: where replies are read.
+        case 'feedback_reply':
+          router.go('/profile/feedback/mine');
+        // A clinic asking to see more, or the questions asked once when a clinic
+        // is connected: both are answered on "Who can see my records?".
+        case 'share_request':
+        case 'sharing_question':
+          router.go('/profile/sharing');
         // The care thread is the safe landing for anything unrecognised — it
         // is where the clinic talks to them, and an older app meeting a newer
         // server ends up here rather than nowhere.
@@ -194,6 +202,13 @@ class PushService {
     // the list is where they are.
     if (kind == 'chat_digest') {
       router.go(area == '/staff' ? '/staff/today' : '/clinician/chat-summaries');
+      return;
+    }
+
+    // Patient feedback. It names nobody on the lock screen, and the inbox is
+    // where it is read — under whichever prefix this account is allowed into.
+    if (kind == 'patient_feedback') {
+      router.push('$area/feedback');
       return;
     }
 

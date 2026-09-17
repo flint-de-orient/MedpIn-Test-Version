@@ -7,6 +7,7 @@ import '../../../core/theme/app_spacing.dart';
 import '../../../core/update/app_section.dart';
 import '../../appointments/presentation/appointment_providers.dart';
 import '../../auth/presentation/auth_controller.dart';
+import '../../feedback/data/feedback_repository.dart';
 import '../../../shared/widgets/error_view.dart';
 import '../../../shared/data/upload_repository.dart';
 import 'package:image_picker/image_picker.dart';
@@ -253,6 +254,28 @@ class _StaffProfileScreenState extends ConsumerState<StaffProfileScreen> {
                                 '/staff/clinics/${primary.id}',
                                 extra: primary,
                               ),
+                ),
+              ],
+            ),
+            const SizedBox(height: AppSpacing.lg),
+
+            // What patients registered here have written about their care. The
+            // desk may read it, is told when it arrives, and had no screen for
+            // it — the doctor's inbox is under /clinician, which staff are
+            // bounced out of.
+            ProfileSection(
+              label: 'Patients',
+              children: [
+                ProfileRow(
+                  icon: Icons.rate_review_outlined,
+                  title: 'Patient feedback',
+                  subtitle: 'What patients registered here have written',
+                  value: switch (ref.watch(feedbackUnreadProvider).valueOrNull ?? 0) {
+                    0 => null,
+                    final n => '$n new',
+                  },
+                  showDivider: false,
+                  onTap: () => context.push('/staff/feedback'),
                 ),
               ],
             ),

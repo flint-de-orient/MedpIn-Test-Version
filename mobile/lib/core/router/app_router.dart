@@ -55,6 +55,9 @@ import '../../features/onboarding/presentation/splash_screen.dart';
 import '../../features/profile/presentation/edit_profile_screen.dart';
 import '../../features/profile/presentation/health_details_screen.dart';
 import '../../features/profile/presentation/feedback_screen.dart';
+import '../../features/profile/presentation/my_feedback_screen.dart';
+import '../../features/sharing/presentation/sharing_screen.dart';
+import '../../features/sharing/presentation/sharing_history_screen.dart';
 import '../../features/profile/presentation/notifications_screen.dart';
 import '../../features/profile/presentation/profile_screen.dart';
 import '../../features/shell/presentation/app_shell.dart';
@@ -426,6 +429,14 @@ final Provider<GoRouter> appRouterProvider = Provider<GoRouter>((ref) {
         path: '/staff/appointments',
         builder: (context, state) => const AppointmentsAdminScreen(),
       ),
+      // What patients registered here have written about their care, under the
+      // desk's own prefix for the same reason as the diary above: the desk
+      // reads patients, is told when feedback arrives, and is bounced out of
+      // /clinician/*.
+      GoRoute(
+        path: '/staff/feedback',
+        builder: (context, state) => const FeedbackInboxScreen(),
+      ),
       GoRoute(
         path: '/staff/profile/edit',
         builder: (context, state) => const EditProfileScreen(),
@@ -637,6 +648,24 @@ final Provider<GoRouter> appRouterProvider = Provider<GoRouter>((ref) {
                   GoRoute(
                     path: 'feedback',
                     builder: (context, state) => const FeedbackScreen(),
+                    routes: [
+                      // What was sent, where it went, and any reply.
+                      GoRoute(
+                        path: 'mine',
+                        builder: (context, state) => const MyFeedbackScreen(),
+                      ),
+                    ],
+                  ),
+                  // "Who can see my records?", and what has happened to it.
+                  GoRoute(
+                    path: 'sharing',
+                    builder: (context, state) => const SharingScreen(),
+                    routes: [
+                      GoRoute(
+                        path: 'history',
+                        builder: (context, state) => const SharingHistoryScreen(),
+                      ),
+                    ],
                   ),
                 ],
               ),

@@ -170,11 +170,19 @@ class ClinicianRepository {
   /// Until this succeeds the practice holds a row that grants nothing and the
   /// patient appears in no list — which is the correct behaviour and was
   /// indistinguishable, from the counter, from the registration having failed.
-  Future<void> confirmEnrolment({
+  ///
+  /// [share] carries the patient's answers to "may this clinic see your own
+  /// health logs, and your earlier history" when the desk asked them; they go
+  /// with the code and never on their own. Not asked, the patient is asked in
+  /// their app. The answer names the patient — only now that they have agreed —
+  /// and says what the practice is not seeing.
+  Future<EnrolmentConfirmation> confirmEnrolment({
     required String enrollmentId,
     required String code,
+    ConsentShareAnswers share = ConsentShareAnswers.notAsked,
   }) async {
-    await _client.postJson('/enrolments/$enrollmentId/confirm', body: {'code': code});
+    final json = await _client.postJson('/enrolments/$enrollmentId/confirm', body: share.confirmBody(code));
+    return EnrolmentConfirmation.fromJson(json);
   }
 
   /// Today's clinic diary, earliest first. The API sorts newest-first and has no

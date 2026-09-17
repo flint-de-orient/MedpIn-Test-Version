@@ -15,6 +15,7 @@ import '../../auth/presentation/auth_controller.dart';
 import '../../auth/data/auth_repository.dart';
 import '../../../shared/widgets/otp_field.dart';
 import '../../../core/router/area.dart';
+import 'widgets/consent_code_dialog.dart';
 
 /// The receptionist's patient-intake form. Registers a walk-in at the desk:
 /// mandatory demographics (name, age, gender, phone, address) plus an optional
@@ -243,7 +244,7 @@ class _AddPatientScreenState extends ConsumerState<AddPatientScreen> {
       if (!mounted) return;
 
       /*
-       * Registering somebody who already uses MedPin does not enrol them.
+       * Registering a number that already has an account does not enrol it.
        *
        * The practice is reaching for a record it did not create, so the
        * enrolment is written PENDING and grants nothing until the patient
@@ -252,11 +253,17 @@ class _AddPatientScreenState extends ConsumerState<AddPatientScreen> {
        * invisible — and this screen used to say "registered" and walk into
        * their record regardless, which from the counter is indistinguishable
        * from the registration having failed.
+       *
+       * Nor is the desk told whose account it is until then: the server sends
+       * no id and no stored name, so the record to open comes from the
+       * confirmation, with the patient's agreement.
        */
+      var id = result.id;
+      var sharingLine = '';
       if (result.consentRequired) {
-        final confirmed = await _takeConsentCode(result);
+        final confirmation = await _takeConsentCode(result);
         if (!mounted) return;
-        if (!confirmed) {
+        if (confirmation == null) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text(
@@ -272,12 +279,14 @@ class _AddPatientScreenState extends ConsumerState<AddPatientScreen> {
         }
         // Confirmed: the enrolment is active and the lists can see them now.
         ref.invalidate(patientsProvider);
+        ref.invalidate(pendingEnrolmentsProvider);
+        id = confirmation.patientId ?? '';
+        sharingLine = ' ${confirmation.sharingSummary}';
       }
 
-      final id = result.id;
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('${_name.text.trim()} registered')),
+        SnackBar(content: Text('${_name.text.trim()} registered.$sharingLine')),
       );
       // Replace the form with the freshly-created record, so Back lands on the
       // patient list rather than an empty form.
@@ -311,104 +320,26 @@ class _AddPatientScreenState extends ConsumerState<AddPatientScreen> {
     }
   }
 
-  /// The code the patient was texted, taken at the counter.
+  /// The code the patient was texted, and their answers about what this clinic
+  /// may see, taken at the counter. See [showConsentCodeDialog].
   ///
-  /// A dialog rather than another screen: the receptionist has the patient in
-  /// front of them and the whole interaction is six digits read aloud. Pushing
-  /// a route would lose the form behind it and make "not now" a navigation
-  /// problem rather than a button.
-  ///
-  /// Returns whether the enrolment is now active.
-  Future<bool> _takeConsentCode(PatientRegistration result) async {
+  /// Returns the confirmation once the enrolment is active, or null.
+  Future<EnrolmentConfirmation?> _takeConsentCode(PatientRegistration result) async {
     final id = result.enrollmentId;
     // Nothing to confirm against. The server sends this whenever consent is
     // required, so its absence is a server that has changed shape — say so
     // rather than opening a dialog whose button cannot work.
-    if (id == null || id.isEmpty) return false;
+    if (id == null || id.isEmpty) return null;
 
-    final code = TextEditingController();
-    var busy = false;
-    String? error;
-
-    final ok = await showDialog<bool>(
-      context: context,
-      barrierDismissible: false,
-      builder:
-          (ctx) => StatefulBuilder(
-            builder: (ctx, setLocal) {
-              Future<void> submit() async {
-                if (code.text.trim().length < 4) return;
-                setLocal(() {
-                  busy = true;
-                  error = null;
-                });
-                try {
-                  await ref
-                      .read(clinicianRepositoryProvider)
-                      .confirmEnrolment(
-                        enrollmentId: id,
-                        code: code.text.trim(),
-                      );
-                  if (ctx.mounted) Navigator.of(ctx).pop(true);
-                } catch (e) {
-                  setLocal(() {
-                    busy = false;
-                    error = ErrorView.messageFor(ctx, e);
-                  });
-                }
-              }
-
-              return AlertDialog(
-                title: const Text('Ask them to read out the code'),
-                content: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // The server's own sentence, not a reworded one, so the
-                    // counter and the log say the same thing.
-                    Text(
-                      result.message.isEmpty
-                          ? 'This patient already uses MedPin. We have texted '
-                              'them a code — ask them to read it out.'
-                          : result.message,
-                      // The dialog's own context, not the screen's — `ctx` is what
-                      // Theme.of resolves against inside a route that is not
-                      // this widget's subtree.
-                      style: Theme.of(ctx).textTheme.bodyMedium,
-                    ),
-                    const SizedBox(height: AppSpacing.md),
-                    OtpCodeField(
-                      controller: code,
-                      enabled: !busy,
-                      hasError: error != null,
-                      onCompleted: (_) => submit(),
-                    ),
-                    if (error != null) ...[
-                      const SizedBox(height: AppSpacing.sm),
-                      Text(error!, style: TextStyle(color: AppColors.dangerOn(ctx))),
-                    ],
-                  ],
-                ),
-                actions: [
-                  // Not "Cancel". The registration has already happened; what
-                  // this declines is finishing it, and the caller says plainly
-                  // what that leaves behind.
-                  TextButton(
-                    onPressed: busy ? null : () => Navigator.of(ctx).pop(false),
-                    child: const Text('Not now'),
-                  ),
-                  FilledButton(
-                    onPressed: busy ? null : submit,
-                    child: Text(busy ? 'Checking…' : 'Confirm'),
-                  ),
-                ],
-              );
-            },
-          ),
+    return showConsentCodeDialog(
+      context,
+      enrollmentId: id,
+      title: 'Ask them to read out the code',
+      message: result.message.isEmpty
+          ? 'This number already has a MedPin account. We have texted it a code — ask the '
+              'patient to read it out.'
+          : result.message,
     );
-
-    code.dispose();
-    return ok ?? false;
   }
 
   /// How many vitals have been typed. Shown on the collapsed header so a
