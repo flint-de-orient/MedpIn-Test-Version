@@ -87,7 +87,6 @@ class _Team implements ClinicianRepository {
     required String role,
     required String name,
     required String phoneToken,
-    String? password,
     String? departmentId,
     String? locationId,
     String? qualifications,
@@ -520,6 +519,24 @@ void main() {
   });
 
   group('hiring', () {
+    testWidgets('offers no password, for any role — nobody sets a colleague’s', (
+      tester,
+    ) async {
+      await open(tester, _roster([_member('Amit Dey', 'doctor', isOwner: true)]));
+      await openHireSheet(tester);
+
+      for (final role in _roleNames) {
+        await tester.tap(find.widgetWithText(ChoiceChip, role));
+        await tester.pump();
+        expect(find.text('Set a password'), findsNothing, reason: role);
+        expect(find.widgetWithText(TextFormField, 'Password'), findsNothing, reason: role);
+        expect(find.byType(SwitchListTile), findsNothing, reason: role);
+        // The promise that went with it had no screen behind it.
+        expect(find.textContaining('change it after signing in'), findsNothing, reason: role);
+      }
+      expect(find.text('They sign in with a code texted to this number.'), findsOneWidget);
+    });
+
     testWidgets('sends and checks the code through the team, not registration', (
       tester,
     ) async {
@@ -548,7 +565,8 @@ void main() {
         ),
         findsOneWidget,
       );
-      expect(find.textContaining('Only for a new account'), findsOneWidget);
+      // Nobody chooses a colleague's password any more.
+      expect(find.textContaining('Only for a new account'), findsNothing);
 
       await tester.tap(find.widgetWithText(ChoiceChip, 'Doctor'));
       await tester.pump();

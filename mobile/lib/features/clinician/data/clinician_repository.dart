@@ -459,13 +459,15 @@ class ClinicianRepository {
   /// account it creates can prescribe.
   ///
   /// True when the number already had an account and this practice was added
-  /// to it, rather than a new account being made. They keep their own sign-in,
-  /// and [password] only ever applies to a new account.
+  /// to it, rather than a new account being made. They keep their own sign-in.
+  ///
+  /// There is no password to send. Nobody sets a colleague's password; they
+  /// sign in with a code texted to their own number, and the server refuses a
+  /// hire that carries one.
   Future<bool> hire({
     required String role,
     required String name,
     required String phoneToken,
-    String? password,
     String? departmentId,
     String? locationId,
     String? qualifications,
@@ -477,7 +479,6 @@ class ClinicianRepository {
         'role': role,
         'name': name,
         'phoneToken': phoneToken,
-        if (password != null && password.isNotEmpty) 'password': password,
         if (departmentId != null) 'departmentId': departmentId,
         if (locationId != null) 'locationId': locationId,
         if (qualifications != null && qualifications.isNotEmpty)

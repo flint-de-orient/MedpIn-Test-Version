@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { requireAuth, requireClinician } from '../middleware/auth.js';
 import { requirePermission } from '../middleware/authorise.js';
 import { validate } from '../middleware/validate.js';
-import { asyncHandler, badRequest, conflict, forbidden, notFound } from '../middleware/errors.js';
+import { AppError, asyncHandler, badRequest, conflict, forbidden, notFound } from '../middleware/errors.js';
 import { audit } from '../middleware/audit.js';
 import { Membership, MEMBERSHIP_STATUS, PERMISSIONS, presetFor } from '../models/Membership.js';
 import { Practice } from '../models/Practice.js';
@@ -286,10 +286,15 @@ router.post(
        * number typed instead — and for a doctor that account can prescribe.
        */
       phoneToken: z.string().min(20),
-      // Optional for everyone. A texted code is how people sign in; a password
-      // is for a handset that lives on a counter with no personal phone to
-      // receive one on.
-      password: z.string().min(8, 'At least 8 characters').max(128).optional(),
+      /*
+       * Accepted only to be refused by name. See the handler.
+       *
+       * Left out of the schema, zod would strip it and the hire would succeed
+       * without it — so an older build of the app, whose sheet still has a
+       * "Set a password" switch, would tell the doctor a counter handset now
+       * had a password that nothing had set.
+       */
+      password: z.unknown().optional(),
       departmentId: z.string().optional(),
       locationId: z.string().optional(),
       qualifications: z.string().trim().max(120).optional(),
@@ -298,6 +303,27 @@ router.post(
   }),
   audit('create', 'User'),
   asyncHandler(async (req, res) => {
+    /*
+     * Nobody chooses a colleague's password (§30).
+     *
+     * The sheet offered one "for a handset that lives on a counter with no
+     * personal phone". What it made was a credential chosen by somebody else,
+     * known to them, and passed along by word of mouth — for an account that
+     * may read every patient at the practice. Staff sign in with a code texted
+     * to their own number, as everybody else does. Refused before anything is
+     * written, and by name, so the person adding them is told rather than
+     * left believing a password exists.
+     *
+     * Passwords that already exist keep working; see POST /auth/login.
+     */
+    if (req.body.password != null && req.body.password !== '') {
+      throw new AppError(
+        400,
+        'PASSWORD_NOT_ALLOWED',
+        'Passwords are no longer set for colleagues. They sign in with a code texted to their own number.',
+      );
+    }
+
     const practiceId = await practiceOf(req);
     if (!practiceId) {
       throw badRequest('This account is not linked to a practice yet.');
@@ -435,7 +461,7 @@ router.post(
         aiDisclaimerAcceptedAt: new Date(),
       },
     });
-    if (b.password) await user.setPassword(b.password);
+    // No password. See the refusal at the top of this handler.
     await user.save();
 
     let membership;

@@ -309,6 +309,38 @@ choose at once.
 **Rollback**: restore `enrollments` from the dump, then roll the code back. The
 old code reads the profile field, which this never changed.
 
+### Staff passwords (§30) — nothing to run yet, and what comes next
+
+From this release nobody can set a colleague's password: `POST /team` refuses a
+hire that carries one (`PASSWORD_NOT_ALLOWED`), the app's hire sheet no longer
+offers one, and every account created since signs in with a code texted to its
+own number. **Existing passwords keep working** at `POST /auth/login` — that is
+the migration policy until the product owner approves a date to retire them.
+
+Before that date, in this order:
+
+```bash
+cd /var/www/clinq/backend
+# 1. Who still holds a password, and who still relies on it. Reads only.
+node scripts/reportStaffPasswords.js
+```
+
+2. For each account marked "still relies on the password" — in practice the
+   counter handsets — sign the handset in **once** with a code. It then stays
+   signed in: the app renews its own session (refresh tokens, 60 days,
+   renewed on use), so nobody types or shares anything at the counter. A desk
+   with two lines gets its second number with
+   `node scripts/addLoginNumber.js "<desk name>" <number> --apply`, and either
+   line receives the code.
+3. Run the report again until nobody relies on a password.
+4. Only then, as its own reviewed release: a script to remove the hashes (dry
+   run / `--apply`, mongodump of `users` first), the `/auth/login` route, and
+   the "Sign in with a password" link. Not written yet, on purpose — the date
+   is a product decision.
+
+`scripts/seed.js` still gives its synthetic demo accounts passwords. It builds
+demo data for staging and a laptop, never production; retire it with step 4.
+
 ### Once, after deploying appointment isolation
 
 An appointment carried a patient, a doctor and sometimes a clinic, and no

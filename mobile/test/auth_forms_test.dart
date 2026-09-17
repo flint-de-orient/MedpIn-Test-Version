@@ -214,6 +214,21 @@ void main() {
       expect(find.widgetWithText(AuthField, 'Password'), findsOneWidget);
     });
 
+    testWidgets('says it is only for accounts that already have one', (
+      tester,
+    ) async {
+      // §30: nobody is given a password any more. Somebody new reading "for
+      // clinic staff" would sit here with nothing to type.
+      await tester.pumpWidget(harness(const DoctorPasswordLoginScreen()));
+      expect(
+        find.text(
+          'Only for staff accounts that already have a password. New staff, '
+          'and everyone else, sign in with a code sent by SMS.',
+        ),
+        findsOneWidget,
+      );
+    });
+
     testWidgets('does not impose the registration length rule on an existing '
         'password', (tester) async {
       await tester.pumpWidget(harness(const DoctorPasswordLoginScreen()));

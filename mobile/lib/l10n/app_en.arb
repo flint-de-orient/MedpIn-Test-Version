@@ -556,7 +556,7 @@
   "@authDoctorPasswordTitle": {
     "description": "Auth: authDoctorPasswordTitle"
   },
-  "authDoctorPasswordSubtitle": "For the doctor and clinic staff. You can also sign in with a code sent by SMS.",
+  "authDoctorPasswordSubtitle": "Only for staff accounts that already have a password. New staff, and everyone else, sign in with a code sent by SMS.",
   "@authDoctorPasswordSubtitle": {
     "description": "Auth: authDoctorPasswordSubtitle"
   },

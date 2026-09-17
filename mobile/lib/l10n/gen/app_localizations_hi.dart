@@ -1244,7 +1244,7 @@ class AppLocalizationsHi extends AppLocalizations {
 
   @override
   String get authDoctorPasswordSubtitle =>
-      'डॉक्टर और क्लिनिक स्टाफ़ के लिए। आप SMS कोड से भी साइन इन कर सकते हैं।';
+      'केवल उन स्टाफ़ खातों के लिए जिनका पासवर्ड पहले से है। नए स्टाफ़ और बाकी सभी SMS कोड से साइन इन करते हैं।';
 
   @override
   String get authUseOtpInstead => 'इसके बजाय SMS कोड से साइन इन करें';

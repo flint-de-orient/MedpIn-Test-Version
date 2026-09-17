@@ -2443,7 +2443,7 @@ abstract class AppLocalizations {
   /// Auth: authDoctorPasswordSubtitle
   ///
   /// In en, this message translates to:
-  /// **'For the doctor and clinic staff. You can also sign in with a code sent by SMS.'**
+  /// **'Only for staff accounts that already have a password. New staff, and everyone else, sign in with a code sent by SMS.'**
   String get authDoctorPasswordSubtitle;
 
   /// Auth: authUseOtpInstead

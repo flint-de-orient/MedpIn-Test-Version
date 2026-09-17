@@ -471,6 +471,13 @@ class _Failed extends StatelessWidget {
 
 // ---------------------------------------------------------------- hiring
 
+/// Adding somebody to the practice.
+///
+/// No password, for anybody. The sheet used to offer one "for a handset that
+/// lives on a counter" — a credential the person adding a colleague chose,
+/// knew, and passed on by word of mouth. Staff sign in with a code texted to
+/// their own number, and the server refuses a hire that carries a password.
+/// Passwords people already have keep working until they are retired.
 class _HireSheet extends ConsumerStatefulWidget {
   const _HireSheet({required this.roster});
 
@@ -483,7 +490,6 @@ class _HireSheet extends ConsumerStatefulWidget {
 class _HireSheetState extends ConsumerState<_HireSheet> {
   final _form = GlobalKey<FormState>();
   final _name = TextEditingController();
-  final _password = TextEditingController();
   final _quals = TextEditingController();
   final _reg = TextEditingController();
 
@@ -492,22 +498,12 @@ class _HireSheetState extends ConsumerState<_HireSheet> {
   String? _departmentId;
   String? _locationId;
 
-  /// Off by default, for everybody.
-  ///
-  /// A texted code is how people sign in. A password the doctor invents and
-  /// reads out is a credential travelling by word of mouth, and one the doctor
-  /// then knows — worth it only for a handset that lives on a counter with no
-  /// personal phone to receive a code on.
-  bool _setPassword = false;
-  bool _obscure = true;
-
   bool _saving = false;
   String? _serverError;
 
   @override
   void dispose() {
     _name.dispose();
-    _password.dispose();
     _quals.dispose();
     _reg.dispose();
     super.dispose();
@@ -530,7 +526,6 @@ class _HireSheetState extends ConsumerState<_HireSheet> {
             role: _role,
             name: _name.text.trim(),
             phoneToken: token,
-            password: _setPassword ? _password.text : null,
             departmentId: _departmentId,
             locationId: _locationId,
             qualifications: _role == 'doctor' ? _quals.text.trim() : null,
@@ -651,55 +646,6 @@ class _HireSheetState extends ConsumerState<_HireSheet> {
                 value: _locationId,
                 options: widget.roster.locations,
                 onChanged: (v) => setState(() => _locationId = v),
-              ),
-            ],
-
-            const SizedBox(height: AppSpacing.sm),
-            SwitchListTile.adaptive(
-              value: _setPassword,
-              onChanged: (v) => setState(() => _setPassword = v),
-              contentPadding: EdgeInsets.zero,
-              title: const Text('Set a password', style: T.body),
-              subtitle: Text(
-                // "A new account" said here, beside the switch, because this is
-                // where somebody adding a colleague who already uses MedPin
-                // would think they were choosing that colleague's password.
-                'Only for a new account, on a shared handset with no personal '
-                'phone. Otherwise they sign in with a code.',
-                style: T.small.copyWith(color: T.inkMuted),
-              ),
-            ),
-            if (_setPassword) ...[
-              const SizedBox(height: AppSpacing.sm),
-              TextFormField(
-                controller: _password,
-                obscureText: _obscure,
-                maxLength: AuthValidators.maxPasswordLength,
-                decoration: InputDecoration(
-                  labelText: 'Password',
-                  prefixIcon: const Icon(Icons.lock_outline_rounded),
-                  counterText: '',
-                  helperText:
-                      'At least ${AuthValidators.minPasswordLength} characters. '
-                      'They can change it after signing in.',
-                  helperMaxLines: 2,
-                  suffixIcon: IconButton(
-                    onPressed: () => setState(() => _obscure = !_obscure),
-                    icon: Icon(
-                      _obscure
-                          ? Icons.visibility_outlined
-                          : Icons.visibility_off_outlined,
-                    ),
-                  ),
-                ),
-                validator: (v) {
-                  if (!_setPassword) return null;
-                  final p = v ?? '';
-                  if (p.length < AuthValidators.minPasswordLength) {
-                    return 'At least ${AuthValidators.minPasswordLength} characters.';
-                  }
-                  return null;
-                },
               ),
             ],
 
