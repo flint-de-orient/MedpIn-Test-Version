@@ -412,9 +412,70 @@ router.patch(
     // just renamed the clinic is shown the old name back, which reads as the
     // save having failed.
     forgetClinicIdentity();
-    res.json({ clinic: clinic.toPublic() });
+    // Switching "Accepting bookings" off here closes the location as surely as
+    // the delete route does, and leaves the same patients to be moved.
+    res.json({
+      clinic: clinic.toPublic(),
+      ...(clinic.isActive ? {} : await stillBookedAt(clinic._id)),
+    });
   }),
 );
+
+/**
+ * The appointments still standing at a location from now on — what closing it
+ * leaves for the desk to deal with.
+ *
+ * ---- Returned, not counted and not acted on ----------------------------------
+ *
+ * Closing a location stops new work there and touches nothing already booked.
+ * It used to say nothing at all, so the patients booked at a branch that had
+ * just closed kept confirmed appointments at a door nobody would open, and
+ * nobody was told who they were. A count says there is a problem and not whose.
+ *
+ * Nothing is cancelled on their behalf either: whether a closed branch's Tuesday
+ * list goes to the other branch, to another day or to a phone call is the
+ * practice's decision, and a patient told by push that their visit was called
+ * off by a settings change stops trusting the pushes. So the desk is given the
+ * appointments themselves — who, when, with whom — to move or call off.
+ *
+ * Capped, with the total: a location with years of bookings ahead is a list to
+ * work through on the appointments screen, not a response to scroll.
+ */
+const STILL_BOOKED_CAP = 200;
+
+async function stillBookedAt(clinicId) {
+  const filter = {
+    clinic: clinicId,
+    status: { $in: ACTIVE_STATUSES },
+    scheduledFor: { $gte: new Date() },
+  };
+  const [rows, total] = await Promise.all([
+    Appointment.find(filter)
+      .sort({ scheduledFor: 1 })
+      .limit(STILL_BOOKED_CAP)
+      .populate('patient', 'name phone')
+      .populate('doctor', 'name')
+      .lean(),
+    Appointment.countDocuments(filter),
+  ]);
+
+  return {
+    affectedTotal: total,
+    affectedAppointments: rows.map((a) => ({
+      id: String(a._id),
+      patientId: String(a.patient?._id ?? a.patient),
+      patientName: a.patient?.name ?? null,
+      patientPhone: a.patient?.phone ?? null,
+      doctorId: String(a.doctor?._id ?? a.doctor),
+      doctorName: a.doctor?.name ?? null,
+      clinicId: String(clinicId),
+      scheduledFor: a.scheduledFor,
+      durationMinutes: a.durationMinutes,
+      mode: a.mode,
+      status: a.status,
+    })),
+  };
+}
 
 /**
  * Soft-delete: mark inactive rather than remove, so appointments already booked
@@ -439,22 +500,9 @@ router.delete(
     const clinic = await Clinic.findOneAndUpdate({ _id: found._id }, { isActive: false }, { new: true });
     forgetClinicIdentity();
 
-    /*
-     * The patients still booked here, counted rather than moved.
-     *
-     * Nothing is cancelled on their behalf: whether a closed branch's Tuesday
-     * list goes to the other branch, to another day or to a phone call is the
-     * practice's decision, and a patient told by push that their appointment
-     * was cancelled by a settings change is a patient who stops trusting the
-     * pushes. The desk is told how many are waiting to be moved instead.
-     */
-    const upcoming = await Appointment.countDocuments({
-      clinic: clinic._id,
-      status: { $in: ACTIVE_STATUSES },
-      scheduledFor: { $gte: new Date() },
-    });
-
-    res.json({ clinic: clinic.toPublic(), upcomingAppointments: upcoming });
+    // The patients still booked here, for the desk to move or call off. See
+    // stillBookedAt.
+    res.json({ clinic: clinic.toPublic(), ...(await stillBookedAt(clinic._id)) });
   }),
 );
 

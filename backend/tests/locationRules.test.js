@@ -397,17 +397,48 @@ describe('closing a location', () => {
       status: 'confirmed',
     });
 
+    // Called off already, and at the other location: neither is left to deal with.
+    await Appointment.create({
+      patient: p.patient.user._id,
+      doctor: p.doctor.user._id,
+      practice: p.practice._id,
+      clinic: a._id,
+      scheduledFor: at('12:00'),
+      status: 'cancelled',
+    });
+    await Appointment.create({
+      patient: p.patient.user._id,
+      doctor: p.doctor.user._id,
+      practice: p.practice._id,
+      clinic: b._id,
+      scheduledFor: at('13:00'),
+      status: 'confirmed',
+    });
+
     const closed = await as(p.doctor.token).del(`/clinics/${a._id}`);
     assert.equal(closed.status, 200);
     assert.equal(closed.body.clinic.isActive, false);
-    assert.equal(closed.body.upcomingAppointments, 1, 'the desk was not told who is still booked there');
+    // Who is still booked there, by name and time — not a count, and nothing
+    // cancelled on their behalf.
+    assert.equal(closed.body.affectedTotal, 1);
+    assert.deepEqual(
+      closed.body.affectedAppointments.map((x) => [x.id, x.patientName, new Date(x.scheduledFor).getTime(), x.status]),
+      [[String(upcoming._id), p.patient.name, at('10:00').getTime(), 'confirmed']],
+      'the desk was not told who is still booked there',
+    );
+
+    // Switching "Accepting bookings" off on the edit screen reports the same.
+    const switchedOff = await as(p.doctor.token).patch(`/clinics/${a._id}`, { isActive: false });
+    assert.equal(switchedOff.status, 200);
+    assert.deepEqual(switchedOff.body.affectedAppointments.map((x) => x.id), [String(upcoming._id)]);
 
     // History: nothing lost, and still named.
     for (const token of [p.desk.token, p.patient.token]) {
       const diary = await as(token).get('/appointments');
       const ids = diary.body.items.map((i) => i.id);
       assert.ok(ids.includes(String(past._id)) && ids.includes(String(upcoming._id)), 'a closed location’s history vanished');
-      assert.ok(diary.body.items.every((i) => i.clinic?.name === 'Clinic A'));
+      const atA = diary.body.items.filter((i) => [String(past._id), String(upcoming._id)].includes(i.id));
+      assert.ok(atA.every((i) => i.clinic?.name === 'Clinic A'), 'a closed location’s name left its history');
     }
     assert.equal((await as(p.desk.token).get(`/clinics/${a._id}`)).status, 200);
 
@@ -447,8 +478,14 @@ describe('closing a location', () => {
     });
     assert.equal(moved.status, 200, JSON.stringify(moved.body));
 
-    // And reopening it publishes its hours again.
-    assert.equal((await as(p.doctor.token).patch(`/clinics/${a._id}`, { isActive: true })).status, 200);
+    // Moved away, it is no longer left behind.
+    const after = await as(p.doctor.token).patch(`/clinics/${a._id}`, { isActive: false });
+    assert.deepEqual(after.body.affectedAppointments, []);
+
+    // And reopening it publishes its hours again, with nothing to report.
+    const reopen = await as(p.doctor.token).patch(`/clinics/${a._id}`, { isActive: true });
+    assert.equal(reopen.status, 200);
+    assert.equal(reopen.body.affectedAppointments, undefined);
     const reopened = await as(p.desk.token).get(`/clinics/${a._id}/slots?date=${dayFromNow(1)}`);
     assert.ok(reopened.body.slots.length > 0);
   });
