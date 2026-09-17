@@ -52,6 +52,24 @@ void main() {
     await show(tester, 'typical', prescriptions: diabetologyPrescriptions);
   });
 
+  testWidgets('a long prescription', (tester) async {
+    await show(
+      tester,
+      'long',
+      height: 1800,
+      prescriptions: () => [longPrescription()],
+    );
+  });
+
+  testWidgets('refused', (tester) async {
+    await show(
+      tester,
+      'refused',
+      height: 780,
+      prescriptions: () => Future.error(refusedNotEnrolled),
+    );
+  });
+
   testWidgets('empty', (tester) async {
     await show(tester, 'empty', height: 780, prescriptions: () => const []);
   });
