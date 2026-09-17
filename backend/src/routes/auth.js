@@ -653,6 +653,9 @@ router.get(
               role: ctx.membership?.role ?? req.user.role,
               capabilities: effectiveCapabilities(ctx),
               permissions: granted,
+              // Which specialty's Home: the practice's, then the doctor's own.
+              practiceSpecialty: ctx.practice?.specialty ?? null,
+              userSpecialty: req.user.specialty ?? null,
             }),
       // Null for a caller the backfill has not reached, and for every patient.
       // The client should read it as "no practice context", not as "no access".

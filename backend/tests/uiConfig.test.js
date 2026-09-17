@@ -156,8 +156,13 @@ describe('two departments, two different applications', () => {
    */
   test('cardiology is a caseload', () => {
     const ui = forHead({ key: 'cardiology' });
-    assert.ok(ui.widgets.includes('TRIAGE_QUEUE'));
     assert.ok(ui.widgets.includes('TODAYS_CLINIC'));
+    assert.ok(ui.widgets.includes('BP_CONTROL'));
+    assert.ok(ui.widgets.includes('HEART_RATE_FLAGS'));
+    // Nothing measured only for diabetes: no sugar snapshot, and no Live
+    // Triage, whose risk score is worked out from sugar and HbA1c.
+    assert.ok(!ui.widgets.includes('TRIAGE_QUEUE'), 'a cardiologist was shown the diabetes triage');
+    assert.ok(!ui.widgets.includes('ANALYTICS_SUMMARY'), 'a cardiologist was shown the sugar snapshot');
     assert.ok(ui.quickActions.includes('START_CONSULTATION'));
     // What the record holds: the ECGs a clinician read and filed, and LDL from
     // uploaded reports. And never a risk score no instrument produced.
@@ -260,8 +265,9 @@ describe('the clinic that exists today keeps the screen it has', () => {
 describe('what the plan pays for disappears when it stops paying', () => {
   test('no analytics, no analytics panel', () => {
     const without = new Set([...everything].filter((c) => c !== C.ADVANCED_ANALYTICS));
+    // The general set, which carries the analytics panel.
     const ui = resolveUi({
-      department: { key: 'cardiology' },
+      department: null,
       capabilities: without,
       permissions: head,
     });

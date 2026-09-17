@@ -57,8 +57,10 @@ describe('two doctors, one practice, two different home screens', () => {
 
     assert.equal(res.status, 200);
     assert.equal(res.body.ui.department, 'cardiology');
-    assert.ok(res.body.ui.widgets.includes('TRIAGE_QUEUE'));
+    assert.equal(res.body.ui.specialty, 'cardiology');
+    assert.ok(res.body.ui.widgets.includes('BP_CONTROL'));
     assert.ok(res.body.ui.widgets.includes('TODAYS_CLINIC'));
+    assert.ok(!res.body.ui.widgets.includes('TRIAGE_QUEUE'), 'the diabetes triage on a cardiologist’s Home');
     assert.ok(res.body.ui.quickActions.includes('START_CONSULTATION'));
   });
 

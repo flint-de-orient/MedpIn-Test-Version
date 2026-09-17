@@ -322,7 +322,6 @@ export const DEPARTMENT_DEFAULTS = Object.freeze({
    */
   cardiology: {
     widgets: [
-      'TRIAGE_QUEUE',
       'TODAYS_CLINIC',
       // What a cardiology caseload is measured by, from what the platform
       // records: blood pressure control and heart rate outside its limits, the
@@ -333,7 +332,6 @@ export const DEPARTMENT_DEFAULTS = Object.freeze({
       'LIPID_CONTROL',
       'FOLLOW_UPS_DUE',
       'RECENT_LAB_REPORTS',
-      'ACTION_QUEUE',
       'OPEN_ALERTS',
       // For the reason the general set carries it: a cardiologist is pushed
       // emergencies and high-risk alerts only, so the rest of the day's
@@ -358,6 +356,33 @@ export const DEPARTMENT_DEFAULTS = Object.freeze({
    * existing: the same app, composed differently, rather than a second
    * application.
    */
+  /*
+   * A general physician's caseload, read across it: who is due back, whose
+   * blood pressure is out of control, what they are being treated for, and the
+   * reports that came in. Nothing measured only for diabetes — no sugar
+   * snapshot, and no Live Triage, whose risk score is worked out from sugar and
+   * HbA1c.
+   */
+  general_physician: {
+    widgets: [
+      'TODAYS_CLINIC',
+      'FOLLOW_UPS_DUE',
+      'BP_CONTROL',
+      'CONDITION_REGISTRY',
+      'RECENT_LAB_REPORTS',
+      'OPEN_ALERTS',
+      'CHAT_SUMMARIES',
+    ],
+    quickActions: GENERAL.quickActions,
+  },
+
+  /*
+   * The general set was built for diabetes care and stays what a diabetology
+   * doctor sees. Named, so a diabetology practice or department is an answer
+   * rather than a fall-through.
+   */
+  diabetology: GENERAL,
+
   laboratory: BENCH,
 
   /*
@@ -387,7 +412,7 @@ export const DEPARTMENT_DEFAULTS = Object.freeze({
  * shows every department as configured-to-show-nothing, and an operator then
  * "fixes" what was already correct.
  */
-export function composeFor(department, role = null) {
+export function composeFor(department, role = null, specialty = null) {
   /*
    * ---- Precedence, in four tiers -------------------------------------
    *
@@ -421,8 +446,12 @@ export function composeFor(department, role = null) {
     widgets: department?.widgets?.length ? department.widgets : null,
     quickActions: department?.quickActions?.length ? department.quickActions : null,
   };
+  // Below the department's own default: where somebody works is the better
+  // answer when it is known. Only the clinical homes answer from a specialty;
+  // a practice filed under "laboratory" does not turn its doctors into a bench.
+  const specialtyHome = SPECIALTY_HOMES.has(specialty) ? DEPARTMENT_DEFAULTS[specialty] : null;
   const fallback =
-    ROLE_DEFAULTS[role] ?? DEPARTMENT_DEFAULTS[department?.key] ?? GENERAL;
+    ROLE_DEFAULTS[role] ?? DEPARTMENT_DEFAULTS[department?.key] ?? specialtyHome ?? GENERAL;
 
   return {
     widgets: configured.widgets ?? fallback.widgets,
@@ -437,7 +466,9 @@ export function composeFor(department, role = null) {
         ? 'role'
         : DEPARTMENT_DEFAULTS[department?.key]
           ? 'departmentDefault'
-          : 'general',
+          : specialtyHome
+            ? 'specialty'
+            : 'general',
   };
 }
 
@@ -483,11 +514,48 @@ function asSet(value) {
  * Either set may be null, meaning "unknown, do not narrow". An empty set is a
  * different answer and means exactly what it says — see [allowed].
  */
-export function resolveUi({ department = null, role = null, capabilities, permissions }) {
+/** The specialties with a Home of their own. */
+export const SPECIALTY_HOMES = new Set(['diabetology', 'cardiology', 'general_physician']);
+
+/**
+ * Which specialty's Home a doctor gets, when no department says.
+ *
+ * The practice's specialty, set by an operator, comes first: it is a fact about
+ * the whole practice. Then the doctor's own profile specialty, matched
+ * narrowly — "Cardiologist" is cardiology, "General Physician" is general
+ * medicine, "Diabetologist" and "Endocrinologist" are diabetology — and nothing
+ * else guessed at. Null keeps the general set, so a practice nobody has
+ * classified sees exactly what it saw before.
+ */
+export function specialtyHomeFor({ practiceSpecialty = null, userSpecialty = null } = {}) {
+  if (SPECIALTY_HOMES.has(practiceSpecialty)) return practiceSpecialty;
+  const text = String(userSpecialty ?? '').toLowerCase();
+  if (!text.trim()) return null;
+  if (/cardio/.test(text)) return 'cardiology';
+  if (/diabet|endocrin/.test(text)) return 'diabetology';
+  if (/general\s*physician|general\s*practi|family\s*(medicine|physician)|internal\s*medicine|\bgp\b/.test(text)) {
+    return 'general_physician';
+  }
+  return null;
+}
+
+export function resolveUi({
+  department = null,
+  role = null,
+  capabilities,
+  permissions,
+  practiceSpecialty = null,
+  userSpecialty = null,
+}) {
   const caps = asSet(capabilities);
   const perms = asSet(permissions);
 
-  const composed = composeFor(department, role);
+  // A department that is itself a specialty answers first; otherwise the
+  // practice's specialty, then the doctor's own.
+  const specialty = SPECIALTY_HOMES.has(department?.key)
+    ? department.key
+    : specialtyHomeFor({ practiceSpecialty, userSpecialty });
+  const composed = composeFor(department, role, specialty);
 
   const widgets = composed.widgets
     .filter((id) => WIDGETS[id])
@@ -506,5 +574,8 @@ export function resolveUi({ department = null, role = null, capabilities, permis
     /// colleagues with different screens can find out why without reading
     /// this file.
     source: composed.source,
+    /// The specialty whose Home this is, or null for the general set. The app
+    /// reads it to decide which tabs a doctor needs.
+    specialty,
   };
 }
