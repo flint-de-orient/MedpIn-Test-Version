@@ -7,6 +7,7 @@ import { boot, shutdown, wipe, as } from './helpers/httpHarness.js';
 import { makePractice, makeMember, makePatient } from './helpers/factories.js';
 import { ChatSession } from '../src/models/ChatSession.js';
 import { ChatMessage } from '../src/models/ChatMessage.js';
+import { Enrollment, DIETICIAN_SOURCE } from '../src/models/Enrollment.js';
 import { PLAN, PRACTICE_TYPE } from '../src/models/Practice.js';
 import { ROLES } from '../src/models/User.js';
 
@@ -159,6 +160,13 @@ describe('a clinician cannot silence another practice’s assistant', () => {
       language: 'en',
       assistantEnabled: true,
     });
+    // The thread they answer is a patient assigned to them, at this practice —
+    // the same caseload /dietician enforces. See c7DieticianInactive.test.js
+    // for a dietician who was not given the patient.
+    await Enrollment.updateOne(
+      { _id: a.patient.enrollments[0]._id },
+      { $set: { dietician: dietician.user._id, dieticianSource: DIETICIAN_SOURCE.DOCTOR } },
+    );
 
     const res = await as(dietician.token).patch(
       `/chat/patients/${a.patient.user._id}/assistant`,

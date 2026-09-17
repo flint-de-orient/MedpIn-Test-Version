@@ -9,6 +9,7 @@ import { asyncHandler, notFound, conflict, badRequest, forbidden } from '../midd
 import { audit } from '../middleware/audit.js';
 import { User, ROLES, CLINICIAN_ROLES } from '../models/User.js';
 import { PatientProfile } from '../models/PatientProfile.js';
+import { Enrollment } from '../models/Enrollment.js';
 import { ClinicalAlert, ALERT_SEVERITY } from '../models/ClinicalAlert.js';
 import { Appointment } from '../models/Appointment.js';
 import { GlucoseReading } from '../models/GlucoseReading.js';
@@ -58,7 +59,8 @@ import {
   departmentThreads,
   practiceMembers,
 } from '../middleware/practiceScope.js';
-import { enrollmentGate, recordWindow } from '../middleware/authorise.js';
+import { enrollmentGate, recordWindow, membershipOf } from '../middleware/authorise.js';
+import { chooseDietician, describeNutritionCare, nutritionCoverage } from '../services/dieticianAssignment.js';
 import { practiceSessions, practiceMessages, sessionBelongsTo } from '../services/conversationPractice.js';
 import { requireCapability } from '../middleware/requireCapability.js';
 import { CAPABILITIES } from '../services/capabilities.js';
@@ -452,31 +454,15 @@ router.get(
     const bySeverity = Object.fromEntries(alertCounts.map((a) => [a._id, a.count]));
     const byRisk = Object.fromEntries(riskGroups.map((r) => [r._id ?? 'low', r.count]));
 
-    const [dietPatients, foodLogsToday, newPatientsToday, reviews, dieticianCount, unassignedCount] = await Promise.all([
-      PatientProfile.countDocuments({ assignedDietician: { $ne: null }, ...profileScope }),
+    const [foodLogsToday, newPatientsToday, reviews, coverage] = await Promise.all([
       FoodLog.countDocuments({ createdAt: { $gte: dayStart }, ...scope }),
       User.countDocuments({ role: ROLES.PATIENT, createdAt: { $gte: dayStart }, ...userScope }),
       nutritionReviews(profileScope, 4, await practiceSessions(req)),
-      // Only worth asking about once there is a choice to make.
-      //
-      // With one dietician the fallbacks answer it: an unassigned patient is
-      // covered by whoever is not carrying their own list, and nobody has to
-      // decide anything. With two, "who is looking after this patient" stops
-      // being obvious and starts being whoever replied first — a clinical
-      // allocation arrived at by accident, and one the patient cannot be told
-      // in advance because nobody has made it.
-      // Scoped for the same reason the list is: a count of other people's
-      // staff is a smaller leak than their names and still not this
-      // practice's number.
-      User.countDocuments({
-        role: ROLES.DIETICIAN,
-        isActive: true,
-        ...(await practiceMembers(req, ROLES.DIETICIAN)),
-      }),
-      PatientProfile.countDocuments({
-        $or: [{ assignedDietician: null }, { assignedDietician: { $exists: false } }],
-        ...profileScope,
-      }),
+      // Who looks after nutrition, read off this practice's enrolments — the
+      // assignment is per practice, so another practice's choice for a patient
+      // both of them care for is not counted here. See
+      // services/dieticianAssignment.js.
+      nutritionCoverage(await practiceOf(req)),
     ]);
 
     res.json({
@@ -502,11 +488,14 @@ router.get(
         critical: byRisk.critical ?? 0,
       },
       nutrition: {
-        dietPatients,
-        // The prompt, not the decision. Shown to the doctor only when there is
-        // more than one dietician and somebody is unassigned; assigning is
-        // his, and nothing here picks for him.
-        needsDieticianAssignment: dieticianCount > 1 ? unassignedCount : 0,
+        // Patients with a dietician who still works here.
+        dietPatients: coverage.withActiveDietician,
+        // The prompt, not the decision: patients nobody has decided for, and
+        // patients whose dietician has left or been suspended — who were not
+        // handed to anybody else, because that is the doctor's choice. Zero
+        // while there is no active dietician to choose. A patient the doctor
+        // deliberately left without one is a decision, and is not counted.
+        needsDieticianAssignment: coverage.needsChoice,
         foodLogsToday,
         reviews,
       },
@@ -1563,7 +1552,7 @@ router.get(
       lastFasting,
       latestVitals,
     ] = await Promise.all([
-      PatientProfile.findOne({ user: patient._id }).populate('assignedDietician', 'name phone').lean(),
+      PatientProfile.findOne({ user: patient._id }).lean(),
       computeHealthScore(patient._id, { days: 30 }),
       glucoseTrends(patient._id, { days: 90 }),
       computeAdherence(patient._id, { days: 30 }),
@@ -1593,6 +1582,17 @@ router.get(
         .select('systolic diastolic pulse spo2 weightKg waistCm recordedAt')
         .lean(),
     ]);
+
+    // Who looks after this patient's nutrition at this practice — the
+    // enrolment the gate above found, not the profile, which is shared by
+    // every practice the patient is with. Null only for a caller with no
+    // practice, who has no relationship to describe.
+    const care = req.enrollment ? await describeNutritionCare(req.enrollment) : null;
+    const membership = await membershipOf(req);
+    // Whether this reader could change it: the rule PATCH .../dietician
+    // enforces, told to the screen so it never offers a refused button.
+    const mayChangeDietician =
+      req.user.role === ROLES.DOCTOR && Boolean(care) && (!membership || membership.can(PERMISSIONS.EDIT_RECORD));
 
     res.json({
       patient: {
@@ -1630,7 +1630,25 @@ router.get(
         mealTimes: profile?.mealTimes ?? null,
         notes: profile?.notes ?? null,
       },
-      profile,
+      /*
+       * `assignedDietician` in the shape builds of the app from before
+       * assignments were per practice read — `{ _id, name, phone }` — and from
+       * this practice's enrolment. The profile's own field is no longer written
+       * and must not leak through: it holds whichever practice assigned last.
+       *
+       * Only while that dietician still works here. Those builds have no way
+       * to say "no longer active", and naming somebody who has left as the
+       * person looking after the patient is the one answer worse than none.
+       */
+      profile: profile
+        ? {
+            ...profile,
+            assignedDietician: care?.dietician?.active
+              ? { _id: care.dietician.id, name: care.dietician.name, phone: care.dietician.phone }
+              : null,
+          }
+        : profile,
+      nutritionCare: care ? { ...care, mayChange: mayChangeDietician } : null,
       healthScore,
       trends,
       // Carries expected/taken/percentage — the profile shows the raw doses.
@@ -2546,9 +2564,21 @@ router.patch(
 
 
 /**
- * Assign (or clear) a patient's dietician and how often the food log should be
- * reviewed. `dieticianId: null` unassigns; `reviewIntervalDays: null` clears the
+ * Assign a patient's dietician at this practice, unassign them, or set how
+ * often the food log should be reviewed. `dieticianId: null` is a decision that
+ * this patient has no dietician here; `reviewIntervalDays: null` clears the
  * cadence.
+ *
+ * ---- Per practice, with its history ----------------------------------------
+ *
+ * The choice is written onto this practice's enrolment of the patient, so a
+ * patient another practice also cares for keeps that practice's dietician, and
+ * whoever held the patient here before is kept in the enrolment's history
+ * rather than overwritten. See services/dieticianAssignment.js.
+ *
+ * The response keeps the shape older builds of the app read —
+ * `assignedDietician: { id, name, phone }` and `reviewIntervalDays` — and adds
+ * `nutritionCare`, the whole picture the current build draws.
  */
 router.patch(
   '/patients/:id/dietician',
@@ -2560,9 +2590,13 @@ router.patch(
     body: z.object({
       dieticianId: z.string().nullable().optional(),
       reviewIntervalDays: z.number().int().min(1).max(30).nullable().optional(),
+      // Who the doctor's screen showed holding the patient, or null for
+      // nobody. A choice made against something a colleague has since changed
+      // is refused rather than applied over them. Older builds send none.
+      expectedDieticianId: z.string().nullable().optional(),
     }),
   }),
-  audit('update', 'PatientProfile'),
+  audit('update', 'Enrollment'),
   asyncHandler(async (req, res) => {
     // Reassigning somebody else's patient to a dietician is a write, and it was
     // reachable by any signed-in clinician who knew an id. Guarded before
@@ -2570,55 +2604,71 @@ router.patch(
     await assertSamePractice(req, req.params.id);
     await enrollmentGate(req, req.params.id);
 
-    const { dieticianId, reviewIntervalDays } = req.body;
-    const update = {};
-    /// Set when this request puts the patient on a dietician's list, so the
-    /// push goes out only on a real assignment — not when the doctor is merely
-    /// changing the review interval on a patient they already look after.
-    let newlyAssignedTo = null;
+    // The relationship the choice is about. The gate leaves none only for a
+    // caller with no practice at all, and an assignment with no practice to
+    // belong to would be exactly the single shared field this replaced.
+    const enrollment = req.enrollment;
+    if (!enrollment) throw badRequest('This account is not linked to a practice yet.');
+    // The audit row names the patient and the relationship, not only the doctor.
+    req.patientId = enrollment.patient;
+    req.auditResourceId = enrollment._id;
+
+    const { dieticianId, reviewIntervalDays, expectedDieticianId } = req.body;
+    let chosen = { changed: false, dietician: null };
 
     if (dieticianId !== undefined) {
+      let dietician = null;
       if (dieticianId) {
         /*
-         * One of this practice's dieticians. The patient is checked above and
-         * the dietician was not — and the dietician routes trust the
+         * One of this practice's active dieticians. The patient is checked
+         * above and the dietician was not — and the dietician routes trust the
          * assignment, so naming another practice's dietician here handed them
          * this patient's record. `$and`: the member filter is keyed on `_id`.
          */
-        const d = await User.findOne({
+        dietician = await User.findOne({
           $and: [
             { _id: dieticianId, role: ROLES.DIETICIAN, isActive: true },
             await practiceMembers(req, ROLES.DIETICIAN),
           ],
         })
-          .select('_id')
+          .select('_id name')
           .lean();
-        if (!d) throw notFound('Dietician not found');
-        update.assignedDietician = d._id;
-        newlyAssignedTo = d._id;
-      } else {
-        update.assignedDietician = null;
+        if (!dietician) throw notFound('Dietician not found');
       }
+      chosen = await chooseDietician({
+        enrollmentId: enrollment._id,
+        dieticianId: dietician?._id ?? null,
+        by: req.user._id,
+        expected: expectedDieticianId,
+      });
     }
-    if (reviewIntervalDays !== undefined) update.dietReviewIntervalDays = reviewIntervalDays;
 
-    const profile = await PatientProfile.findOneAndUpdate({ user: req.params.id }, { $set: update }, { new: true })
-      .populate('assignedDietician', 'name phone')
-      .lean();
-    if (!profile) throw notFound('Patient not found');
+    if (reviewIntervalDays !== undefined) {
+      await PatientProfile.updateOne({ user: req.params.id }, { $set: { dietReviewIntervalDays: reviewIntervalDays } });
+    }
 
-    if (newlyAssignedTo) {
+    // Only a real assignment pushes: not an unassignment, not the doctor
+    // re-choosing who already holds the patient, and not a cadence change.
+    if (chosen.changed && chosen.dietician) {
       const patient = await User.findById(req.params.id).select('name').lean();
       // Fire-and-forget: the assignment is already saved, and a push that
       // fails must not fail the doctor's request.
-      notifyDieticianOfAssignment(newlyAssignedTo, patient?.name ?? 'A patient').catch(() => {});
+      notifyDieticianOfAssignment(chosen.dietician, patient?.name ?? 'A patient').catch(() => {});
     }
 
+    const [fresh, profile] = await Promise.all([
+      Enrollment.findById(enrollment._id).lean(),
+      PatientProfile.findOne({ user: req.params.id }).select('dietReviewIntervalDays').lean(),
+    ]);
+    const care = await describeNutritionCare(fresh);
+
     res.json({
-      assignedDietician: profile.assignedDietician
-        ? { id: String(profile.assignedDietician._id), name: profile.assignedDietician.name, phone: profile.assignedDietician.phone }
+      // Only a dietician who still works here, as on the summary.
+      assignedDietician: care.dietician?.active
+        ? { id: care.dietician.id, name: care.dietician.name, phone: care.dietician.phone }
         : null,
-      reviewIntervalDays: profile.dietReviewIntervalDays ?? null,
+      reviewIntervalDays: profile?.dietReviewIntervalDays ?? null,
+      nutritionCare: { ...care, mayChange: true },
     });
   }),
 );

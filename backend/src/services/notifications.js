@@ -2,10 +2,8 @@ import { User, ROLES } from '../models/User.js';
 import { getMessaging } from '../config/firebase.js';
 import { ClinicalAlert } from '../models/ClinicalAlert.js';
 import { logger } from '../config/logger.js';
-import { PatientProfile } from '../models/PatientProfile.js';
-import { ChatSession } from '../models/ChatSession.js';
-import { ChatMessage } from '../models/ChatMessage.js';
 import { practicesOfPatient, practiceOfAppointment, memberIdsOf } from '../middleware/practiceScope.js';
+import { activeDieticianOf } from './dieticianAssignment.js';
 
 /**
  * Notification transport.
@@ -477,6 +475,49 @@ export async function notifyPatientOfClinicianReply(
 }
 
 /**
+ * The dieticians to wake when a patient writes in their nutrition thread.
+ *
+ * ---- Whoever holds the patient, at the practice written to -----------------
+ *
+ * The dietician assigned on that practice's enrolment, while they still work
+ * there, and nobody else. It used to be the profile's single assigned dietician
+ * — which was whichever practice assigned last — or, with none, every
+ * dietician "covering the clinic at large": a pool left over from when an
+ * unassigned patient was on every dietician's list. That stopped being true
+ * when the caseload became the assignments, and the pool kept being pushed the
+ * patient's name and first words about somebody none of them could open.
+ *
+ * Nor does a dietician who has left, been suspended or been switched off hear
+ * about the patient again. Their assignment stays on the record; the work
+ * does not follow them.
+ *
+ * ---- And an urgent message? -------------------------------------------------
+ *
+ * It still reaches people, just not through this. The nutrition route triages
+ * every message the way the care thread does and raises a clinical alert for
+ * an urgent or emergency one, which pages the practice's doctors and desk
+ * (`notifyClinicStaff`). A dietician who cannot open the patient is not who
+ * answers chest pain.
+ *
+ * `practiceId` is the practice the conversation is with. Without one, every
+ * practice the patient is currently enrolled at is asked, each for its own
+ * dietician.
+ */
+export async function dieticianRecipientsFor({ patientId, practiceId = null }) {
+  if (!patientId) return [];
+  const practices = practiceId ? [String(practiceId)] : await practicesOfPatient(patientId);
+
+  const holders = [];
+  for (const practice of practices) {
+    const dietician = await activeDieticianOf({ practiceId: practice, patientId });
+    if (dietician) holders.push(dietician);
+  }
+  if (!holders.length) return [];
+
+  return User.find({ _id: { $in: holders }, isActive: true }).select('_id deviceTokens name').lean();
+}
+
+/**
  * A patient has written in their nutrition thread.
  *
  * The reverse of [notifyPatientOfClinicianReply], which was the only half of
@@ -485,141 +526,12 @@ export async function notifyPatientOfClinicianReply(
  * asking "can I eat this?" in the evening waited until the dietician next
  * happened to open the app.
  *
- * Goes to the dietician the patient is assigned to, and to nobody else. A
- * message about somebody else's patient is a message the reader cannot act on.
+ * Goes to the dietician the patient is assigned to at that practice, and to
+ * nobody else. A message about somebody else's patient is a message the reader
+ * cannot act on. See `dieticianRecipientsFor`.
  */
-/**
- * The dieticians who should hear about this patient.
- *
- * Mirrors `scopeFilter` in routes/dietician.js, and it has to: that rule says a
- * dietician with no explicit assignments covers the whole clinic, so in the
- * common setup — one dietician, nobody individually assigned — every patient is
- * theirs. This function used to require an explicit assignment, so their
- * dashboard listed all seven patients, the bell counted the unread messages,
- * and no push ever fired for any of them.
- *
- * Two shapes, matching that rule exactly: a patient with an assigned dietician
- * belongs to them alone, and everyone else belongs to whichever dieticians are
- * covering the clinic at large.
- */
-/**
- * Which of the covering dieticians a patient's message should reach.
- *
- * Split out from the queries so the rule itself can be read and tested. Every
- * argument is already resolved: `pool` is the dieticians currently covering the
- * clinic at large, `lastReplierId` is whichever of them answered this patient
- * most recently, `urgency` is the triage on the message that just arrived.
- *
- * @param {{pool: Array<{_id: any}>, lastReplierId: string|null, urgency: string|null}} input
- */
-export function routeToDieticians({ pool, lastReplierId, urgency }) {
-  // One dietician covering the clinic is the whole clinic's dietician. This is
-  // the setup the app launched with and it was never wrong — the fan-out only
-  // becomes a problem when there is someone else it could have gone to.
-  if (pool.length <= 1) return pool;
-
-  // An urgent or emergency message goes to everyone covering.
-  //
-  // The ownership rule below is a courtesy — it stops two dieticians being
-  // pinged about a question one of them is already handling. It must never
-  // decide that nobody hears about chest pain because the person who usually
-  // answers this patient is off today.
-  if (urgency === 'urgent' || urgency === 'emergency') return pool;
-
-  // Whoever answered this patient last owns the conversation. They have the
-  // history, the plan and the context; a second dietician arriving cold adds
-  // nothing and two people drafting the same reply is worse than one.
-  if (lastReplierId) {
-    const owner = pool.find((d) => String(d._id) === String(lastReplierId));
-    if (owner) return [owner];
-  }
-
-  // Nobody has answered this patient yet, so nobody owns them. Everyone
-  // covering hears about it, and the first to reply becomes the owner by the
-  // rule above.
-  return pool;
-}
-
-/**
- * The dieticians who should hear about this patient.
- *
- * Visibility and notification are deliberately different things here.
- * `scopeFilter` in routes/dietician.js decides who may *see* a patient, and it
- * stays wide on purpose: any covering dietician can open any unrestricted
- * patient and help. This decides who gets *woken up*, which is a narrower
- * question — a push about a conversation somebody else is already having is
- * noise, and two dieticians answering the same question is worse than noise.
- *
- * Three shapes:
- *  - a patient the doctor has assigned belongs to that dietician alone;
- *  - everyone else belongs to the dieticians covering the clinic at large;
- *  - and among those, to whichever one is already in the conversation.
- */
-async function dieticiansFor(patientId, { urgency } = {}) {
-  const profile = await PatientProfile.findOne({ user: patientId })
-    .select('assignedDietician')
-    .lean();
-
-  // The doctor's explicit assignment wins over everything below it. It is the
-  // one place a human has said who is responsible for this patient.
-  if (profile?.assignedDietician) {
-    const one = await User.findOne({ _id: profile.assignedDietician, isActive: true })
-      .select('deviceTokens')
-      .lean();
-    return one ? [one] : [];
-  }
-
-  const dieticians = await staffFor(patientId, ROLES.DIETICIAN);
-  if (dieticians.length === 0) return [];
-
-  // Only the ones whose scope is the clinic. A dietician with their own named
-  // list has said what they cover, and an unassigned patient is not on it.
-  const assignedCounts = await PatientProfile.aggregate([
-    { $match: { assignedDietician: { $in: dieticians.map((d) => d._id) } } },
-    { $group: { _id: '$assignedDietician', n: { $sum: 1 } } },
-  ]);
-  const hasOwnList = new Set(assignedCounts.map((a) => String(a._id)));
-  const pool = dieticians.filter((d) => !hasOwnList.has(String(d._id)));
-
-  // Skip the lookup entirely when the answer cannot depend on it.
-  if (pool.length <= 1 || urgency === 'urgent' || urgency === 'emergency') {
-    return routeToDieticians({ pool, lastReplierId: null, urgency });
-  }
-
-  return routeToDieticians({
-    pool,
-    lastReplierId: await lastDieticianToReply(patientId, pool),
-    urgency,
-  });
-}
-
-/**
- * The dietician who most recently answered this patient, if any.
- *
- * Constrained to senders in [pool], so a doctor answering in the nutrition
- * thread does not erase the dietician who was handling it — the query walks
- * back past them to the last reply that was actually a covering dietician's.
- */
-async function lastDieticianToReply(patientId, pool) {
-  const session = await ChatSession.findOne({ patient: patientId, kind: 'nutrition' })
-    .select('_id')
-    .lean();
-  if (!session) return null;
-
-  const last = await ChatMessage.findOne({
-    session: session._id,
-    role: 'clinician',
-    sender: { $in: pool.map((d) => d._id) },
-  })
-    .sort({ seq: -1 })
-    .select('sender')
-    .lean();
-
-  return last?.sender ? String(last.sender) : null;
-}
-
-export async function notifyDieticianOfPatientMessage(patientId, patientName, content, { urgency } = {}) {
-  const recipients = await dieticiansFor(patientId, { urgency });
+export async function notifyDieticianOfPatientMessage(patientId, patientName, content, { practiceId = null } = {}) {
+  const recipients = await dieticianRecipientsFor({ patientId, practiceId });
   const tokens = recipients.flatMap((d) => d.deviceTokens ?? []);
   if (tokens.length === 0) return;
 

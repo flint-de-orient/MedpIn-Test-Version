@@ -13,14 +13,20 @@ import { dieticianFacingPatient } from '../src/services/dieticianIdentity.js';
  *
  * So two things are pinned here: the rule, and the promise that getting the
  * rule wrong can never again cost a patient their messages.
+ *
+ * The rule is one answer now: the dietician assigned at the practice this
+ * conversation is with, while they still work there. "Whoever has been
+ * replying" is gone — with the caseload being the assignments, that person is
+ * either the assigned dietician or somebody who no longer holds the patient.
+ * The database-backed half, a suspended dietician over HTTP, is in
+ * c7DieticianInactive.test.js.
  */
 
-/** A stub that answers one findOne with [value] and records what it was asked. */
-function model(value) {
+/** A stub User model that answers one findOne with [value] and records what it was asked. */
+function userModel(value) {
   const calls = [];
   const chain = {
     select: () => chain,
-    sort: () => chain,
     lean: async () => value,
   };
   return {
@@ -32,7 +38,7 @@ function model(value) {
   };
 }
 
-function throwingModel(message = 'connection lost') {
+function throwingUserModel(message = 'connection lost') {
   return {
     findOne: () => {
       throw new Error(message);
@@ -40,75 +46,70 @@ function throwingModel(message = 'connection lost') {
   };
 }
 
+/** A stub for the assignment lookup, recording what it was asked. */
+function holder(value) {
+  const calls = [];
+  const fn = async (args) => {
+    calls.push(args);
+    return value;
+  };
+  fn.calls = calls;
+  return fn;
+}
+
 const ASSIGNED = { _id: 'dietA', name: 'Priya Nair', avatarAssetId: 'img1' };
-const REPLIER = { _id: 'dietB', name: 'Anita Bose', avatarAssetId: null };
 
 describe('the dietician a patient is shown', () => {
-  test('an explicit assignment wins', async () => {
-    const out = await dieticianFacingPatient('p1', {
-      PatientProfile: model({ assignedDietician: 'dietA' }),
-      User: model(ASSIGNED),
-      ChatSession: model(null),
-      ChatMessage: model(null),
-    });
+  test('the dietician this practice assigned, while they work here', async () => {
+    const activeDieticianOf = holder('dietA');
+    const User = userModel(ASSIGNED);
+    const out = await dieticianFacingPatient('p1', { practiceId: 'saltLake' }, { activeDieticianOf, User });
 
     assert.equal(out.name, 'Priya Nair');
     assert.equal(out.assigned, true);
     assert.equal(out.avatarUrl, '/api/v1/uploads/img1/raw');
+    // Asked about this patient at this practice, and nobody else's.
+    assert.deepEqual(activeDieticianOf.calls, [{ practiceId: 'saltLake', patientId: 'p1' }]);
+    assert.deepEqual(User.calls, [{ _id: 'dietA', isActive: true }]);
   });
 
-  test('with nobody assigned, whoever has been replying', async () => {
-    // Not a lesser answer. With no assignment, the person who has been writing
-    // back IS this patient's dietician in every sense they experience.
-    const out = await dieticianFacingPatient('p1', {
-      PatientProfile: model(null),
-      User: model(REPLIER),
-      ChatSession: model({ _id: 's1' }),
-      ChatMessage: model({ sender: 'dietB' }),
-    });
+  test('no avatar is null, not a broken URL', async () => {
+    const out = await dieticianFacingPatient(
+      'p1',
+      { practiceId: 'saltLake' },
+      { activeDieticianOf: holder('dietA'), User: userModel({ ...ASSIGNED, avatarAssetId: null }) },
+    );
+    assert.equal(out.avatarUrl, null);
+  });
 
-    assert.equal(out.name, 'Anita Bose');
-    assert.equal(out.assigned, false, 'nobody chose them, they just answered');
-    assert.equal(out.avatarUrl, null, 'no avatar is null, not a broken URL');
+  test('without a practice there is no relationship to read, and nothing is guessed', async () => {
+    // A patient with two practices and no conversation yet. Naming either
+    // practice's dietician would be choosing between them.
+    const activeDieticianOf = holder('dietA');
+    const out = await dieticianFacingPatient('p1', {}, { activeDieticianOf, User: userModel(ASSIGNED) });
+    assert.equal(out, null);
+    assert.equal(activeDieticianOf.calls.length, 0);
   });
 
   test('a brand-new patient gets null, not a nameless face', async () => {
-    // The case that started all of this: no assignment, no thread, nobody has
-    // written. Null is the true answer and the header says so, rather than
-    // drawing an avatar with no name in it.
-    const out = await dieticianFacingPatient('p1', {
-      PatientProfile: model(null),
-      User: model(null),
-      ChatSession: model(null),
-      ChatMessage: model(null),
-    });
-
+    // Nobody assigned at this practice: null is the true answer and the
+    // header says so, rather than drawing an avatar with no name in it.
+    const out = await dieticianFacingPatient(
+      'p1',
+      { practiceId: 'saltLake' },
+      { activeDieticianOf: holder(null), User: userModel(ASSIGNED) },
+    );
     assert.equal(out, null);
   });
 
-  test('a thread with no dietician reply yet is still null', async () => {
-    const out = await dieticianFacingPatient('p1', {
-      PatientProfile: model(null),
-      User: model(REPLIER),
-      ChatSession: model({ _id: 's1' }),
-      ChatMessage: model(null),
-    });
-
-    assert.equal(out, null);
-  });
-
-  test('an assignment pointing at a deactivated account falls through', async () => {
-    // A dietician who has left. The assignment is stale, so the answer is
-    // whoever is actually answering — not a name that can no longer reply.
-    const out = await dieticianFacingPatient('p1', {
-      PatientProfile: model({ assignedDietician: 'gone' }),
-      // The active-only query finds nothing for the assignment and nothing for
-      // the replier either.
-      User: model(null),
-      ChatSession: model({ _id: 's1' }),
-      ChatMessage: model({ sender: 'dietB' }),
-    });
-
+  test('an assignment to a switched-off account is nobody', async () => {
+    // The assignment lookup already refuses a dietician whose membership
+    // ended; an account switched off since is the second half.
+    const out = await dieticianFacingPatient(
+      'p1',
+      { practiceId: 'saltLake' },
+      { activeDieticianOf: holder('gone'), User: userModel(null) },
+    );
     assert.equal(out, null);
   });
 
@@ -116,38 +117,33 @@ describe('the dietician a patient is shown', () => {
     // The whole point. Every one of these used to be a 500, and a 500 here is a
     // patient staring at "Could not load the conversation" with their messages
     // sitting fine in the database behind it.
-    // Each case has to be reached to be broken. An assignment that resolves
-    // returns before the session is ever queried, so pairing a broken
-    // ChatSession with a working assignment proves nothing — the first draft of
-    // this test did exactly that and passed for the wrong reason.
-    const withAssignment = {
-      PatientProfile: model({ assignedDietician: 'dietA' }),
-      User: model(ASSIGNED),
-      ChatSession: model({ _id: 's1' }),
-      ChatMessage: model({ sender: 'dietB' }),
-    };
-    const noAssignment = { ...withAssignment, PatientProfile: model(null) };
+    test('the assignment lookup failing yields null, not a throw', async () => {
+      const broken = async () => {
+        throw new Error('connection lost');
+      };
+      assert.equal(
+        await dieticianFacingPatient('p1', { practiceId: 'saltLake' }, { activeDieticianOf: broken, User: userModel(ASSIGNED) }),
+        null,
+      );
+    });
 
-    const cases = [
-      ['the profile lookup', withAssignment, { PatientProfile: throwingModel() }],
-      ['the assigned-dietician lookup', withAssignment, { User: throwingModel() }],
-      ['the session lookup', noAssignment, { ChatSession: throwingModel() }],
-      ['the last-reply lookup', noAssignment, { ChatMessage: throwingModel() }],
-    ];
-
-    for (const [name, base, broken] of cases) {
-      test(`${name} failing yields null, not a throw`, async () => {
-        assert.equal(
-          await dieticianFacingPatient('p1', { ...base, ...broken }),
-          null,
-        );
-      });
-    }
+    test('the dietician lookup failing yields null, not a throw', async () => {
+      // Reached only through a successful assignment lookup, so it is paired
+      // with one — a broken model behind an early return proves nothing.
+      assert.equal(
+        await dieticianFacingPatient(
+          'p1',
+          { practiceId: 'saltLake' },
+          { activeDieticianOf: holder('dietA'), User: throwingUserModel() },
+        ),
+        null,
+      );
+    });
 
     test('a missing dependency behaves like any other failure', async () => {
-      // Which is what the original bug was: PatientProfile was not imported, so
-      // the reference was undefined at call time.
-      assert.equal(await dieticianFacingPatient('p1', {}), null);
+      // Which is what the original bug was: a model was not imported, so the
+      // reference was undefined at call time.
+      assert.equal(await dieticianFacingPatient('p1', { practiceId: 'saltLake' }, {}), null);
     });
   });
 });

@@ -10,13 +10,21 @@ import '../../../shared/widgets/auth_kit.dart';
 import '../../../shared/widgets/error_view.dart';
 import 'auth_controller.dart';
 
-/// Password sign-in, for the doctor and clinic staff.
+/// Password sign-in, for staff accounts that already have a password.
 ///
 /// A separate screen rather than a second pair of fields on the main one.
-/// Everyone who is not a doctor signs in with a texted code and has no
-/// password at all; putting a password box in front of them is asking for
-/// something they were never given. The doctor reaches this from a quiet link
-/// and is the only person who ever sees it.
+/// Everyone else signs in with a texted code and has no password at all;
+/// putting a password box in front of them is asking for something they were
+/// never given. Reached from a quiet link on the sign-in screen.
+///
+/// ---- Kept, and not for anybody new ------------------------------------------
+///
+/// Passwords are no longer set for anybody: the People screen stopped offering
+/// one and the server refuses a hire that carries one. Those that exist keep
+/// working here until the product owner approves a date to retire them — a
+/// counter handset signed in this way must not stop working the morning a
+/// release lands. The plan for that date is in deploy/STAGING.md, under "Staff
+/// passwords".
 class DoctorPasswordLoginScreen extends ConsumerStatefulWidget {
   const DoctorPasswordLoginScreen({super.key});
 

@@ -146,14 +146,6 @@ final patientPrescriptionsProvider = FutureProvider.autoDispose
       return ref.watch(clinicianRepositoryProvider).patientPrescriptions(id);
     });
 
-/// The clinic's dieticians — used by the patient profile to decide whether the
-/// "Restrict" action is even meaningful (it needs 2+ dieticians; restricting the
-/// only one would cut them off from every other patient).
-final clinicDieticiansProvider =
-    FutureProvider.autoDispose<List<({String id, String name})>>((ref) {
-      return ref.watch(clinicianRepositoryProvider).dieticians();
-    });
-
 typedef AlertsQuery = ({String? status, String? severity});
 
 final alertsProvider = FutureProvider.autoDispose

@@ -467,13 +467,15 @@ class ClinicianRepository {
   /// account it creates can prescribe.
   ///
   /// True when the number already had an account and this practice was added
-  /// to it, rather than a new account being made. They keep their own sign-in,
-  /// and [password] only ever applies to a new account.
+  /// to it, rather than a new account being made. They keep their own sign-in.
+  ///
+  /// There is no password to send. Nobody sets a colleague's password; they
+  /// sign in with a code texted to their own number, and the server refuses a
+  /// hire that carries one.
   Future<bool> hire({
     required String role,
     required String name,
     required String phoneToken,
-    String? password,
     String? departmentId,
     String? locationId,
     String? qualifications,
@@ -485,7 +487,6 @@ class ClinicianRepository {
         'role': role,
         'name': name,
         'phoneToken': phoneToken,
-        if (password != null && password.isNotEmpty) 'password': password,
         if (departmentId != null) 'departmentId': departmentId,
         if (locationId != null) 'locationId': locationId,
         if (qualifications != null && qualifications.isNotEmpty)
@@ -503,12 +504,17 @@ class ClinicianRepository {
   /// Not their name or number — those belong to the person and are edited from
   /// their own profile. Pass an explicit null to clear a department or a
   /// location; omitting it leaves it alone.
+  ///
+  /// [version] is the one the People screen showed. The server refuses the
+  /// change with `MEMBER_CHANGED` when somebody else has changed this person
+  /// since, rather than one manager's save silently undoing another's.
   Future<void> updateMember(
     String membershipId, {
     String? role,
     Object? departmentId = _unset,
     Object? locationId = _unset,
     String? status,
+    int? version,
   }) async {
     await _client.patchJson(
       '/team/$membershipId',
@@ -517,6 +523,7 @@ class ClinicianRepository {
         if (!identical(departmentId, _unset)) 'departmentId': departmentId,
         if (!identical(locationId, _unset)) 'locationId': locationId,
         if (status != null) 'status': status,
+        if (version != null) 'version': version,
       },
     );
   }
@@ -605,18 +612,30 @@ class ClinicianRepository {
    * departments and locations to fill a dropdown.
    */
 
-  /// Assign the patient's dietician and food-log review cadence. A null
-  /// [dieticianId] unassigns; a null [reviewIntervalDays] clears the cadence.
+  /// Choose the patient's dietician at this practice. A null [dieticianId] is
+  /// a decision that the patient has no dietician here.
+  ///
+  /// [expectedDieticianId] is who the screen showed holding the patient — an
+  /// id, or null for nobody. The server refuses the choice with
+  /// `DIETICIAN_CHANGED` when that is no longer true, so a colleague's choice
+  /// made while this screen was open is seen before it is replaced.
+  ///
+  /// [reviewIntervalDays] is sent only when given: the cadence is clinic-wide
+  /// now, and choosing a dietician has nothing to say about it.
   Future<void> assignDietician(
     String patientId, {
     String? dieticianId,
-    int? reviewIntervalDays,
+    Object? expectedDieticianId = _unset,
+    Object? reviewIntervalDays = _unset,
   }) async {
     await _client.patchJson(
       '/doctor/patients/$patientId/dietician',
       body: {
         'dieticianId': dieticianId,
-        'reviewIntervalDays': reviewIntervalDays,
+        if (!identical(expectedDieticianId, _unset))
+          'expectedDieticianId': expectedDieticianId,
+        if (!identical(reviewIntervalDays, _unset))
+          'reviewIntervalDays': reviewIntervalDays,
       },
     );
   }

@@ -110,27 +110,29 @@ describe('the one that was reported, and where the rule lives now', () => {
   });
 });
 
-describe('and nobody has to invent a colleague’s password', () => {
+describe('and nobody sets a colleague’s password', () => {
   const team = readFileSync(path.join(SRC, 'routes', 'team.js'), 'utf8');
   const form = readFileSync(
     new URL('../../mobile/lib/features/clinician/presentation/team_screen.dart', import.meta.url),
     'utf8',
   );
 
-  test('the server takes it as optional, for every role', () => {
-    // It was required on the dietician path and optional on the desk one,
-    // which is the inconsistency that was reported. There is one path now, so
-    // the two cannot disagree — a dietician has their own phone and has just
-    // answered a code on it, and the number is the credential.
-    assert.match(team, /password: z\.string\(\)\.min\(8[^\n]*\.optional\(\)/);
+  test('the server refuses one, by name, for every role', () => {
+    // It was required on the dietician path, then optional for everybody —
+    // "for a handset that lives on a counter". Optional still meant somebody
+    // choosing a credential for somebody else. The number is the credential:
+    // the person has just answered a code on it. See
+    // c7StaffAuthentication.test.js for the same thing over HTTP.
+    assert.match(team, /PASSWORD_NOT_ALLOWED/);
+    assert.ok(!/setPassword\(/.test(team), 'the hire route still writes a password');
   });
 
-  test('and the form offers it rather than demanding it', () => {
-    assert.match(form, /bool _setPassword = false;/);
-    assert.match(form, /password: _setPassword \? _password\.text : null/);
+  test('and the form no longer offers one', () => {
+    assert.ok(!/_setPassword|_password\b/.test(form), 'the hire sheet still has a password switch');
+    assert.ok(!/labelText: 'Password'/.test(form), 'the hire sheet still has a password field');
     assert.ok(
       !form.includes("'They can sign in with this number and password.'"),
-      'the sheet still promises a password it no longer requires',
+      'the sheet still promises a password',
     );
   });
 });

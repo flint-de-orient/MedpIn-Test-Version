@@ -1,4 +1,5 @@
 import 'clinician_models.dart';
+import 'nutrition_care.dart';
 
 /// A quarterly HbA1c point on the patient's record.
 class Hba1cPoint {
@@ -278,6 +279,7 @@ class PatientSummary {
     this.aiContext,
     this.assignedDieticianId,
     this.assignedDieticianName,
+    this.nutritionCare,
     this.reviewIntervalDays,
     this.adherenceTaken,
     this.adherenceExpected,
@@ -341,8 +343,14 @@ class PatientSummary {
   final List<ClinicalAlert> alerts;
   final String? aiContext;
 
+  /// The dietician a server from before per-practice assignment named. Read
+  /// only when [nutritionCare] is absent.
   final String? assignedDieticianId;
   final String? assignedDieticianName;
+
+  /// Who looks after this patient's nutrition at this practice, with its
+  /// history. Null from a server that predates it.
+  final NutritionCare? nutritionCare;
   final int? reviewIntervalDays;
 
   /// Adherence as raw doses (taken / expected due) over the last 30 days — the
@@ -414,6 +422,10 @@ class PatientSummary {
       assignedDieticianName:
           profile['assignedDietician'] is Map
               ? (profile['assignedDietician'] as Map)['name']?.toString()
+              : null,
+      nutritionCare:
+          j['nutritionCare'] is Map<String, dynamic>
+              ? NutritionCare.fromJson(j['nutritionCare'] as Map<String, dynamic>)
               : null,
       reviewIntervalDays: (profile['dietReviewIntervalDays'] as num?)?.toInt(),
       labResults:

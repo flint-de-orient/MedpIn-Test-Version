@@ -22,8 +22,10 @@ import 'widgets/clinician_visuals.dart';
 import 'widgets/sparkline.dart';
 import 'widgets/ecg_section.dart';
 import '../../../core/theme/tokens.dart';
-import '../../../core/router/area.dart';
 import '../../../shared/widgets/disclosure_tile.dart';
+import '../../../shared/widgets/surfaces.dart';
+import '../../../core/network/api_exception.dart';
+import '../domain/nutrition_care.dart';
 
 /// The read side of a patient: health score, adherence, glucose control, HbA1c
 /// history, test reports, recent alerts, the dietician's review cadence, and
@@ -1137,8 +1139,29 @@ class _Hba1cList extends StatelessWidget {
   }
 }
 
-/// Shows the patient's assigned dietician + food-log review cadence, and lets
-/// the doctor assign, change, or clear it.
+/// Who looks after this patient's nutrition at this practice, and — for a
+/// doctor who may change it — the way to choose.
+///
+/// ---- It used to describe a default that no longer exists --------------------
+///
+/// "Covered by clinic dietician" and a "Restrict" button: an assignment was a
+/// restriction, and every dietician covered everybody until one was made. The
+/// caseload is the assignments now, per practice — so an unassigned patient is
+/// looked after by nobody, and saying otherwise reads as reassurance about a
+/// gap in cover.
+///
+/// ---- What it says, by state ------------------------------------------------
+///
+///   held by an active dietician  → their name, and how they came to hold it
+///   held by somebody who left    → their name, "No longer works here", and a
+///                                  prompt: nobody was moved on the doctor's
+///                                  behalf
+///   left without one on purpose  → "No dietician", and who decided
+///   nobody decided, and there is
+///   a choice to make             → "Not assigned", and "Needs a choice"
+///   no dietician at the practice → "No dietician", said as a fact
+///
+/// Every status that needs the doctor carries a word, not only the amber.
 class _DieticianSection extends ConsumerWidget {
   const _DieticianSection({required this.summary, required this.patientId});
 
@@ -1147,304 +1170,383 @@ class _DieticianSection extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final scheme = Theme.of(context).colorScheme;
-    final name = summary.assignedDieticianName;
-    // An explicit assignment is a *restriction*, not a grant: by default the
-    // clinic dietician covers every patient (see the dietician panel's scope).
-    final restricted = name != null && name.isNotEmpty;
-    // Restricting only makes sense with 2+ dieticians — with one, it would cut
-    // the sole dietician off from every other patient. So the action is offered
-    // only when there's a choice to make (or to undo an existing restriction).
-    final dieticianCount =
-        ref.watch(clinicDieticiansProvider).valueOrNull?.length ?? 0;
-    // Who covers a patient — and, in a clinic with two dieticians, who may see
-    // them at all — is a clinical and an access decision. The server refuses it
-    // from a desk account now; the button goes too, so the desk is not offered
-    // a control that ends in a red toast.
-    final canRestrict =
-        (restricted || dieticianCount >= 2) && areaPrefix(ref) != '/staff';
+    final care = summary.nutritionCare ?? _fromOlderServer(summary);
+    final view = _CareView.of(care);
 
-    return Container(
-      padding: const EdgeInsets.all(AppSpacing.md),
-      decoration: BoxDecoration(
-        color: scheme.surfaceContainerLow,
-        borderRadius: BorderRadius.circular(AppSpacing.cardRadius),
-        border: Border.all(color: scheme.outlineVariant.withValues(alpha: 0.6)),
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 40,
-            height: 40,
-            decoration: BoxDecoration(
-              color: AppColors.accentOn(context).withValues(alpha: 0.10),
-              borderRadius: BorderRadius.circular(12),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                'Dietician',
+                style: T.bodyStrong.copyWith(fontWeight: FontWeight.w700),
+              ),
             ),
-            child: Icon(
-              Icons.restaurant_menu_rounded,
-              size: 20,
-              color: AppColors.accentOn(context),
+            if (care.mayChange && view.action != null)
+              TextButton(
+                onPressed: () => _DieticianChoice.show(context, ref, patientId, care),
+                child: Text(view.action!),
+              ),
+          ],
+        ),
+        InnerTile(
+          tone: view.needsDoctor ? T.warningTint : null,
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(
+                Icons.restaurant_menu_rounded,
+                color: view.needsDoctor ? T.warning : T.primary,
+              ),
+              const SizedBox(width: T.s3),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(view.title, style: T.bodyStrong),
+                    if (view.flag != null)
+                      Text(view.flag!, style: T.label.copyWith(color: T.warning)),
+                    Text(view.detail, style: T.small.copyWith(color: T.inkMuted)),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+        if (care.history.isNotEmpty)
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton(
+              onPressed: () => _showHistory(context, care.history),
+              child: Text(
+                care.history.length == 1
+                    ? 'Earlier: 1 change'
+                    : 'Earlier: ${care.history.length} changes',
+              ),
             ),
           ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'DIETICIAN',
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: 0.5,
-                    color: scheme.onSurfaceVariant,
-                  ),
-                ),
-                const SizedBox(height: 0),
-                Text(
-                  // Three states, not two.
-                  //
-                  // "Covered by clinic dietician" was the default for anyone
-                  // without an explicit assignment, which was true while the
-                  // clinic had one. With none on file it is a sentence the
-                  // record states about every patient and nobody is behind —
-                  // and it reads as reassurance, which is the worst way for a
-                  // gap in cover to present itself.
-                  restricted
-                      ? name
-                      : dieticianCount == 0
-                      ? 'No dietician'
-                      : 'Covered by clinic dietician',
-                  style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-                Text(
-                  restricted
-                      ? 'Restricted to this dietician only'
-                      : dieticianCount == 0
-                      ? 'Nobody is covering nutrition for this clinic'
-                      : 'The clinic dietician covers this patient',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: scheme.onSurfaceVariant,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          if (canRestrict)
-            TextButton(
-              onPressed: () => _openAssign(context, ref),
-              child: Text(restricted ? 'Change' : 'Restrict'),
-            ),
-        ],
-      ),
+      ],
     );
   }
 
-  Future<void> _openAssign(BuildContext context, WidgetRef ref) async {
+  /// What a server from before per-practice assignment says, in the new shape:
+  /// a name or nothing, and no way to tell a decision from a default.
+  static NutritionCare _fromOlderServer(PatientSummary s) {
+    final id = s.assignedDieticianId;
+    return NutritionCare(
+      dietician: id == null || id.isEmpty
+          ? null
+          : CareDietician(id: id, name: s.assignedDieticianName),
+      decided: id != null && id.isNotEmpty,
+    );
+  }
+
+  static Future<void> _showHistory(BuildContext context, List<CarePeriod> history) {
+    final day = DateFormat('d MMM y');
+    String when(CarePeriod p) {
+      final from = p.since == null ? null : day.format(p.since!.toLocal());
+      final to = p.until == null ? null : day.format(p.until!.toLocal());
+      if (from != null && to != null) return '$from – $to';
+      if (to != null) return 'Until $to';
+      return 'Dates not recorded';
+    }
+
+    return showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (ctx) => DraggableScrollableSheet(
+        expand: false,
+        initialChildSize: 0.5,
+        maxChildSize: 0.9,
+        builder: (ctx, controller) => ListView.separated(
+          controller: controller,
+          padding: const EdgeInsets.fromLTRB(T.s4, 0, T.s4, T.s6),
+          itemCount: history.length + 1,
+          separatorBuilder: (_, _) => const SizedBox(height: T.s2),
+          itemBuilder: (ctx, i) {
+            if (i == 0) return const Text('Who looked after nutrition before', style: T.title);
+            final p = history[i - 1];
+            return InnerTile(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(p.dieticianName ?? 'No dietician', style: T.bodyStrong),
+                  Text(when(p), style: T.small.copyWith(color: T.inkMuted)),
+                  if (p.endedBy != null)
+                    Text('Changed by ${p.endedBy}', style: T.small.copyWith(color: T.inkMuted)),
+                ],
+              ),
+            );
+          },
+        ),
+      ),
+    );
+  }
+}
+
+/// The words for one state of [NutritionCare]. Kept apart from the widget so
+/// each sentence can be read — and tested — without laying anything out.
+class _CareView {
+  const _CareView({
+    required this.title,
+    required this.detail,
+    this.flag,
+    this.action,
+    this.needsDoctor = false,
+  });
+
+  final String title;
+  final String detail;
+
+  /// A short status in words, shown beside the amber, for a state that needs
+  /// the doctor. Colour is never the only thing that says so.
+  final String? flag;
+
+  /// The button's label, or null when there is nothing to choose between.
+  final String? action;
+  final bool needsDoctor;
+
+  factory _CareView.of(NutritionCare care) {
+    final d = care.dietician;
+    final choices = care.activeDieticians;
+
+    if (d != null && !d.active) {
+      return _CareView(
+        title: d.name ?? 'A former dietician',
+        flag: 'No longer works here',
+        detail: choices > 0
+            ? 'Nobody else was given this patient. Choose who takes over.'
+            : 'Nobody else was given this patient, and nobody here provides nutrition care now.',
+        action: choices > 0 ? 'Choose' : null,
+        needsDoctor: true,
+      );
+    }
+
+    if (d != null) {
+      return _CareView(
+        title: d.name ?? 'Assigned',
+        detail: switch (care.source) {
+          'auto' => 'Assigned automatically — the practice’s only dietician when this patient joined.',
+          'migration' => 'Carried over from the patient’s earlier record.',
+          _ => care.decidedBy != null ? 'Chosen by ${care.decidedBy}.' : 'Chosen by a doctor.',
+        },
+        action: 'Change',
+      );
+    }
+
+    if (care.decided) {
+      return _CareView(
+        title: 'No dietician',
+        detail: care.decidedBy != null
+            ? 'Left without one by ${care.decidedBy}.'
+            : 'Left without one by a doctor.',
+        action: choices > 0 ? 'Assign' : null,
+      );
+    }
+
+    if (choices == 0) {
+      return const _CareView(
+        title: 'No dietician',
+        detail: 'Nobody at this practice provides nutrition care yet.',
+      );
+    }
+
+    return _CareView(
+      title: 'Not assigned',
+      flag: 'Needs a choice',
+      detail: choices == 1
+          ? 'Choose whether the practice’s dietician looks after this patient.'
+          : 'This practice has $choices dieticians. Choose who looks after this patient.',
+      action: 'Assign',
+      needsDoctor: true,
+    );
+  }
+}
+
+/// The doctor choosing: one of this practice's dieticians, or nobody.
+class _DieticianChoice extends StatefulWidget {
+  const _DieticianChoice({
+    required this.repository,
+    required this.patientId,
+    required this.care,
+    required this.options,
+  });
+
+  final ClinicianRepository repository;
+  final String patientId;
+  final NutritionCare care;
+  final List<({String id, String name})> options;
+
+  static Future<void> show(
+    BuildContext context,
+    WidgetRef ref,
+    String patientId,
+    NutritionCare care,
+  ) async {
     final messenger = ScaffoldMessenger.of(context);
-    final repo = ref.read(clinicianRepositoryProvider);
+    final repository = ref.read(clinicianRepositoryProvider);
 
     List<({String id, String name})> options;
     try {
-      options = await repo.dieticians();
+      options = await repository.dieticians();
     } catch (_) {
-      messenger.showSnackBar(
-        const SnackBar(content: Text('Could not load dieticians')),
-      );
+      messenger.showSnackBar(const SnackBar(content: Text('Could not load dieticians')));
       return;
     }
     if (!context.mounted) return;
 
-    String? selectedId = summary.assignedDieticianId;
-
-    final saved = await showModalBottomSheet<bool>(
+    final outcome = await showModalBottomSheet<_ChoiceOutcome>(
       context: context,
       isScrollControlled: true,
       showDragHandle: true,
-      builder:
-          (ctx) => StatefulBuilder(
-            builder: (ctx, setSheet) {
-              final scheme = Theme.of(ctx).colorScheme;
-
-              Future<void> save() async {
-                try {
-                  // Cadence is clinic-wide now, so the dead per-patient field
-                  // is never set. A null dieticianId is the clinic default —
-                  // the same call clears a restriction and applies one.
-                  await repo.assignDietician(
-                    patientId,
-                    dieticianId: selectedId,
-                    reviewIntervalDays: null,
-                  );
-                  if (ctx.mounted) Navigator.pop(ctx, true);
-                } catch (_) {
-                  if (ctx.mounted) {
-                    ScaffoldMessenger.of(ctx).showSnackBar(
-                      const SnackBar(content: Text('Could not save')),
-                    );
-                  }
-                }
-              }
-
-              // Scrollable, because this list grows with the clinic. With
-              // three dieticians and the warning showing, the fixed column ran
-              // past the bottom of the sheet and took the save button with it.
-              return SafeArea(
-                child: SingleChildScrollView(
-                  padding: EdgeInsets.fromLTRB(
-                    AppSpacing.md,
-                    0,
-                    AppSpacing.md,
-                    MediaQuery.of(ctx).viewInsets.bottom + AppSpacing.lg,
-                  ),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      const Text(
-                        'Nutrition care',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        'By default every dietician in the clinic covers this '
-                        'patient. Restrict to one only if this patient should '
-                        'be handled by that person alone.',
-                        style: TextStyle(
-                          fontSize: 12,
-                          height: 1.35,
-                          color: scheme.onSurfaceVariant,
-                        ),
-                      ),
-                      const SizedBox(height: AppSpacing.md),
-
-                      // One RadioGroup owns the selection, so each tile only
-                      // declares its value. The per-tile groupValue/onChanged
-                      // pair is deprecated, and it was also the shape that let
-                      // two tiles disagree about what was selected.
-                      RadioGroup<String?>(
-                        groupValue: selectedId,
-                        onChanged: (v) => setSheet(() => selectedId = v),
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            // The default is an option in the list, not a
-                            // separate button that appears only once a
-                            // restriction exists. Without it there was no way
-                            // back: pick a dietician on an unrestricted
-                            // patient and the radio could not be cleared.
-                            const RadioListTile<String?>(
-                              contentPadding: EdgeInsets.zero,
-                              value: null,
-                              title: Text('Clinic dietician'),
-                              subtitle: Text(
-                                'Whoever is covering answers this patient',
-                              ),
-                            ),
-                            for (final d in options)
-                              RadioListTile<String?>(
-                                contentPadding: EdgeInsets.zero,
-                                value: d.id,
-                                title: Text(d.name),
-                              ),
-                          ],
-                        ),
-                      ),
-                      if (options.isEmpty)
-                        Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 4),
-                          child: Text(
-                            // Not "below" any more. This sheet carried its own
-                            // create form — a third implementation of one act,
-                            // and the one that skipped verifying the number.
-                            'No dieticians yet. Add one in More → Clinic care.',
-                            style: TextStyle(color: scheme.onSurfaceVariant),
-                          ),
-                        ),
-
-                      if (selectedId != null) ...[
-                        const SizedBox(height: AppSpacing.sm),
-                        Container(
-                          padding: const EdgeInsets.all(AppSpacing.sm),
-                          decoration: BoxDecoration(
-                            color: AppColors.warningBgOn(ctx),
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Icon(
-                                Icons.info_outline_rounded,
-                                size: 16,
-                                color: AppColors.warningOn(ctx),
-                              ),
-                              const SizedBox(width: 8),
-                              Expanded(
-                                child: Text(
-                                  'This limits the chosen dietician to only '
-                                  'the patients you restrict to them — they '
-                                  'stop seeing the rest of the clinic by '
-                                  'default.',
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    height: 1.3,
-                                    color: AppColors.warningOn(ctx),
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-
-                      const SizedBox(height: AppSpacing.lg),
-                      // Full width and on its own line.
-                      //
-                      // This was a Row of [TextButton, Spacer, FilledButton].
-                      // "Back to clinic default" beside "Restrict to this
-                      // dietician" is wider than a phone, and an overflowing
-                      // Row drops its last child without a word — so the save
-                      // button was not there to press, and picking a dietician
-                      // appeared to do nothing.
-                      FilledButton(
-                        onPressed: save,
-                        style: FilledButton.styleFrom(
-                          minimumSize: const Size.fromHeight(
-                            AppSpacing.minTapTarget,
-                          ),
-                        ),
-                        child: Text(
-                          selectedId == null
-                              ? 'Use the clinic default'
-                              : 'Restrict to this dietician',
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              );
-            },
-          ),
+      builder: (_) => _DieticianChoice(
+        repository: repository,
+        patientId: patientId,
+        care: care,
+        options: options,
+      ),
     );
+    if (outcome == null) return;
 
-    if (saved == true) {
-      ref.invalidate(patientSummaryProvider(patientId));
-      messenger.showSnackBar(
-        const SnackBar(content: Text('Nutrition care updated')),
+    // Either way the record on screen is out of date: reload it.
+    ref.invalidate(patientSummaryProvider(patientId));
+    messenger.showSnackBar(
+      SnackBar(
+        content: Text(
+          outcome == _ChoiceOutcome.saved
+              ? 'Nutrition care updated'
+              : 'Somebody changed this patient’s dietician a moment ago. Nothing was saved — here is who holds them now.',
+        ),
+      ),
+    );
+  }
+
+  @override
+  State<_DieticianChoice> createState() => _DieticianChoiceState();
+}
+
+enum _ChoiceOutcome { saved, changedByColleague }
+
+class _DieticianChoiceState extends State<_DieticianChoice> {
+  /// Who holds the patient now — an active dietician, or nobody. A dietician
+  /// who has left is not an option to keep, so the radio starts on nobody.
+  late String? _selected = widget.care.dietician?.active == true ? widget.care.dietician!.id : null;
+
+  bool _saving = false;
+  String? _error;
+
+  Future<void> _save() async {
+    setState(() {
+      _saving = true;
+      _error = null;
+    });
+    try {
+      await widget.repository.assignDietician(
+        widget.patientId,
+        dieticianId: _selected,
+        // What this screen showed, so a colleague's change made meanwhile is
+        // seen rather than silently replaced.
+        expectedDieticianId: widget.care.dietician?.id,
       );
+      if (mounted) Navigator.pop(context, _ChoiceOutcome.saved);
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      if (e.code == 'DIETICIAN_CHANGED') {
+        Navigator.pop(context, _ChoiceOutcome.changedByColleague);
+        return;
+      }
+      setState(() => _error = e.statusCode != null ? e.message : 'Could not save. Check the connection and try again.');
+    } catch (_) {
+      if (mounted) setState(() => _error = 'Could not save. Check the connection and try again.');
+    } finally {
+      if (mounted) setState(() => _saving = false);
     }
   }
 
-  /// A small inline form to create a dietician account. Returns the new
-  /// dietician (id + name), or null if cancelled.
+  @override
+  Widget build(BuildContext context) {
+    final unchanged = _selected == (widget.care.dietician?.active == true ? widget.care.dietician!.id : null) &&
+        widget.care.decided &&
+        widget.care.dietician?.active != false;
+
+    // Scrollable, because this list grows with the practice. A fixed column
+    // with three dieticians ran past the bottom of the sheet and took the save
+    // button with it.
+    return SafeArea(
+      child: SingleChildScrollView(
+        padding: EdgeInsets.fromLTRB(
+          T.s4,
+          0,
+          T.s4,
+          MediaQuery.of(context).viewInsets.bottom + T.s6,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const Text('Nutrition care', style: T.title),
+            const SizedBox(height: T.s1),
+            Text(
+              'The dietician you choose sees this patient’s nutrition record and '
+              'their messages. Nobody else at the practice does.',
+              style: T.small.copyWith(color: T.inkMuted),
+            ),
+            const SizedBox(height: T.s3),
+            // One RadioGroup owns the selection, so each tile only declares its
+            // value. The per-tile groupValue/onChanged pair is deprecated, and
+            // it was also the shape that let two tiles disagree about what was
+            // selected.
+            RadioGroup<String?>(
+              groupValue: _selected,
+              onChanged: (v) => setState(() => _selected = v),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  for (final d in widget.options)
+                    RadioListTile<String?>(
+                      contentPadding: EdgeInsets.zero,
+                      value: d.id,
+                      title: Text(d.name, style: T.body),
+                    ),
+                  const RadioListTile<String?>(
+                    contentPadding: EdgeInsets.zero,
+                    value: null,
+                    title: Text('No dietician', style: T.body),
+                    subtitle: Text('Nobody here looks after this patient’s nutrition'),
+                  ),
+                ],
+              ),
+            ),
+            if (widget.options.isEmpty)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: T.s1),
+                child: Text(
+                  'Nobody at this practice is a dietician yet. Add one in More → People.',
+                  style: T.small.copyWith(color: T.inkMuted),
+                ),
+              ),
+            if (_error != null) ...[
+              const SizedBox(height: T.s2),
+              Text(_error!, style: T.small.copyWith(color: T.danger)),
+            ],
+            const SizedBox(height: T.s6),
+            // Full width and on its own line: a Row of two buttons is wider than
+            // a phone, and an overflowing Row drops its last child without a
+            // word.
+            FilledButton(
+              onPressed: _saving || unchanged ? null : _save,
+              style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(T.tap)),
+              child: Text(_saving ? 'Saving…' : 'Save'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 class _LabReportRow extends ConsumerStatefulWidget {

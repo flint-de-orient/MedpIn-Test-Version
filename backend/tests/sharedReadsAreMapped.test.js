@@ -52,6 +52,12 @@ const UNSHARED = new Map([
     'A conversation belongs to one practice’s relationship with the patient. A grant ' +
       'shares the patient’s records, not what they said to somebody else.',
   ],
+  ...['issuedOn', 'createdAt', 'testedOn', 'recordedAt', 'measuredAt'].map((field) => [
+    `dietician.js GET /patients/:id/overview ${field}`,
+    'The dietician’s nutrition overview of a patient this practice’s dietician holds (C7). ' +
+      'History a patient shares with the practice is for the clinicians treating them; the ' +
+      'overview stays inside this enrolment, as it was before grants existed.',
+  ]),
   [
     'doctor.js GET /chat-review/:sessionId createdAt',
     'Reviewing what the assistant told a patient in this practice’s conversation. ' +

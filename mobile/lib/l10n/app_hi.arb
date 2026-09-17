@@ -406,7 +406,7 @@
   "authVerifyFirst": "जारी रखने के लिए अपना फ़ोन नंबर सत्यापित करें",
   "authDoctorPasswordLink": "डॉक्टर या क्लिनिक स्टाफ़? पासवर्ड से साइन इन करें",
   "authDoctorPasswordTitle": "क्लिनिक साइन-इन",
-  "authDoctorPasswordSubtitle": "डॉक्टर और क्लिनिक स्टाफ़ के लिए। आप SMS कोड से भी साइन इन कर सकते हैं।",
+  "authDoctorPasswordSubtitle": "केवल उन स्टाफ़ खातों के लिए जिनका पासवर्ड पहले से है। नए स्टाफ़ और बाकी सभी SMS कोड से साइन इन करते हैं।",
   "authUseOtpInstead": "इसके बजाय SMS कोड से साइन इन करें",
   "deskFrontDesk": "फ़्रंट डेस्क",
   "deskToday": "आज",

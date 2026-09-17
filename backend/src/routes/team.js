@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { requireAuth, requireClinician } from '../middleware/auth.js';
 import { requirePermission } from '../middleware/authorise.js';
 import { validate } from '../middleware/validate.js';
-import { asyncHandler, badRequest, conflict, forbidden, notFound } from '../middleware/errors.js';
+import { AppError, asyncHandler, badRequest, conflict, forbidden, notFound } from '../middleware/errors.js';
 import { audit } from '../middleware/audit.js';
 import { Membership, MEMBERSHIP_STATUS, PERMISSIONS, presetFor } from '../models/Membership.js';
 import { Practice } from '../models/Practice.js';
@@ -17,6 +17,7 @@ import { practiceOf } from '../middleware/practiceScope.js';
 import { joinPractice, membersOf } from '../services/memberships.js';
 import { phoneFromToken, requestOtp, verifyOtp, signPhoneToken } from '../services/otp.js';
 import { toE164 } from '../utils/phone.js';
+import { dieticianArrived } from '../services/dieticianAssignment.js';
 
 /**
  * Who works here, in one place.
@@ -175,6 +176,8 @@ router.get(
               : r.status,
           startedOn: r.startedOn,
           endedOn: r.endedOn ?? null,
+          // What a change to this row is made against. See PATCH /team/:id.
+          version: r.__v ?? 0,
         })),
 
       // What the reader may do, so the screen does not have to guess from the
@@ -201,6 +204,15 @@ router.get(
     });
   }),
 );
+
+/** The refusal for a change made against a version of somebody's job that no longer stands. */
+function memberChanged() {
+  return new AppError(
+    409,
+    'MEMBER_CHANGED',
+    'Somebody else changed this person’s role or access a moment ago. Open them again to see what it is now.',
+  );
+}
 
 /** What each role is called in a sentence about somebody's account. */
 const ROLE_WORDS = Object.freeze({
@@ -285,10 +297,15 @@ router.post(
        * number typed instead — and for a doctor that account can prescribe.
        */
       phoneToken: z.string().min(20),
-      // Optional for everyone. A texted code is how people sign in; a password
-      // is for a handset that lives on a counter with no personal phone to
-      // receive one on.
-      password: z.string().min(8, 'At least 8 characters').max(128).optional(),
+      /*
+       * Accepted only to be refused by name. See the handler.
+       *
+       * Left out of the schema, zod would strip it and the hire would succeed
+       * without it — so an older build of the app, whose sheet still has a
+       * "Set a password" switch, would tell the doctor a counter handset now
+       * had a password that nothing had set.
+       */
+      password: z.unknown().optional(),
       departmentId: z.string().optional(),
       locationId: z.string().optional(),
       qualifications: z.string().trim().max(120).optional(),
@@ -297,6 +314,27 @@ router.post(
   }),
   audit('create', 'User'),
   asyncHandler(async (req, res) => {
+    /*
+     * Nobody chooses a colleague's password (§30).
+     *
+     * The sheet offered one "for a handset that lives on a counter with no
+     * personal phone". What it made was a credential chosen by somebody else,
+     * known to them, and passed along by word of mouth — for an account that
+     * may read every patient at the practice. Staff sign in with a code texted
+     * to their own number, as everybody else does. Refused before anything is
+     * written, and by name, so the person adding them is told rather than
+     * left believing a password exists.
+     *
+     * Passwords that already exist keep working; see POST /auth/login.
+     */
+    if (req.body.password != null && req.body.password !== '') {
+      throw new AppError(
+        400,
+        'PASSWORD_NOT_ALLOWED',
+        'Passwords are no longer set for colleagues. They sign in with a code texted to their own number.',
+      );
+    }
+
     const practiceId = await practiceOf(req);
     if (!practiceId) {
       throw badRequest('This account is not linked to a practice yet.');
@@ -395,6 +433,7 @@ router.post(
         location: location?._id ?? null,
       });
       req.auditResourceId = existing._id;
+      await dieticianArrived(practiceId, joined.role);
 
       noticeUsage(
         practiceId,
@@ -433,7 +472,7 @@ router.post(
         aiDisclaimerAcceptedAt: new Date(),
       },
     });
-    if (b.password) await user.setPassword(b.password);
+    // No password. See the refusal at the top of this handler.
     await user.save();
 
     let membership;
@@ -453,6 +492,7 @@ router.post(
       await User.deleteOne({ _id: user._id });
       throw err;
     }
+    await dieticianArrived(practiceId, membership.role);
 
     /*
      * After the add, never before.
@@ -503,6 +543,10 @@ router.patch(
       departmentId: z.string().nullable().optional(),
       locationId: z.string().nullable().optional(),
       status: z.enum([MEMBERSHIP_STATUS.ACTIVE, MEMBERSHIP_STATUS.SUSPENDED]).optional(),
+      // The `version` the People screen was showing. Optional: older builds
+      // send none, and are still protected from a change made at the same
+      // moment, just not from one made while their screen was open.
+      version: z.number().int().min(0).optional(),
     }),
   }),
   audit('update', 'Membership'),
@@ -527,6 +571,24 @@ router.patch(
     if (membership.isOwner && (req.body.role || req.body.status)) {
       throw badRequest('The practice owner cannot be changed from here.');
     }
+
+    /*
+     * The version this change is made against.
+     *
+     * Two people managing one practice can open the same person at once, and
+     * whole-row saves meant the second to press Save silently undid the first:
+     * a suspension reverted by a department change, a role flipped back. The
+     * write below lands only on the version read here — and, when the screen
+     * says which version it was showing, only on that one — so the second
+     * change is refused with MEMBER_CHANGED and the person making it looks
+     * again. A row written before versions has none, which reads as null and
+     * is still matched exactly once.
+     */
+    const version = membership.__v ?? null;
+    if (req.body.version !== undefined && req.body.version !== (version ?? 0)) throw memberChanged();
+
+    // Before anything below rewrites it: whether they arrive as a dietician.
+    const previousRole = membership.role;
 
     if (req.body.departmentId !== undefined) {
       if (req.body.departmentId === null) {
@@ -630,11 +692,33 @@ router.patch(
     }
     if (req.body.status) membership.status = req.body.status;
 
-    await membership.save();
+    const becameDietician = req.body.role === ROLES.DIETICIAN && previousRole !== ROLES.DIETICIAN;
+
+    // Validated as `save()` would, then written only onto the version read
+    // above. See the note there.
+    await membership.validate();
+    const changes = membership.getChanges();
+    let savedVersion = version ?? 0;
+    if (Object.keys(changes).length) {
+      const written = await Membership.updateOne(
+        { _id: membership._id, __v: version },
+        { ...changes, $inc: { __v: 1 } },
+      );
+      if (!written.matchedCount) throw memberChanged();
+      savedVersion = (version ?? 0) + 1;
+    }
+
     if (req.body.role) {
       await User.updateOne({ _id: membership.user, role: { $ne: req.body.role } }, { $set: { role: req.body.role } });
     }
-    res.json({ membership: membership.toPublic() });
+    // Arriving as a dietician — back from a suspension, back after leaving, or
+    // moved into the role — is arriving. Leaving is deliberately not: the
+    // patients a departed dietician held stay theirs on the record until the
+    // doctor chooses, and nobody else is handed them. See dieticianArrived.
+    if ((returning || becameDietician) && membership.isCurrent()) {
+      await dieticianArrived(membership.practice, membership.role);
+    }
+    res.json({ membership: { ...membership.toPublic(), version: savedVersion } });
   }),
 );
 

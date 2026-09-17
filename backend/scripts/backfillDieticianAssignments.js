@@ -1,127 +1,211 @@
 #!/usr/bin/env node
 /**
- * Write down who was already looking after each patient's nutrition.
+ * Write down who looks after each patient's nutrition, at each practice.
  *
  *   node scripts/backfillDieticianAssignments.js           # report
  *   node scripts/backfillDieticianAssignments.js --apply   # write
  *
  * ---- Why this exists ----------------------------------------------------
  *
- * A dietician's caseload was "everyone at the practice, unless somebody has
- * been assigned to me — then only those". Assignment was a restriction, not a
- * grant, so a practice with one dietician needed no assignments at all: they
- * saw every patient by default.
+ * Two changes, one migration.
  *
- * The default now widens nothing. The caseload is exactly what the assignments
- * say, and a practice with one dietician assigns them as each patient joins.
- * Without this script, the dietician at a practice that never assigned anybody
- * would open the app to an empty list on the morning this deploys — the same
- * people, the same work, and no way to see any of it.
+ * The assignment moved. It was `assignedDietician`, one field on the patient's
+ * profile, so a patient enrolled at two practices could be held by one
+ * practice's dietician at a time and the second practice's choice overwrote the
+ * first. It is now on the enrolment — the row that already says "this patient,
+ * at this practice" — and nothing reads the old field. Without step 1 below,
+ * every assignment a doctor made before this release would vanish from the
+ * dietician's list on the morning it deploys.
  *
- * ---- Which patients, and whose --------------------------------------------
+ * And the caseload became the assignments. A dietician used to see everyone at
+ * their practice unless somebody had been assigned to them; a practice with one
+ * dietician therefore needed no assignments at all. The caseload is now exactly
+ * what the assignments say, and a practice with one dietician assigns them as
+ * each patient joins. Step 2 writes that down for the patients who joined
+ * before.
  *
- * Practices with exactly one active dietician, and within those, patients
- * currently enrolled who have no dietician recorded. That is precisely the set
- * the old default covered, so this writes down an arrangement that already
- * existed rather than making a new one.
+ * ---- 1. Carrying the profile's dietician onto the right enrolment ---------
  *
- * A practice with two or more is reported and left alone: which dietician
- * looks after which patient is a clinical allocation, and the old default gave
- * both of them everybody, so there is nothing here to write down faithfully.
- * The doctor assigns them on each patient's profile.
+ * The practice is the one the dietician works at — or worked at: a dietician
+ * who has since left still held the patient there, and the record should say
+ * so — among the practices the patient is enrolled at.
  *
- * A practice with none has nobody to assign.
+ *   exactly one  → written onto that enrolment, marked `migration`
+ *   none         → reported and not written. The field named somebody who never
+ *                  worked where the patient is enrolled; it granted nothing
+ *                  under the old rules either, and must keep granting nothing
+ *   several      → reported and not written. Which practice it was is not in
+ *                  the data, and a guess would hand one practice's patient to
+ *                  the other's dietician
  *
- * Dry run by default. An existing assignment is never overwritten, so a second
- * run changes nothing.
+ * ---- 2. The default, for practices with exactly one active dietician -----
+ *
+ * Every current enrolment there with nothing decided is assigned to them — the
+ * set the old default covered. A practice with two or more is reported and left
+ * alone: the old default gave all of them everybody, so there is no arrangement
+ * to write down faithfully, and the doctor chooses on each patient's profile. A
+ * practice with none has nobody to assign.
+ *
+ * ---- Safe to repeat -------------------------------------------------------
+ *
+ * Every write repeats "nothing decided yet" in its own filter, so a doctor's
+ * decision made between the report and the apply — including unassigning — is
+ * kept, and a second run changes nothing. The profile field is left exactly as
+ * it was; take a mongodump of `enrollments` first, which is the rollback.
+ * Reads `.env` from the directory it runs in: run it from the deployment's own
+ * `backend/`.
  */
 import { pathToFileURL } from 'node:url';
 
 import { connectDb, disconnectDb } from '../src/config/db.js';
 import { Practice } from '../src/models/Practice.js';
-import { Membership, MEMBERSHIP_STATUS } from '../src/models/Membership.js';
-import { Enrollment, ENROLLMENT_STATUS } from '../src/models/Enrollment.js';
+import { Membership } from '../src/models/Membership.js';
+import { Enrollment, ENROLLMENT_STATUS, DIETICIAN_SOURCE } from '../src/models/Enrollment.js';
 import { PatientProfile } from '../src/models/PatientProfile.js';
-import { ROLES } from '../src/models/User.js';
+import { activeDieticianIds } from '../src/services/dieticianAssignment.js';
 
-/** No dietician recorded: null, or the field never written. */
-const UNASSIGNED = {
-  $or: [{ assignedDietician: null }, { assignedDietician: { $exists: false } }],
-};
+/** Nothing decided for this relationship yet. Matches a field never written, too. */
+const UNDECIDED = { dieticianSource: null };
+
+/** A relationship that grants anything now. */
+const CURRENT = { status: ENROLLMENT_STATUS.ACTIVE, revokedAt: null };
 
 /**
- * Who would be assigned where, without writing.
+ * What applying would write, without writing it.
  *
- * @returns {Promise<{assign: object[], ambiguous: object[], none: object[]}>}
+ * @returns {Promise<{
+ *   carry: {enrollment, patient, practice, dietician}[],
+ *   unattributable: {patient, dietician}[],
+ *   contested: {patient, dietician, practices}[],
+ *   assign: {practice, dietician, enrollments, patients}[],
+ *   ambiguous: {practice, count, patients}[],
+ *   none: {practice}[],
+ * }>}
  */
 export async function planDieticianAssignments() {
-  const practices = await Practice.find({}).select('_id name').lean();
+  // ---- 1. the profile's dietician, onto the enrolment it belongs to --------
+  const carry = [];
+  const unattributable = [];
+  const contested = [];
 
+  const practicesOf = new Map();
+  const worksAt = async (userId) => {
+    const key = String(userId);
+    if (!practicesOf.has(key)) {
+      // Every membership, ended and suspended ones included. See above.
+      const rows = await Membership.find({ user: userId }).select('practice').lean();
+      practicesOf.set(key, new Set(rows.map((r) => String(r.practice))));
+    }
+    return practicesOf.get(key);
+  };
+
+  const profiles = await PatientProfile.find({ assignedDietician: { $ne: null } })
+    .select('user assignedDietician')
+    .lean();
+
+  for (const profile of profiles) {
+    const theirs = await worksAt(profile.assignedDietician);
+    const enrolments = await Enrollment.find({ patient: profile.user })
+      .select('_id practice dieticianSource')
+      .lean();
+    const matches = enrolments.filter((e) => theirs.has(String(e.practice)));
+
+    if (matches.length === 0) {
+      unattributable.push({ patient: profile.user, dietician: profile.assignedDietician });
+    } else if (matches.length > 1) {
+      contested.push({
+        patient: profile.user,
+        dietician: profile.assignedDietician,
+        practices: matches.map((m) => m.practice),
+      });
+    } else if (matches[0].dieticianSource == null) {
+      carry.push({
+        enrollment: matches[0]._id,
+        patient: profile.user,
+        practice: matches[0].practice,
+        dietician: profile.assignedDietician,
+      });
+    }
+  }
+
+  // ---- 2. the default, where there is exactly one active dietician --------
+  const carried = new Set(carry.map((c) => String(c.enrollment)));
   const assign = [];
   const ambiguous = [];
   const none = [];
 
-  for (const practice of practices) {
-    const dieticians = await Membership.find({
-      practice: practice._id,
-      role: ROLES.DIETICIAN,
-      status: MEMBERSHIP_STATUS.ACTIVE,
-      endedOn: null,
-    })
-      .select('user')
-      .lean();
-
+  for (const practice of await Practice.find({}).select('_id name').lean()) {
+    const dieticians = await activeDieticianIds(practice._id);
     if (dieticians.length === 0) {
       none.push({ practice });
       continue;
     }
+
+    const open = (
+      await Enrollment.find({ practice: practice._id, ...CURRENT, ...UNDECIDED }).select('_id patient').lean()
+    ).filter((e) => !carried.has(String(e._id)));
+
     if (dieticians.length > 1) {
-      ambiguous.push({ practice, count: dieticians.length });
+      ambiguous.push({ practice, count: dieticians.length, patients: open.length });
       continue;
     }
-
-    const patients = await Enrollment.distinct('patient', {
-      practice: practice._id,
-      status: ENROLLMENT_STATUS.ACTIVE,
-      revokedAt: null,
-    });
-    if (patients.length === 0) continue;
-
-    const unassigned = await PatientProfile.find({
-      user: { $in: patients },
-      ...UNASSIGNED,
-    })
-      .select('user')
-      .lean();
-    if (unassigned.length === 0) continue;
+    if (open.length === 0) continue;
 
     assign.push({
       practice,
-      dietician: dieticians[0].user,
-      patients: unassigned.map((p) => p.user),
+      dietician: dieticians[0],
+      enrollments: open.map((e) => e._id),
+      patients: open.map((e) => e.patient),
     });
   }
 
-  return { assign, ambiguous, none };
+  return { carry, unattributable, contested, assign, ambiguous, none };
 }
 
 /**
- * Write the assignments.
+ * Write the plan.
  *
- * The "no dietician recorded" condition is repeated in the update rather than
- * trusted from the plan, so somebody assigned by hand between the dry run and
- * this is left where the doctor put them.
+ * "Nothing decided yet" is repeated in every filter rather than trusted from
+ * the plan, so anything decided between the report and this — by a doctor, or
+ * by a patient joining — is left as it was decided.
+ *
+ * @returns {Promise<{carried: number, assigned: number}>}
  */
 export async function applyDieticianAssignments(plan) {
-  let changed = 0;
-  for (const { dietician, patients } of plan.assign) {
-    const result = await PatientProfile.updateMany(
-      { user: { $in: patients }, ...UNASSIGNED },
-      { $set: { assignedDietician: dietician } },
+  let carried = 0;
+  for (const { enrollment, dietician } of plan.carry) {
+    const result = await Enrollment.updateOne(
+      { _id: enrollment, ...UNDECIDED },
+      {
+        $set: {
+          dietician,
+          dieticianSource: DIETICIAN_SOURCE.MIGRATION,
+          // When it was made is not on record. Unknown, not today.
+          dieticianSince: null,
+          dieticianBy: null,
+        },
+      },
     );
-    changed += result.modifiedCount ?? 0;
+    carried += result.modifiedCount ?? 0;
   }
-  return changed;
+
+  let assigned = 0;
+  for (const { dietician, enrollments } of plan.assign) {
+    const result = await Enrollment.updateMany(
+      { _id: { $in: enrollments }, ...CURRENT, ...UNDECIDED },
+      {
+        $set: {
+          dietician,
+          dieticianSource: DIETICIAN_SOURCE.AUTO,
+          dieticianSince: new Date(),
+          dieticianBy: null,
+        },
+      },
+    );
+    assigned += result.modifiedCount ?? 0;
+  }
+
+  return { carried, assigned };
 }
 
 async function main(argv) {
@@ -130,23 +214,32 @@ async function main(argv) {
   await connectDb();
   try {
     const plan = await planDieticianAssignments();
-    const total = plan.assign.reduce((n, a) => n + a.patients.length, 0);
+    const defaults = plan.assign.reduce((n, a) => n + a.enrollments.length, 0);
+    const sample = (rows) => rows.slice(0, 20).map((r) => String(r.patient)).join(', ');
 
-    if (total === 0 && plan.ambiguous.length === 0) {
-      console.log('Nothing to do: every patient who has a dietician already says so.');
-      return;
+    console.log(`1. Profile assignments to carry onto their enrolment: ${plan.carry.length}`);
+    if (plan.unattributable.length) {
+      console.log(
+        `   Not carried — the dietician never worked where the patient is enrolled: ${plan.unattributable.length}` +
+          ` (patients ${sample(plan.unattributable)})`,
+      );
+    }
+    if (plan.contested.length) {
+      console.log(
+        `   Not carried — the dietician works at more than one of the patient’s practices: ${plan.contested.length}` +
+          ` (patients ${sample(plan.contested)}). Assign these on the patient’s profile.`,
+      );
     }
 
-    for (const { practice, patients } of plan.assign) {
-      console.log(`${practice.name}: ${patients.length} patient(s) → its one dietician`);
+    console.log(`2. Patients to assign to their practice’s only dietician: ${defaults}`);
+    for (const { practice, enrollments } of plan.assign) {
+      console.log(`   ${practice.name}: ${enrollments.length}`);
     }
-
     if (plan.ambiguous.length) {
-      console.log('\n  Left alone — more than one dietician, so the allocation is a decision:');
-      for (const { practice, count } of plan.ambiguous) {
-        console.log(`    ${practice.name} (${count} dieticians)`);
+      console.log('   Left alone — more than one active dietician, so the allocation is the doctor’s:');
+      for (const { practice, count, patients } of plan.ambiguous) {
+        console.log(`   ${practice.name} (${count} dieticians, ${patients} patient(s) undecided)`);
       }
-      console.log('  Assign these on each patient’s profile in the app.');
     }
 
     if (!apply) {
@@ -154,8 +247,8 @@ async function main(argv) {
       return;
     }
 
-    const changed = await applyDieticianAssignments(plan);
-    console.log(`\nWritten: ${changed} patient(s).`);
+    const written = await applyDieticianAssignments(plan);
+    console.log(`\nWritten: ${written.carried} carried over, ${written.assigned} assigned by default.`);
   } finally {
     await disconnectDb();
   }

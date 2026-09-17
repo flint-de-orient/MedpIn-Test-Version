@@ -23,8 +23,8 @@ import 'auth_controller.dart';
 /// ("we sent it to this number") instead of pushing a page that has forgotten
 /// where it came from. Going back is a state change, so the number survives it.
 ///
-/// No password. Patients and dieticians do not have one — a doctor does, and
-/// takes the link at the bottom.
+/// No password. Nobody is given one any more; a member of staff who already
+/// had one takes the link at the bottom, until those are retired.
 class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key});
 
@@ -376,9 +376,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                           ),
                         ],
                       ),
-                      // Quiet on purpose. One doctor uses this and every
-                      // patient does not; giving it equal weight would put a
-                      // password in front of everyone who has none.
+                      // Quiet on purpose. Only staff who already had a
+                      // password use this, and nobody is given one now;
+                      // giving it equal weight would put a password in front
+                      // of everyone who has none.
                       _LinkRow(
                         label: l10n.authDoctorPasswordLink,
                         muted: true,

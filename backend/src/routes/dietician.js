@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { requireAuth, requireDietician } from '../middleware/auth.js';
 import { validate } from '../middleware/validate.js';
-import { asyncHandler, notFound } from '../middleware/errors.js';
+import { AppError, asyncHandler, notFound } from '../middleware/errors.js';
 import { audit } from '../middleware/audit.js';
 import { User, ROLES } from '../models/User.js';
 import { PatientProfile } from '../models/PatientProfile.js';
@@ -24,18 +24,18 @@ import { dayjs } from '../utils/clinicTime.js';
 import { getClinicSettings } from '../models/ClinicSettings.js';
 import { buildAttention } from '../services/nutritionAttention.js';
 import { normaliseTestName } from '../utils/testNames.js';
-import { practicePatients, practiceOfMember } from '../middleware/practiceScope.js';
-import { requirePermission } from '../middleware/authorise.js';
-import { PERMISSIONS } from '../models/Membership.js';
+import { practiceOf, memberIdsOf } from '../middleware/practiceScope.js';
+import { requirePermission, recordWindow } from '../middleware/authorise.js';
+import { Membership, PERMISSIONS } from '../models/Membership.js';
 import { attachableAssetIds } from '../services/mediaAccess.js';
 import { quotableMessageId, quotePreview, QUOTE_FIELDS } from '../services/quotedMessage.js';
 import {
-  callerEnrolment,
-  enrolmentAt,
   practiceSessions,
   relationshipSessions,
   sessionForEnrolment,
 } from '../services/conversationPractice.js';
+import { caseloadOf } from '../services/dieticianAssignment.js';
+import { Enrollment, ENROLLMENT_STATUS } from '../models/Enrollment.js';
 
 /**
  * The dietician panel API. A dietician only ever sees the patients a doctor has
@@ -82,17 +82,24 @@ function dayKeys(count, endExclusive = dayjs().add(1, 'day').startOf('day')) {
  * A day with no readings is a hole, not a zero: nobody testing is not the same
  * as everybody testing badly, and plotting it as 0% would draw a cliff into the
  * chart every Sunday.
+ *
+ * Each patient's readings count from the day this practice was given access to
+ * them — see `sinceEnrolment`.
  */
-async function nutritionOverview(ids, days = 14) {
+async function nutritionOverview(ids, days = 14, windows = new Map()) {
   if (ids.length === 0) return { inTargetPercent: null, deltaPercent: null, series: [] };
 
   const from = dayjs().startOf('day').subtract(days * 2 - 1, 'day').toDate();
-  const readings = await GlucoseReading.find({
-    patient: { $in: ids },
-    measuredAt: { $gte: from },
-  })
-    .select('measuredAt flag')
-    .lean();
+  const readings = sinceEnrolment(
+    await GlucoseReading.find({
+      patient: { $in: ids },
+      measuredAt: { $gte: from },
+    })
+      .select('patient measuredAt flag')
+      .lean(),
+    'measuredAt',
+    windows,
+  );
 
   const bucket = new Map();
   for (const r of readings) {
@@ -141,7 +148,7 @@ async function nutritionOverview(ids, days = 14) {
  * a different question from "what do I owe", and the rest of the screen already
  * answers the second one.
  */
-async function recentActivity(ids, byId, limit = 6, sessionScope = {}) {
+async function recentActivity(ids, byId, limit = 6, sessionScope = {}, { windows = new Map(), ownPlan = async () => true } = {}) {
   if (ids.length === 0) return [];
 
   const since = dayjs().subtract(7, 'day').toDate();
@@ -162,16 +169,24 @@ async function recentActivity(ids, byId, limit = 6, sessionScope = {}) {
           .select('patient createdAt')
           .lean()
       : [],
-    FoodLog.find({ patient: { $in: ids }, createdAt: { $gte: since } })
+    // Windowed in the query, because the query is cut to [limit]. See windowedFor.
+    FoodLog.find({ ...windowedFor(windows, ids, 'createdAt'), createdAt: { $gte: since } })
       .sort({ createdAt: -1 })
       .limit(limit)
       .select('patient createdAt')
       .lean(),
+    // Plans written here. Another practice's plan going out is not this
+    // practice's news, and its author is not this dietician's colleague.
+    // Filtered before it is cut, for the same reason: at most one plan per
+    // patient on the caseload, sent this week.
     DietPlan.find({ patient: { $in: ids }, sharedAt: { $gte: since } })
       .sort({ sharedAt: -1 })
-      .limit(limit)
-      .select('patient sharedAt')
-      .lean(),
+      .select('patient dietician sharedAt')
+      .lean()
+      .then(async (rows) => {
+        const keep = await Promise.all(rows.map((r) => ownPlan(r)));
+        return rows.filter((_, i) => keep[i]).slice(0, limit);
+      }),
   ]);
 
   const name = (patientId) => byId.get(String(patientId))?.user?.name ?? null;
@@ -213,58 +228,171 @@ async function recentActivity(ids, byId, limit = 6, sessionScope = {}) {
 }
 
 /**
- * The patients this dietician may see.
+ * This dietician's relationships at the practice they are working in: the
+ * current enrolments there that name them. Cached on the request.
  *
- * A clinic has one or two dieticians and hundreds of patients, so requiring an
- * explicit assignment per patient made the default "this patient has nutrition
- * care from nobody" and left it to the doctor to remember, one patient at a
- * time. The default is now the clinic's actual intent: the dietician covers
- * everyone.
+ * ---- The assignment is the grant, and it is per practice -----------------
  *
- * Assignment survives as a *restriction* rather than a grant — if any patient
- * has been explicitly assigned to this dietician, they see only those. That
- * keeps a lever for the day there is a second dietician or a locum, with no
- * schema change and nothing to migrate.
+ * The caseload used to fall back to the whole practice when nobody had been
+ * assigned — "the clinic's dietician covers everyone", true of the clinic it
+ * was written for and a default that widened access everywhere else. Then it
+ * became the patients whose profile named this dietician, and a profile holds
+ * one name: a patient at two practices could be on one practice's list at a
+ * time, and the second practice's choice took them off the first's.
+ *
+ * Now it is read off the enrolment, at `practiceOf(req)`. An assignment can
+ * only name a patient at the practice it was made at, so it can never reach
+ * across one; a dietician who works at two practices sees each practice's
+ * patients in that practice and no other; and a patient who withdraws the
+ * practice's access leaves the list with their enrolment. See
+ * services/dieticianAssignment.js.
  */
-async function scopeFilter(req) {
-  /*
-   * The patients assigned to this dietician, at this practice. Nothing else.
-   *
-   * It used to fall back to the whole practice when nobody had been assigned,
-   * which read as "the clinic's dietician covers everyone" — true of the
-   * clinic it was written for, and a default that widens access in every
-   * clinic it was not. A second dietician, a locum, or somebody who has
-   * finished with a patient all inherited the practice until a person
-   * remembered to restrict them, and nothing in the record said who was
-   * supposed to be looking after whom.
-   *
-   * The default now lives where it can be recorded: a practice with exactly
-   * one dietician assigns them to each patient as the patient joins, so the
-   * caseload is what the assignments say. See services/dieticianAssignment.js,
-   * and scripts/backfillDieticianAssignments.js for the ones that predate it.
-   *
-   * Still intersected with the practice, so an assignment that reaches outside
-   * it grants nothing.
-   */
-  const practice = await practicePatients(req, 'user');
-  const assigned = await PatientProfile.find({ assignedDietician: req.user._id, ...practice })
-    .select('user')
-    .lean();
-  return { user: { $in: assigned.map((p) => p.user) } };
+async function caseload(req) {
+  if (req._caseload !== undefined) return req._caseload;
+  req._caseload = await caseloadOf({ practiceId: await practiceOf(req), dieticianId: req.user._id });
+  return req._caseload;
 }
 
-/** Guard: the id must be a patient this dietician may see. Returns the profile. */
+/** The caseload as a PatientProfile filter. */
+async function scopeFilter(req) {
+  return { user: { $in: (await caseload(req)).map((e) => e.patient) } };
+}
+
+/**
+ * Guard: the id must be a patient this dietician holds here.
+ *
+ * Returns the profile — an empty one for a patient who has none yet — and
+ * leaves the relationship on `req.enrollment`, which is what `recordWindow`
+ * reads: a dietician sees no more of the record than their practice may.
+ *
+ * Looked up in the caseload rather than by merging filters, so the requested
+ * patient can never be swapped for one of the dietician's own — which is what
+ * `{ user: req.params.id, ...scope }` once did.
+ */
 async function requireAssigned(req) {
-  const scope = await scopeFilter(req);
-  /*
-   * `$and`, not a spread. The scope is keyed on `user` as well, so
-   * `{ user: req.params.id, ...scope }` replaced the requested patient with the
-   * dietician's own list: the guard found one of their patients whatever id
-   * was asked for, and the handler went on to read the one asked for.
-   */
-  const profile = await PatientProfile.findOne({ $and: [{ user: req.params.id }, scope] }).lean();
-  if (!profile) throw notFound('Patient not found or not in your list');
-  return profile;
+  const enrollment = (await caseload(req)).find((e) => String(e.patient) === String(req.params.id));
+  if (!enrollment) throw notFound('Patient not found or not in your list');
+  req.enrollment = enrollment;
+  return (await PatientProfile.findOne({ user: enrollment.patient }).lean()) ?? {};
+}
+
+/**
+ * Rows dated inside their patient's window: from the day this practice was
+ * given access to them.
+ *
+ * The lists' half of `recordWindow`. A caseload spans many patients, each with
+ * their own enrolment date, so the window cannot be one filter — and a patient
+ * who joined this practice last week brings their earlier meals and readings
+ * with them only as far as the practice they were logged with.
+ */
+function sinceEnrolment(rows, field, windows) {
+  return rows.filter((r) => {
+    const from = windows.get(String(r.patient?._id ?? r.patient));
+    return !from || (r[field] != null && new Date(r[field]) >= from);
+  });
+}
+
+/**
+ * The same window, as a query filter over [ids] — for any list the query cuts
+ * to a number.
+ *
+ * Filtering what comes back is exact only when everything comes back. A
+ * patient who joined yesterday brings older rows with them, and a dozen of
+ * those at the top of "the latest twelve" would push another patient's real
+ * meals off the list before being thrown away. Callers pass at least one id:
+ * an empty `$or` is not a query.
+ */
+function windowedFor(windows, ids, field) {
+  return {
+    $or: ids.map((id) => {
+      const from = windows.get(String(id));
+      return from ? { patient: id, [field]: { $gte: from } } : { patient: id };
+    }),
+  };
+}
+
+/** Each caseload patient's window start, by patient id. */
+async function windowsOf(req) {
+  return new Map(
+    (await caseload(req)).map((e) => [String(e.patient), e.enrolledOn ? new Date(e.enrolledOn) : null]),
+  );
+}
+
+/**
+ * Whether a diet plan — current or archived — is this practice's. Resolves to
+ * an async predicate, cached on the request.
+ *
+ * ---- Why a plan has to be asked ------------------------------------------------
+ *
+ * `DietPlan` is one document per patient, not per practice. For a patient two
+ * practices care for, the plan one practice's dietician wrote is that
+ * practice's record: the other practice's dietician is not shown it and may not
+ * overwrite it.
+ *
+ * ---- Whose it is -----------------------------------------------------------
+ *
+ *   - written by anybody who has worked here, ended memberships included: ours
+ *     — the same authorship the assistant quotes plans by
+ *     (services/patientContext.js)
+ *   - written by somebody who works or worked at another practice: theirs
+ *   - written by somebody with no membership anywhere — a dietician who left
+ *     before memberships existed: the practice the patient had then, their
+ *     first enrolment. The rule conversations from before practices already
+ *     follow (services/conversationPractice.js), and without it the founding
+ *     clinic's own dietician would be refused the plans their predecessor wrote.
+ */
+async function planOwnership(req) {
+  if (req._planOwnership) return req._planOwnership;
+
+  const practiceId = await practiceOf(req);
+  const here = new Set(
+    (practiceId ? await Membership.distinct('user', { practice: practiceId }) : [req.user._id]).map(String),
+  );
+  const placed = new Map();
+  const firsts = new Map();
+
+  const placedAnywhere = async (userId) => {
+    const key = String(userId);
+    if (!placed.has(key)) placed.set(key, Boolean(await Membership.exists({ user: userId })));
+    return placed.get(key);
+  };
+  const firstPracticeOf = async (patientId) => {
+    const key = String(patientId);
+    if (!firsts.has(key)) {
+      const row = await Enrollment.findOne({ patient: patientId, status: { $ne: ENROLLMENT_STATUS.PENDING } })
+        .sort({ enrolledOn: 1, _id: 1 })
+        .select('practice')
+        .lean();
+      firsts.set(key, row ? String(row.practice) : null);
+    }
+    return firsts.get(key);
+  };
+
+  req._planOwnership = async (plan) => {
+    if (!plan) return false;
+    const author = plan.dietician?._id ?? plan.dietician ?? null;
+    if (author && here.has(String(author))) return true;
+    if (author && (await placedAnywhere(author))) return false;
+    return practiceId != null && (await firstPracticeOf(plan.patient?._id ?? plan.patient)) === String(practiceId);
+  };
+  return req._planOwnership;
+}
+
+/** The rows, of these plans, that are this practice's. */
+async function ownPlans(req, plans) {
+  const ours = await planOwnership(req);
+  const keep = await Promise.all(plans.map((p) => ours(p)));
+  return plans.filter((_, i) => keep[i]);
+}
+
+/** The refusal for writing over a plan another practice holds. */
+function planHeldElsewhere() {
+  return new AppError(
+    409,
+    'PLAN_HELD_ELSEWHERE',
+    'This patient’s diet plan was written at another practice that cares for them, and a patient has one plan. ' +
+      'It has not been changed.',
+  );
 }
 
 /**
@@ -335,7 +463,7 @@ async function unreadNutritionCount(patientIds, sessionScope = {}) {
  * something a reader can act on; the same row with no label is a second
  * dietician drafting a reply to a question that is already being handled.
  */
-async function handledByOther(sessions, meId) {
+async function handledByOther(sessions, meId, practiceId) {
   if (sessions.length === 0) return new Map();
 
   const replies = await ChatMessage.aggregate([
@@ -351,10 +479,12 @@ async function handledByOther(sessions, meId) {
   ]);
 
   // Only other dieticians. A doctor answering in the nutrition thread is not
-  // someone this dietician should stand down for, and neither is themselves.
+  // someone this dietician should stand down for, and neither is themselves —
+  // nor a dietician who no longer works here, who is answering nobody now.
+  const colleagues = new Set(((await memberIdsOf(practiceId, ROLES.DIETICIAN)) ?? []).map(String));
   const senderIds = replies
     .map((r) => r.sender)
-    .filter((id) => String(id) !== String(meId));
+    .filter((id) => String(id) !== String(meId) && colleagues.has(String(id)));
   if (senderIds.length === 0) return new Map();
 
   const others = await User.find({
@@ -412,7 +542,7 @@ router.get(
             .limit(30)
             .select('patient session content createdAt attachments')
             .lean(),
-          handledByOther(sessions, req.user._id),
+          handledByOther(sessions, req.user._id, await practiceOf(req)),
         ]);
 
         messages = unread
@@ -448,11 +578,12 @@ router.get(
         unread: false,
       }));
 
+    // This practice's plans. A patient whose only plan another practice wrote
+    // is still waiting for one here.
     const planBy = new Map(
-      (await DietPlan.find({ patient: { $in: ids } }).select('patient sharedAt').lean()).map((x) => [
-        String(x.patient),
-        x,
-      ]),
+      (
+        await ownPlans(req, await DietPlan.find({ patient: { $in: ids } }).select('patient dietician sharedAt').lean())
+      ).map((x) => [String(x.patient), x]),
     );
     const plans = assigned
       .filter((p) => {
@@ -532,7 +663,7 @@ router.get(
     const ids = profiles
       .filter((p) => p.user && p.user.isActive !== false)
       .map((p) => p.user._id);
-    res.json(await nutritionOverview(ids, req.query.days));
+    res.json(await nutritionOverview(ids, req.query.days, await windowsOf(req)));
   }),
 );
 
@@ -546,17 +677,27 @@ router.get(
     const defaultDays = settings.dietReviewIntervalDays;
     const assigned = profiles.filter((p) => p.user && p.user.isActive !== false);
     const ids = assigned.map((p) => p.user._id);
+    // Each patient's record from the day this practice was given it, and this
+    // practice's plans. See sinceEnrolment and planOwnership.
+    const windows = await windowsOf(req);
+    const ownPlan = await planOwnership(req);
 
     const [plans, recentLogs, unreadMessages, urgentMessages, weekLogs, overview] =
       await Promise.all([
-        DietPlan.find({ patient: { $in: ids } }).select('patient updatedAt sharedAt').lean(),
-        FoodLog.find({ patient: { $in: ids } })
-          .sort({ createdAt: -1 })
-          .limit(12)
-          .populate('patient', 'name')
-          .populate('photo', 'mimeType')
-          .select('patient mealType note photo createdAt reviewedAt')
-          .lean(),
+        DietPlan.find({ patient: { $in: ids } })
+          .select('patient dietician updatedAt sharedAt')
+          .lean()
+          .then((rows) => ownPlans(req, rows)),
+        // Windowed in the query, because the query is cut to twelve. See windowedFor.
+        ids.length > 0
+          ? FoodLog.find(windowedFor(windows, ids, 'createdAt'))
+              .sort({ createdAt: -1 })
+              .limit(12)
+              .populate('patient', 'name')
+              .populate('photo', 'mimeType')
+              .select('patient mealType note photo createdAt reviewedAt')
+              .lean()
+          : [],
         unreadNutritionCount(ids, await practiceSessions(req)),
         urgentNutritionCount(ids, await practiceSessions(req)),
         // A week of logs across the caseload, for the adherence read. Only the
@@ -571,12 +712,13 @@ router.get(
               .select('patient createdAt reviewedAt')
               .sort({ createdAt: -1 })
               .lean()
+              .then((rows) => sinceEnrolment(rows, 'createdAt', windows))
           : [],
-        nutritionOverview(ids),
+        nutritionOverview(ids, 14, windows),
       ]);
     const planBy = new Map(plans.map((p) => [String(p.patient), p]));
     const profileById = new Map(assigned.map((p) => [String(p.user._id), p]));
-    const activity = await recentActivity(ids, profileById, 6, await practiceSessions(req));
+    const activity = await recentActivity(ids, profileById, 6, await practiceSessions(req), { windows, ownPlan });
 
     const logsByPatient = new Map();
     for (const l of weekLogs) {
@@ -718,17 +860,23 @@ router.get(
     // advice, vitals, the uploaded reports. A dietician planning around metformin
     // needs to know it was stopped last week; a pending HbA1c is the difference
     // between "your control is fine" and a number nobody has yet.
+    //
+    // As much of it as this practice may read, and no more: every dated row
+    // from the day the practice was given access to the patient, exactly as
+    // the doctor's own screens read it (`recordWindow`). The medicine list is
+    // the exception there too — what somebody is taking now is a safety list,
+    // whoever prescribed it.
     const [meds, prescriptions, labResults, allResultNames, latestHba1c, weekLogs, vitals, latestGlucose] =
       await Promise.all([
       Medication.find({ patient: req.params.id, isActive: true })
         .select('name strength dose schedule instructions')
         .lean(),
-      Prescription.find({ patient: req.params.id, isActive: true })
+      Prescription.find({ patient: req.params.id, isActive: true, ...recordWindow(req, 'issuedOn') })
         .sort({ issuedOn: -1 })
         .select('labTestsAdvised generalAdvice diagnosis issuedOn followUpOn doctor')
         .populate('doctor', 'name')
         .lean(),
-      LabResult.find({ patient: req.params.id })
+      LabResult.find({ patient: req.params.id, ...recordWindow(req, 'createdAt') })
         .sort({ createdAt: -1 })
         .limit(10)
         .populate('photo', 'mimeType originalName sizeBytes')
@@ -738,19 +886,32 @@ router.get(
       // decide which advised tests have come back meant an eleventh upload
       // pushed the oldest one out and its test went back to "awaiting result"
       // even though the patient had sent it.
-      LabResult.find({ patient: req.params.id }).select('testName').lean(),
+      LabResult.find({ patient: req.params.id, ...recordWindow(req, 'createdAt') }).select('testName').lean(),
       // Two, not one: a lone figure says where the patient is, and a
       // dietician's question is which way they are going. The previous result
       // is the cheapest possible answer to that and it is already on record.
-      Hba1cRecord.find({ patient: req.params.id }).sort({ testedOn: -1 }).limit(2).lean(),
+      Hba1cRecord.find({ patient: req.params.id, ...recordWindow(req, 'testedOn') })
+        .sort({ testedOn: -1 })
+        .limit(2)
+        .lean(),
+      // `$and`: the week and the window are both bounds on `createdAt`, and a
+      // spread would let one replace the other.
       FoodLog.find({
         patient: req.params.id,
-        createdAt: { $gte: dayjs().startOf('day').subtract(6, 'day').toDate() },
+        $and: [
+          { createdAt: { $gte: dayjs().startOf('day').subtract(6, 'day').toDate() } },
+          recordWindow(req, 'createdAt'),
+        ],
       })
         .select('createdAt')
         .lean(),
-      VitalRecord.find({ patient: req.params.id }).sort({ recordedAt: -1 }).limit(40).lean(),
-      GlucoseReading.findOne({ patient: req.params.id }).sort({ measuredAt: -1 }).lean(),
+      VitalRecord.find({ patient: req.params.id, ...recordWindow(req, 'recordedAt') })
+        .sort({ recordedAt: -1 })
+        .limit(40)
+        .lean(),
+      GlucoseReading.findOne({ patient: req.params.id, ...recordWindow(req, 'measuredAt') })
+        .sort({ measuredAt: -1 })
+        .lean(),
     ]);
 
     // Presence per day, not a count of meals: four snacks on one Tuesday is
@@ -900,7 +1061,8 @@ router.get(
   '/patients/:id/food-log',
   asyncHandler(async (req, res) => {
     await requireAssigned(req);
-    const items = await FoodLog.find({ patient: req.params.id })
+    // From this practice's enrolment, like the doctor's copy of the same list.
+    const items = await FoodLog.find({ patient: req.params.id, ...recordWindow(req, 'createdAt') })
       .sort({ createdAt: -1 })
       .limit(100)
       .populate('photo', 'mimeType')
@@ -927,10 +1089,10 @@ router.get(
   '/patients/:id/diet',
   asyncHandler(async (req, res) => {
     await requireAssigned(req);
-    const plan = await DietPlan.findOne({ patient: req.params.id })
-      .populate('dietician', 'name')
-      .lean();
-    res.json({ plan: plan ? serialisePlan(plan) : null });
+    const plan = await DietPlan.findOne({ patient: req.params.id }).populate('dietician', 'name').lean();
+    // This practice's plan, or none. See planOwnership.
+    const ours = await planOwnership(req);
+    res.json({ plan: plan && (await ours(plan)) ? serialisePlan(plan) : null });
   }),
 );
 
@@ -969,18 +1131,42 @@ router.put(
       .map((m) => ({ ...m, items: m.items.filter((i) => i.trim().length > 0) }))
       .filter((m) => m.items.length > 0 || m.notes.trim().length > 0);
 
-    const plan = await DietPlan.findOneAndUpdate(
-      { patient: req.params.id },
-      {
-        patient: req.params.id,
-        dietician: req.user._id,
-        goal: req.body.goal,
-        meals,
-        avoid: req.body.avoid.filter((a) => a.trim().length > 0),
-        notes: req.body.notes,
-      },
-      { upsert: true, new: true, setDefaultsOnInsert: true },
-    );
+    const fields = {
+      patient: req.params.id,
+      dietician: req.user._id,
+      goal: req.body.goal,
+      meals,
+      avoid: req.body.avoid.filter((a) => a.trim().length > 0),
+      notes: req.body.notes,
+    };
+
+    /*
+     * Only a plan this practice wrote, or a new one.
+     *
+     * Whose the existing plan is decides first — another practice's is refused
+     * by name, never overwritten — and the write is then aimed at that one
+     * document. With no plan yet, it is created: a second save arriving at the
+     * same moment, from anywhere, is refused by the unique index on `patient`
+     * and goes round again, to find the plan the first one made and ask whose
+     * it is. No upsert, because an upsert's filter is a read that can go stale
+     * between the question and the write.
+     */
+    const ours = await planOwnership(req);
+    let plan = null;
+    for (let attempt = 0; attempt < 3 && !plan; attempt += 1) {
+      const existing = await DietPlan.findOne({ patient: req.params.id }).select('patient dietician').lean();
+      if (existing) {
+        if (!(await ours(existing))) throw planHeldElsewhere();
+        plan = await DietPlan.findOneAndUpdate({ _id: existing._id }, fields, { new: true });
+      } else {
+        try {
+          plan = await DietPlan.create(fields);
+        } catch (err) {
+          if (err?.code !== 11000) throw err;
+        }
+      }
+    }
+    if (!plan) throw notFound('The plan changed while it was being saved. Open it again.');
 
     res.json({ plan: serialisePlan({ ...plan.toObject(), dietician: { name: req.user.name } }) });
   }),
@@ -996,11 +1182,15 @@ router.get(
   '/patients/:id/diet/history',
   asyncHandler(async (req, res) => {
     await requireAssigned(req);
-    const revisions = await DietPlanRevision.find({ patient: req.params.id })
-      .sort({ replacedAt: -1 })
-      .limit(20)
-      .populate('dietician', 'name')
-      .lean();
+    // The plans this practice gave, not another practice's. See planOwnership.
+    const revisions = await ownPlans(
+      req,
+      await DietPlanRevision.find({ patient: req.params.id })
+        .sort({ replacedAt: -1 })
+        .limit(20)
+        .populate('dietician', 'name')
+        .lean(),
+    );
 
     res.json({
       revisions: revisions.map((r) => ({
@@ -1033,6 +1223,9 @@ router.post(
     await requireAssigned(req);
     const current = await DietPlan.findOne({ patient: req.params.id }).lean();
     if (!current) throw notFound('There is no plan to replace yet');
+    // Archiving another practice's plan would take it off the patient's
+    // screen on this practice's say-so.
+    if (!(await (await planOwnership(req))(current))) throw planHeldElsewhere();
 
     let archived = false;
     if (current.sharedAt) {
@@ -1078,9 +1271,11 @@ router.post(
     await requireAssigned(req);
     const plan = await DietPlan.findOne({ patient: req.params.id }).lean();
     if (!plan) throw notFound('Write a plan before sending it');
+    // Another practice's plan is theirs to send, and to send in their words.
+    if (!(await (await planOwnership(req))(plan))) throw planHeldElsewhere();
 
     const content = formatPlan(plan, req.user.name);
-    const message = await postToCareThread(req.params.id, req.user, content);
+    const message = await postToCareThread(req, content);
 
     await DietPlan.updateOne({ _id: plan._id }, { sharedAt: new Date() });
     await PatientProfile.updateOne({ user: req.params.id }, { lastDietReviewAt: new Date() });
@@ -1102,10 +1297,10 @@ router.get(
   asyncHandler(async (req, res) => {
     await requireAssigned(req);
     // This practice's nutrition conversation with the patient, not the newest
-    // one they have anywhere. See services/conversationPractice.js.
-    const enrollment = await callerEnrolment(req, req.params.id);
+    // one they have anywhere: the relationship the assignment is on. See
+    // services/conversationPractice.js.
     const session = await ChatSession.findOne({
-      ...(await relationshipSessions({ patientId: req.params.id, enrollment, kind: 'nutrition' })),
+      ...(await relationshipSessions({ patientId: req.params.id, enrollment: req.enrollment, kind: 'nutrition' })),
       isArchived: false,
     }).sort({ lastMessageAt: -1 });
     if (!session) return res.json({ items: [], assistantEnabled: true });
@@ -1189,8 +1384,11 @@ router.get(
  */
 router.post(
   '/patients/:id/food-log/:logId/review',
-  validate(
-    z.object({
+  // `{ body: ... }`. The schema was passed bare, which `validate` reads as no
+  // body, query or params at all — so nothing here was ever checked, and a
+  // note that was not a string reached `.trim()` and failed as a 500.
+  validate({
+    body: z.object({
       reviewed: z.boolean().default(true),
       // Feedback on this specific meal. Posting it and marking the meal read
       // are one act, so they are one request: two calls from the client could
@@ -1203,13 +1401,18 @@ router.post(
       // would make the queue something to clear rather than read.
       status: z.enum(['on_track', 'review', 'concern']).nullish(),
     }),
-  ),
+  }),
   audit('update', 'FoodLog'),
   asyncHandler(async (req, res) => {
     await requireAssigned(req);
-    const log = await FoodLog.findOne({ _id: req.params.logId, patient: req.params.id });
+    const log = await FoodLog.findOne({
+      _id: req.params.logId,
+      patient: req.params.id,
+      ...recordWindow(req, 'createdAt'),
+    });
     // Scoped by patient as well as id: a log id alone would let an assigned
-    // dietician mark a meal belonging to somebody else's patient.
+    // dietician mark a meal belonging to somebody else's patient. And by this
+    // practice's window, like the list it was picked from.
     if (!log) throw notFound('That meal is not on this record');
 
     const reviewed = req.body.reviewed !== false;
@@ -1231,12 +1434,7 @@ ${note}`;
       // the patient can still remember it; the picture is the thing they
       // actually recognise, and it is already on the record — attaching it
       // costs nothing and removes the guesswork entirely.
-      await postToCareThread(
-        req.params.id,
-        req.user,
-        content,
-        log.photo ? [log.photo] : [],
-      );
+      await postToCareThread(req, content, log.photo ? [log.photo] : []);
       notifyPatientOfClinicianReply(req.params.id, req.user, note, {
         threadKind: 'nutrition',
       }).catch(() => {});
@@ -1266,7 +1464,7 @@ router.post(
   asyncHandler(async (req, res) => {
     await requireAssigned(req);
     const result = await FoodLog.updateMany(
-      { patient: req.params.id, reviewedAt: null },
+      { patient: req.params.id, reviewedAt: null, ...recordWindow(req, 'createdAt') },
       { reviewedAt: new Date(), reviewedBy: req.user._id },
     );
     res.json({ reviewed: result.modifiedCount ?? 0 });
@@ -1303,13 +1501,7 @@ router.post(
     });
     req.body.replyTo = await quotableMessageId(req.body.replyTo, { patientId: req.params.id, kind: 'nutrition' });
 
-    const message = await postToCareThread(
-      req.params.id,
-      req.user,
-      req.body.content,
-      req.body.attachments,
-      req.body.replyTo,
-    );
+    const message = await postToCareThread(req, req.body.content, req.body.attachments, req.body.replyTo);
 
     // Two different things, both true when a dietician writes back: the review
     // cycle restarts, and every meal still sitting unread has now been
@@ -1319,7 +1511,7 @@ router.post(
     const now = new Date();
     await PatientProfile.updateOne({ user: req.params.id }, { lastDietReviewAt: now });
     await FoodLog.updateMany(
-      { patient: req.params.id, reviewedAt: null },
+      { patient: req.params.id, reviewedAt: null, ...recordWindow(req, 'createdAt') },
       { reviewedAt: now, reviewedBy: req.user._id },
     );
     notifyPatientOfClinicianReply(req.params.id, req.user, req.body.content, {
@@ -1332,15 +1524,24 @@ router.post(
 
 /**
  * Append a dietician message to the patient's care thread, creating the session
- * if this is the first thing anyone has said. Shared by the reply box and by
- * "send plan" so both land in the same thread with the same role and sequence.
+ * if this is the first thing anyone has said. Shared by the reply box, by "send
+ * plan" and by a meal's review note, so all three land in the same thread with
+ * the same role and sequence.
+ *
+ * Called after `requireAssigned`, and writes into the conversation of the
+ * relationship it left on the request.
  */
-async function postToCareThread(patientId, sender, content, attachments = [], replyTo) {
+async function postToCareThread(req, content, attachments = [], replyTo) {
+  const patientId = req.params.id;
+  const sender = req.user;
   // The writer's own practice's conversation with the patient. This took the
   // newest nutrition session, which was whichever practice wrote last — so one
   // practice's dietician wrote into the conversation another practice's
-  // dietician was holding. See services/conversationPractice.js.
-  const enrollment = await enrolmentAt(await practiceOfMember(sender._id), patientId);
+  // dietician was holding. Then it took the writer's first membership, which
+  // for a dietician at two practices was whichever the database returned
+  // first; the assignment's own enrolment is the practice this is for. See
+  // services/conversationPractice.js.
+  const enrollment = req.enrollment ?? null;
   const patient = await User.findById(patientId).select('language').lean();
   const session = await sessionForEnrolment({
     patientId,

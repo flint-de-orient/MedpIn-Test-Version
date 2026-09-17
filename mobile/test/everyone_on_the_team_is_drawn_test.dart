@@ -28,6 +28,7 @@ TeamMember _member(
   String role, {
   String status = 'active',
   bool isOwner = false,
+  int? version,
 }) => TeamMember(
   id: 'm-$name',
   userId: 'u-$name',
@@ -38,6 +39,7 @@ TeamMember _member(
   status: status,
   permissions: const [],
   usingPreset: true,
+  version: version,
 );
 
 TeamRoster _roster(List<TeamMember> people) => TeamRoster(
@@ -65,7 +67,7 @@ class _Team implements ClinicianRepository {
   final sentTo = <String>[];
   final checked = <(String, String)>[];
   final hired = <({String role, String name, String phoneToken})>[];
-  final updates = <({String id, String? role, String? status})>[];
+  final updates = <({String id, String? role, String? status, int? version})>[];
 
   /// What `POST /team` says about the number: true when it already had an
   /// account and this practice was added to it.
@@ -87,7 +89,6 @@ class _Team implements ClinicianRepository {
     required String role,
     required String name,
     required String phoneToken,
-    String? password,
     String? departmentId,
     String? locationId,
     String? qualifications,
@@ -105,9 +106,10 @@ class _Team implements ClinicianRepository {
     Object? departmentId,
     Object? locationId,
     String? status,
+    int? version,
   }) async {
     if (updateFails != null) throw updateFails!;
-    updates.add((id: membershipId, role: role, status: status));
+    updates.add((id: membershipId, role: role, status: status, version: version));
   }
 
   @override
@@ -493,6 +495,56 @@ void main() {
       expect(team.updates.single.status, 'active');
     });
 
+    testWidgets('saving sends the version of the row the sheet opened with', (
+      tester,
+    ) async {
+      await open(
+        tester,
+        _roster([
+          _member('Amit Dey', 'doctor', isOwner: true),
+          _member('Rina Paul', 'staff', version: 3),
+        ]),
+      );
+      await openMember(tester, 'Rina Paul');
+
+      await tester.tap(find.widgetWithText(ChoiceChip, 'Doctor’s assistant'));
+      await tester.pump();
+      await tapInSheet(tester, 'Save');
+
+      expect(team.updates.single.version, 3);
+    });
+
+    testWidgets('a colleague’s change made meanwhile is reported, and nothing '
+        'is saved over it', (tester) async {
+      team.updateFails = const ApiException(
+        code: 'MEMBER_CHANGED',
+        message:
+            'Somebody else changed this person’s role or access a moment ago. '
+            'Open them again to see what it is now.',
+        statusCode: 409,
+      );
+      await open(
+        tester,
+        _roster([
+          _member('Amit Dey', 'doctor', isOwner: true),
+          _member('Rina Paul', 'staff', version: 3),
+        ]),
+      );
+      await openMember(tester, 'Rina Paul');
+
+      await tester.tap(find.widgetWithText(ChoiceChip, 'Doctor’s assistant'));
+      await tester.pump();
+      await tapInSheet(tester, 'Save');
+
+      expect(
+        find.textContaining('Somebody else changed this person’s role or access'),
+        findsOneWidget,
+      );
+      expect(team.updates, isEmpty);
+      // Still open, so the manager reads it before anything else happens.
+      expect(find.text('Save'), findsOneWidget);
+    });
+
     testWidgets('a practice at its limit is told so in the server’s words', (
       tester,
     ) async {
@@ -520,6 +572,24 @@ void main() {
   });
 
   group('hiring', () {
+    testWidgets('offers no password, for any role — nobody sets a colleague’s', (
+      tester,
+    ) async {
+      await open(tester, _roster([_member('Amit Dey', 'doctor', isOwner: true)]));
+      await openHireSheet(tester);
+
+      for (final role in _roleNames) {
+        await tester.tap(find.widgetWithText(ChoiceChip, role));
+        await tester.pump();
+        expect(find.text('Set a password'), findsNothing, reason: role);
+        expect(find.widgetWithText(TextFormField, 'Password'), findsNothing, reason: role);
+        expect(find.byType(SwitchListTile), findsNothing, reason: role);
+        // The promise that went with it had no screen behind it.
+        expect(find.textContaining('change it after signing in'), findsNothing, reason: role);
+      }
+      expect(find.text('They sign in with a code texted to this number.'), findsOneWidget);
+    });
+
     testWidgets('sends and checks the code through the team, not registration', (
       tester,
     ) async {
@@ -548,7 +618,8 @@ void main() {
         ),
         findsOneWidget,
       );
-      expect(find.textContaining('Only for a new account'), findsOneWidget);
+      // Nobody chooses a colleague's password any more.
+      expect(find.textContaining('Only for a new account'), findsNothing);
 
       await tester.tap(find.widgetWithText(ChoiceChip, 'Doctor'));
       await tester.pump();

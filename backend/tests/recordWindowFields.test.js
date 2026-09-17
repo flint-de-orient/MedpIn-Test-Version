@@ -74,8 +74,12 @@ function boundedQueries() {
       const line = src.slice(0, m.index).split('\n').length;
 
       // Written inline: `Prescription.find({ ...recordWindow(req, 'issuedOn') })`
+      //
+      // A write is bounded the same way — marking a patient's meals read may
+      // only touch the ones the practice could see — and a stripped bound on
+      // a write changes rows nobody could see, so writes are checked too.
       let model = before.match(
-        /([A-Z][A-Za-z0-9]*)\.(find|findOne|countDocuments|aggregate)\($/,
+        /([A-Z][A-Za-z0-9]*)\.(find|findOne|countDocuments|aggregate|updateMany|updateOne)\($/,
       )?.[1];
 
       // Or hoisted, which most of the list routes do because the same filter
@@ -93,7 +97,7 @@ function boundedQueries() {
             .slice(open)
             .match(
               new RegExp(
-                `([A-Z][A-Za-z0-9]*)\\.(?:find|findOne|countDocuments|aggregate)\\(\\s*${named[1]}\\b`,
+                `([A-Z][A-Za-z0-9]*)\\.(?:find|findOne|countDocuments|aggregate|updateMany|updateOne)\\(\\s*${named[1]}\\b`,
               ),
             );
           model = use?.[1];

@@ -23,6 +23,7 @@ class TeamMember {
     required this.usingPreset,
     this.department,
     this.location,
+    this.version,
   });
 
   /// The membership id. Every write here is about the job rather than the
@@ -62,6 +63,11 @@ class TeamMember {
   final ({String id, String? name})? department;
   final ({String id, String? name})? location;
 
+  /// Which version of this row the screen is showing. Sent back with a change,
+  /// so a change made against a row somebody else has since changed is refused
+  /// rather than silently undoing theirs. Null from a server that predates it.
+  final int? version;
+
   bool get isActive => status == 'active';
 
   factory TeamMember.fromJson(Map<String, dynamic> json) {
@@ -86,6 +92,7 @@ class TeamMember {
       usingPreset: json['usingPreset'] == true,
       department: ref(json['department']),
       location: ref(json['location']),
+      version: (json['version'] as num?)?.toInt(),
     );
   }
 }

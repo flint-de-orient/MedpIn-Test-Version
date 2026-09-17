@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import { boot, shutdown, wipe, as } from './helpers/httpHarness.js';
 import { makePractice, makeMember, makePatient } from './helpers/factories.js';
 import { PatientProfile } from '../src/models/PatientProfile.js';
+import { Enrollment, DIETICIAN_SOURCE } from '../src/models/Enrollment.js';
 import { ClinicalAlert } from '../src/models/ClinicalAlert.js';
 import { Prescription } from '../src/models/Prescription.js';
 import { RECORD_STATE } from '../src/models/plugins/clinicalRecord.js';
@@ -70,6 +71,13 @@ function localOnly(input, init) {
 let a;
 let b;
 
+/** Put a patient on a dietician's list, on the enrolment at `practice`. */
+const hold = (patient, practice, dietician) =>
+  Enrollment.updateOne(
+    { patient: patient.patient._id, practice: practice._id },
+    { $set: { dietician: dietician.user._id, dieticianSource: DIETICIAN_SOURCE.DOCTOR } },
+  );
+
 async function side(label) {
   const practice = await makePractice(label, {
     practiceType: PRACTICE_TYPE.CLINIC,
@@ -126,10 +134,7 @@ describe('a dietician reaches their own practice’s patients and nobody else’
   test('and once assigned, their own practice’s patient opens', async () => {
     // The half that has to keep working, and the state the backfill puts a
     // one-dietician practice into.
-    await PatientProfile.updateOne(
-      { user: a.patient.user._id },
-      { assignedDietician: a.dietician.user._id },
-    );
+    await hold(a.patient, a.practice, a.dietician);
     const res = await as(a.dietician.token).get(`/dietician/patients/${a.patient.user._id}/overview`);
     assert.equal(res.status, 200, 'a dietician lost the patient they were given');
   });
@@ -140,13 +145,13 @@ describe('a dietician reaches their own practice’s patients and nobody else’
      * `{ user: { $in: [assigned] } }` found the assigned patient's profile for
      * any requested id, and the handler then read the requested one.
      */
-    await PatientProfile.updateOne({ user: a.patient.user._id }, { assignedDietician: a.dietician.user._id });
+    await hold(a.patient, a.practice, a.dietician);
     const res = await as(a.dietician.token).get(`/dietician/patients/${a.other.user._id}/overview`);
     assert.equal(res.status, 404, 'an unassigned patient passed the assignment guard');
   });
 
   test('and with assignments, another practice’s patient is refused too', async () => {
-    await PatientProfile.updateOne({ user: a.patient.user._id }, { assignedDietician: a.dietician.user._id });
+    await hold(a.patient, a.practice, a.dietician);
     const res = await as(a.dietician.token).get(`/dietician/patients/${b.patient.user._id}/overview`);
     assert.equal(res.status, 404);
   });
@@ -154,16 +159,19 @@ describe('a dietician reaches their own practice’s patients and nobody else’
   test('an assignment that reached into another practice grants nothing', async () => {
     /*
      * The doctor-side assignment route did not scope the dietician either, so
-     * a row like this can already exist. Counted, it would put another
+     * rows like these can already exist: the old profile field naming this
+     * dietician, and — written by anything that forgot the practice — another
+     * practice's enrolment naming them. Counted, either would put another
      * practice's patient on this dietician's list.
      */
     await PatientProfile.updateOne({ user: b.patient.user._id }, { assignedDietician: a.dietician.user._id });
+    await hold(b.patient, b.practice, a.dietician);
     const res = await as(a.dietician.token).get(`/dietician/patients/${b.patient.user._id}/overview`);
     assert.equal(res.status, 404, 'a stale cross-practice assignment opened the record');
   });
 
   test('but the assigned patient still opens', async () => {
-    await PatientProfile.updateOne({ user: a.patient.user._id }, { assignedDietician: a.dietician.user._id });
+    await hold(a.patient, a.practice, a.dietician);
     const res = await as(a.dietician.token).get(`/dietician/patients/${a.patient.user._id}/overview`);
     assert.equal(res.status, 200);
   });
@@ -190,8 +198,8 @@ describe('a patient can only be given a dietician from their own practice', () =
       dieticianId: String(b.dietician.user._id),
     });
     assert.equal(res.status, 404, 'a dietician from another practice was assigned');
-    const profile = await PatientProfile.findOne({ user: a.patient.user._id }).lean();
-    assert.ok(!profile.assignedDietician, 'the assignment was written');
+    const enrolment = await Enrollment.findOne({ patient: a.patient.patient._id, practice: a.practice._id }).lean();
+    assert.ok(!enrolment.dietician, 'the assignment was written');
   });
 
   test('but their own practice’s dietician can be assigned', async () => {
@@ -199,8 +207,8 @@ describe('a patient can only be given a dietician from their own practice', () =
       dieticianId: String(a.dietician.user._id),
     });
     assert.equal(res.status, 200);
-    const profile = await PatientProfile.findOne({ user: a.patient.user._id }).lean();
-    assert.equal(String(profile.assignedDietician), String(a.dietician.user._id));
+    const enrolment = await Enrollment.findOne({ patient: a.patient.patient._id, practice: a.practice._id }).lean();
+    assert.equal(String(enrolment.dietician), String(a.dietician.user._id));
   });
 });
 
