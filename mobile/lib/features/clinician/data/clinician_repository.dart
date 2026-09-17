@@ -604,18 +604,30 @@ class ClinicianRepository {
    * departments and locations to fill a dropdown.
    */
 
-  /// Assign the patient's dietician and food-log review cadence. A null
-  /// [dieticianId] unassigns; a null [reviewIntervalDays] clears the cadence.
+  /// Choose the patient's dietician at this practice. A null [dieticianId] is
+  /// a decision that the patient has no dietician here.
+  ///
+  /// [expectedDieticianId] is who the screen showed holding the patient — an
+  /// id, or null for nobody. The server refuses the choice with
+  /// `DIETICIAN_CHANGED` when that is no longer true, so a colleague's choice
+  /// made while this screen was open is seen before it is replaced.
+  ///
+  /// [reviewIntervalDays] is sent only when given: the cadence is clinic-wide
+  /// now, and choosing a dietician has nothing to say about it.
   Future<void> assignDietician(
     String patientId, {
     String? dieticianId,
-    int? reviewIntervalDays,
+    Object? expectedDieticianId = _unset,
+    Object? reviewIntervalDays = _unset,
   }) async {
     await _client.patchJson(
       '/doctor/patients/$patientId/dietician',
       body: {
         'dieticianId': dieticianId,
-        'reviewIntervalDays': reviewIntervalDays,
+        if (!identical(expectedDieticianId, _unset))
+          'expectedDieticianId': expectedDieticianId,
+        if (!identical(reviewIntervalDays, _unset))
+          'reviewIntervalDays': reviewIntervalDays,
       },
     );
   }

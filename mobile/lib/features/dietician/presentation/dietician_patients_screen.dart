@@ -59,9 +59,9 @@ class _DieticianPatientsScreenState
     super.dispose();
   }
 
-  /// Name, phone or condition. A dietician covering every patient in the clinic
-  /// scrolls a list of hundreds otherwise, and the one they want is the one who
-  /// just messaged them.
+  /// Name, phone or condition. A dietician holding most of a practice's
+  /// patients — the only dietician there is, say — scrolls a list of hundreds
+  /// otherwise, and the one they want is the one who just messaged them.
   List<DietPatient> _search_(List<DietPatient> all) {
     final q = _query.trim().toLowerCase();
     if (q.isEmpty) return all;
