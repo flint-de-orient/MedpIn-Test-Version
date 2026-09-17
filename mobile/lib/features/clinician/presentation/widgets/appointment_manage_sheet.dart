@@ -7,14 +7,12 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../../../core/network/api_exception.dart';
 import '../../../../core/router/area.dart';
 import '../../../../core/theme/app_colors.dart';
-import '../../../../core/theme/app_spacing.dart';
+import '../../../../core/theme/tokens.dart';
 import '../../../../shared/widgets/user_avatar.dart';
 import '../../../appointments/data/appointment_repository.dart';
-import '../../../appointments/data/clinic_repository.dart';
 import '../../../appointments/domain/appointment.dart';
-import '../../../appointments/domain/clinic.dart';
+import '../../../appointments/presentation/widgets/appointment_time_picker.dart';
 import '../../../staff/presentation/widgets/desk_geometry.dart';
-import '../../../staff/presentation/widgets/request_card.dart';
 
 /// What a front desk can actually do about a booked appointment.
 ///
@@ -41,12 +39,15 @@ class AppointmentManageSheet extends ConsumerWidget {
     super.key,
     required this.appointment,
     required this.onCancel,
-    required this.onChanged,
+    required this.onReschedule,
   });
 
   final Appointment appointment;
   final Future<void> Function() onCancel;
-  final Future<void> Function() onChanged;
+
+  /// Move it — run by the screen that opened this sheet, after the sheet has
+  /// gone. See the note on the action below for why it cannot run in here.
+  final Future<void> Function() onReschedule;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -64,12 +65,7 @@ class AppointmentManageSheet extends ConsumerWidget {
 
     return SafeArea(
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(
-          AppSpacing.md,
-          0,
-          AppSpacing.md,
-          AppSpacing.md,
-        ),
+        padding: const EdgeInsets.fromLTRB(T.s4, 0, T.s4, T.s4),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -82,7 +78,7 @@ class AppointmentManageSheet extends ConsumerWidget {
                   accent: AppColors.primary,
                   size: 44,
                 ),
-                const SizedBox(width: AppSpacing.sm + 2),
+                const SizedBox(width: T.s3),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -92,16 +88,14 @@ class AppointmentManageSheet extends ConsumerWidget {
                         a.patientName ?? 'Patient',
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          fontSize: 17,
+                        style: T.bodyStrong.copyWith(
                           fontWeight: FontWeight.w800,
                         ),
                       ),
                       if (when != null)
                         Text(
                           when,
-                          style: TextStyle(
-                            fontSize: 13.5,
+                          style: T.small.copyWith(
                             fontWeight: FontWeight.w700,
                             color: AppColors.primary,
                           ),
@@ -111,8 +105,7 @@ class AppointmentManageSheet extends ConsumerWidget {
                           a.clinicName!,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            fontSize: 12.5,
+                          style: T.small.copyWith(
                             color: scheme.onSurfaceVariant,
                           ),
                         ),
@@ -123,22 +116,19 @@ class AppointmentManageSheet extends ConsumerWidget {
             ),
 
             if ((a.reason ?? '').isNotEmpty) ...[
-              const SizedBox(height: AppSpacing.sm + 2),
+              const SizedBox(height: T.s3),
               Container(
                 width: double.infinity,
-                padding: const EdgeInsets.all(AppSpacing.sm + 2),
+                padding: const EdgeInsets.all(T.s3),
                 decoration: BoxDecoration(
                   color: scheme.surfaceContainerHighest.withValues(alpha: 0.5),
                   borderRadius: BorderRadius.circular(kInnerRadius),
                 ),
-                child: Text(
-                  a.reason!,
-                  style: const TextStyle(fontSize: 13.5, height: 1.35),
-                ),
+                child: Text(a.reason!, style: T.small),
               ),
             ],
 
-            const SizedBox(height: AppSpacing.sm),
+            const SizedBox(height: T.s2),
             Divider(color: scheme.outlineVariant.withValues(alpha: 0.6)),
 
             if (a.patientPhone != null)
@@ -169,9 +159,15 @@ class AppointmentManageSheet extends ConsumerWidget {
                 icon: Icons.event_repeat_rounded,
                 label: 'Move to another time',
                 tone: AppColors.warningOn(context),
+                // The move runs in the screen underneath, exactly as the cancel
+                // below does. It ran in here, on this sheet's own context: the
+                // sheet closed, the locations loaded, and by the time they had
+                // this context was no longer mounted — so the function returned
+                // without a word. Every time the network was slower than the
+                // sheet's closing animation, the button did nothing at all.
                 onTap: () async {
                   Navigator.pop(context);
-                  await rescheduleAppointment(context, ref, a, onChanged);
+                  await onReschedule();
                 },
               ),
 
@@ -196,7 +192,11 @@ class AppointmentManageSheet extends ConsumerWidget {
 ///
 /// The same picker the desk uses to answer a request, so a reschedule cannot
 /// land on an hour the clinic is shut or one already taken — which a free date
-/// field would happily allow.
+/// field would happily allow. Where the practice has no open location there
+/// are no published hours, and the picker asks for a day and a time instead.
+///
+/// [context] and [ref] are the calling screen's, which is still there when the
+/// picker closes. Nothing here returns without saying why.
 Future<void> rescheduleAppointment(
   BuildContext context,
   WidgetRef ref,
@@ -206,26 +206,37 @@ Future<void> rescheduleAppointment(
   final messenger = ScaffoldMessenger.of(context);
   final locale = Localizations.localeOf(context).toString();
 
-  final clinics = await ref.read(clinicRepositoryProvider).list();
-  final open = clinics.where((c) => c.isActive).toList();
-  if (open.isEmpty || !context.mounted) return;
+  final PickedTime? picked;
+  try {
+    picked = await pickAppointmentTime(
+      context,
+      ref,
+      initialDay: a.scheduledFor,
+      preferClinicId: a.clinicId,
+      title: 'Move to another time',
+    );
+  } on ApiException catch (e) {
+    messenger.showSnackBar(SnackBar(content: Text(e.message)));
+    return;
+  }
+  if (picked == null || !context.mounted) return;
 
-  final picked = await showModalBottomSheet<({Clinic clinic, DateTime at})>(
-    context: context,
-    isScrollControlled: true,
-    showDragHandle: true,
-    builder:
-        (_) => SlotPicker(
-          clinics: open,
-          initialDay: a.scheduledFor ?? DateTime.now(),
-        ),
-  );
-  if (picked == null) return;
+  // Another location, only when one was chosen that it is not already at. A
+  // teleconsult is at no location, whichever location's hours the time was
+  // chosen from.
+  final moveTo =
+      !a.isTeleconsult && picked.clinic != null && picked.clinic!.id != a.clinicId
+          ? picked.clinic!.id
+          : null;
 
   try {
     await ref
         .read(appointmentRepositoryProvider)
-        .reschedule(a.id, picked.at.toUtc().toIso8601String());
+        .reschedule(
+          a.id,
+          picked.at.toUtc().toIso8601String(),
+          clinicId: moveTo,
+        );
     await onDone();
     messenger.showSnackBar(
       SnackBar(
@@ -257,25 +268,24 @@ class _SheetAction extends StatelessWidget {
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(kInnerRadius),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 13, horizontal: 4),
-        child: Row(
-          children: [
-            Icon(icon, size: 21, color: tone),
-            const SizedBox(width: AppSpacing.md),
-            Expanded(
-              child: Text(
-                label,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontSize: 15.5,
-                  fontWeight: FontWeight.w600,
-                  color: tone,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(minHeight: T.tap),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: T.s3, horizontal: T.s1),
+          child: Row(
+            children: [
+              Icon(icon, color: tone),
+              const SizedBox(width: T.s4),
+              Expanded(
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: T.bodyStrong.copyWith(color: tone),
                 ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );

@@ -1410,6 +1410,23 @@ class AppLocalizationsBn extends AppLocalizations {
   String get deskCouldNotLoadTimes => 'এই দিনের সময়গুলো আনা গেল না।';
 
   @override
+  String get deskNoPublishedHours =>
+      'কোনো ক্লিনিকের নির্ধারিত সময়সূচি নেই, তাই দিন ও সময় নিজেই বেছে নিন।';
+
+  @override
+  String get deskPickTime => 'সময় বেছে নিন';
+
+  @override
+  String get deskUseThisTime => 'এই সময়টি দিন';
+
+  @override
+  String get deskTimeInPast => 'ওই সময়টি পেরিয়ে গেছে।';
+
+  @override
+  String get deskNoClinicYouManage =>
+      'খোলা ক্লিনিকগুলোর কোনোটিই আপনার পরিচালনায় নেই।';
+
+  @override
   String get deskClinicStaff => 'ক্লিনিক কর্মী';
 
   @override

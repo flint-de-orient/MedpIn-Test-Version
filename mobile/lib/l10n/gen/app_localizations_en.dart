@@ -1416,6 +1416,23 @@ class AppLocalizationsEn extends AppLocalizations {
   String get deskCouldNotLoadTimes => 'Could not load the times for this day.';
 
   @override
+  String get deskNoPublishedHours =>
+      'No clinic has published hours, so choose the day and the time yourself.';
+
+  @override
+  String get deskPickTime => 'Pick a time';
+
+  @override
+  String get deskUseThisTime => 'Use this time';
+
+  @override
+  String get deskTimeInPast => 'That time has already passed.';
+
+  @override
+  String get deskNoClinicYouManage =>
+      'None of the open clinics is one you manage.';
+
+  @override
   String get deskClinicStaff => 'Clinic staff';
 
   @override

@@ -45,8 +45,12 @@ class AppointmentRepository {
   /// for themselves leaves it null and the server uses their own id; it ignores
   /// the field for patient callers anyway, so this cannot be used to book into
   /// another person's name.
+  ///
+  /// [clinicId] is null where the practice has no open location: the visit is
+  /// at no location, and the server checks the doctor's own diary instead of a
+  /// published schedule. Staff only — a patient books from published hours.
   Future<Appointment> book({
-    required String clinicId,
+    required String? clinicId,
     required String scheduledForIso,
     String mode = 'in_clinic',
     String? reason,
@@ -55,7 +59,7 @@ class AppointmentRepository {
     final json = await _client.postJson(
       '/appointments',
       body: {
-        'clinicId': clinicId,
+        if (clinicId != null) 'clinicId': clinicId,
         'scheduledFor': scheduledForIso,
         'mode': mode,
         if (reason != null && reason.isNotEmpty) 'reason': reason,
@@ -65,10 +69,22 @@ class AppointmentRepository {
     return Appointment.fromJson(json['appointment'] as Map<String, dynamic>);
   }
 
-  Future<Appointment> reschedule(String id, String scheduledForIso) async {
+  /// Move a booking. The server keeps the original, cancelled, and returns the
+  /// replacement — a confirmed booking with its own id.
+  ///
+  /// [clinicId] moves it to another of the practice's locations as well; null
+  /// keeps it where it is.
+  Future<Appointment> reschedule(
+    String id,
+    String scheduledForIso, {
+    String? clinicId,
+  }) async {
     final json = await _client.patchJson(
       '/appointments/$id/reschedule',
-      body: {'scheduledFor': scheduledForIso},
+      body: {
+        'scheduledFor': scheduledForIso,
+        if (clinicId != null) 'clinicId': clinicId,
+      },
     );
     return Appointment.fromJson(json['appointment'] as Map<String, dynamic>);
   }
@@ -135,7 +151,8 @@ class AppointmentRepository {
   /// time on it, which is the state that holds a slot without being a booking.
   Future<Appointment> confirmRequest(
     String id, {
-    required String clinicId,
+    /// Null where the practice has no open location to give.
+    required String? clinicId,
     required DateTime scheduledFor,
     /// Sent only on a second attempt, after the desk has been shown that this
     /// patient already has a slot that day and has chosen to go ahead.
@@ -144,7 +161,7 @@ class AppointmentRepository {
     final json = await _client.patchJson(
       '/appointments/$id/confirm',
       body: {
-        'clinicId': clinicId,
+        if (clinicId != null) 'clinicId': clinicId,
         'scheduledFor': scheduledFor.toUtc().toIso8601String(),
         if (allowSameDay) 'allowSameDay': true,
       },

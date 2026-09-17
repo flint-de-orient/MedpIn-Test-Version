@@ -243,7 +243,15 @@ class _AppointmentsAdminScreenState
       builder:
           (_) => AppointmentManageSheet(
             appointment: a,
-            onChanged: () async => _reload(ref),
+            // This screen's context, not the sheet's: the sheet is gone by the
+            // time the locations have loaded, and this screen is not.
+            onReschedule:
+                () => rescheduleAppointment(
+                  context,
+                  ref,
+                  a,
+                  () async => _reload(ref),
+                ),
             onCancel: () async {
               final messenger = ScaffoldMessenger.of(context);
               final locale = Localizations.localeOf(context).toString();

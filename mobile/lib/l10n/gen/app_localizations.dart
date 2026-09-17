@@ -2698,6 +2698,36 @@ abstract class AppLocalizations {
   /// **'Could not load the times for this day.'**
   String get deskCouldNotLoadTimes;
 
+  /// No description provided for @deskNoPublishedHours.
+  ///
+  /// In en, this message translates to:
+  /// **'No clinic has published hours, so choose the day and the time yourself.'**
+  String get deskNoPublishedHours;
+
+  /// No description provided for @deskPickTime.
+  ///
+  /// In en, this message translates to:
+  /// **'Pick a time'**
+  String get deskPickTime;
+
+  /// No description provided for @deskUseThisTime.
+  ///
+  /// In en, this message translates to:
+  /// **'Use this time'**
+  String get deskUseThisTime;
+
+  /// No description provided for @deskTimeInPast.
+  ///
+  /// In en, this message translates to:
+  /// **'That time has already passed.'**
+  String get deskTimeInPast;
+
+  /// No description provided for @deskNoClinicYouManage.
+  ///
+  /// In en, this message translates to:
+  /// **'None of the open clinics is one you manage.'**
+  String get deskNoClinicYouManage;
+
   /// No description provided for @deskClinicStaff.
   ///
   /// In en, this message translates to:
