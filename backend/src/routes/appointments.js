@@ -36,6 +36,10 @@ import {
   memberIdsOf,
   practiceOfMember,
 } from '../middleware/practiceScope.js';
+import {
+  assertManagesLocation,
+  managedLocationFilter,
+} from '../middleware/locationScope.js';
 
 const router = Router();
 router.use(requireAuth);
@@ -282,14 +286,26 @@ router.get(
       ...(!isPatient(req) && patientId ? { patient: patientId } : {}),
     };
 
+    /*
+     * And only where they run, for somebody narrowed to particular locations.
+     *
+     * The default above is a view and `?clinicId=` overrides it; this is the
+     * wall, so it is applied on top of both — a receptionist at Salt Lake asking
+     * for Behala's day gets an empty day, not Behala's patients. Appointments at
+     * no location stay: they are the practice's, not a branch's. `$and`, because
+     * the fragment is an `$or`.
+     */
+    const narrowed = isPatient(req) ? {} : await managedLocationFilter(req, 'clinic');
+    const query = Object.keys(narrowed).length ? { $and: [filter, narrowed] } : filter;
+
     const [items, total] = await Promise.all([
-      Appointment.find(filter)
+      Appointment.find(query)
         .sort({ scheduledFor: -1 })
         .skip(skip)
         .limit(limit)
         .populate(POPULATE)
         .lean(),
-      Appointment.countDocuments(filter),
+      Appointment.countDocuments(query),
     ]);
 
     res.json(paged(items.map(serialise), { page, limit, total }));
@@ -328,6 +344,13 @@ router.post(
       ? await Clinic.findOne({ $and: [{ _id: clinicId }, await bookableClinics(req, patientId)] })
       : null;
     if (clinicId && !location) throw badRequest('That clinic is not available');
+
+    // The desk books only where it runs, asked before the doctor is looked up
+    // so nothing about that location is read on the way to refusing it. A
+    // patient's places are their enrolments', already applied above.
+    if (location && mode === 'in_clinic' && !isPatient(req)) {
+      await assertManagesLocation(req, location._id);
+    }
 
     // The chosen clinic already records its doctor, so a booking at the Salt
     // Lake branch lands on the doctor who sits there rather than on whichever
@@ -691,6 +714,7 @@ router.patch(
       $and: [{ _id: clinicId, isActive: true }, await practiceClinics(req)],
     });
     if (!clinic) throw badRequest('That clinic is not available');
+    await assertManagesLocation(req, clinic._id);
 
     // The same authority a patient booking goes through. A request confirmed
     // onto a time the schedule does not offer is worse than one left pending:
@@ -871,6 +895,10 @@ router.patch(
       throw badRequest('Appointment time must be in the future');
     }
 
+    // The desk moves appointments only where it runs — out of one location and
+    // into another alike.
+    if (!isPatient(req) && existing.clinic) await assertManagesLocation(req, existing.clinic);
+
     const moving = Boolean(clinicId) && String(clinicId) !== String(existing.clinic ?? '');
     let clinic = null;
     if (moving) {
@@ -879,6 +907,7 @@ router.patch(
         $and: [{ _id: clinicId, isActive: true }, await bookableClinics(req, existing.patient)],
       });
       if (!clinic) throw badRequest('That clinic is not available');
+      if (!isPatient(req)) await assertManagesLocation(req, clinic._id);
     } else if (existing.clinic) {
       // Re-validate the new time against the same clinic's live schedule. A
       // closed location takes no new time; the way out is to name another.
@@ -1010,6 +1039,9 @@ router.patch(
   asyncHandler(async (req, res) => {
     const appt = await Appointment.findOne({ _id: req.params.id, ...(await scopeFilter(req)) });
     if (!appt) throw notFound('Appointment not found');
+    // The desk calls off appointments only at locations it runs. A patient
+    // cancels their own, wherever it is.
+    if (!isPatient(req) && appt.clinic) await assertManagesLocation(req, appt.clinic);
     if (appt.status === 'completed') throw badRequest('Completed appointments cannot be cancelled');
 
     appt.status = 'cancelled';
@@ -1176,9 +1208,11 @@ router.patch(
       _id: req.params.id,
       ...(await scopeFilter(req)),
     })
-      .select('_id')
+      .select('_id clinic')
       .lean();
     if (!scoped) throw notFound('Appointment not found');
+    // Moving somebody through the waiting room is work at that room.
+    if (scoped.clinic) await assertManagesLocation(req, scoped.clinic);
 
     const appt = await Appointment.findByIdAndUpdate(
       req.params.id,
@@ -1204,6 +1238,9 @@ router.patch(
 /** Live queue for the clinic waiting room. */
 router.get(
   '/queue/today',
+  // One room, when the desk names it. Optional, because a practice with one
+  // location — or a desk whose membership names its branch — has nothing to say.
+  validate({ query: z.object({ clinicId: z.string().optional() }) }),
   asyncHandler(async (req, res) => {
     // The clinic's date, not the server's — see clinicToday.
     const today = clinicToday();
@@ -1226,10 +1263,19 @@ router.get(
       if (!queue) return res.json({ date: today, nowServing: null, entries: [] });
     } else {
       const here = await memberLocation(req);
+      // A named room must be one this desk runs; the names on its screen are
+      // that room's patients.
+      const { clinicId } = q(req);
+      if (clinicId) await assertManagesLocation(req, clinicId);
       queue = {
         ...(await practiceMembers(req, ROLES.DOCTOR, 'doctor')),
         ...(here ? { clinic: here } : {}),
+        ...(clinicId ? { clinic: clinicId } : {}),
       };
+      // And never a room outside the locations this desk runs, whatever the
+      // default says. `$and`, because the fragment is an `$or`.
+      const narrowed = await managedLocationFilter(req, 'clinic');
+      if (Object.keys(narrowed).length) queue = { $and: [queue, narrowed] };
     }
 
     const entries = await Appointment.find({
@@ -1267,6 +1313,8 @@ router.post(
   asyncHandler(async (req, res) => {
     const appt = await Appointment.findOne({ _id: req.params.id, ...(await scopeFilter(req)) });
     if (!appt) throw notFound('Appointment not found');
+    // The desk checks people in only at a room it runs.
+    if (!isPatient(req) && appt.clinic) await assertManagesLocation(req, appt.clinic);
     if (appt.status === 'checked_in') {
       return res.json({ queueNumber: appt.queueNumber, position: null, estimatedWaitMinutes: null });
     }
