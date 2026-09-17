@@ -213,12 +213,34 @@ Two consequences worth knowing before deploying:
 
 ## 8. Appointments — `/appointments`
 
-`GET /?status=&from=&to=` → paged (scoped to caller)
-`POST /` `{ "scheduledFor":"...","mode":"in_clinic","reason":"..." }` → `201`
-`PATCH /:id/reschedule` `{ "scheduledFor":"..." }` · `PATCH /:id/cancel` `{ "reason":"" }`
-`GET /slots?date=YYYY-MM-DD` → `{ date, slots:[{ time, available }] }`
-`GET /queue/today` → `{ date, nowServing, entries:[{ queueNumber, patientName, status, isPriority }] }`
-`POST /:id/check-in` → `{ queueNumber, position, estimatedWaitMinutes }`
+`GET /?status=&from=&to=&clinicId=&patientId=` → paged. A patient gets their own; staff get their practice's, and only at the locations they run — plus appointments at no location, which are the practice's.
+`POST /` `{ "scheduledFor", "mode":"in_clinic"|"teleconsult", "clinicId"?, "doctorId"?, "patientId"? (staff), "reason"? }` → `201 { appointment }`.
+`clinicId` may be left out of an in-clinic visit: where there is no open location the visit has none (staff only — a patient is told to ask instead, `400`); where there is exactly one it is used; where there are several → `400 LOCATION_REQUIRED`.
+`POST /request` `{ "preferredFor", "preferredTime"?, "mode"?, "reason"?, "patientId"? (staff) }` → `201 { appointment }`, or `200 { appointment, updated: true }` for a repeat.
+`PATCH /:id/confirm` *(doctor, staff)* `{ "scheduledFor", "clinicId"?, "allowSameDay"? }` → `{ appointment }`. `clinicId` follows the booking rule. `409` with `details[0].path` `SAME_DAY_APPOINTMENT` warns of another appointment that clinic day; send `allowSameDay: true` to go ahead.
+`PATCH /:id/reschedule` `{ "scheduledFor", "clinicId"? }` → `{ appointment }`: the replacement, `confirmed`; the original is kept `cancelled` and linked by `rescheduledFrom`. `clinicId` moves it to another of the practice's locations. `400` for a request with no time yet, a completed, cancelled or no-show appointment, or — for a patient — an appointment with no location; `409` if it was changed at the same moment.
+`PATCH /:id/cancel` `{ "reason"? }` → `{ appointment }`. Cancelling one already cancelled answers with it as it stands and tells nobody again. `PATCH /:id/status` *(staff)* `{ "status", "consultationNotes"? }`
+`GET /queue/today?clinicId=` → `{ date, nowServing, entries:[{ queueNumber, patientName, status, isPriority, isYou }] }`. `date` is the clinic's date, not the server's.
+`POST /:id/check-in` → `{ queueNumber, position, estimatedWaitMinutes }`. Refused at an inactive location.
+
+**Retries.** `POST /`, `POST /request`, `PATCH /:id/confirm`, `PATCH /:id/reschedule`, `PATCH /:id/cancel` and `POST /:id/check-in` take an optional `Idempotency-Key` header (`^[A-Za-z0-9._:-]{8,128}$`), keyed per signed-in person. The same key with the same request — method, path with its ids, and body — is answered with the first attempt's status and body (header `Idempotent-Replayed: true`) and writes nothing; copies sent together wait for the first. The same key with a different request → `409 IDEMPOTENCY_KEY_REUSED`. A first attempt that was refused keeps nothing, so the key may be used again. A copy still waiting after 10 seconds → `409 IDEMPOTENCY_IN_PROGRESS`. Keys are kept for a day.
+
+**Concurrency.** Booking, confirming and moving check a doctor's diary and write while holding it, so requests sent together cannot put one doctor in two places. One that cannot get the diary within 8 seconds → `409 DIARY_BUSY`, nothing written.
+
+**Locations — `/clinics`**
+`GET /` → `{ items: Clinic[] }`; for staff each row also carries `managedByYou`.
+`GET /:id/slots?date=YYYY-MM-DD&doctorId=` → `{ clinicId, date, slotMinutes, isActive, slots:[{ time, iso, available }] }`. Without `doctorId`, the diary of the doctor a booking there goes to; `slotMinutes` is that diary's. An inactive location has no slots.
+`POST /` · `PATCH /:id` · `DELETE /:id` (deactivates, never deletes) → `{ clinic }`. When the location is inactive afterwards — `DELETE`, or `PATCH` with `isActive: false` — also `affectedTotal` and `affectedAppointments:[{ id, patientId, patientName, patientPhone, doctorId, doctorName, clinicId, scheduledFor, durationMinutes, mode, status }]`: the appointments still standing there from now on (up to 200), none of them cancelled, for the desk to move or call off.
+`GET /access` → `{ items:[{ membershipId, userId, name, role, isOwner, everyLocation, locations:[id] }] }`
+`PUT /access/:membershipId` *(a doctor or the owner, holding MANAGE_STAFF and running every location)* `{ "locationIds":[id] }` → `{ membership }`. `[]` is every location; the owner is never narrowed.
+
+**A doctor's hours at a location.**
+`GET /:id/availability` *(staff)* → `{ location: Clinic & { managedByYou }, items:[{ doctor:{ id, name, specialty }, usesLocationHours, diary: { slotMinutes, weeklyHours:[{ dayOfWeek, start, end }], overrides:[…] } | null }] }` — the practice's current doctors.
+`PUT /:id/availability/:doctorId` *(practice setup, at a location the caller runs)* `{ "slotMinutes", "weeklyHours":[{ "dayOfWeek":0-6, "start":"HH:mm", "end":"HH:mm" }], "overrides"? }` → `{ doctor, usesLocationHours: false, diary, overlapsElsewhere:[{ location:{ id, name }, dayOfWeek, start, end }] }`. Replaces the doctor's sittings here; `overrides` left out are kept; no sittings means not at this location. `overlapsElsewhere` is a warning, not a refusal.
+`DELETE /:id/availability/:doctorId` *(same)* → `{ doctor, usesLocationHours: true, diary: null }` — the location's hours apply to the doctor again.
+Another practice's location or doctor → `404`.
+
+Codes: `LOCATION_REQUIRED` (400 — several locations and none named), `LOCATION_NOT_MANAGED` (403 — a location outside the caller's `Membership.locations`; creating a location or changing who runs which needs every location), `DIARY_BUSY` (409), `IDEMPOTENCY_KEY_REUSED` (409), `IDEMPOTENCY_IN_PROGRESS` (409).
 
 ## 9. Prescriptions — `/patients/:patientId/prescriptions`
 `GET /` → paged · `GET /:id` · `GET /:id/pdf` → `application/pdf`

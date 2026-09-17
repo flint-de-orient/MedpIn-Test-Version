@@ -5,11 +5,18 @@ import '../data/appointment_repository.dart';
 import '../data/clinic_repository.dart';
 import '../domain/appointment.dart';
 import '../domain/clinic.dart';
+import '../domain/doctor_hours.dart';
 
 /// All clinics the caller may see (patients: active only; clinicians: all).
 final clinicsProvider = FutureProvider.autoDispose<List<Clinic>>((ref) {
   return ref.watch(clinicRepositoryProvider).list();
 });
+
+/// Every doctor's hours at one location, by the location's id.
+final locationHoursProvider = FutureProvider.autoDispose
+    .family<LocationHours, String>((ref, clinicId) {
+      return ref.watch(clinicRepositoryProvider).doctorHours(clinicId);
+    });
 
 /// Bookable slots for one clinic on one clinic-local date ('YYYY-MM-DD').
 final slotDayProvider = FutureProvider.autoDispose

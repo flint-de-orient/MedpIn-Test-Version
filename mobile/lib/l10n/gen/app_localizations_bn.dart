@@ -968,6 +968,13 @@ class AppLocalizationsBn extends AppLocalizations {
   String get apptClosedThatDay => 'এই দিনে ক্লিনিক বন্ধ';
 
   @override
+  String get apptNoOnlineBooking =>
+      'এই ক্লিনিকে অ্যাপ থেকে বুকিং হয় না। অ্যাপয়েন্টমেন্টের অনুরোধ পাঠান, ক্লিনিক আপনাকে একটি সময় জানাবে।';
+
+  @override
+  String get apptAskForAppointment => 'অ্যাপয়েন্টমেন্টের অনুরোধ করুন';
+
+  @override
   String get apptNotifyMeLater => 'স্লট খালি হলে আমাকে জানান';
 
   @override
@@ -1408,6 +1415,23 @@ class AppLocalizationsBn extends AppLocalizations {
 
   @override
   String get deskCouldNotLoadTimes => 'এই দিনের সময়গুলো আনা গেল না।';
+
+  @override
+  String get deskNoPublishedHours =>
+      'কোনো ক্লিনিকের নির্ধারিত সময়সূচি নেই, তাই দিন ও সময় নিজেই বেছে নিন।';
+
+  @override
+  String get deskPickTime => 'সময় বেছে নিন';
+
+  @override
+  String get deskUseThisTime => 'এই সময়টি দিন';
+
+  @override
+  String get deskTimeInPast => 'ওই সময়টি পেরিয়ে গেছে।';
+
+  @override
+  String get deskNoClinicYouManage =>
+      'খোলা ক্লিনিকগুলোর কোনোটিই আপনার পরিচালনায় নেই।';
 
   @override
   String get deskClinicStaff => 'ক্লিনিক কর্মী';

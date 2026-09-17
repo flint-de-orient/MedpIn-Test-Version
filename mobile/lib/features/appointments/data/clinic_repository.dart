@@ -3,6 +3,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/network/api_client.dart';
 import '../../../shared/providers/core_providers.dart';
 import '../domain/clinic.dart';
+import '../domain/doctor_hours.dart';
+
+/// A location saved, and — when the save left it closed — who is still booked
+/// there.
+typedef ClinicSaved = ({Clinic clinic, StillBooked? stillBooked});
 
 /// Talks to `/clinics`. Reads are open to any authenticated user; writes are
 /// clinician-only (the server enforces the role, this just exposes them).
@@ -38,15 +43,59 @@ class ClinicRepository {
     return Clinic.fromJson(json['clinic'] as Map<String, dynamic>);
   }
 
-  Future<Clinic> update(String id, Map<String, dynamic> body) async {
+  /// Save a location. Switching "Accepting bookings" off closes it, and the
+  /// answer then says who is still booked there.
+  Future<ClinicSaved> update(String id, Map<String, dynamic> body) async {
     final json = await _client.patchJson('/clinics/$id', body: body);
-    return Clinic.fromJson(json['clinic'] as Map<String, dynamic>);
+    return (
+      clinic: Clinic.fromJson(json['clinic'] as Map<String, dynamic>),
+      stillBooked: StillBooked.fromJson(json),
+    );
   }
 
-  /// Soft-delete: the server marks it inactive so booked appointments keep a
-  /// valid clinic.
-  Future<void> deactivate(String id) async {
-    await _client.delete('/clinics/$id');
+  /// Close a location: no new slots or bookings there, and nothing already
+  /// booked is touched. The answer lists who is still booked there, for the
+  /// desk to move or call off.
+  ///
+  /// The same close the delete route makes, sent as `isActive: false` so the
+  /// list comes back with it.
+  Future<ClinicSaved> deactivate(String id) => update(id, const {'isActive': false});
+
+  /// Every doctor's hours at a location.
+  Future<LocationHours> doctorHours(String clinicId) async {
+    final json = await _client.getJson('/clinics/$clinicId/availability');
+    return LocationHours.fromJson(json);
+  }
+
+  /// Give a doctor hours of their own at a location. No sittings means the
+  /// doctor is not at this location.
+  Future<({DoctorHours hours, List<HoursOverlap> overlaps})> setDoctorHours(
+    String clinicId,
+    String doctorId, {
+    required int slotMinutes,
+    required List<WeeklyHour> weeklyHours,
+  }) async {
+    final json = await _client.putJson(
+      '/clinics/$clinicId/availability/$doctorId',
+      body: {
+        'slotMinutes': slotMinutes,
+        'weeklyHours': weeklyHours.map((w) => w.toJson()).toList(),
+      },
+    );
+    return (
+      hours: DoctorHours.fromJson(json),
+      overlaps:
+          (json['overlapsElsewhere'] as List?)
+              ?.whereType<Map<String, dynamic>>()
+              .map(HoursOverlap.fromJson)
+              .toList() ??
+          const <HoursOverlap>[],
+    );
+  }
+
+  /// Give a doctor the location's own hours back.
+  Future<void> useLocationHours(String clinicId, String doctorId) async {
+    await _client.delete('/clinics/$clinicId/availability/$doctorId');
   }
 }
 

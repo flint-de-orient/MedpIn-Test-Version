@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
+import '../../../core/theme/tokens.dart';
 import '../../appointments/domain/clinic.dart';
 import '../../appointments/presentation/appointment_providers.dart';
 import 'widgets/clinician_visuals.dart';
@@ -20,16 +21,26 @@ class ClinicsScreen extends ConsumerWidget {
     final scheme = Theme.of(context).colorScheme;
     final async = ref.watch(clinicsProvider);
 
+    // Somebody narrowed to particular locations runs those and reads the rest,
+    // and opening a new one is for somebody who runs them all — the server
+    // refuses it, so it is not offered. Before the list loads nothing is known,
+    // and the button waits rather than appearing and vanishing.
+    final narrowed =
+        async.valueOrNull?.any((c) => c.managedByYou == false) ?? true;
+
     return Scaffold(
       appBar: AppBar(
         automaticallyImplyLeading: false,
         title: const Text('Clinics'),
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => context.push('/clinician/clinics/new'),
-        icon: const Icon(Icons.add_rounded),
-        label: const Text('Add clinic'),
-      ),
+      floatingActionButton:
+          narrowed
+              ? null
+              : FloatingActionButton.extended(
+                onPressed: () => context.push('/clinician/clinics/new'),
+                icon: const Icon(Icons.add_rounded),
+                label: const Text('Add clinic'),
+              ),
       body: RefreshIndicator(
         onRefresh: () async => ref.invalidate(clinicsProvider),
         child: async.when(
@@ -69,10 +80,17 @@ class ClinicsScreen extends ConsumerWidget {
                     ),
                   ),
                   const SizedBox(height: AppSpacing.xs),
-                  Center(
+                  // Optional, and said so. "Add a clinic to start taking
+                  // bookings" read as a step the practice had to complete, when
+                  // requests, visits and the whole record work without one; a
+                  // location adds published hours patients book from.
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: T.s6),
                     child: Text(
-                      'Add a clinic to start taking bookings',
-                      style: TextStyle(color: scheme.onSurfaceVariant),
+                      'Appointments work without one. Add a clinic to publish '
+                      'opening hours patients can book from.',
+                      textAlign: TextAlign.center,
+                      style: T.body.copyWith(color: scheme.onSurfaceVariant),
                     ),
                   ),
                 ],
@@ -90,11 +108,15 @@ class ClinicsScreen extends ConsumerWidget {
               itemBuilder:
                   (context, i) => _ClinicRow(
                     clinic: clinics[i],
+                    // Only a location the reader runs opens for editing; the
+                    // server refuses the rest.
                     onTap:
-                        () => context.push(
-                          '/clinician/clinics/edit',
-                          extra: clinics[i],
-                        ),
+                        clinics[i].managedByYou == false
+                            ? null
+                            : () => context.push(
+                              '/clinician/clinics/edit',
+                              extra: clinics[i],
+                            ),
                   ),
             );
           },
@@ -108,7 +130,9 @@ class _ClinicRow extends StatelessWidget {
   const _ClinicRow({required this.clinic, required this.onTap});
 
   final Clinic clinic;
-  final VoidCallback onTap;
+
+  /// Null for a location the reader does not run: shown, not editable.
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
@@ -167,11 +191,14 @@ class _ClinicRow extends StatelessWidget {
                           ),
                         ),
                         if (!c.isActive) ...[
-                          const SizedBox(width: 4),
-                          const MiniPill(
-                            label: 'Inactive',
-                            color: Color(0xFF6B7280),
-                          ),
+                          const SizedBox(width: T.s1),
+                          const MiniPill(label: 'Inactive', color: T.inkMuted),
+                        ],
+                        // In words, so a row that does not open is not taken
+                        // for a broken one.
+                        if (onTap == null) ...[
+                          const SizedBox(width: T.s1),
+                          const MiniPill(label: 'View only', color: T.inkMuted),
                         ],
                       ],
                     ),
@@ -212,7 +239,8 @@ class _ClinicRow extends StatelessWidget {
                   ],
                 ),
               ),
-              Icon(Icons.chevron_right_rounded, color: scheme.outline),
+              if (onTap != null)
+                Icon(Icons.chevron_right_rounded, color: scheme.outline),
             ],
           ),
         ),

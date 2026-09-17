@@ -88,6 +88,7 @@ class Clinic {
     this.overrides = const [],
     this.isActive = true,
     this.sortIndex = 0,
+    this.managedByYou,
   });
 
   final String id;
@@ -136,6 +137,14 @@ class Clinic {
   final bool isActive;
   final int sortIndex;
 
+  /// Whether the reader runs this location: may book, confirm, move and edit
+  /// here. The server says so for staff and leaves it out for a patient, so
+  /// null is "not a question for this reader", never "no".
+  final bool? managedByYou;
+
+  /// Open, and somewhere this reader may put an appointment.
+  bool get takesWorkFromYou => isActive && managedByYou != false;
+
   /// Every number the clinic publishes, in the order it publishes them.
   List<String> get phones => [
     if (phone != null && phone!.isNotEmpty) phone!,
@@ -180,6 +189,31 @@ class Clinic {
         const [],
     isActive: j['isActive'] != false,
     sortIndex: (j['sortIndex'] as num?)?.toInt() ?? 0,
+    managedByYou: j['managedByYou'] is bool ? j['managedByYou'] as bool : null,
+  );
+}
+
+/// How many places an appointment could be put, which decides what to ask.
+///
+/// Location is optional. With none there is nothing to choose and no published
+/// hours — the time is the doctor's to give. With one there is nothing to
+/// choose either, so no picker is drawn. Only two or more is a question.
+enum LocationChoice { none, one, several }
+
+/// The locations this reader may put an appointment at, and what that means
+/// for the screen. Counted among the ones they run, so a receptionist who runs
+/// one branch of two is not asked which.
+({List<Clinic> open, LocationChoice choice}) locationChoice(
+  List<Clinic> all,
+) {
+  final open = all.where((c) => c.takesWorkFromYou).toList();
+  return (
+    open: open,
+    choice: switch (open.length) {
+      0 => LocationChoice.none,
+      1 => LocationChoice.one,
+      _ => LocationChoice.several,
+    },
   );
 }
 
@@ -205,6 +239,7 @@ class SlotDay {
     required this.date,
     required this.slotMinutes,
     required this.slots,
+    this.isActive = true,
   });
 
   final String clinicId;
@@ -212,11 +247,16 @@ class SlotDay {
   final int slotMinutes;
   final List<Slot> slots;
 
+  /// False for a closed location, whose empty list means closed rather than
+  /// fully booked. Older servers do not send it, and read as open.
+  final bool isActive;
+
   bool get hasAvailability => slots.any((s) => s.available);
 
   factory SlotDay.fromJson(Map<String, dynamic> j) => SlotDay(
     clinicId: j['clinicId']?.toString() ?? '',
     date: j['date']?.toString() ?? '',
+    isActive: j['isActive'] != false,
     slotMinutes: (j['slotMinutes'] as num?)?.toInt() ?? 15,
     slots:
         (j['slots'] as List?)

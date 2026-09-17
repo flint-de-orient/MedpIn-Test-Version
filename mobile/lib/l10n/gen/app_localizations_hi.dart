@@ -976,6 +976,13 @@ class AppLocalizationsHi extends AppLocalizations {
   String get apptClosedThatDay => 'इस दिन क्लिनिक बंद है';
 
   @override
+  String get apptNoOnlineBooking =>
+      'इस क्लिनिक में ऐप से बुकिंग नहीं होती। अपॉइंटमेंट का अनुरोध भेजें, क्लिनिक आपको समय बताएगा।';
+
+  @override
+  String get apptAskForAppointment => 'अपॉइंटमेंट का अनुरोध करें';
+
+  @override
   String get apptNotifyMeLater => 'स्लॉट खाली होने पर मुझे सूचित करें';
 
   @override
@@ -1413,6 +1420,23 @@ class AppLocalizationsHi extends AppLocalizations {
 
   @override
   String get deskCouldNotLoadTimes => 'इस दिन के समय नहीं आ सके।';
+
+  @override
+  String get deskNoPublishedHours =>
+      'किसी क्लिनिक के तय घंटे नहीं हैं, इसलिए दिन और समय खुद चुनें।';
+
+  @override
+  String get deskPickTime => 'समय चुनें';
+
+  @override
+  String get deskUseThisTime => 'यह समय दें';
+
+  @override
+  String get deskTimeInPast => 'वह समय बीत चुका है।';
+
+  @override
+  String get deskNoClinicYouManage =>
+      'खुले क्लिनिकों में से कोई भी आपके प्रबंधन में नहीं है।';
 
   @override
   String get deskClinicStaff => 'क्लिनिक स्टाफ़';

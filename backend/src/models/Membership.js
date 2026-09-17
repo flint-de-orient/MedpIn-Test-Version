@@ -245,6 +245,38 @@ const membershipSchema = new mongoose.Schema(
       default: [],
     },
 
+    /**
+     * Where that grant applies: the locations this person may run.
+     *
+     * ---- Practice, role, permission — and location ----------------------
+     *
+     * The permission set says what somebody may do at a practice and nothing
+     * about where. A receptionist hired for the Salt Lake branch could change
+     * Behala's opening hours, cancel Behala's appointments and check people
+     * into Behala's waiting room, because a practice was the smallest thing
+     * access could be granted on.
+     *
+     * ---- Empty is every location, and stays that way ------------------
+     *
+     * Every row that exists today has no list, and every one of those people
+     * runs every location of their practice this morning. Reading empty as
+     * "none" would lock the whole platform's staff out of its diaries on
+     * deploy; reading it as "all" changes nothing for them. A list narrows,
+     * and only a list does — which is why this is a separate field from
+     * `location` below, which is a default view and never a wall.
+     *
+     * The owner is never narrowed, whatever this holds. Somebody has to be
+     * able to add and close locations, and a practice whose head can reach
+     * only one branch has nobody who can fix that.
+     *
+     * Read through `locationScope()` and `worksAt()` below, and through
+     * middleware/locationScope.js — never compared by hand.
+     */
+    locations: {
+      type: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Clinic' }],
+      default: [],
+    },
+
     status: {
       type: String,
       enum: Object.values(MEMBERSHIP_STATUS),
@@ -345,6 +377,32 @@ membershipSchema.methods.can = function can(permission) {
   return granted.includes(permission);
 };
 
+/**
+ * The locations a membership is narrowed to, or null for all of them.
+ *
+ * Null for the owner and for an empty list — see `locations` above for why
+ * empty is everything. Ids as strings, so a caller can compare them with an id
+ * from a request without remembering that ObjectIds do not `===` each other.
+ *
+ * A static as well as a method, because the lists that need it read memberships
+ * with `.lean()`, and a plain row has no methods.
+ */
+membershipSchema.statics.locationScopeOf = function locationScopeOf(row) {
+  if (!row || row.isOwner || !row.locations?.length) return null;
+  return row.locations.map(String);
+};
+
+/** The same, for a loaded membership. */
+membershipSchema.methods.locationScope = function locationScope() {
+  return this.constructor.locationScopeOf(this);
+};
+
+/** Whether this membership may run a location. */
+membershipSchema.methods.worksAt = function worksAt(locationId) {
+  const scope = this.locationScope();
+  return scope === null || scope.includes(String(locationId));
+};
+
 /// Seed the grant on the way in, so no row can exist without one.
 membershipSchema.pre('validate', function seedPermissions(next) {
   if (!this.permissions?.length) {
@@ -380,6 +438,8 @@ membershipSchema.methods.toPublic = function toPublic() {
     isOwner: Boolean(this.isOwner),
     department: this.department ? String(this.department) : null,
     location: this.location ? String(this.location) : null,
+    // Empty means every location of the practice; see `locations`.
+    locations: (this.locations ?? []).map(String),
     status: this.status,
     startedOn: this.startedOn,
     endedOn: this.endedOn,

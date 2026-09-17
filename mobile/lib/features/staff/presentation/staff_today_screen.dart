@@ -12,11 +12,10 @@ import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../shared/widgets/user_avatar.dart';
 import '../../appointments/data/appointment_repository.dart';
-import '../../appointments/data/clinic_repository.dart';
 import '../../appointments/domain/appointment.dart';
-import '../../appointments/domain/clinic.dart';
 import '../../appointments/domain/clinic_status.dart';
 import '../../appointments/presentation/appointment_providers.dart';
+import '../../appointments/presentation/widgets/appointment_time_picker.dart';
 import '../../clinician/domain/clinician_models.dart';
 import '../../clinician/presentation/clinician_providers.dart';
 import '../../clinician/presentation/widgets/panel_ui.dart';
@@ -1579,29 +1578,24 @@ Future<void> startDeskBooking(
   );
   if (patient == null || !context.mounted) return;
 
-  final clinics = await ref.read(clinicRepositoryProvider).list();
-  final open = clinics.where((c) => c.isActive).toList();
-  if (!context.mounted) return;
-  if (open.isEmpty) {
-    messenger.showSnackBar(SnackBar(content: Text(l10n.deskNoActiveClinic)));
+  // A walk-in is standing there now, so the picker opens on today. So does a
+  // phone booking, which is only a default — the desk can page forward. With
+  // no open location the desk chooses the time itself rather than being sent
+  // to create one; see pickAppointmentTime.
+  final PickedTime? picked;
+  try {
+    picked = await pickAppointmentTime(context, ref, initialDay: DateTime.now());
+  } on ApiException catch (e) {
+    messenger.showSnackBar(SnackBar(content: Text(e.message)));
     return;
   }
-
-  final picked = await showModalBottomSheet<({Clinic clinic, DateTime at})>(
-    context: context,
-    isScrollControlled: true,
-    showDragHandle: true,
-    // A walk-in is standing there now, so the picker opens on today. So does a
-    // phone booking, which is only a default — the desk can page forward.
-    builder: (_) => SlotPicker(clinics: open, initialDay: DateTime.now()),
-  );
   if (picked == null || !context.mounted) return;
 
   try {
     await ref
         .read(appointmentRepositoryProvider)
         .book(
-          clinicId: picked.clinic.id,
+          clinicId: picked.clinic?.id,
           scheduledForIso: picked.at.toUtc().toIso8601String(),
           patientId: patient.id,
         );

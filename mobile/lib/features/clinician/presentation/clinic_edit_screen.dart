@@ -5,9 +5,14 @@ import 'package:intl/intl.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
+import '../../../core/theme/tokens.dart';
 import '../../appointments/data/clinic_repository.dart';
 import '../../appointments/domain/clinic.dart';
+import '../../appointments/domain/doctor_hours.dart';
 import '../../appointments/presentation/appointment_providers.dart';
+import '../../appointments/presentation/doctor_hours_screen.dart';
+import '../../appointments/presentation/widgets/still_booked_dialog.dart';
+import '../../../shared/widgets/surfaces.dart';
 import '../../../shared/widgets/authed_image.dart';
 import '../../../shared/data/upload_repository.dart';
 import '../../../shared/data/care_contact.dart';
@@ -171,8 +176,9 @@ class _ClinicEditScreenState extends ConsumerState<ClinicEditScreen> {
 
     try {
       final repo = ref.read(clinicRepositoryProvider);
+      StillBooked? stillBooked;
       if (_editing) {
-        await repo.update(widget.clinic!.id, body);
+        stillBooked = (await repo.update(widget.clinic!.id, body)).stillBooked;
       } else {
         await repo.create(body);
       }
@@ -181,6 +187,11 @@ class _ClinicEditScreenState extends ConsumerState<ClinicEditScreen> {
       // location and no number of its own, so the contact is read again.
       ref.invalidate(careContactProvider);
       messenger.showSnackBar(const SnackBar(content: Text('Clinic saved')));
+      // Switching "Accepting bookings" off closes the clinic; whoever is still
+      // booked there is shown before the screen goes.
+      if (stillBooked != null && !stillBooked.isEmpty && mounted) {
+        await showStillBooked(context, _name.text.trim(), stillBooked);
+      }
       navigator.pop();
     } on ApiException catch (e) {
       setState(() => _saving = false);
@@ -255,8 +266,13 @@ class _ClinicEditScreenState extends ConsumerState<ClinicEditScreen> {
       builder:
           (ctx) => AlertDialog(
             title: const Text('Deactivate clinic?'),
+            // What actually happens, both halves: nothing new can land here,
+            // and nothing already here is touched — so the patients still
+            // booked here are the desk's to move, which nobody would know.
             content: const Text(
-              'It will stop accepting new bookings. Existing appointments are kept.',
+              'It will stop showing times and taking new bookings. Appointments '
+              'already booked here are kept — move them to another clinic if '
+              'those patients should still come.',
             ),
             actions: [
               TextButton(
@@ -273,13 +289,23 @@ class _ClinicEditScreenState extends ConsumerState<ClinicEditScreen> {
     );
     if (ok != true) return;
     try {
-      await ref.read(clinicRepositoryProvider).deactivate(widget.clinic!.id);
+      final closed = await ref.read(clinicRepositoryProvider).deactivate(widget.clinic!.id);
       ref.invalidate(clinicsProvider);
+      final still = closed.stillBooked;
+      if (still != null && !still.isEmpty && mounted) {
+        await showStillBooked(context, widget.clinic!.name, still);
+      }
       navigator.pop();
-    } on ApiException {
+    } on ApiException catch (e) {
+      // The reason, when there is one worth reading: a location this person
+      // does not manage is not something "try again" fixes.
       messenger.showSnackBar(
-        const SnackBar(
-          content: Text('Could not deactivate. Please try again.'),
+        SnackBar(
+          content: Text(
+            e.code == 'LOCATION_NOT_MANAGED'
+                ? e.message
+                : 'Could not deactivate. Please try again.',
+          ),
         ),
       );
     }
@@ -450,6 +476,44 @@ class _ClinicEditScreenState extends ConsumerState<ClinicEditScreen> {
                 onAdd: () => _addWindow(day),
                 onRemove: _removeWindow,
               ),
+
+            // Each doctor's own hours here, where they differ from the clinic's.
+            // Only for a clinic that exists: a diary belongs to a location.
+            if (_editing) ...[
+              const SizedBox(height: T.s2),
+              Semantics(
+                button: true,
+                label: 'Doctors’ hours at this clinic',
+                excludeSemantics: true,
+                child: InnerTile(
+                  onTap:
+                      () => Navigator.of(context).push(
+                        MaterialPageRoute<void>(
+                          builder: (_) => DoctorHoursScreen(clinic: widget.clinic!),
+                        ),
+                      ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.badge_outlined, color: scheme.onSurfaceVariant),
+                      const SizedBox(width: T.s3),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text('Doctors’ hours here', style: T.bodyStrong),
+                            Text(
+                              'A doctor who sits here on other days or times than the clinic’s',
+                              style: T.small.copyWith(color: scheme.onSurfaceVariant),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Icon(Icons.chevron_right_rounded, color: scheme.outline),
+                    ],
+                  ),
+                ),
+              ),
+            ],
             const Divider(height: AppSpacing.xl),
 
             // Closures.

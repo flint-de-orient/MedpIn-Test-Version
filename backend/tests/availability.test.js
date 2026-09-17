@@ -141,8 +141,13 @@ describe('the booking routes ask whose diary', () => {
     for (const c of calls) assert.match(c, /doctorId:/, c);
   });
 
-  test('the slots endpoint accepts one, and works without it', () => {
+  test('the slots endpoint accepts one, and without it asks for the doctor a booking would go to', () => {
+    // Absent a doctor it used to answer for the building, so another doctor's
+    // appointment at the same hour hid this one's slot. Booking resolves the
+    // doctor from the location; the list asks the same question. The behaviour
+    // is held over HTTP in locationRules.test.js.
     assert.match(clinics, /doctorId: z\.string\(\)\.optional\(\)/);
-    assert.match(clinics, /doctorId: doctorId \?\? null/);
+    assert.match(clinics, /doctorId \?\? \(await resolveDoctor\(\{ clinicId: clinic\._id \}\)/);
+    assert.match(clinics, /generateSlots\(clinic, date, \{ doctorId: forDoctor \}\)/);
   });
 });

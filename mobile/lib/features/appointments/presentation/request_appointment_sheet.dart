@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
 import '../../../core/network/api_exception.dart';
+import '../../../core/network/submission_keys.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../data/appointment_repository.dart';
@@ -53,6 +54,9 @@ class _RequestSheet extends ConsumerStatefulWidget {
 }
 
 class _RequestSheetState extends ConsumerState<_RequestSheet> {
+  /// One per sheet. "Send request" tapped again after a lost answer is the
+  /// same request, and the clinic acknowledges it once.
+  final _submission = SubmissionKeys();
   final _reason = TextEditingController();
   DateTime? _day;
   TimeOfDay? _time;
@@ -281,6 +285,7 @@ class _RequestSheetState extends ConsumerState<_RequestSheet> {
                     : '${_time!.hour.toString().padLeft(2, '0')}:'
                         '${_time!.minute.toString().padLeft(2, '0')}',
             reason: _reason.text.trim(),
+            submission: _submission,
           );
       // The patient's own list should show it straight away — a request that
       // does not appear anywhere reads as one that was not sent.

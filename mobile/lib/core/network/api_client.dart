@@ -168,11 +168,20 @@ class ApiClient {
     return _asMap(response.data);
   }
 
+  /// [headers] as for [postJson]: an appointment confirmed, moved or cancelled
+  /// carries an `Idempotency-Key` that a retry must repeat.
   Future<Map<String, dynamic>> patchJson(
     String path, {
     Object? body,
+    Map<String, String>? headers,
   }) async {
-    final response = await _run(() => _dio.patch(path, data: body));
+    final response = await _run(
+      () => _dio.patch(
+        path,
+        data: body,
+        options: headers == null ? null : Options(headers: headers),
+      ),
+    );
     return _asMap(response.data);
   }
 
