@@ -2,6 +2,10 @@ import 'package:flutter/material.dart';
 
 import '../../core/theme/tokens.dart';
 
+/// The bar's colours in the dark theme, named once.
+const _darkBar = Color(0xFF141B26);
+const _darkSelected = Color(0xFF7FB0FF);
+
 /// A navigation bar that looks like it floats and behaves like it does not.
 ///
 /// It was briefly a real frosted bar over `extendBody`, and that was a mistake
@@ -14,6 +18,13 @@ import '../../core/theme/tokens.dart';
 /// So: side margins, a full radius and a soft shadow give the floating
 /// appearance, while the Scaffold reserves the bar's whole height — including
 /// the safe-area inset it adds below itself — so nothing can hide behind it.
+///
+/// ---- And a gap above it ----------------------------------------------------
+///
+/// The body ended exactly where the pill began, so a card scrolled to the
+/// bottom was cut on the pill's top edge and its sides showed in the pill's
+/// rounded corners: it read as a card sliding under the bar. Eight points of
+/// ground above the pill put the cut clear of it.
 class GlassNavBar extends StatelessWidget {
   const GlassNavBar({
     super.key,
@@ -26,32 +37,29 @@ class GlassNavBar extends StatelessWidget {
   final ValueChanged<int> onSelected;
   final List<GlassNavItem> items;
 
-  /// The pill itself. Trimmed from 68: with the selected item now carrying its
-  /// own pill, the bar no longer needs height to signal where you are.
-  static const double _barHeight = 62;
-
   @override
   Widget build(BuildContext context) {
     final dark = Theme.of(context).brightness == Brightness.dark;
     // The full gesture inset, not a fraction of it. Two thirds of a gesture bar
     // is still a gesture bar, and the last tab row sat inside it.
     final inset = MediaQuery.viewPaddingOf(context).bottom;
+    // Tall enough for the icon, its label at the reader's text size, and the
+    // selected pill around both — rather than a fixed 62 that clipped the
+    // label once text was turned up.
+    final label = MediaQuery.textScalerOf(context).scale(T.label.fontSize! * 1.1);
+    // Icon, gap, label, the pill's padding and its margin — and a little air.
+    final content = T.s6 + T.s1 + label + 4 * T.s1 + T.s1;
+    final height = content < T.s12 + T.s3 ? T.s12 + T.s3 : content;
 
     return Padding(
-      padding: EdgeInsets.fromLTRB(T.s3, 0, T.s3, T.s2 + inset),
+      padding: EdgeInsets.fromLTRB(T.s3, T.s2, T.s3, T.s2 + inset),
       child: Container(
-        height: _barHeight,
+        height: height,
         decoration: BoxDecoration(
-          color: dark ? const Color(0xFF141B26) : Colors.white,
+          color: dark ? _darkBar : T.surfaceRaised,
           borderRadius: BorderRadius.circular(T.rNav),
-          border: Border.all(color: dark ? const Color(0x1FFFFFFF) : T.line),
-          boxShadow: const [
-            BoxShadow(
-              color: Color(0x140B1B3A),
-              blurRadius: 24,
-              offset: Offset(0, 8),
-            ),
-          ],
+          border: Border.all(color: dark ? T.inkMuted.withValues(alpha: 0.4) : T.line),
+          boxShadow: T.e1,
         ),
         child: Row(
           children: [
@@ -85,10 +93,7 @@ class GlassNavItem {
   /// A small mark on the icon, for something waiting on this tab.
   ///
   /// A dot rather than a count, because what is worth marking here is not
-  /// countable — an app update is one fact, not seven. It exists so a tab can
-  /// say there is something inside it without anything having to interrupt the
-  /// screen the reader is actually on, which is the whole reason the update
-  /// notice stopped being a strip that floated over the app.
+  /// countable — an app update is one fact, not seven.
   final bool showDot;
 }
 
@@ -102,15 +107,15 @@ class _Tab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final dark = Theme.of(context).brightness == Brightness.dark;
-    final tone =
-        selected
-            ? (dark ? const Color(0xFF7FB0FF) : T.primary)
-            : (dark ? const Color(0xFF8A94A6) : T.inkMuted);
+    final tone = selected
+        ? (dark ? _darkSelected : T.primary)
+        : (dark ? T.inkFaint : T.inkMuted);
 
     return Semantics(
       button: true,
       selected: selected,
       label: item.label,
+      excludeSemantics: true,
       child: GestureDetector(
         onTap: onTap,
         behavior: HitTestBehavior.opaque,
@@ -122,16 +127,13 @@ class _Tab extends StatelessWidget {
             // pill a different width, and on a 360dp phone it left "Medicines"
             // about 48dp to live in, which clipped it to "Medici...".
             width: double.infinity,
-            margin: const EdgeInsets.symmetric(horizontal: T.s1),
-            padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 6),
+            margin: const EdgeInsets.symmetric(horizontal: T.s1, vertical: T.s1),
+            padding: const EdgeInsets.symmetric(vertical: T.s1),
             decoration: BoxDecoration(
-              // The whole selected state, and nothing else changes shape. A
-              // tint this faint is still unmistakable because it is the only
-              // fill in the bar.
-              color:
-                  selected
-                      ? (dark ? const Color(0x1F4890F0) : T.primaryTint)
-                      : Colors.transparent,
+              // The whole selected state, and nothing else changes shape.
+              color: selected
+                  ? (dark ? _darkSelected.withValues(alpha: 0.12) : T.primaryTint)
+                  : Colors.transparent,
               borderRadius: BorderRadius.circular(T.rControl),
             ),
             child: Column(
@@ -142,43 +144,45 @@ class _Tab extends StatelessWidget {
                   children: [
                     Icon(
                       selected ? item.selectedIcon : item.icon,
-                      size: 22,
+                      size: T.s6,
                       color: tone,
                     ),
                     if (item.showDot)
                       Positioned(
-                        top: -1,
-                        right: -2,
+                        top: 0,
+                        right: 0,
                         child: Container(
-                          width: 9,
-                          height: 9,
+                          width: T.s2,
+                          height: T.s2,
                           decoration: BoxDecoration(
                             color: T.primary,
                             shape: BoxShape.circle,
                             // Ringed in the bar's own ground so it reads as a
                             // mark placed on the icon rather than part of it.
                             border: Border.all(
-                              color:
-                                  dark
-                                      ? const Color(0xFF141B26)
-                                      : Colors.white,
-                              width: 1.6,
+                              color: dark ? _darkBar : T.surfaceRaised,
+                              width: 1.5,
                             ),
                           ),
                         ),
                       ),
                   ],
                 ),
-                const SizedBox(height: 3),
-                Text(
-                  item.label,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: 11,
-                    height: 1.1,
-                    fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-                    color: tone,
+                const SizedBox(height: T.s1),
+                // Shrinks to its cell rather than being cut: a one-word tab
+                // name is load-bearing, and "Medici…" is not a tab.
+                FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Text(
+                    item.label,
+                    maxLines: 1,
+                    softWrap: false,
+                    style: T.label.copyWith(
+                      height: 1.1,
+                      letterSpacing: 0,
+                      fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                      color: tone,
+                    ),
                   ),
                 ),
               ],

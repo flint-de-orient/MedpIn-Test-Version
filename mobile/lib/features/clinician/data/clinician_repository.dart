@@ -789,6 +789,15 @@ class ClinicianRepository {
   Future<LipidControl> lipidControl({int days = 365}) async =>
       LipidControl.fromJson(await _client.getJson('/doctor/panels/lipids', query: {'days': days}));
 
+  /// Every low and very high sugar across the caseload, over [days] days.
+  Future<GlucoseFlags> glucoseFlags({int days = 14}) async =>
+      GlucoseFlags.fromJson(await _client.getJson('/doctor/panels/glucose', query: {'days': days}));
+
+  /// Each patient's latest HbA1c against their target, and who has had none in
+  /// [days] days.
+  Future<Hba1cControl> hba1cControl({int days = 180}) async =>
+      Hba1cControl.fromJson(await _client.getJson('/doctor/panels/hba1c', query: {'days': days}));
+
   // ---- ECGs (/patients/:id/ecg/reports) -------------------------------------
 
   /// The ECGs this practice may read for [patientId], newest first.

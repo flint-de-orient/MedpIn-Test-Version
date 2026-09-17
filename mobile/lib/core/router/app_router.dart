@@ -63,6 +63,7 @@ import '../../features/profile/presentation/notifications_screen.dart';
 import '../../features/profile/presentation/profile_screen.dart';
 import '../../features/shell/presentation/app_shell.dart';
 import '../../shared/providers/locale_provider.dart';
+import '../../shared/widgets/glass_surface.dart' show GlassGround;
 import '../../features/staff/presentation/staff_profile_screen.dart';
 import '../../features/staff/presentation/staff_today_screen.dart';
 import '../../features/staff/presentation/staff_shell.dart';
@@ -218,9 +219,14 @@ final Provider<GoRouter> appRouterProvider = Provider<GoRouter>((ref) {
         path: '/clinician/alerts',
         builder: (context, state) => const AlertsScreen(),
       ),
+      // The nutrition conversations: no longer a tab of the doctor's app, and
+      // still one tap from the home's nutrition card. Pushed over the shell,
+      // on the shell's own ground — the screen is transparent and a pushed
+      // page has nothing painted behind it.
       GoRoute(
-        path: '/clinician/appointments',
-        builder: (context, state) => const AppointmentsAdminScreen(),
+        path: '/clinician/nutrition',
+        builder: (context, state) =>
+            const GlassGround(child: NutritionInboxScreen()),
       ),
       GoRoute(
         path: '/clinician/practice',
@@ -679,10 +685,17 @@ final Provider<GoRouter> appRouterProvider = Provider<GoRouter>((ref) {
         ],
       ),
 
-      // ---- Clinician app (doctor + staff) -------------------------------
-      // Two tabs: Patients (where a patient is opened and prescribed for) and
-      // Profile. Appointments, clinics and knowledge tools remain reachable from
-      // the Profile hub's shortcuts.
+      // ---- Clinician app ------------------------------------------------
+      // Home · Today · Patients · More, for everybody whose area is
+      // /clinician: the doctor, their assistant, the bench and the practice
+      // manager. The branch order is the bar order, and clinician_tabs.dart
+      // decides which of them a person sees.
+      //
+      // Today is the appointments screen that used to be pushed from a link on
+      // the home. As a branch, the pushes and deep links that already `go` to
+      // /clinician/appointments — the notification sheet, an appointment's
+      // push — land on the tab with the bar, rather than on a page with no way
+      // back to it.
       StatefulShellRoute.indexedStack(
         builder:
             (context, state, navigationShell) =>
@@ -699,16 +712,16 @@ final Provider<GoRouter> appRouterProvider = Provider<GoRouter>((ref) {
           StatefulShellBranch(
             routes: [
               GoRoute(
-                path: '/clinician/patients',
-                builder: (context, state) => const PatientsScreen(),
+                path: '/clinician/appointments',
+                builder: (context, state) => const AppointmentsAdminScreen(),
               ),
             ],
           ),
           StatefulShellBranch(
             routes: [
               GoRoute(
-                path: '/clinician/nutrition',
-                builder: (context, state) => const NutritionInboxScreen(),
+                path: '/clinician/patients',
+                builder: (context, state) => const PatientsScreen(),
               ),
             ],
           ),

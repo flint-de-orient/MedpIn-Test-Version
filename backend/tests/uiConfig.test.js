@@ -8,6 +8,8 @@ import {
   DEPARTMENT_DEFAULTS,
   composeFor,
   resolveUi,
+  specialtyKey,
+  specialtyOf,
 } from '../src/services/uiConfig.js';
 import { CAPABILITIES as C, ALL_CAPABILITIES } from '../src/services/capabilities.js';
 import { PERMISSIONS as P, PRESETS } from '../src/models/Membership.js';
@@ -221,55 +223,256 @@ describe('two departments, two different applications', () => {
   });
 });
 
-describe('the clinic that exists today keeps the screen it has', () => {
-  test('the general default is the old hardcoded list, in its order', () => {
+describe('the neutral set is what every caseload has, and nothing a specialty measures', () => {
+  test('the general default, in the order a doctor asks', () => {
     /*
-     * The assertion that makes this migration safe rather than a redesign.
+     * Changed on purpose, in the home redesign — and this is the assertion that
+     * says so rather than letting it drift.
      *
-     * Dr. Dey's practice predates practice types and plans, so it holds every
-     * capability and its doctor holds the head preset — which means it takes
-     * the general default unchanged. This is what he opens onto, and the
-     * deploy that moves the arrangement to the server must not be the deploy
-     * that rearranges it.
+     * It was the founding clinic's hardcoded list transcribed, snapshot chart
+     * first, so that moving the arrangement to the server did not rearrange Dr
+     * Dey's screen. That made the "general" set a diabetes clinic's: every
+     * general physician and every specialty the platform had no preset for
+     * opened onto a glucose chart, and a diabetologist and a physician saw the
+     * same home.
      *
-     * ANALYTICS_SUMMARY was missing from the first draft and the chart would
-     * have quietly left his home screen.
+     * Now: who is booked and waiting, who needs attention, who is due back,
+     * what they are treated for, and the conversations. The diabetes panels
+     * are DIABETOLOGY's, found from the department, the doctor's own specialty
+     * or the practice's — see the specialty tests below.
      */
     assert.deepEqual(forHead(null).widgets, [
-      'ANALYTICS_SUMMARY',
-      'TRIAGE_QUEUE',
       'TODAYS_CLINIC',
-      // Added on purpose, when the general physician's panel was completed:
-      // blood pressure control, follow-ups due and the condition register, all
-      // read from records the practice already holds (routes/panels.js). The
-      // transcribed order around them is unchanged.
-      'BP_CONTROL',
+      'TRIAGE_QUEUE',
       'FOLLOW_UPS_DUE',
       'CONDITION_REGISTRY',
-      'ACTION_QUEUE',
-      'NUTRITION_REVIEWS',
-      'OPEN_ALERTS',
-      // Added on purpose: the day's conversations, which doctors are no longer
-      // pushed one message at a time.
       'CHAT_SUMMARIES',
-      'LIVE_ACTIVITY',
+      'NUTRITION_REVIEWS',
     ]);
+    assert.deepEqual(forHead(null).quickActions, ['START_CONSULTATION', 'ADD_PATIENT']);
+  });
+
+  test('no specialty measure is in it', () => {
+    const general = forHead(null).widgets;
+    for (const id of ['GLUCOSE_FLAGS', 'HBA1C_CONTROL', 'ANALYTICS_SUMMARY', 'RECENT_ECGS', 'LIPID_CONTROL', 'HEART_RATE_FLAGS']) {
+      assert.ok(!general.includes(id), `the neutral set shows ${id}`);
+    }
+  });
+
+  test('one primary action, and nothing that repeats it or the bell', () => {
+    /*
+     * Start consultation, Record vitals and Write prescription all opened the
+     * same patient list — vitals and the prescription are steps of the
+     * consultation — and Alerts repeated the bell and the triage card beside
+     * it. Five pills and no primary.
+     */
+    for (const key of [null, 'diabetology', 'general_physician', 'cardiology']) {
+      const ui = forHead(key ? { key } : null);
+      for (const id of ['RECORD_VITALS', 'WRITE_PRESCRIPTION', 'VIEW_ALERTS', 'VIEW_LAB_REPORTS']) {
+        assert.ok(!ui.quickActions.includes(id), `${key ?? 'general'} still offers ${id}`);
+      }
+      assert.equal(ui.quickActions[0], 'START_CONSULTATION');
+    }
+  });
+
+  test('and nothing that repeats another panel', () => {
+    // Raised alerts duplicated the triage card and the bell; the action queue's
+    // tiles duplicated the bell's count; live activity was context, not work.
+    for (const key of [null, 'diabetology', 'general_physician', 'cardiology']) {
+      const ui = forHead(key ? { key } : null);
+      for (const id of ['OPEN_ALERTS', 'ACTION_QUEUE', 'LIVE_ACTIVITY']) {
+        assert.ok(!ui.widgets.includes(id), `${key ?? 'general'} still shows ${id}`);
+      }
+    }
+  });
+});
+
+describe('three specialties, three homes', () => {
+  const diabetology = forHead({ key: 'diabetology' }).widgets;
+  const physician = forHead({ key: 'general_physician' }).widgets;
+  const cardiology = forHead({ key: 'cardiology' }).widgets;
+  const general = forHead(null).widgets;
+
+  test('each opens on the day, then who needs attention', () => {
+    for (const widgets of [diabetology, physician, cardiology, general]) {
+      assert.deepEqual(widgets.slice(0, 2), ['TODAYS_CLINIC', 'TRIAGE_QUEUE']);
+    }
+  });
+
+  test('a diabetologist reads sugars and HbA1c', () => {
+    assert.ok(diabetology.includes('GLUCOSE_FLAGS'));
+    assert.ok(diabetology.includes('HBA1C_CONTROL'));
+    assert.ok(diabetology.includes('FOLLOW_UPS_DUE'));
+    assert.ok(!diabetology.includes('RECENT_ECGS'));
+  });
+
+  test('a general physician reads blood pressure, conditions and labs', () => {
+    for (const id of ['BP_CONTROL', 'FOLLOW_UPS_DUE', 'CONDITION_REGISTRY', 'RECENT_LAB_REPORTS']) {
+      assert.ok(physician.includes(id), `a physician's home lacks ${id}`);
+    }
+    assert.ok(!physician.includes('GLUCOSE_FLAGS'));
+  });
+
+  test('a cardiologist reads pressure, pulse, ECGs and LDL', () => {
+    for (const id of ['BP_CONTROL', 'HEART_RATE_FLAGS', 'RECENT_ECGS', 'LIPID_CONTROL', 'FOLLOW_UPS_DUE']) {
+      assert.ok(cardiology.includes(id), `a cardiologist's home lacks ${id}`);
+    }
+  });
+
+  test('and no two of them, or the neutral set, are the same screen', () => {
+    const screens = [diabetology, physician, cardiology, general].map((w) => w.join(','));
+    assert.equal(new Set(screens).size, 4, 'two specialties open onto the same home');
+  });
+
+  test('nothing is registered that no record answers', () => {
+    // Foot and eye screening have routes and no screen that files them; a risk
+    // score has no instrument. See the top of uiConfig.js and routes/panels.js.
+    for (const id of Object.keys(WIDGETS)) {
+      assert.ok(!/RISK|FOOT|EYE|SCREENING|ADHERENCE/.test(id), `${id} is registered`);
+    }
+  });
+});
+
+describe('where a specialty comes from', () => {
+  const head_ = (extra) => resolveUi({ capabilities: everything, permissions: head, ...extra });
+
+  test('the practice says, when nobody else does', () => {
+    const ui = head_({ practiceSpecialty: 'diabetology' });
+    assert.ok(ui.widgets.includes('HBA1C_CONTROL'));
+    assert.equal(ui.specialty, 'diabetology');
+    assert.equal(ui.source, 'practiceSpecialty');
+  });
+
+  test('what the doctor practises beats what the practice treats', () => {
+    // A cardiologist at a general practice with no departments — a clinic
+    // cannot have them — is still a cardiologist.
+    const ui = head_({ practiceSpecialty: 'general_physician', personSpecialty: 'Consultant Cardiologist' });
+    assert.ok(ui.widgets.includes('RECENT_ECGS'));
+    assert.equal(ui.specialty, 'cardiology');
+    assert.equal(ui.source, 'personSpecialty');
+  });
+
+  test('a department beats both, even one with no preset of its own', () => {
+    const cardiology = head_({
+      department: { key: 'cardiology' },
+      practiceSpecialty: 'diabetology',
+      personSpecialty: 'Diabetologist',
+    });
+    assert.equal(cardiology.specialty, 'cardiology');
+    assert.equal(cardiology.source, 'departmentDefault');
+
+    // Neurology at a diabetes polyclinic is not a diabetes home.
+    const neurology = head_({ department: { key: 'neurology' }, practiceSpecialty: 'diabetology' });
+    assert.deepEqual(neurology.widgets, forHead(null).widgets);
+    assert.equal(neurology.specialty, null);
+    assert.equal(neurology.source, 'general');
+  });
+
+  test('a role default still beats every specialty', () => {
+    const ui = resolveUi({
+      role: 'lab_technician',
+      practiceSpecialty: 'cardiology',
+      personSpecialty: 'Cardiologist',
+      capabilities: everything,
+      permissions: head,
+    });
+    assert.equal(ui.source, 'role');
+    assert.equal(ui.specialty, null);
+    assert.ok(ui.widgets.includes('CRITICAL_LAB_RESULTS'));
+  });
+
+  test('the ways a specialty is written, narrowly', () => {
+    assert.equal(specialtyKey('diabetology'), 'diabetology');
+    assert.equal(specialtyKey('Diabetes & Endocrinology'), 'diabetology');
+    assert.equal(specialtyKey('Consultant Endocrinologist'), 'diabetology');
+    assert.equal(specialtyKey('cardiology'), 'cardiology');
+    assert.equal(specialtyKey('Interventional Cardiologist'), 'cardiology');
+    assert.equal(specialtyKey('general_physician'), 'general_physician');
+    assert.equal(specialtyKey('General Medicine'), 'general_physician');
+    assert.equal(specialtyKey('general_medicine'), 'general_physician');
+    assert.equal(specialtyKey('Family physician'), 'general_physician');
+    assert.equal(specialtyKey('Internal Medicine'), 'general_physician');
+    // Not a physician's home, and not a guess.
+    assert.equal(specialtyKey('General Surgeon'), null);
+    assert.equal(specialtyKey('Dermatology'), null);
+    assert.equal(specialtyKey(''), null);
+    assert.equal(specialtyKey(null), null);
+  });
+
+  test('an unknown specialty is the neutral set, said as general', () => {
+    const ui = head_({ practiceSpecialty: 'dermatology', personSpecialty: 'Dermatologist' });
+    assert.deepEqual(ui.widgets, forHead(null).widgets);
+    assert.equal(ui.source, 'general');
+    assert.equal(ui.specialty, null);
+    assert.deepEqual(specialtyOf({}), { key: null, from: null });
+  });
+
+  test('the tiers are the six the resolver documents', () => {
+    const seen = new Set();
+    for (const department of [null, { key: 'laboratory' }, { key: 'x', widgets: ['TODAYS_CLINIC'] }]) {
+      for (const role of [null, 'doctor', 'lab_manager']) {
+        for (const personSpecialty of [null, 'Cardiologist']) {
+          for (const practiceSpecialty of [null, 'diabetology']) {
+            seen.add(
+              resolveUi({ department, role, personSpecialty, practiceSpecialty, capabilities: everything, permissions: head })
+                .source,
+            );
+          }
+        }
+      }
+    }
+    assert.deepEqual(
+      [...seen].sort(),
+      ['department', 'departmentDefault', 'general', 'personSpecialty', 'practiceSpecialty', 'role'].sort(),
+    );
+  });
+});
+
+describe('nutrition appears only where something answers in it', () => {
+  const noAssistant = new Set([...everything].filter((c) => c !== C.AI_ASSISTANT));
+
+  test('no dietician and no assistant: no diet-review panel', () => {
+    const ui = resolveUi({ capabilities: noAssistant, permissions: head, hasDietician: false });
+    assert.ok(!ui.widgets.includes('NUTRITION_REVIEWS'));
+    // And nothing else went with it.
+    assert.ok(ui.widgets.includes('TRIAGE_QUEUE'));
+  });
+
+  test('an active dietician is enough', () => {
+    const ui = resolveUi({ capabilities: noAssistant, permissions: head, hasDietician: true });
+    assert.ok(ui.widgets.includes('NUTRITION_REVIEWS'));
+  });
+
+  test('so is the nutrition assistant', () => {
+    const ui = resolveUi({ capabilities: everything, permissions: head, hasDietician: false });
+    assert.ok(ui.widgets.includes('NUTRITION_REVIEWS'));
+  });
+
+  test('and not being told is not being told "none"', () => {
+    // A caller that never asked whether there is a dietician must not hide the
+    // panel — the rule every other absence in this file follows.
+    assert.ok(resolveUi({ capabilities: noAssistant, permissions: head }).widgets.includes('NUTRITION_REVIEWS'));
+    assert.ok(resolveUi({ capabilities: undefined, permissions: head, hasDietician: false }).widgets.includes('NUTRITION_REVIEWS'));
   });
 });
 
 describe('what the plan pays for disappears when it stops paying', () => {
   test('no analytics, no analytics panel', () => {
+    // Diabetology, because it is the preset that carries the chart: asked of
+    // cardiology this passed without the gate doing anything.
     const without = new Set([...everything].filter((c) => c !== C.ADVANCED_ANALYTICS));
     const ui = resolveUi({
-      department: { key: 'cardiology' },
+      department: { key: 'diabetology' },
       capabilities: without,
       permissions: head,
     });
 
+    assert.ok(forHead({ key: 'diabetology' }).widgets.includes('ANALYTICS_SUMMARY'));
     assert.ok(!ui.widgets.includes('ANALYTICS_SUMMARY'));
     // And the rest of the dashboard is still there. A capability going away
     // removes a component; it does not empty the screen.
     assert.ok(ui.widgets.includes('TRIAGE_QUEUE'));
+    assert.ok(ui.widgets.includes('HBA1C_CONTROL'));
   });
 
   test('the readings themselves are never behind a plan', () => {
@@ -279,11 +482,19 @@ describe('what the plan pays for disappears when it stops paying', () => {
      * are not a premium feature. A practice that has stopped paying loses
      * growth and analysis — see billing/lapse.js — and does not lose the
      * ability to see who is in front of it.
+     *
+     * OPEN_ALERTS was the third assertion here. The raised alerts now live in
+     * the triage card, which is asserted, rather than in a second panel that
+     * repeated it.
      */
     const ui = resolveUi({ department: null, capabilities: new Set(), permissions: head });
     assert.ok(ui.widgets.includes('TODAYS_CLINIC'));
     assert.ok(ui.widgets.includes('TRIAGE_QUEUE'));
-    assert.ok(ui.widgets.includes('OPEN_ALERTS'));
+    assert.ok(ui.widgets.includes('FOLLOW_UPS_DUE'));
+
+    const sugars = resolveUi({ department: { key: 'diabetology' }, capabilities: new Set(), permissions: head });
+    assert.ok(sugars.widgets.includes('GLUCOSE_FLAGS'));
+    assert.ok(sugars.widgets.includes('HBA1C_CONTROL'));
   });
 
   test('a diagnostic centre is offered no prescribing action', () => {
@@ -306,9 +517,19 @@ describe('and what this person may do narrows it again', () => {
   test('the desk is not offered prescribing', () => {
     const ui = resolveUi({ department: null, capabilities: everything, permissions: desk });
     assert.ok(!ui.quickActions.includes('WRITE_PRESCRIPTION'));
-    // But it still registers people and takes their weight.
-    assert.ok(ui.quickActions.includes('RECORD_VITALS'));
+    // But it still registers people. (It was asserted to be offered Record
+    // vitals too; no default offers that now — vitals are the consultation's
+    // first step, the same destination as Start consultation.)
     assert.ok(ui.quickActions.includes('ADD_PATIENT'));
+
+    // And an operator who configures prescribing for a department still cannot
+    // hand it to the desk.
+    const configured = resolveUi({
+      department: { key: 'x', quickActions: ['WRITE_PRESCRIPTION', 'RECORD_VITALS'] },
+      capabilities: everything,
+      permissions: desk,
+    });
+    assert.deepEqual(configured.quickActions, ['RECORD_VITALS']);
   });
 
   test('a clinician is not shown the staff list', () => {
@@ -406,26 +627,15 @@ describe('the resolver accepts what its callers actually hold', () => {
      * one hides what the other permits.
      */
     const ui = resolveUi({ capabilities: undefined, permissions: undefined });
-    assert.deepEqual(ui.widgets, [
-      'ANALYTICS_SUMMARY',
-      'TRIAGE_QUEUE',
-      'TODAYS_CLINIC',
-      // Added on purpose, when the general physician's panel was completed:
-      // blood pressure control, follow-ups due and the condition register, all
-      // read from records the practice already holds (routes/panels.js). The
-      // transcribed order around them is unchanged.
-      'BP_CONTROL',
-      'FOLLOW_UPS_DUE',
-      'CONDITION_REGISTRY',
-      'ACTION_QUEUE',
-      'NUTRITION_REVIEWS',
-      'OPEN_ALERTS',
-      // Added on purpose: the day's conversations, which doctors are no longer
-      // pushed one message at a time.
-      'CHAT_SUMMARIES',
-      'LIVE_ACTIVITY',
-    ]);
-    assert.ok(ui.quickActions.includes('WRITE_PRESCRIPTION'));
+    // The whole neutral set, unfiltered — see the test that pins it above.
+    assert.deepEqual(ui.widgets, forHead(null).widgets);
+    assert.ok(ui.widgets.length > 0);
+    assert.ok(ui.quickActions.includes('START_CONSULTATION'));
+
+    // And the plan-gated chart survives on a diabetology home, because
+    // "unknown" does not narrow.
+    const diabetology = resolveUi({ department: { key: 'diabetology' }, capabilities: undefined, permissions: undefined });
+    assert.ok(diabetology.widgets.includes('ANALYTICS_SUMMARY'));
   });
 
   test('but an empty set is an answer, and means it', () => {
