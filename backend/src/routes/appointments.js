@@ -816,53 +816,189 @@ router.patch(
   }),
 );
 
+/**
+ * Move a booking to another time — and, when a location is named, to another of
+ * the practice's locations.
+ *
+ * ---- It moved nothing anybody could see ------------------------------------
+ *
+ * The original was cancelled and the replacement written as `requested`. So an
+ * appointment the desk had just moved left the booked list and came back under
+ * "Waiting for a time", as a request with no day on it, to be given a time all
+ * over again; a patient's own move turned their confirmed visit back into a
+ * question. A request with a time on it is the state the confirm route calls a
+ * slot held without a booking. The new time has passed the same checks a booking
+ * passes, so it is a booking.
+ *
+ * ---- Still a new row ---------------------------------------------------------
+ *
+ * The original is kept, cancelled, and the replacement points back at it with
+ * `rescheduledFrom` — when it was, who moved it and to when stay on record.
+ *
+ * ---- Where there is no location ----------------------------------------------
+ *
+ * A practice with no locations publishes no hours, so the doctor's own diary is
+ * the rule: a future time the doctor is free at. That is the desk's or the
+ * doctor's call to make. A patient does not pick an unpublished hour for
+ * themselves — they ask for another day, which is what the request path is for.
+ */
 router.patch(
   '/:id/reschedule',
-  validate({ body: z.object({ scheduledFor: z.coerce.date() }) }),
+  validate({
+    body: z.object({
+      scheduledFor: z.coerce.date(),
+      // Another of the practice's locations. Absent, it stays where it is.
+      clinicId: z.string().optional(),
+    }),
+  }),
   audit('update', 'Appointment'),
   asyncHandler(async (req, res) => {
+    const { scheduledFor, clinicId } = req.body;
+
     const existing = await Appointment.findOne({ _id: req.params.id, ...(await scopeFilter(req)) });
     if (!existing) throw notFound('Appointment not found');
-    if (['completed', 'cancelled'].includes(existing.status)) {
+    // A no-show is refused with the finished ones. Moving it would cancel the
+    // row that records they did not come, and replace a fact with a new booking.
+    if (['completed', 'cancelled', 'no_show'].includes(existing.status)) {
       throw badRequest('This appointment can no longer be changed');
     }
-    if (dayjs(req.body.scheduledFor).isBefore(dayjs())) {
+    // A request has no time to move. Moving one wrote a time onto a copy of it
+    // and dropped the day the patient asked for; giving it a time is confirming.
+    if (!existing.scheduledFor) {
+      throw badRequest('This request has no time yet. Give it a time instead of moving it.');
+    }
+    if (dayjs(scheduledFor).isBefore(dayjs())) {
       throw badRequest('Appointment time must be in the future');
     }
 
-    // Re-validate the new time against the same clinic's live schedule.
-    if (existing.clinic) {
-      const clinic = await Clinic.findOne({ _id: existing.clinic, isActive: true });
+    const moving = Boolean(clinicId) && String(clinicId) !== String(existing.clinic ?? '');
+    let clinic = null;
+    if (moving) {
+      // The same test a booking there would pass: this caller's places, open.
+      clinic = await Clinic.findOne({
+        $and: [{ _id: clinicId, isActive: true }, await bookableClinics(req, existing.patient)],
+      });
       if (!clinic) throw badRequest('That clinic is not available');
-      // The appointment being moved is still in the diary until it is
-      // cancelled below, and must not count as the thing it clashes with.
-      if (!(await isSlotBookable(clinic, req.body.scheduledFor, { doctorId: existing.doctor, exclude: existing._id }))) {
-        throw badRequest('That time slot is not available. Please choose another.');
-      }
+    } else if (existing.clinic) {
+      // Re-validate the new time against the same clinic's live schedule. A
+      // closed location takes no new time; the way out is to name another.
+      clinic = await Clinic.findOne({ _id: existing.clinic, isActive: true });
+      if (!clinic) throw badRequest('That clinic is not available');
+    } else if (isPatient(req)) {
+      throw badRequest('Please ask the clinic for another time.');
     }
 
-    // Preserve the original as an audit trail rather than mutating in place.
-    existing.status = 'cancelled';
-    existing.cancellationReason = 'Rescheduled by patient';
-    existing.cancelledBy = req.user._id;
-    await existing.save();
+    const durationMinutes = moving
+      ? (clinic.slotMinutes ?? DEFAULT_SLOT_MINUTES)
+      : (existing.durationMinutes ?? DEFAULT_SLOT_MINUTES);
 
-    const replacement = await Appointment.create({
+    // The appointment being moved is still in the diary until it is cancelled
+    // below, and must not count as the thing it clashes with.
+    if (clinic && !(await isSlotBookable(clinic, scheduledFor, { doctorId: existing.doctor, exclude: existing._id }))) {
+      throw badRequest('That time slot is not available. Please choose another.');
+    }
+    // And the doctor's own diary, for the length this visit runs — the same
+    // second guard a booking has, and the only one where there is no location.
+    const slotStart = dayjs(scheduledFor);
+    const clash = await doctorCommitments(
+      existing.doctor,
+      slotStart.toDate(),
+      slotStart.add(durationMinutes, 'minute').toDate(),
+      { exclude: existing._id },
+    );
+    if (clash.length) throw badRequest('That time slot is not available. Please choose another.');
+
+    const replacement = new Appointment({
       patient: existing.patient,
       doctor: existing.doctor,
-      clinic: existing.clinic,
+      clinic: clinic?._id,
       // Carried from the row it replaces, and derived for one written before
       // the field existed — a reschedule must not lose whose diary it is in.
-      practice: existing.practice ?? (await practiceOfMember(existing.doctor)),
-      scheduledFor: req.body.scheduledFor,
+      practice: existing.practice ?? clinic?.practice ?? (await practiceOfMember(existing.doctor)),
+      scheduledFor,
       mode: existing.mode,
       reason: existing.reason,
-      durationMinutes: existing.durationMinutes,
-      status: 'requested',
+      durationMinutes,
+      status: 'confirmed',
       rescheduledFrom: existing._id,
+      // What the booking was, it still is: a priority slot the triage asked for
+      // stays one, and a teleconsult keeps the room its link points at.
+      isPriority: existing.isPriority ?? false,
+      createdFromAlert: existing.createdFromAlert,
+      ...(existing.teleconsult?.roomId
+        ? { teleconsult: { roomId: existing.teleconsult.roomId, joinUrl: existing.teleconsult.joinUrl } }
+        : {}),
     });
+    // Before the original is touched: a replacement that cannot be written must
+    // not leave the patient with a cancelled appointment and nothing in its place.
+    await replacement.validate();
+
+    /*
+     * The original, cancelled only if nobody has changed it first.
+     *
+     * Read, change, `save()` let two taps on a slow connection both pass every
+     * check above and both write a replacement — one visit, booked twice, and
+     * two confirmations for the patient. Conditional on the row as it was read,
+     * exactly one move happens; the other is told, and writes nothing.
+     */
+    const original = await Appointment.findOneAndUpdate(
+      { _id: existing._id, status: existing.status, scheduledFor: existing.scheduledFor },
+      {
+        $set: {
+          status: 'cancelled',
+          cancellationReason: isPatient(req) ? 'Rescheduled by patient' : 'Rescheduled by the clinic',
+          cancelledBy: req.user._id,
+        },
+      },
+      { new: true },
+    );
+    if (!original) {
+      throw conflict('This appointment was changed a moment ago. Nothing was moved; please look at it again.');
+    }
+
+    try {
+      await replacement.save();
+    } catch (err) {
+      // Put the original back rather than leave the patient with nothing.
+      await Appointment.updateOne(
+        { _id: existing._id, status: 'cancelled' },
+        { $set: { status: existing.status }, $unset: { cancellationReason: 1, cancelledBy: 1 } },
+      ).catch(() => {});
+      throw err;
+    }
 
     await replacement.populate(POPULATE);
+
+    /*
+     * Everybody whose day changed is told, and the patient where they will look.
+     *
+     * A move made by the patient reaches the practice; one made by the practice
+     * reaches the patient, by push and in the thread, exactly as a confirmation
+     * does — a reschedule confirmed on somebody else's screen is not one the
+     * patient knows about. Best-effort: the move has happened either way.
+     */
+    const when = inClinicTz(scheduledFor).format('ddd D MMM, h:mm A');
+    const patientName = replacement.patient?.name ?? 'A patient';
+    await Promise.all([
+      notifyClinicOfAppointmentChange(replacement, patientName, 'rescheduled').catch(() => {}),
+      ...(isPatient(req)
+        ? []
+        : [
+            notifyPatientOfAppointmentChange(replacement, 'rescheduled', 'Please come at the new time.').catch(
+              () => {},
+            ),
+            postCareThreadNote({
+              patientId: replacement.patient?._id ?? replacement.patient,
+              author: req.user,
+              text: clinic
+                ? `Your appointment has been moved to ${when} at ${clinic.name}.`
+                : `Your appointment has been moved to ${when}.`,
+            }),
+          ]),
+    ]);
+    // The time given up is free for somebody waiting on that day.
+    await offerFreedSlotToWaitlist(original);
+
     res.json({ appointment: serialise(replacement) });
   }),
 );
