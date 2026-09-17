@@ -39,7 +39,11 @@ let origin = null;
 export async function boot() {
   if (origin) return origin;
 
-  mongod = await MongoMemoryServer.create();
+  // A minute to start, not the library's ten seconds. On a machine running
+  // several suites at once mongod routinely takes longer than ten seconds to
+  // come up, and every test in the file was then reported cancelled — a
+  // failure about the machine, read as a failure about the code.
+  mongod = await MongoMemoryServer.create({ instance: { launchTimeout: 60000 } });
   await mongoose.connect(mongod.getUri('medpin_http_test'));
 
   const { createApp } = await import('../../src/app.js');
