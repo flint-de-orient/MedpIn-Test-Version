@@ -39,6 +39,7 @@ import {
 import {
   assertManagesLocation,
   managedLocationFilter,
+  soleLocation,
 } from '../middleware/locationScope.js';
 
 const router = Router();
@@ -60,6 +61,20 @@ const isPatient = (req) => req.user.role === ROLES.PATIENT;
  * hours showing the previous evening's patients.
  */
 const clinicToday = () => inClinicTz(new Date()).format('YYYY-MM-DD');
+
+/**
+ * The practice a booking with no location belongs to.
+ *
+ * With a location it is the location's. Without one — a teleconsult, or a
+ * practice that has no locations — it is the caller's own practice, or for a
+ * patient the one practice they are enrolled at. Never "the platform's only
+ * doctor", which is what resolving a doctor with no practice to go on asked.
+ */
+async function practiceForWork(req, patientId) {
+  if (!isPatient(req)) return practiceOf(req);
+  const mine = await patientPracticeIds(patientId);
+  return mine?.length === 1 ? mine[0] : null;
+}
 
 /**
  * Whose appointments this caller may see, and it returned `{}` for a clinician.
@@ -340,10 +355,21 @@ router.post(
     // before anything reads it: resolving the doctor reads the clinic by id, and
     // another practice's location must be refused in the same words as one that
     // does not exist. An inactive one reads the same way, for the same reason.
-    const location = clinicId
-      ? await Clinic.findOne({ $and: [{ _id: clinicId }, await bookableClinics(req, patientId)] })
-      : null;
+    const bookable = await bookableClinics(req, patientId);
+    let location = clinicId ? await Clinic.findOne({ $and: [{ _id: clinicId }, bookable] }) : null;
     if (clinicId && !location) throw badRequest('That clinic is not available');
+
+    /*
+     * A visit in person with no location named: the one there is.
+     *
+     * Location is optional. A practice with one has nothing to choose between,
+     * and a practice with none — a solo doctor seeing patients in their own
+     * rooms — has no location to name at all; both were refused with "Please
+     * choose a clinic". Several is the first point at which guessing could send
+     * somebody to the wrong building, and that is refused with
+     * LOCATION_REQUIRED. See soleLocation.
+     */
+    if (!clinicId && mode === 'in_clinic') location = await soleLocation(req, bookable);
 
     // The desk books only where it runs, asked before the doctor is looked up
     // so nothing about that location is read on the way to refusing it. A
@@ -354,10 +380,13 @@ router.post(
 
     // The chosen clinic already records its doctor, so a booking at the Salt
     // Lake branch lands on the doctor who sits there rather than on whichever
-    // row the database returned first.
+    // row the database returned first. With no location there is no building
+    // to read one from: a doctor booking is booking themselves, and anybody
+    // else gets their practice's doctor.
     const doctor = await resolveDoctor({
       explicitId: req.body.doctorId,
       clinicId: location?._id ?? null,
+      ...(location ? {} : { actingUser: req.user, practiceId: await practiceForWork(req, patientId) }),
       required: true,
     });
     if (!doctor) throw badRequest('No doctor is available for booking');
@@ -367,14 +396,24 @@ router.post(
     // schedule. This is the authoritative check — the client cannot book a time
     // the schedule does not offer, or one already taken.
     let clinic = null;
-    if (mode === 'in_clinic') {
-      if (!location) throw badRequest('Please choose a clinic');
+    if (mode === 'in_clinic' && location) {
       if (!location.isActive) throw badRequest('That clinic is not available');
       clinic = location;
       if (!(await isSlotBookable(clinic, scheduledFor, { doctorId: doctor._id }))) {
         throw badRequest('That time slot is no longer available. Please choose another.');
       }
+    } else if (mode === 'in_clinic' && isPatient(req)) {
+      /*
+       * A patient books from published hours, and a practice with no open
+       * location publishes none — so there is no slot to have checked, and a
+       * patient choosing an hour for themselves would be booked at three in the
+       * morning if they asked for it. Asking is theirs: the request path takes a
+       * day, and the practice gives it a time.
+       */
+      throw badRequest('This practice is not taking bookings online. Please ask for an appointment instead.');
     }
+    // Staff booking in person at a practice with no open location: no published
+    // hours to check against, so the doctor's own diary below is the rule.
 
     // Second guard, for the doctor rather than the building: a teleconsult has
     // no slot list to have checked, and a doctor booked at another location in
@@ -392,9 +431,10 @@ router.post(
       patient: patientId,
       doctor: doctor._id,
       clinic: clinic?._id,
-      // Whose diary. From the building where there is one; a teleconsult has
-      // none, so it comes from the doctor's own membership.
-      practice: clinic?.practice ?? (await practiceOfMember(doctor._id)),
+      // Whose diary. From the building where there is one; without one, the
+      // practice doing the work, and the doctor's own membership last.
+      practice:
+        clinic?.practice ?? (await practiceForWork(req, patientId)) ?? (await practiceOfMember(doctor._id)),
       scheduledFor,
       mode,
       reason,
@@ -681,7 +721,8 @@ router.patch(
   requireRole(ROLES.DOCTOR, ROLES.STAFF),
   validate({
     body: z.object({
-      clinicId: z.string(),
+      // Optional where there is one location or none. See soleLocation.
+      clinicId: z.string().optional(),
       scheduledFor: z.coerce.date(),
       // Set only on a second attempt, after the desk has been shown that this
       // patient already has a slot that day and has said to go ahead anyway.
@@ -710,16 +751,26 @@ router.patch(
     // One of this practice's locations. The appointment is scoped above and the
     // location was not, so a request could be confirmed into another practice's
     // building — holding a slot in its diary.
-    const clinic = await Clinic.findOne({
-      $and: [{ _id: clinicId, isActive: true }, await practiceClinics(req)],
-    });
-    if (!clinic) throw badRequest('That clinic is not available');
-    await assertManagesLocation(req, clinic._id);
+    //
+    // Named, it must be one the confirming desk runs. Not named, it is the one
+    // there is — or none, for a practice with no open location, where a solo
+    // doctor could otherwise never give a request a time at all.
+    let clinic = null;
+    if (clinicId) {
+      clinic = await Clinic.findOne({
+        $and: [{ _id: clinicId, isActive: true }, await practiceClinics(req)],
+      });
+      if (!clinic) throw badRequest('That clinic is not available');
+      await assertManagesLocation(req, clinic._id);
+    } else {
+      clinic = await soleLocation(req, await practiceClinics(req));
+    }
 
     // The same authority a patient booking goes through. A request confirmed
     // onto a time the schedule does not offer is worse than one left pending:
-    // the patient is told to come at an hour the doctor is not there.
-    if (!(await isSlotBookable(clinic, scheduledFor, { doctorId: appointment.doctor }))) {
+    // the patient is told to come at an hour the doctor is not there. With no
+    // location there is no schedule, and the doctor's diary below is the rule.
+    if (clinic && !(await isSlotBookable(clinic, scheduledFor, { doctorId: appointment.doctor }))) {
       throw badRequest('That time is not free. Please choose another.');
     }
 
@@ -728,7 +779,7 @@ router.patch(
     const clash = await doctorCommitments(
       appointment.doctor,
       slotStart.toDate(),
-      slotStart.add(clinic.slotMinutes ?? DEFAULT_SLOT_MINUTES, 'minute').toDate(),
+      slotStart.add(clinic?.slotMinutes ?? DEFAULT_SLOT_MINUTES, 'minute').toDate(),
       { exclude: appointment._id },
     );
     if (clash.length) throw badRequest('That time has just been taken. Please choose another.');
@@ -800,9 +851,9 @@ router.patch(
       { _id: appointment._id, status: 'requested' },
       {
         $set: {
-          clinic: clinic._id,
+          clinic: clinic?._id ?? null,
           scheduledFor,
-          durationMinutes: clinic.slotMinutes ?? DEFAULT_SLOT_MINUTES,
+          durationMinutes: clinic?.slotMinutes ?? DEFAULT_SLOT_MINUTES,
           status: 'confirmed',
         },
         // The wish is spent. Keeping it would leave two dates on one row and
@@ -827,7 +878,9 @@ router.patch(
       postCareThreadNote({
         patientId: confirmed.patient?._id ?? confirmed.patient,
         author: req.user,
-        text: `Your appointment is confirmed for ${when} at ${clinic.name}.`,
+        text: clinic
+          ? `Your appointment is confirmed for ${when} at ${clinic.name}.`
+          : `Your appointment is confirmed for ${when}.`,
       }),
       notifyClinicOfAppointmentChange(
         confirmed,
@@ -1320,6 +1373,11 @@ router.post(
     }
     if (!['requested', 'confirmed'].includes(appt.status)) {
       throw badRequest('This appointment cannot be checked in');
+    }
+    // A closed location takes nobody into its waiting room. The appointment is
+    // kept and can be moved to a location that is open.
+    if (appt.clinic && !(await Clinic.exists({ _id: appt.clinic, isActive: true }))) {
+      throw badRequest('That clinic is not available');
     }
 
     // The clinic's date, not the server's — see clinicToday. It names the

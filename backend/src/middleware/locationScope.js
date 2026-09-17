@@ -1,3 +1,4 @@
+import { Clinic } from '../models/Clinic.js';
 import { ROLES } from '../models/User.js';
 import { AppError } from './errors.js';
 import { membershipOf } from './authorise.js';
@@ -41,6 +42,9 @@ import { recordDenial } from './recordDenial.js';
 /** The error code for work at a location the caller does not run. */
 export const LOCATION_NOT_MANAGED = 'LOCATION_NOT_MANAGED';
 
+/** The error code for work that needs a location, where there are several. */
+export const LOCATION_REQUIRED = 'LOCATION_REQUIRED';
+
 const isPatient = (req) => req.user?.role === ROLES.PATIENT;
 const idOf = (value) => String(value?._id ?? value);
 
@@ -48,6 +52,13 @@ export function locationNotManaged(message = 'You do not manage that location.')
   return new AppError(403, LOCATION_NOT_MANAGED, message);
 }
 
+export function locationRequired() {
+  return new AppError(
+    400,
+    LOCATION_REQUIRED,
+    'This practice has more than one location. Choose which one this is for.',
+  );
+}
 
 /**
  * The locations this caller runs: `null` for every location of their practice,
@@ -126,4 +137,43 @@ export async function managedLocationFilter(req, field = 'clinic', { includeUnpl
   if (ids === null) return {};
   const here = { [field]: { $in: ids } };
   return includeUnplaced ? { $or: [here, { [field]: null }] } : here;
+}
+
+/**
+ * The location a piece of work is at, when the request did not name one.
+ *
+ *   no open location within reach        → null: work without one
+ *   exactly one the caller runs          → that one, without asking
+ *   several                              → LOCATION_REQUIRED
+ *   open locations, none the caller runs → LOCATION_NOT_MANAGED
+ *
+ * ---- Why the count decides ---------------------------------------------------
+ *
+ * Location is optional. A solo doctor with no location is a whole practice, and
+ * a practice with one has nothing to choose between — asking either of them
+ * "which location?" is a question with no answer or with one. Two or more is the
+ * first point at which guessing could put a patient in the wrong building, so
+ * that is where the caller has to say.
+ *
+ * `within` is the location filter the route already applies — the practice's
+ * for staff, a patient's practices' for a patient — so the choice is only ever
+ * among places the caller could have named themselves. Counted among the ones
+ * they run: a receptionist narrowed to one branch of two has one choice, not a
+ * question.
+ */
+export async function soleLocation(req, within) {
+  const open = await Clinic.find({ $and: [{ isActive: true }, within] }).sort({ sortIndex: 1, name: 1 });
+  if (!open.length) return null;
+
+  const mine = [];
+  for (const location of open) {
+    if (isPatient(req) || (await managesLocation(req, location))) mine.push(location);
+  }
+
+  if (mine.length === 1) return mine[0];
+  if (!mine.length) {
+    recordDenial(req, { reason: 'location_not_managed', location: 'implicit' });
+    throw locationNotManaged();
+  }
+  throw locationRequired();
 }

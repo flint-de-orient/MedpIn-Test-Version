@@ -306,6 +306,22 @@ describe('staff narrowed to Clinic A do not run Clinic B', () => {
     assert.equal(res.status, 200, 'a membership with no location list lost access on deploy');
   });
 
+  test('with one location of two in reach, a desk is not asked which', async () => {
+    const res = await as(w.deskA.token).post('/appointments', {
+      patientId: String(w.patient.user._id),
+      scheduledFor: at('18:00').toISOString(),
+    });
+    assert.equal(res.status, 201, JSON.stringify(res.body));
+    assert.equal(String(res.body.appointment.clinicId), String(w.clinicA._id));
+
+    // The head runs both, so for them it is a question.
+    const head = await as(w.head.token).post('/appointments', {
+      patientId: String(w.patient.user._id),
+      scheduledFor: at('19:00').toISOString(),
+    });
+    assert.equal(head.status, 400);
+    assert.equal(head.body.error.code, 'LOCATION_REQUIRED');
+  });
 });
 
 describe('who runs which location', () => {

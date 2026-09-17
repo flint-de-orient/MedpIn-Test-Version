@@ -6,6 +6,7 @@ import { validate, q } from '../middleware/validate.js';
 import { asyncHandler, notFound, badRequest, conflict, forbidden } from '../middleware/errors.js';
 import { audit } from '../middleware/audit.js';
 import { Clinic } from '../models/Clinic.js';
+import { Appointment } from '../models/Appointment.js';
 import { Membership, MEMBERSHIP_STATUS, PERMISSIONS } from '../models/Membership.js';
 import { practiceOf, practiceClinics, clinicsFor } from '../middleware/practiceScope.js';
 import {
@@ -19,7 +20,7 @@ import { Practice } from '../models/Practice.js';
 import { billingBlocks } from '../services/billing/lapse.js';
 import { noticeUsage } from '../services/billing/usageNotice.js';
 import { User, ROLES } from '../models/User.js';
-import { generateSlots } from '../services/scheduling.js';
+import { ACTIVE_STATUSES, generateSlots } from '../services/scheduling.js';
 import { forgetClinicIdentity } from '../services/clinicIdentity.js';
 import { dayjs, DATE_RE, TIME_RE } from '../utils/clinicTime.js';
 import { resolveDoctor } from '../services/doctorContext.js';
@@ -261,11 +262,29 @@ router.get(
     const { date, doctorId } = q(req);
     if (!dayjs(date, 'YYYY-MM-DD', true).isValid()) throw badRequest('Invalid date');
 
-    const slots = await generateSlots(clinic, date, { doctorId: doctorId ?? null });
+    /*
+     * Whose diary, when nobody named one: the doctor a booking here would go to.
+     *
+     * Absent a doctor this answered for the building, marking a time taken when
+     * anybody's appointment started at it. That was harmless while a location
+     * held one doctor and wrong the day it held two — Dr Roy's ten o'clock hid
+     * Dr Sen's, though the two are booked side by side — and it matched slots by
+     * start time, so a 45-minute consultation left the next two slots on offer.
+     * Booking resolves the doctor from the location and then checks that
+     * doctor's diary; the list now asks the same question it will be held to.
+     * Only where no doctor can be resolved does it fall back to the building.
+     */
+    const forDoctor =
+      doctorId ?? (await resolveDoctor({ clinicId: clinic._id }).catch(() => null))?._id ?? null;
+
+    const slots = await generateSlots(clinic, date, { doctorId: forDoctor });
     res.json({
       clinicId: clinic._id,
       date,
       slotMinutes: clinic.slotMinutes,
+      // Said outright, so a closed location's empty list reads as closed rather
+      // than as a fully booked day. The engine publishes nothing either way.
+      isActive: clinic.isActive,
       slots,
     });
   }),
@@ -400,6 +419,11 @@ router.patch(
 /**
  * Soft-delete: mark inactive rather than remove, so appointments already booked
  * here keep a valid clinic reference and history stays intact.
+ *
+ * What stops is new work: the slot engine publishes nothing for an inactive
+ * location, and booking, confirming, moving into it and checking in there are
+ * refused. What stays is everything already written — the appointments, the
+ * queue numbers, the row itself.
  */
 router.delete(
   '/:id',
@@ -413,7 +437,24 @@ router.delete(
     await assertManagesLocation(req, found._id);
 
     const clinic = await Clinic.findOneAndUpdate({ _id: found._id }, { isActive: false }, { new: true });
-    res.json({ clinic: clinic.toPublic() });
+    forgetClinicIdentity();
+
+    /*
+     * The patients still booked here, counted rather than moved.
+     *
+     * Nothing is cancelled on their behalf: whether a closed branch's Tuesday
+     * list goes to the other branch, to another day or to a phone call is the
+     * practice's decision, and a patient told by push that their appointment
+     * was cancelled by a settings change is a patient who stops trusting the
+     * pushes. The desk is told how many are waiting to be moved instead.
+     */
+    const upcoming = await Appointment.countDocuments({
+      clinic: clinic._id,
+      status: { $in: ACTIVE_STATUSES },
+      scheduledFor: { $gte: new Date() },
+    });
+
+    res.json({ clinic: clinic.toPublic(), upcomingAppointments: upcoming });
   }),
 );
 

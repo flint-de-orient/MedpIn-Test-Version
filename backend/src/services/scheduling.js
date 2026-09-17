@@ -147,6 +147,19 @@ export async function scheduleFor(clinic, doctorId = null) {
  * @returns {Promise<{time:string,iso:string,available:boolean}[]>}
  */
 export async function generateSlots(clinic, dateStr, { now = dayjs(), doctorId = null, exclude = null } = {}) {
+  /*
+   * A closed location publishes nothing, to anybody.
+   *
+   * Deactivating keeps the row so its history keeps a place to point at, and
+   * the row keeps its weekly hours. Patients were refused an inactive location
+   * before they reached here, but a clinician was not, so the desk was shown a
+   * closed branch's week of free slots — and every route that asks
+   * `isSlotBookable` leaned on its caller having remembered to look at
+   * `isActive` first. Answered here, the engine cannot offer or accept a time
+   * at a closed location whichever route asks.
+   */
+  if (clinic?.isActive === false) return [];
+
   // Whose diary, then which slots.
   const schedule = await scheduleFor(clinic, doctorId);
   const times = buildSlotTimes(schedule, dateStr);
