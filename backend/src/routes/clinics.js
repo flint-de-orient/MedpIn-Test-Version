@@ -7,11 +7,13 @@ import { asyncHandler, notFound, badRequest, conflict, forbidden } from '../midd
 import { audit } from '../middleware/audit.js';
 import { Clinic } from '../models/Clinic.js';
 import { Appointment } from '../models/Appointment.js';
+import { Availability } from '../models/Availability.js';
 import { Membership, MEMBERSHIP_STATUS, PERMISSIONS } from '../models/Membership.js';
-import { practiceOf, practiceClinics, clinicsFor } from '../middleware/practiceScope.js';
+import { practiceOf, practiceClinics, clinicsFor, memberIdsOf } from '../middleware/practiceScope.js';
 import {
   assertManagesLocation,
   managedLocationIds,
+  managesLocation,
   requireEveryLocation,
 } from '../middleware/locationScope.js';
 import { requestCan } from '../middleware/requireCapability.js';
@@ -20,7 +22,7 @@ import { Practice } from '../models/Practice.js';
 import { billingBlocks } from '../services/billing/lapse.js';
 import { noticeUsage } from '../services/billing/usageNotice.js';
 import { User, ROLES } from '../models/User.js';
-import { ACTIVE_STATUSES, generateSlots } from '../services/scheduling.js';
+import { ACTIVE_STATUSES, generateSlots, scheduleFor } from '../services/scheduling.js';
 import { forgetClinicIdentity } from '../services/clinicIdentity.js';
 import { dayjs, DATE_RE, TIME_RE } from '../utils/clinicTime.js';
 import { resolveDoctor } from '../services/doctorContext.js';
@@ -277,15 +279,214 @@ router.get(
     const forDoctor =
       doctorId ?? (await resolveDoctor({ clinicId: clinic._id }).catch(() => null))?._id ?? null;
 
-    const slots = await generateSlots(clinic, date, { doctorId: forDoctor });
+    const [slots, schedule] = await Promise.all([
+      generateSlots(clinic, date, { doctorId: forDoctor }),
+      scheduleFor(clinic, forDoctor),
+    ]);
     res.json({
       clinicId: clinic._id,
       date,
-      slotMinutes: clinic.slotMinutes,
+      // The length of the diary the slots came from — a doctor's own where they
+      // keep one here, which need not be the building's.
+      slotMinutes: schedule?.slotMinutes ?? clinic.slotMinutes,
       // Said outright, so a closed location's empty list reads as closed rather
       // than as a fully booked day. The engine publishes nothing either way.
       isActive: clinic.isActive,
       slots,
+    });
+  }),
+);
+
+/* ------------------------------------------------- a doctor's hours at a location */
+
+/**
+ * When each of the practice's doctors sits at this location.
+ *
+ * ---- Why these exist ------------------------------------------------------------
+ *
+ * `Availability` — a diary per doctor per location — is what the slot engine
+ * reads first, and nothing could write one. So a location's hours were every
+ * doctor's hours there: a polyclinic's cardiologist was offered in the
+ * dermatologist's sittings, and "Clinic A on Mondays and Wednesdays, Clinic B on
+ * Tuesday and Thursday evenings" could not be said at all.
+ *
+ * A doctor with no diary here keeps the location's hours, exactly as before, so
+ * nothing changes for a practice until somebody sets one. A diary with no
+ * sittings says the doctor is not at this location.
+ *
+ * Read by any member of staff at the practice; changed by the people who set the
+ * practice up (PRACTICE_SETUP), and only at a location they run.
+ */
+const diaryBody = z.object({
+  slotMinutes: z.number().int().min(5).max(120),
+  weeklyHours: z.array(weeklyHourShape).max(50),
+  // Left out, a diary keeps the one-off closures it already has.
+  overrides: z.array(overrideShape).max(120).optional(),
+});
+
+/** This practice's location, for a member of staff, or "not found". */
+async function practiceLocation(req) {
+  const clinic = await Clinic.findOne({ $and: [{ _id: req.params.id }, await practiceClinics(req)] });
+  if (!clinic) throw notFound('Clinic not found');
+  return clinic;
+}
+
+/** One of this practice's current doctors, in the words used for a doctor who does not exist. */
+async function practiceDoctor(req, clinic) {
+  const doctors = (await memberIdsOf(clinic.practice, ROLES.DOCTOR)) ?? [];
+  const id = doctors.find((d) => String(d) === String(req.params.doctorId));
+  if (!id) throw notFound('Doctor not found');
+  return User.findOne({ _id: id, role: ROLES.DOCTOR }).select('_id name specialty').lean();
+}
+
+const diaryOut = (row) =>
+  row
+    ? {
+        slotMinutes: row.slotMinutes,
+        weeklyHours: (row.weeklyHours ?? [])
+          .map((w) => ({ dayOfWeek: w.dayOfWeek, start: w.start, end: w.end }))
+          .sort((a, b) => a.dayOfWeek - b.dayOfWeek || a.start.localeCompare(b.start)),
+        overrides: (row.overrides ?? []).map((o) => ({
+          date: o.date,
+          isClosed: o.isClosed,
+          windows: (o.windows ?? []).map((w) => ({ start: w.start, end: w.end })),
+          note: o.note ?? null,
+        })),
+      }
+    : null;
+
+router.get(
+  '/:id/availability',
+  requireClinician,
+  asyncHandler(async (req, res) => {
+    const clinic = await practiceLocation(req);
+    const doctorIds = (await memberIdsOf(clinic.practice, ROLES.DOCTOR)) ?? [];
+
+    const [doctors, diaries] = await Promise.all([
+      User.find({ _id: { $in: doctorIds }, role: ROLES.DOCTOR }).select('_id name specialty').sort({ name: 1 }).lean(),
+      Availability.find({ location: clinic._id, doctor: { $in: doctorIds }, isActive: true }).lean(),
+    ]);
+    const byDoctor = new Map(diaries.map((d) => [String(d.doctor), d]));
+
+    res.json({
+      location: { ...clinic.toPublic(), managedByYou: await managesLocation(req, clinic._id) },
+      items: doctors.map((d) => {
+        const diary = byDoctor.get(String(d._id)) ?? null;
+        return {
+          doctor: { id: String(d._id), name: d.name, specialty: d.specialty ?? null },
+          // Said, not left to be inferred from a null: this is the rule the
+          // slot engine follows.
+          usesLocationHours: !diary,
+          diary: diaryOut(diary),
+        };
+      }),
+    });
+  }),
+);
+
+router.put(
+  '/:id/availability/:doctorId',
+  requireRole(...PRACTICE_SETUP),
+  validate({ body: diaryBody }),
+  audit('update', 'Availability'),
+  asyncHandler(async (req, res) => {
+    const clinic = await practiceLocation(req);
+    await assertManagesLocation(req, clinic._id);
+    const doctor = await practiceDoctor(req, clinic);
+
+    const { slotMinutes, weeklyHours, overrides } = req.body;
+    const set = { slotMinutes, weeklyHours, isActive: true, ...(overrides ? { overrides } : {}) };
+
+    /*
+     * One diary per doctor per location, and the unique index says so. Two saves
+     * in the same instant can both try to create it; the loser's duplicate key
+     * is the winner's row, which it then updates.
+     */
+    const write = () =>
+      Availability.findOneAndUpdate(
+        { doctor: doctor._id, location: clinic._id },
+        { $set: set },
+        { upsert: true, new: true, runValidators: true },
+      );
+    let row;
+    try {
+      row = await write();
+    } catch (err) {
+      if (err?.code !== 11000) throw err;
+      row = await write();
+    }
+    req.auditResourceId = row._id;
+
+    /*
+     * The same doctor's sittings at the practice's other open locations that
+     * these overlap. Not refused: a doctor may be at either on a given Monday,
+     * and bookings are what cannot overlap — see withDoctorDiary. Said, so the
+     * person entering "Clinic A, Mondays 9 to 1" sees that Clinic B also has
+     * those Mondays.
+     */
+    const elsewhere = await Availability.find({
+      doctor: doctor._id,
+      location: { $ne: clinic._id },
+      isActive: true,
+    }).lean();
+    const openHere = await Clinic.find({
+      _id: { $in: elsewhere.map((e) => e.location) },
+      practice: clinic.practice,
+      isActive: true,
+    })
+      .select('_id name')
+      .lean();
+    const names = new Map(openHere.map((c) => [String(c._id), c.name]));
+
+    const overlapsElsewhere = [];
+    for (const other of elsewhere) {
+      const name = names.get(String(other.location));
+      if (!name) continue;
+      for (const theirs of other.weeklyHours ?? []) {
+        const clash = weeklyHours.some(
+          (mine) => mine.dayOfWeek === theirs.dayOfWeek && mine.start < theirs.end && theirs.start < mine.end,
+        );
+        if (clash) {
+          overlapsElsewhere.push({
+            location: { id: String(other.location), name },
+            dayOfWeek: theirs.dayOfWeek,
+            start: theirs.start,
+            end: theirs.end,
+          });
+        }
+      }
+    }
+
+    res.json({
+      doctor: { id: String(doctor._id), name: doctor.name, specialty: doctor.specialty ?? null },
+      usesLocationHours: false,
+      diary: diaryOut(row),
+      overlapsElsewhere,
+    });
+  }),
+);
+
+/**
+ * Give a doctor the location's hours back.
+ *
+ * The diary is switched off rather than deleted, so its sittings are still there
+ * to look at, and a later save turns it back on with whatever it is given.
+ */
+router.delete(
+  '/:id/availability/:doctorId',
+  requireRole(...PRACTICE_SETUP),
+  audit('update', 'Availability'),
+  asyncHandler(async (req, res) => {
+    const clinic = await practiceLocation(req);
+    await assertManagesLocation(req, clinic._id);
+    const doctor = await practiceDoctor(req, clinic);
+
+    await Availability.updateOne({ doctor: doctor._id, location: clinic._id }, { $set: { isActive: false } });
+
+    res.json({
+      doctor: { id: String(doctor._id), name: doctor.name, specialty: doctor.specialty ?? null },
+      usesLocationHours: true,
+      diary: null,
     });
   }),
 );
