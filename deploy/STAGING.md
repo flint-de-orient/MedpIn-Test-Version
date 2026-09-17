@@ -375,6 +375,54 @@ Every other practice sets its own in the app, under Profile → Clinic → Patie
 call number. Until one does, its patients are given the phone of its only
 location, or no number at all.
 
+### Once, after deploying scheduling and locations (C6)
+
+Moving an appointment cancelled the original and wrote the replacement as
+`requested` — with a time on it and no day the patient asked for. The desk
+watched a booking it had just moved reappear under "Waiting for a time", and a
+patient's own move turned their confirmed visit back into a request. The route
+now writes the replacement `confirmed`. This gives the replacements already on
+record that status, where their time is still ahead:
+
+```bash
+cd /var/www/clinq-staging/backend     # then /var/www/clinq/backend for production
+mongodump --db medpin_staging --collection appointments --out ~/dumps/appts-before-rescheduled
+node scripts/backfillRescheduledBookings.js                                  # report
+node scripts/backfillRescheduledBookings.js --apply
+node scripts/backfillRescheduledBookings.js                                  # report again: 0 to confirm
+```
+
+- **Read the report before applying.** Only replacements still exactly as the
+  old route left them, with a time still ahead, are confirmed. Nobody is
+  notified — the patient already believes they hold that time.
+- **Past ones are listed, never written**: whether those visits happened is not
+  recorded anywhere, and confirming them would claim a booking nobody can vouch
+  for. The desk can decline them from the app if they clutter "Waiting for a
+  time".
+- Rows that look moved but whose original is not a cancelled appointment are
+  listed and left for a person.
+- Nothing breaks before it runs: an old replacement is a request with a time,
+  which the desk can still give a time to. A row the desk changes between the
+  report and the apply keeps what the desk did. A second run changes nothing.
+  The rollback is the dump above.
+
+Two other changes in the same deploy need **no data change**, and each is worth
+one check afterwards:
+
+- `Membership.locations` narrows a member of staff to particular locations. It
+  is empty on every existing row, and empty means every location of the
+  practice, so nobody's access changes on deploy. Verify with
+  `GET /api/v1/clinics/access` as a practice owner: every row should read
+  `"everyLocation": true`. A practice narrows somebody with
+  `PUT /api/v1/clinics/access/<membershipId>` and `{"locationIds": [...]}`;
+  `[]` gives them every location back. The owner is never narrowed.
+- The waiting-room date (`queueDate`) is now the clinic's date rather than the
+  server's. Rows already written keep the date they were given — the checked-in
+  patients of past days are history either way. On a UTC server, a deploy
+  between midnight and 05:30 IST starts that day's tokens at 1, while anybody
+  checked in earlier that night keeps the number the old code gave them and is
+  listed under the previous day. Deploy outside those hours to avoid the mix.
+
 ## Pointing the app at staging
 
 `API_BASE_URL` is a `--dart-define`, so no code change:
