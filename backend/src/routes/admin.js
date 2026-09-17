@@ -26,6 +26,7 @@ import { Subscription, SUBSCRIPTION_STATUS } from '../models/Subscription.js';
 import { Membership, MEMBERSHIP_STATUS, PERMISSIONS, presetFor } from '../models/Membership.js';
 import { Department } from '../models/Department.js';
 import { explainCapabilities } from '../services/capabilities.js';
+import { assistantStatusForPractice } from '../services/ai/assistantAvailability.js';
 import {
   activePatientCount,
   everPatientCount,
@@ -1500,7 +1501,7 @@ router.get(
     const [locations, departments, memberships, patients, activePatients, subscription] =
       await Promise.all([
       Clinic.find({ practice: practice._id }).select('name city addressLine phone').lean(),
-      Department.find({ practice: practice._id }).select('key names isActive assistantScope').lean(),
+      Department.find({ practice: practice._id }).select('key names isActive assistantScope practice').lean(),
       Membership.find({ practice: practice._id })
         .sort({ isOwner: -1, startedOn: 1 })
         .populate('user', 'name phone role isActive')
@@ -1520,6 +1521,10 @@ router.get(
     // practices — the number is on the doctor. It said nothing was on file for
     // practices that could be verified perfectly well.
     const registration = await registrationOnFile(practice);
+
+    // The practice's own departments, answered by the one function the
+    // assistant itself asks. See services/ai/assistantAvailability.js.
+    const assistants = await assistantStatusForPractice({ practiceId: practice._id, departments });
 
     await AdminAuditLog.record({
       admin: req.admin,
@@ -1596,15 +1601,21 @@ router.get(
         addressLine: c.addressLine ?? null,
         phone: c.phone ?? null,
       })),
-      departments: departments.map((d) => ({
-        id: String(d._id),
-        key: d.key,
-        name: d.names?.en ?? d.key,
-        isActive: d.isActive,
-        // Whether this department has its own assistant, which is a question
-        // the operator gets asked and currently cannot answer.
-        hasAssistant: Boolean(d.assistantScope),
-      })),
+      departments: departments.map((d) => {
+        const assistant = assistants.find((s) => s.department.id === String(d._id));
+        return {
+          id: String(d._id),
+          key: d.key,
+          name: d.names?.en ?? d.key,
+          isActive: d.isActive,
+          // Whether this department has its own assistant, which is a question
+          // the operator gets asked. It read `Boolean(d.assistantScope)` — true
+          // for every department, because every row carries the empty scope
+          // object — so the console showed an assistant everywhere.
+          hasAssistant: Boolean(assistant?.enabled),
+          assistant: assistant ? { enabled: assistant.enabled, reason: assistant.reason } : null,
+        };
+      }),
       members: memberships.map((m) => ({
         id: String(m._id),
         name: m.user?.name ?? 'Unknown',

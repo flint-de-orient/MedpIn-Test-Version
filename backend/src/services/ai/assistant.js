@@ -10,7 +10,7 @@ import { buildSystemPrompt, fallbackReply, languagePrimer, forceLanguageInstruct
 // inside the service, so this is not a database round trip per message.
 import { clinicIdentity } from '../clinicIdentity.js';
 import { assistantContextFor } from './departmentAssistant.js';
-import { threadHasAssistant } from '../threads.js';
+import { conversationAssistant } from './assistantAvailability.js';
 import { mayAssistantReply, countReply } from './allowance.js';
 import { sessionForPatientSend, relationshipOfSession } from '../conversationPractice.js';
 import { careTeamNotesFor } from '../careTeamNotes.js';
@@ -70,7 +70,7 @@ function categoriesFor(triage) {
  * them is reading it this minute. Gates the reply only — triage and alerting
  * happen before this is ever consulted.
  */
-async function assistantShouldReply(session, relationship = null) {
+async function assistantShouldReply(session, relationship = null, availability = null) {
   if (!session) return true;
 
   /*
@@ -91,7 +91,17 @@ async function assistantShouldReply(session, relationship = null) {
   // general one, not a fallback to the diabetes prompt — silence, and the
   // thread says so. Checked here rather than by returning an empty prompt,
   // because an assistant with no remit still answers.
-  if (!(await threadHasAssistant(session))) return false;
+  //
+  // Nor does one whose scope or knowledge nobody at this practice has approved
+  // yet — a drafted scope is not a live one. See assistantAvailability.js.
+  const answer =
+    availability ??
+    (await conversationAssistant({
+      session,
+      practiceId: relationship?.practiceId ?? null,
+      language: session.language ?? 'en',
+    }));
+  if (!answer.enabled) return false;
   // Off is off, however it was reached.
   if (session.assistantEnabled === false) return false;
   // On, chosen deliberately, outranks presence. A clinician who switches the
@@ -209,7 +219,17 @@ export async function handlePatientMessage({
   // clinic has been alerted if it needed to be — but no reply is generated:
   // the person is answering, and a second answer arriving under theirs is how
   // a patient ends up with two different accounts of what to do.
-  if (!(await assistantShouldReply(session, relationship))) {
+  //
+  // Which department this conversation is, and whether its assistant is on for
+  // this practice in this language — asked once, and used for the gate, for
+  // retrieval and for the prompt below.
+  const availability = await conversationAssistant({
+    session,
+    practiceId: relationship.practiceId ?? null,
+    language,
+  });
+
+  if (!(await assistantShouldReply(session, relationship, availability))) {
     session.messageCount = seq;
     session.lastMessageAt = new Date();
     session.highestUrgency = maxUrgency(session.highestUrgency, triage.urgency);
@@ -222,6 +242,11 @@ export async function handlePatientMessage({
       // Null, not an empty reply: the app renders nothing rather than an
       // empty assistant bubble the patient would read as a failure.
       reply: null,
+      // Whether an assistant exists here at all, and if not why — so a screen
+      // can say "no assistant for this department yet" rather than leave a
+      // patient waiting on a reply that is not coming. A clinician holding the
+      // thread still reads as enabled: that silence is theirs, not a gap.
+      assistant: { enabled: availability.enabled, reason: availability.reason },
       triage: {
         urgency: triage.urgency,
         ruleDriven: triage.ruleDriven,
@@ -237,8 +262,20 @@ export async function handlePatientMessage({
   }
 
   // Retrieve grounding + prior turns + the care team's own words, in parallel.
+  //
+  // Grounding is narrowed to this practice and this department before it is
+  // ranked: the platform's shared passages and the practice's own, filed under
+  // this department or under none. Without the practice, passages a clinic
+  // approved for its own patients were never retrieved at all; without the
+  // department, a cardiology thread would be grounded on insulin advice.
   const [chunks, history, careTeamNotes] = await Promise.all([
-    retrieve(text, { language, categories: categoriesFor(triage), limit: 6 }).catch((err) => {
+    retrieve(text, {
+      language,
+      categories: categoriesFor(triage),
+      limit: 6,
+      practice: relationship.practiceId ?? null,
+      department: availability.retrievalDepartment ?? null,
+    }).catch((err) => {
       logger.warn({ err: err?.message }, 'retrieval failed; answering without grounding');
       return [];
     }),
@@ -283,16 +320,22 @@ export async function handlePatientMessage({
   const identity = await clinicIdentity(null, { practiceId: relationship.practiceId });
 
   // The department this thread belongs to decides what the assistant is. Null
-  // department is the practice's general thread, which keeps the remit the
-  // assistant has always had — see departmentAssistant.js. A department that
-  // has written no scope returns null here and gets no reply at all, which is
-  // the point: an assistant improvising outside its specialty is fluent, and
-  // neither the patient nor the reviewing doctor can tell it is guessing.
-  const departmentContext = await assistantContextFor({
-    departmentId: session.department ?? null,
-    patientId,
-    language,
-  });
+  // department is the practice's general thread, which answers as the
+  // practice's specialty, or — with no specialty on the practice — keeps the
+  // remit the assistant has always had. See assistantAvailability.js. A
+  // department whose scope nobody here approved never reaches this line: the
+  // gate above has already gone silent, which is the point — an assistant
+  // improvising outside its specialty is fluent, and neither the patient nor
+  // the reviewing doctor can tell it is guessing.
+  const departmentContext = availability.useDepartmentBlock
+    ? await assistantContextFor({
+        department: availability.department,
+        patientId,
+        language,
+        practiceId: relationship.practiceId ?? null,
+        status: availability.status,
+      })
+    : null;
 
   const system = buildSystemPrompt({
     language,
@@ -430,6 +473,7 @@ ${forceLanguageInstruction(language)}`,
     sessionId: session._id,
     userMessage: serialiseMessage(userMessage),
     reply: serialiseMessage(assistantMessage),
+    assistant: { enabled: availability.enabled, reason: availability.reason },
     triage: {
       urgency: triage.urgency,
       ruleDriven: triage.ruleDriven,
@@ -525,7 +569,13 @@ export async function* streamPatientMessage({
   // toggle would otherwise do nothing at all for any client that streams.
   // Everything above still ran — the message is saved and the clinic alerted
   // if it needed to be — but no reply is generated.
-  if (!(await assistantShouldReply(session, relationship))) {
+  const availability = await conversationAssistant({
+    session,
+    practiceId: relationship.practiceId ?? null,
+    language,
+  });
+
+  if (!(await assistantShouldReply(session, relationship, availability))) {
     session.messageCount = seq;
     session.lastMessageAt = new Date();
     session.highestUrgency = maxUrgency(session.highestUrgency, triage.urgency);
@@ -537,6 +587,7 @@ export async function* streamPatientMessage({
       data: {
         sessionId: session._id,
         userMessage: serialiseMessage(userMessage),
+        assistant: { enabled: availability.enabled, reason: availability.reason },
         triage: {
           urgency: triage.urgency,
           ruleDriven: triage.ruleDriven,
@@ -555,8 +606,15 @@ export async function* streamPatientMessage({
     return;
   }
 
+  // Narrowed to this practice and department, as on the plain send.
   const [chunks, history, careTeamNotes] = await Promise.all([
-    retrieve(text, { language, categories: categoriesFor(triage), limit: 6 }).catch(() => []),
+    retrieve(text, {
+      language,
+      categories: categoriesFor(triage),
+      limit: 6,
+      practice: relationship.practiceId ?? null,
+      department: availability.retrievalDepartment ?? null,
+    }).catch(() => []),
     ChatMessage.find({ session: session._id, seq: { $lt: seq } })
       .sort({ seq: -1 })
       .limit(HISTORY_TURNS)
@@ -592,16 +650,22 @@ export async function* streamPatientMessage({
   const identity = await clinicIdentity(null, { practiceId: relationship.practiceId });
 
   // The department this thread belongs to decides what the assistant is. Null
-  // department is the practice's general thread, which keeps the remit the
-  // assistant has always had — see departmentAssistant.js. A department that
-  // has written no scope returns null here and gets no reply at all, which is
-  // the point: an assistant improvising outside its specialty is fluent, and
-  // neither the patient nor the reviewing doctor can tell it is guessing.
-  const departmentContext = await assistantContextFor({
-    departmentId: session.department ?? null,
-    patientId,
-    language,
-  });
+  // department is the practice's general thread, which answers as the
+  // practice's specialty, or — with no specialty on the practice — keeps the
+  // remit the assistant has always had. See assistantAvailability.js. A
+  // department whose scope nobody here approved never reaches this line: the
+  // gate above has already gone silent, which is the point — an assistant
+  // improvising outside its specialty is fluent, and neither the patient nor
+  // the reviewing doctor can tell it is guessing.
+  const departmentContext = availability.useDepartmentBlock
+    ? await assistantContextFor({
+        department: availability.department,
+        patientId,
+        language,
+        practiceId: relationship.practiceId ?? null,
+        status: availability.status,
+      })
+    : null;
 
   const system = buildSystemPrompt({
     language,
@@ -618,6 +682,7 @@ export async function* streamPatientMessage({
     data: {
       sessionId: session._id,
       userMessage: serialiseMessage(userMessage),
+      assistant: { enabled: availability.enabled, reason: availability.reason },
       triage: {
         urgency: triage.urgency,
         ruleDriven: triage.ruleDriven,

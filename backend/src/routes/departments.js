@@ -14,6 +14,7 @@ import { practiceOf, practiceMembers } from '../middleware/practiceScope.js';
 import { requireCapability } from '../middleware/requireCapability.js';
 import { CAPABILITIES } from '../services/capabilities.js';
 import { WIDGETS, QUICK_ACTIONS } from '../services/uiConfig.js';
+import { assistantStatusForPractice } from '../services/ai/assistantAvailability.js';
 
 /**
  * Specialties, and which doctors practise in them.
@@ -119,13 +120,24 @@ router.get(
     const language = req.query.language ?? req.user.language ?? 'en';
     // From the membership, not the query string. `?practice=` was an invitation
     // to read somebody else's list by editing a URL.
-    const items = await Department.find(visibleTo(await practiceOf(req)))
+    const practice = await practiceOf(req);
+    const items = await Department.find(visibleTo(practice))
       .sort({ sortIndex: 1, 'names.en': 1 })
       .lean();
 
+    // Whether each department's assistant is on for this practice — asked of
+    // the same function the assistant asks, because a list that decided from
+    // the scope alone would show a draft awaiting review as switched on.
+    const statuses = await assistantStatusForPractice({
+      practiceId: practice,
+      language: ['en', 'bn', 'hi'].includes(language) ? language : 'en',
+      departments: items,
+    });
+    const byId = new Map(statuses.map((s) => [s.department.id, s]));
+
     res.json({
       items: items.map((d) =>
-        Department.hydrate(d).toPublic(language),
+        Department.hydrate(d).toPublic(language, { assistant: byId.get(String(d._id)) ?? null }),
       ),
     });
   }),

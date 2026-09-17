@@ -1,6 +1,13 @@
 import mongoose from 'mongoose';
 
 import { composeFor } from '../services/uiConfig.js';
+import {
+  REVIEW_STATUSES,
+  CONTENT_ORIGINS,
+  guidanceSourceSchema,
+  scopeApprovalSchema,
+  scopeReviewFor,
+} from './guidanceReview.js';
 
 /**
  * A medical specialty a doctor practises in.
@@ -94,6 +101,20 @@ const departmentSchema = new mongoose.Schema(
     /// cardiology answers out of diabetes guidance is worse than none, because
     /// the patient cannot tell the difference and neither can the doctor
     /// reviewing it afterwards.
+    ///
+    /// ---- Written is not approved ---------------------------------------
+    ///
+    /// A role used to be the whole switch: write one and the department had an
+    /// assistant. That made drafting a scope the same act as putting it in
+    /// front of patients. A scope now carries a review status, and a shared
+    /// draft is live only for a practice whose clinician of that specialty
+    /// approved the version in the prompt — see `scopeReviewFor` in
+    /// guidanceReview.js, and services/ai/assistantAvailability.js, which also
+    /// requires approved knowledge before the assistant answers anybody.
+    ///
+    /// The diabetology scope has a role and no status. It is the remit the
+    /// original prompt already enforced for that clinic, lifted verbatim, and
+    /// it stays live exactly as it was.
     assistantScope: {
       /// How the assistant introduces itself — "a cardiology assistant".
       /// Absent, there is no assistant in this department's thread at all.
@@ -102,6 +123,20 @@ const departmentSchema = new mongoose.Schema(
       covers: { type: [String], default: [] },
       /// What it must decline and redirect rather than answer badly.
       refuses: { type: [String], default: [] },
+      /// Signs that mean "go to hospital now" in this specialty, in the
+      /// patient's own terms. They go into the prompt as reasons to raise the
+      /// urgency — never to lower it, which the platform triage owns.
+      redFlags: { type: [String], default: [] },
+      /// Review state. Absent on the legacy diabetology scope; see above.
+      status: { type: String, enum: REVIEW_STATUSES, default: undefined },
+      /// Who drafted it. See CONTENT_ORIGINS.
+      origin: { type: String, enum: CONTENT_ORIGINS, default: undefined },
+      /// Bumped whenever the wording changes, so an approval names what was read.
+      version: { type: Number, default: undefined },
+      /// The guidance its covers, refusals and red flags were checked against.
+      sources: { type: [guidanceSourceSchema], default: [] },
+      /// Which practices have approved which version. See scopeApprovalSchema.
+      approvals: { type: [scopeApprovalSchema], default: [] },
     },
 
     /**
@@ -183,7 +218,15 @@ departmentSchema.methods.nameIn = function nameIn(language = 'en') {
   return this.names?.[language] || this.names?.en || this.key;
 };
 
-departmentSchema.methods.toPublic = function toPublic(language = 'en') {
+/**
+ * The shape the app and the console read.
+ *
+ * `assistant` is the answer from services/ai/assistantAvailability.js for the
+ * caller's practice, when the route asked it. Without one, `hasAssistant` can
+ * only say whether a scope is live with no practice in view — which a shared
+ * draft never is — so a route that knows the practice should pass it.
+ */
+departmentSchema.methods.toPublic = function toPublic(language = 'en', { assistant = null } = {}) {
   return {
     id: String(this._id),
     key: this.key,
@@ -208,7 +251,23 @@ departmentSchema.methods.toPublic = function toPublic(language = 'en') {
     // Whether this department can answer a patient at all. The screen reads it
     // to say "no assistant in this thread" rather than showing a composer that
     // silently does nothing.
-    hasAssistant: Boolean(this.assistantScope?.role),
+    //
+    // A written scope is no longer enough: a draft awaiting review has a role
+    // and must still read as no assistant.
+    hasAssistant: assistant ? Boolean(assistant.enabled) : scopeReviewFor(this.assistantScope).live,
+    // Why, when the route asked for this practice: approved and pending
+    // counts, and the reason it is off. Absent otherwise.
+    ...(assistant
+      ? {
+          assistant: {
+            enabled: Boolean(assistant.enabled),
+            reason: assistant.reason,
+            scope: assistant.scope?.state ?? 'none',
+            approvedDocuments: assistant.knowledge?.approved?.total ?? 0,
+            pendingDocuments: assistant.knowledge?.pending?.total ?? 0,
+          },
+        }
+      : {}),
     isActive: this.isActive,
     sortIndex: this.sortIndex,
   };

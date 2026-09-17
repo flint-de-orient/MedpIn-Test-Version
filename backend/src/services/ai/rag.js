@@ -1,3 +1,5 @@
+import mongoose from 'mongoose';
+
 import { KnowledgeChunk } from '../../models/KnowledgeChunk.js';
 import { embed } from './gemini.js';
 import { env } from '../../config/env.js';
@@ -27,6 +29,14 @@ function cosineSimilarity(a, b) {
   return dot / (Math.sqrt(normA) * Math.sqrt(normB));
 }
 
+/** An ObjectId for a valid id however it arrived, and null for anything else. */
+function asObjectId(value) {
+  if (value == null) return null;
+  if (value instanceof mongoose.Types.ObjectId) return value;
+  const raw = value?._id ?? value;
+  return mongoose.isValidObjectId(raw) ? new mongoose.Types.ObjectId(String(raw)) : null;
+}
+
 /**
  * Narrow the candidate set before anything is ranked.
  *
@@ -40,6 +50,12 @@ function cosineSimilarity(a, b) {
  * diabetology.
  */
 function scopeFilter({ practice = null, department = null } = {}) {
+  // Ids arrive as strings from the conversation resolver. `find` would cast
+  // them against the schema; `$vectorSearch` inside `aggregate` casts nothing,
+  // and a string never equals a stored ObjectId — the practice's own passages
+  // would silently drop out of Atlas retrieval.
+  practice = asObjectId(practice);
+  department = asObjectId(department);
   const clauses = [];
   if (practice) clauses.push({ $or: [{ practice: null }, { practice }] });
   else clauses.push({ practice: null });
@@ -111,6 +127,21 @@ async function textSearch(query, { limit, language, practice = null, department 
 }
 
 /**
+ * Which languages a conversation in `language` is grounded on.
+ *
+ * The patient's language and English, ranked together — see the note inside
+ * [retrieve] for why. Exported because the assistant's availability check has
+ * to count approved guidance in exactly the languages retrieval will read: a
+ * count taken any other way would switch an assistant on for a Bengali thread
+ * on the strength of passages it can never be shown, or off despite passages it
+ * would be.
+ */
+export function searchLanguagesFor(language) {
+  const languages = language && language !== 'en' ? [language, 'en'] : ['en', language].filter(Boolean);
+  return [...new Set(languages)];
+}
+
+/**
  * @param {string} query
  * @param {object} opts
  * @param {number} [opts.limit=6]
@@ -135,8 +166,7 @@ export async function retrieve(
   // Mixing is safe because the reply language is set by the system prompt, not
   // by the language of the grounding — the model is told to answer only in the
   // patient's language whatever it reads.
-  const languages = language && language !== 'en' ? [language, 'en'] : ['en', language].filter(Boolean);
-  const searchLanguages = [...new Set(languages)];
+  const searchLanguages = searchLanguagesFor(language);
 
   try {
     const queryVector = await embed(query, { taskType: 'RETRIEVAL_QUERY' });

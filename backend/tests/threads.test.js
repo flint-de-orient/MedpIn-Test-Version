@@ -92,14 +92,18 @@ describe('the thread is per department, not per doctor', () => {
 describe('a department with no assistant gets silence', () => {
   test('the thread reports whether it can be answered', () => {
     // So the composer can say so rather than accept a message nothing will
-    // reply to.
+    // reply to. The answer is the availability check's, for the thread's own
+    // practice — a role alone is also what a draft awaiting review has.
     assert.match(service, /export async function threadHasAssistant/);
-    assert.match(service, /hasAssistant: d \? Boolean\(d\.assistantScope\?\.role\) : true/);
+    assert.match(service, /conversationAssistant\(\{ session: s, practiceId, language \}\)/);
+    assert.match(service, /hasAssistant: answer\.enabled/);
+    assert.ok(!/Boolean\(d\.assistantScope\?\.role\)/.test(service), 'the list still decides from the role alone');
   });
 
   test("the practice's general thread keeps the assistant it always had", () => {
-    // Null department is Dr. Dey's thread, and nothing about it changed.
-    assert.match(service, /if \(!session\?\.department\) return true;/);
+    // Null department at a practice with no specialty is Dr. Dey's thread, and
+    // nothing about it changed. assistantAvailability.test.js runs it.
+    assert.match(service, /return \(await conversationAssistant\(\{ session, practiceId, language \}\)\)\.enabled;/);
   });
 });
 

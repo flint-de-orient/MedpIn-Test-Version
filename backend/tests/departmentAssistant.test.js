@@ -57,9 +57,21 @@ describe('no scope means no assistant, not a general one', () => {
     assert.match(service, /No scope, no assistant/);
   });
 
-  test('a route can ask cheaply whether to show a composer', () => {
+  test('a route can ask whether to show a composer, and gets the reviewed answer', () => {
+    // It read the role alone, which a scope still awaiting review also has.
+    // Whether a department answers is now one function's answer — see
+    // assistantAvailability.test.js, which runs it against a real database.
     assert.match(service, /export async function departmentHasAssistant/);
-    assert.match(service, /\.select\('assistantScope\.role'\)/);
+    assert.match(service, /assistantStatus\(\{ departmentId, practiceId, language \}\)\)\.enabled/);
+  });
+
+  test('a written scope awaiting review is not an assistant', () => {
+    const d = new Department({
+      key: 'cardiology',
+      names: { en: 'Cardiologist' },
+      assistantScope: { role: 'the cardiology assistant', status: 'pending_review', version: 1 },
+    });
+    assert.equal(d.toPublic().hasAssistant, false, 'a draft scope reads as a live assistant');
   });
 });
 
