@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
 import '../../../core/network/api_exception.dart';
+import '../../../core/network/submission_keys.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/tokens.dart';
@@ -32,6 +33,12 @@ class _BookAppointmentScreenState extends ConsumerState<BookAppointmentScreen> {
   Slot? _slot;
   final _reason = TextEditingController();
   bool _booking = false;
+
+  /// One per visit to this screen. Confirming the same slot again after a
+  /// timeout is the same request, and the server answers with the booking the
+  /// first attempt made rather than refusing the time as taken — by this
+  /// patient. See core/network/submission_keys.dart.
+  final _submission = SubmissionKeys();
 
   static const _daysAhead = 14;
 
@@ -79,6 +86,7 @@ class _BookAppointmentScreenState extends ConsumerState<BookAppointmentScreen> {
             clinicId: _clinic!.id,
             scheduledForIso: _slot!.iso,
             reason: _reason.text.trim(),
+            submission: _submission,
           );
       ref.invalidate(myAppointmentsProvider);
 

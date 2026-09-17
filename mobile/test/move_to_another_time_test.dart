@@ -1,3 +1,4 @@
+import 'package:akd_care/core/network/submission_keys.dart';
 import 'package:akd_care/core/theme/app_theme.dart';
 import 'package:akd_care/features/appointments/data/appointment_repository.dart';
 import 'package:akd_care/features/appointments/data/clinic_repository.dart';
@@ -58,6 +59,7 @@ class _FakeAppointments implements AppointmentRepository {
     String id,
     String scheduledForIso, {
     String? clinicId,
+    SubmissionKeys? submission,
   }) async {
     rescheduled.add((id: id, iso: scheduledForIso, clinicId: clinicId));
     return Appointment(
@@ -74,6 +76,7 @@ class _FakeAppointments implements AppointmentRepository {
     required String? clinicId,
     required DateTime scheduledFor,
     bool allowSameDay = false,
+    SubmissionKeys? submission,
   }) async {
     confirmed.add((id: id, clinicId: clinicId, at: scheduledFor));
     return Appointment(

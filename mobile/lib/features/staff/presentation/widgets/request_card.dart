@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../../../core/network/api_exception.dart';
+import '../../../../core/network/submission_keys.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_spacing.dart';
 import '../../../../l10n/gen/app_localizations.dart';
@@ -30,6 +31,11 @@ class RequestCard extends ConsumerStatefulWidget {
 
 class _RequestCardState extends ConsumerState<RequestCard> {
   bool _busy = false;
+
+  /// One per card. Giving the same time again after a lost answer is the same
+  /// confirmation, and the patient is told once. "Book anyway" is a different
+  /// request, and gets its own key.
+  final _submission = SubmissionKeys();
 
   /// How long they have been waiting. A request nobody answered for four days
   /// is the one that costs the clinic a patient.
@@ -374,6 +380,7 @@ class _RequestCardState extends ConsumerState<RequestCard> {
           clinicId: picked.clinic?.id,
           scheduledFor: picked.at,
           allowSameDay: allowSameDay,
+          submission: _submission,
         );
     await widget.onConfirmed();
     messenger.showSnackBar(

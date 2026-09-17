@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/network/api_client.dart';
+import '../../../core/network/submission_keys.dart';
 import '../../../shared/models/paged.dart';
 import '../../../shared/providers/core_providers.dart';
 import '../domain/appointment.dart';
@@ -11,6 +12,24 @@ class AppointmentRepository {
   AppointmentRepository(this._client);
 
   final ApiClient _client;
+
+  /// The `Idempotency-Key` for one appointment write.
+  ///
+  /// A write whose answer is lost — a timeout, a phone reconnecting, a token
+  /// refreshed and the request sent again — reaches the server a second time.
+  /// With the same key the server answers with what the first attempt did
+  /// instead of doing it again: no second booking, no second message to the
+  /// patient. See backend/src/middleware/idempotentWrite.js.
+  ///
+  /// [submission] is the screen's, where the same form can be sent again: tapped
+  /// again with nothing changed, it is the same key. Without one the call still
+  /// has a key of its own, which covers the retry this client makes by itself
+  /// after refreshing an expired token.
+  static Map<String, String> _keyed(
+    String purpose,
+    Object? body,
+    SubmissionKeys? submission,
+  ) => {'Idempotency-Key': (submission ?? SubmissionKeys()).keyFor(purpose, body)};
 
   Future<Paged<Appointment>> list({
     DateTime? from,
@@ -55,16 +74,19 @@ class AppointmentRepository {
     String mode = 'in_clinic',
     String? reason,
     String? patientId,
+    SubmissionKeys? submission,
   }) async {
+    final body = {
+      if (clinicId != null) 'clinicId': clinicId,
+      'scheduledFor': scheduledForIso,
+      'mode': mode,
+      if (reason != null && reason.isNotEmpty) 'reason': reason,
+      if (patientId != null) 'patientId': patientId,
+    };
     final json = await _client.postJson(
       '/appointments',
-      body: {
-        if (clinicId != null) 'clinicId': clinicId,
-        'scheduledFor': scheduledForIso,
-        'mode': mode,
-        if (reason != null && reason.isNotEmpty) 'reason': reason,
-        if (patientId != null) 'patientId': patientId,
-      },
+      body: body,
+      headers: _keyed('book', body, submission),
     );
     return Appointment.fromJson(json['appointment'] as Map<String, dynamic>);
   }
@@ -78,21 +100,30 @@ class AppointmentRepository {
     String id,
     String scheduledForIso, {
     String? clinicId,
+    SubmissionKeys? submission,
   }) async {
+    final body = {
+      'scheduledFor': scheduledForIso,
+      if (clinicId != null) 'clinicId': clinicId,
+    };
     final json = await _client.patchJson(
       '/appointments/$id/reschedule',
-      body: {
-        'scheduledFor': scheduledForIso,
-        if (clinicId != null) 'clinicId': clinicId,
-      },
+      body: body,
+      headers: _keyed('move:$id', body, submission),
     );
     return Appointment.fromJson(json['appointment'] as Map<String, dynamic>);
   }
 
-  Future<Appointment> cancel(String id, {String? reason}) async {
+  Future<Appointment> cancel(
+    String id, {
+    String? reason,
+    SubmissionKeys? submission,
+  }) async {
+    final body = {if (reason != null && reason.isNotEmpty) 'reason': reason};
     final json = await _client.patchJson(
       '/appointments/$id/cancel',
-      body: {if (reason != null && reason.isNotEmpty) 'reason': reason},
+      body: body,
+      headers: _keyed('cancel:$id', body, submission),
     );
     return Appointment.fromJson(json['appointment'] as Map<String, dynamic>);
   }
@@ -124,21 +155,24 @@ class AppointmentRepository {
     /// this only says which end of the day to look at first.
     String? preferredTime,
     String reason = '',
+    SubmissionKeys? submission,
   }) async {
+    final body = {
+      // Date only, at local midnight. Sending the instant would shift the
+      // day across the timezone boundary for anyone asking late at night.
+      'preferredFor':
+          DateTime(
+            preferredFor.year,
+            preferredFor.month,
+            preferredFor.day,
+          ).toIso8601String(),
+      if (preferredTime != null) 'preferredTime': preferredTime,
+      if (reason.isNotEmpty) 'reason': reason,
+    };
     final json = await _client.postJson(
       '/appointments/request',
-      body: {
-        // Date only, at local midnight. Sending the instant would shift the
-        // day across the timezone boundary for anyone asking late at night.
-        'preferredFor':
-            DateTime(
-              preferredFor.year,
-              preferredFor.month,
-              preferredFor.day,
-            ).toIso8601String(),
-        if (preferredTime != null) 'preferredTime': preferredTime,
-        if (reason.isNotEmpty) 'reason': reason,
-      },
+      body: body,
+      headers: _keyed('ask', body, submission),
     );
     return Appointment.fromJson(json['appointment'] as Map<String, dynamic>);
   }
@@ -157,14 +191,17 @@ class AppointmentRepository {
     /// Sent only on a second attempt, after the desk has been shown that this
     /// patient already has a slot that day and has chosen to go ahead.
     bool allowSameDay = false,
+    SubmissionKeys? submission,
   }) async {
+    final body = {
+      if (clinicId != null) 'clinicId': clinicId,
+      'scheduledFor': scheduledFor.toUtc().toIso8601String(),
+      if (allowSameDay) 'allowSameDay': true,
+    };
     final json = await _client.patchJson(
       '/appointments/$id/confirm',
-      body: {
-        if (clinicId != null) 'clinicId': clinicId,
-        'scheduledFor': scheduledFor.toUtc().toIso8601String(),
-        if (allowSameDay) 'allowSameDay': true,
-      },
+      body: body,
+      headers: _keyed('confirm:$id', body, submission),
     );
     return Appointment.fromJson(json['appointment'] as Map<String, dynamic>);
   }
