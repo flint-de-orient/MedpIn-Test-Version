@@ -406,7 +406,7 @@ node scripts/backfillRescheduledBookings.js                                  # r
   report and the apply keeps what the desk did. A second run changes nothing.
   The rollback is the dump above.
 
-Two other changes in the same deploy need **no data change**, and each is worth
+The other changes in the same deploy need **no data change**, and each is worth
 one check afterwards:
 
 - `Membership.locations` narrows a member of staff to particular locations. It
@@ -422,6 +422,20 @@ one check afterwards:
   between midnight and 05:30 IST starts that day's tokens at 1, while anybody
   checked in earlier that night keeps the number the old code gave them and is
   listed under the previous day. Deploy outside those hours to avoid the mix.
+- Two new collections start empty and fill themselves: `diarylocks` (one small
+  row per doctor, holding their diary while a booking is written) and
+  `idempotentwrites` (appointment writes sent with an `Idempotency-Key`, removed
+  by a TTL index after a day). Their indexes build at startup. Verify after the
+  restart with
+  `mongosh --quiet --eval 'db.getSiblingDB("medpin_staging").idempotentwrites.getIndexes()'`:
+  there should be an `actor_1_key_1` unique index and a `createdAt_1` index with
+  `expireAfterSeconds: 86400`. A `diarylocks` row with a `holder` and an
+  `until` in the past is a hold whose request died; the next booking for that
+  doctor takes it over, and nothing needs clearing by hand.
+- A doctor's hours per location can now be entered (`PUT
+  /api/v1/clinics/<id>/availability/<doctorId>`). A doctor with no diary keeps
+  the location's hours exactly as before, so nothing changes until a practice
+  sets one; `scripts/backfillAvailability.js` stays optional.
 
 ## Pointing the app at staging
 
