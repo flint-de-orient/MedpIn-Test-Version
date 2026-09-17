@@ -1,6 +1,10 @@
+import crypto from 'node:crypto';
+
 import { dayjs, inClinicTz, clinicDateTime, clinicDayOfWeek } from '../utils/clinicTime.js';
 import { Appointment } from '../models/Appointment.js';
 import { Availability } from '../models/Availability.js';
+import { DiaryLock } from '../models/DiaryLock.js';
+import { AppError } from '../middleware/errors.js';
 
 /** Statuses that occupy a slot — a cancelled/completed one frees it. */
 export const ACTIVE_STATUSES = ['requested', 'confirmed', 'checked_in', 'in_consultation'];
@@ -52,6 +56,77 @@ export async function doctorCommitments(doctorId, start, end, { exclude = null }
     const ends = begins + (a.durationMinutes ?? DEFAULT_MINUTES) * 60_000;
     return begins < to && ends > from;
   });
+}
+
+/** How long a hold lasts if its holder never lets go: far longer than a booking takes. */
+const DIARY_LEASE_MS = 15_000;
+/** How long a write waits for the diary before saying it is busy. */
+const DIARY_WAIT_MS = 8_000;
+
+/**
+ * Run `work` while holding a doctor's diary: no other write can put a time into
+ * it until `work` has finished.
+ *
+ * ---- Why the checks were not enough ------------------------------------------
+ *
+ * Booking, confirming and moving each ask `doctorCommitments` whether a time is
+ * free and then write. Two requests in the same instant — a double tap, two
+ * desks at two branches, a retry that overlaps the original — both asked while
+ * nothing was written, both heard "free", and both wrote: one doctor, two
+ * patients, one hour. A unique index cannot refuse that, because a clash is an
+ * overlap of intervals rather than equal values, and the deployment has no
+ * replica set for a transaction.
+ *
+ * So the check and the write happen together, one at a time per doctor. The
+ * hold is one document per doctor, taken by an atomic conditional update; a
+ * second writer waits a few milliseconds and then checks again, and sees what
+ * the first one wrote. Different doctors never wait for each other.
+ *
+ * ---- If the holder dies ---------------------------------------------------------
+ *
+ * The hold lapses after DIARY_LEASE_MS, so a process that crashes mid-booking
+ * does not close that doctor's diary for good. A writer that cannot get the
+ * diary within DIARY_WAIT_MS is refused, 409 DIARY_BUSY, and nothing is
+ * written.
+ */
+export async function withDoctorDiary(doctorId, work) {
+  const _id = `doctor:${doctorId}`;
+  const holder = crypto.randomUUID();
+  const giveUpAt = Date.now() + DIARY_WAIT_MS;
+
+  for (;;) {
+    const now = new Date();
+    try {
+      // Free, or held past its lease. When the row is held, the upsert cannot
+      // insert a second row with this id, and says so with a duplicate key.
+      const held = await DiaryLock.findOneAndUpdate(
+        { _id, $or: [{ holder: null }, { until: { $lt: now } }] },
+        { $set: { holder, until: new Date(now.getTime() + DIARY_LEASE_MS) } },
+        { upsert: true, new: true },
+      ).lean();
+      if (held?.holder === holder) break;
+    } catch (err) {
+      if (err?.code !== 11000) throw err;
+    }
+
+    if (Date.now() >= giveUpAt) {
+      throw new AppError(
+        409,
+        'DIARY_BUSY',
+        'The doctor’s diary is being changed by somebody else. Nothing was written; please try again.',
+      );
+    }
+    // A little jitter, so writers that collided once do not collide again.
+    await new Promise((resolve) => setTimeout(resolve, 15 + Math.floor(Math.random() * 35)));
+  }
+
+  try {
+    return await work();
+  } finally {
+    // Only this holder's hold. One that lapsed and was taken over belongs to
+    // somebody else now, and is theirs to release.
+    await DiaryLock.updateOne({ _id, holder }, { $set: { holder: null, until: null } }).catch(() => {});
+  }
 }
 
 /**

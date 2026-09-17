@@ -20,7 +20,12 @@ import {
   notifyPatientOfAppointmentChange,
   notifyWaitlistOfFreedSlot,
 } from '../services/notifications.js';
-import { ACTIVE_STATUSES, isSlotBookable, doctorCommitments } from '../services/scheduling.js';
+import {
+  ACTIVE_STATUSES,
+  isSlotBookable,
+  doctorCommitments,
+  withDoctorDiary,
+} from '../services/scheduling.js';
 import { paged, pageParams, dateRange } from '../utils/pagination.js';
 import { postCareThreadNote } from '../services/careThreadNote.js';
 import { resolveDoctor } from '../services/doctorContext.js';
@@ -392,16 +397,10 @@ router.post(
     if (!doctor) throw badRequest('No doctor is available for booking');
     await assertDoctorHere(req, patientId, doctor._id, location);
 
-    // An in-clinic visit must land on a real, free slot of the chosen clinic's
-    // schedule. This is the authoritative check — the client cannot book a time
-    // the schedule does not offer, or one already taken.
     let clinic = null;
     if (mode === 'in_clinic' && location) {
       if (!location.isActive) throw badRequest('That clinic is not available');
       clinic = location;
-      if (!(await isSlotBookable(clinic, scheduledFor, { doctorId: doctor._id }))) {
-        throw badRequest('That time slot is no longer available. Please choose another.');
-      }
     } else if (mode === 'in_clinic' && isPatient(req)) {
       /*
        * A patient books from published hours, and a practice with no open
@@ -415,36 +414,50 @@ router.post(
     // Staff booking in person at a practice with no open location: no published
     // hours to check against, so the doctor's own diary below is the rule.
 
-    // Second guard, for the doctor rather than the building: a teleconsult has
-    // no slot list to have checked, and a doctor booked at another location in
-    // the moments since is not in either. See doctorCommitments.
-    const slotStart = dayjs(scheduledFor);
-    const length = clinic?.slotMinutes ?? DEFAULT_SLOT_MINUTES;
-    const clash = await doctorCommitments(
-      doctor._id,
-      slotStart.toDate(),
-      slotStart.add(length, 'minute').toDate(),
-    );
-    if (clash.length) throw badRequest('That time slot has just been taken. Please choose another.');
+    const practice =
+      clinic?.practice ?? (await practiceForWork(req, patientId)) ?? (await practiceOfMember(doctor._id));
 
-    const appointment = await Appointment.create({
-      patient: patientId,
-      doctor: doctor._id,
-      clinic: clinic?._id,
-      // Whose diary. From the building where there is one; without one, the
-      // practice doing the work, and the doctor's own membership last.
-      practice:
-        clinic?.practice ?? (await practiceForWork(req, patientId)) ?? (await practiceOfMember(doctor._id)),
-      scheduledFor,
-      mode,
-      reason,
-      durationMinutes: clinic?.slotMinutes ?? DEFAULT_SLOT_MINUTES,
-      // Auto-confirm: booking a free slot grants it immediately — no manual
-      // approval step. The clinic can still cancel or reschedule afterwards.
-      status: 'confirmed',
-      ...(mode === 'teleconsult'
-        ? { teleconsult: { roomId: crypto.randomUUID(), joinUrl: null } }
-        : {}),
+    // The checks and the write, with the doctor's diary held: two bookings in
+    // the same instant each saw the hour free and both wrote. See
+    // withDoctorDiary.
+    const appointment = await withDoctorDiary(doctor._id, async () => {
+      // An in-clinic visit must land on a real, free slot of the chosen
+      // clinic's schedule. This is the authoritative check — the client cannot
+      // book a time the schedule does not offer, or one already taken.
+      if (clinic && !(await isSlotBookable(clinic, scheduledFor, { doctorId: doctor._id }))) {
+        throw badRequest('That time slot is no longer available. Please choose another.');
+      }
+
+      // Second guard, for the doctor rather than the building: a teleconsult
+      // has no slot list to have checked, and a doctor booked at another
+      // location in the moments since is not in either. See doctorCommitments.
+      const slotStart = dayjs(scheduledFor);
+      const length = clinic?.slotMinutes ?? DEFAULT_SLOT_MINUTES;
+      const clash = await doctorCommitments(
+        doctor._id,
+        slotStart.toDate(),
+        slotStart.add(length, 'minute').toDate(),
+      );
+      if (clash.length) throw badRequest('That time slot has just been taken. Please choose another.');
+
+      return Appointment.create({
+        patient: patientId,
+        doctor: doctor._id,
+        clinic: clinic?._id,
+        // Whose diary. From the building where there is one; without one, the
+        // practice doing the work, and the doctor's own membership last.
+        practice,
+        scheduledFor,
+        mode,
+        reason,
+        durationMinutes: clinic?.slotMinutes ?? DEFAULT_SLOT_MINUTES,
+        // Auto-confirm: booking a free slot grants it immediately — no manual
+        // approval step. The clinic can still cancel or reschedule afterwards.
+        status: 'confirmed',
+        ...(mode === 'teleconsult'
+          ? { teleconsult: { roomId: crypto.randomUUID(), joinUrl: null } }
+          : {}),
+      });
     });
 
     await appointment.populate(POPULATE);
@@ -766,105 +779,114 @@ router.patch(
       clinic = await soleLocation(req, await practiceClinics(req));
     }
 
-    // The same authority a patient booking goes through. A request confirmed
-    // onto a time the schedule does not offer is worse than one left pending:
-    // the patient is told to come at an hour the doctor is not there. With no
-    // location there is no schedule, and the doctor's diary below is the rule.
-    if (clinic && !(await isSlotBookable(clinic, scheduledFor, { doctorId: appointment.doctor }))) {
-      throw badRequest('That time is not free. Please choose another.');
-    }
-
-    // The doctor's diary, not the building's — the same rule as booking.
-    const slotStart = dayjs(scheduledFor);
-    const clash = await doctorCommitments(
-      appointment.doctor,
-      slotStart.toDate(),
-      slotStart.add(clinic?.slotMinutes ?? DEFAULT_SLOT_MINUTES, 'minute').toDate(),
-      { exclude: appointment._id },
-    );
-    if (clash.length) throw badRequest('That time has just been taken. Please choose another.');
-
-    // The same patient, twice on one day.
-    //
-    // The clash check above asks whether the *slot* is free, which it is — a
-    // patient given 10:00 and then 10:30 breaks no rule the schedule knows
-    // about. It is still almost always a mistake: two requests from one person
-    // that both got answered, or a desk confirming twice because the first tap
-    // did not visibly land. The clinic then holds a slot nobody comes to and
-    // the patient gets two reminders for one visit.
-    //
-    // A warning, not a rule. Two appointments in a day are legitimate — a
-    // morning review and an evening procedure — so the desk is told and may go
-    // ahead, rather than being refused something the clinic is allowed to do.
-    if (!req.body.allowSameDay) {
-      // The clinic's calendar day. Cut at the server's midnight, a server in
-      // UTC began "that day" at half past five in the morning here.
-      const dayStart = inClinicTz(scheduledFor).startOf('day');
-      /*
-       * This practice's day, not the patient's.
-       *
-       * Unscoped, this refused a legitimate confirmation because another
-       * practice had seen the same patient that morning — and said so, by
-       * returning that appointment's exact time in the error. Two clinics
-       * seeing one person on one day is ordinary; only a clash inside a
-       * practice is a mistake worth warning the desk about.
-       */
-      const sameDay = await Appointment.findOne({
-        _id: { $ne: appointment._id },
-        patient: appointment.patient,
-        status: { $in: ACTIVE_STATUSES },
-        ...(await scopeFilter(req)),
-        scheduledFor: {
-          $gte: dayStart.toDate(),
-          $lt: dayStart.add(1, 'day').toDate(),
-        },
-      })
-        .select('scheduledFor')
-        .lean();
-
-      if (sameDay) {
-        // A list of {path, message}, because that is the only shape the error
-        // envelope carries through to the client — an object here is parsed as
-        // nothing and the desk would get a bare "conflict" with no idea which
-        // appointment it clashed with.
-        throw conflict('This patient already has an appointment that day.', [
-          {
-            path: 'SAME_DAY_APPOINTMENT',
-            message: sameDay.scheduledFor.toISOString(),
-          },
-        ]);
+    // The checks and the write together, with the doctor's diary held. Two
+    // desks confirming two different requests into one doctor's ten o'clock
+    // each saw it free. See withDoctorDiary.
+    const confirmed = await withDoctorDiary(appointment.doctor, async () => {
+      // The same authority a patient booking goes through. A request confirmed
+      // onto a time the schedule does not offer is worse than one left
+      // pending: the patient is told to come at an hour the doctor is not
+      // there. With no location there is no schedule, and the doctor's diary
+      // below is the rule.
+      if (clinic && !(await isSlotBookable(clinic, scheduledFor, { doctorId: appointment.doctor }))) {
+        throw badRequest('That time is not free. Please choose another.');
       }
-    }
 
-    /*
-     * The confirmation itself — only if nobody has confirmed it first.
-     *
-     * It read the request, checked it was still a request above, changed it
-     * and saved it. Two desks answering the same request together both passed
-     * that check and both saved, the second silently replacing the first
-     * desk's time and building, and the patient was sent a confirmation for
-     * each: two times for one appointment, with the later one quietly the true
-     * one. Conditional on the status in one operation, exactly one desk
-     * confirms; the other is told somebody already has, and sends nothing.
-     */
-    const confirmed = await Appointment.findOneAndUpdate(
-      { _id: appointment._id, status: 'requested' },
-      {
-        $set: {
-          clinic: clinic?._id ?? null,
-          scheduledFor,
-          durationMinutes: clinic?.slotMinutes ?? DEFAULT_SLOT_MINUTES,
-          status: 'confirmed',
+      // The doctor's diary, not the building's — the same rule as booking.
+      const slotStart = dayjs(scheduledFor);
+      const clash = await doctorCommitments(
+        appointment.doctor,
+        slotStart.toDate(),
+        slotStart.add(clinic?.slotMinutes ?? DEFAULT_SLOT_MINUTES, 'minute').toDate(),
+        { exclude: appointment._id },
+      );
+      if (clash.length) throw badRequest('That time has just been taken. Please choose another.');
+
+      // The same patient, twice on one day.
+      //
+      // The clash check above asks whether the *slot* is free, which it is — a
+      // patient given 10:00 and then 10:30 breaks no rule the schedule knows
+      // about. It is still almost always a mistake: two requests from one
+      // person that both got answered, or a desk confirming twice because the
+      // first tap did not visibly land. The clinic then holds a slot nobody
+      // comes to and the patient gets two reminders for one visit.
+      //
+      // A warning, not a rule. Two appointments in a day are legitimate — a
+      // morning review and an evening procedure — so the desk is told and may
+      // go ahead, rather than being refused something the clinic is allowed to
+      // do.
+      if (!req.body.allowSameDay) {
+        // The clinic's calendar day. Cut at the server's midnight, a server in
+        // UTC began "that day" at half past five in the morning here.
+        const dayStart = inClinicTz(scheduledFor).startOf('day');
+        /*
+         * This practice's day, not the patient's.
+         *
+         * Unscoped, this refused a legitimate confirmation because another
+         * practice had seen the same patient that morning — and said so, by
+         * returning that appointment's exact time in the error. Two clinics
+         * seeing one person on one day is ordinary; only a clash inside a
+         * practice is a mistake worth warning the desk about.
+         */
+        const sameDay = await Appointment.findOne({
+          _id: { $ne: appointment._id },
+          patient: appointment.patient,
+          status: { $in: ACTIVE_STATUSES },
+          ...(await scopeFilter(req)),
+          scheduledFor: {
+            $gte: dayStart.toDate(),
+            $lt: dayStart.add(1, 'day').toDate(),
+          },
+        })
+          .select('scheduledFor')
+          .lean();
+
+        if (sameDay) {
+          // A list of {path, message}, because that is the only shape the
+          // error envelope carries through to the client — an object here is
+          // parsed as nothing and the desk would get a bare "conflict" with no
+          // idea which appointment it clashed with.
+          throw conflict('This patient already has an appointment that day.', [
+            {
+              path: 'SAME_DAY_APPOINTMENT',
+              message: sameDay.scheduledFor.toISOString(),
+            },
+          ]);
+        }
+      }
+
+      /*
+       * The confirmation itself — only if nobody has confirmed it first.
+       *
+       * It read the request, checked it was still a request above, changed it
+       * and saved it. Two desks answering the same request together both
+       * passed that check and both saved, the second silently replacing the
+       * first desk's time and building, and the patient was sent a
+       * confirmation for each: two times for one appointment, with the later
+       * one quietly the true one. Conditional on the status in one operation,
+       * exactly one desk confirms; the other is told somebody already has, and
+       * sends nothing.
+       */
+      const done = await Appointment.findOneAndUpdate(
+        { _id: appointment._id, status: 'requested' },
+        {
+          $set: {
+            clinic: clinic?._id ?? null,
+            scheduledFor,
+            durationMinutes: clinic?.slotMinutes ?? DEFAULT_SLOT_MINUTES,
+            status: 'confirmed',
+          },
+          // The wish is spent. Keeping it would leave two dates on one row and
+          // no way to tell which one anybody should turn up for.
+          $unset: { preferredFor: 1, preferredTime: 1 },
         },
-        // The wish is spent. Keeping it would leave two dates on one row and
-        // no way to tell which one anybody should turn up for.
-        $unset: { preferredFor: 1, preferredTime: 1 },
-      },
-      { new: true },
-    ).populate(POPULATE);
-    if (!confirmed) {
-      throw conflict('Somebody has already confirmed this request. Nothing was changed.');
-    }
+        { new: true },
+      ).populate(POPULATE);
+      if (!done) {
+        throw conflict('Somebody has already confirmed this request. Nothing was changed.');
+      }
+      return done;
+    });
 
     const when = inClinicTz(scheduledFor).format('ddd D MMM, h:mm A');
 
@@ -974,80 +996,90 @@ router.patch(
       ? (clinic.slotMinutes ?? DEFAULT_SLOT_MINUTES)
       : (existing.durationMinutes ?? DEFAULT_SLOT_MINUTES);
 
-    // The appointment being moved is still in the diary until it is cancelled
-    // below, and must not count as the thing it clashes with.
-    if (clinic && !(await isSlotBookable(clinic, scheduledFor, { doctorId: existing.doctor, exclude: existing._id }))) {
-      throw badRequest('That time slot is not available. Please choose another.');
-    }
-    // And the doctor's own diary, for the length this visit runs — the same
-    // second guard a booking has, and the only one where there is no location.
-    const slotStart = dayjs(scheduledFor);
-    const clash = await doctorCommitments(
-      existing.doctor,
-      slotStart.toDate(),
-      slotStart.add(durationMinutes, 'minute').toDate(),
-      { exclude: existing._id },
-    );
-    if (clash.length) throw badRequest('That time slot is not available. Please choose another.');
+    // Carried from the row it replaces, and derived for one written before the
+    // field existed — a reschedule must not lose whose diary it is in.
+    const practice = existing.practice ?? clinic?.practice ?? (await practiceOfMember(existing.doctor));
 
-    const replacement = new Appointment({
-      patient: existing.patient,
-      doctor: existing.doctor,
-      clinic: clinic?._id,
-      // Carried from the row it replaces, and derived for one written before
-      // the field existed — a reschedule must not lose whose diary it is in.
-      practice: existing.practice ?? clinic?.practice ?? (await practiceOfMember(existing.doctor)),
-      scheduledFor,
-      mode: existing.mode,
-      reason: existing.reason,
-      durationMinutes,
-      status: 'confirmed',
-      rescheduledFrom: existing._id,
-      // What the booking was, it still is: a priority slot the triage asked for
-      // stays one, and a teleconsult keeps the room its link points at.
-      isPriority: existing.isPriority ?? false,
-      createdFromAlert: existing.createdFromAlert,
-      ...(existing.teleconsult?.roomId
-        ? { teleconsult: { roomId: existing.teleconsult.roomId, joinUrl: existing.teleconsult.joinUrl } }
-        : {}),
-    });
-    // Before the original is touched: a replacement that cannot be written must
-    // not leave the patient with a cancelled appointment and nothing in its place.
-    await replacement.validate();
+    // The checks and the writes together, with the doctor's diary held: two
+    // appointments moved into one free hour in the same instant both found it
+    // free. See withDoctorDiary.
+    const { replacement, original } = await withDoctorDiary(existing.doctor, async () => {
+      // The appointment being moved is still in the diary until it is
+      // cancelled below, and must not count as the thing it clashes with.
+      if (clinic && !(await isSlotBookable(clinic, scheduledFor, { doctorId: existing.doctor, exclude: existing._id }))) {
+        throw badRequest('That time slot is not available. Please choose another.');
+      }
+      // And the doctor's own diary, for the length this visit runs — the same
+      // second guard a booking has, and the only one where there is no location.
+      const slotStart = dayjs(scheduledFor);
+      const clash = await doctorCommitments(
+        existing.doctor,
+        slotStart.toDate(),
+        slotStart.add(durationMinutes, 'minute').toDate(),
+        { exclude: existing._id },
+      );
+      if (clash.length) throw badRequest('That time slot is not available. Please choose another.');
 
-    /*
-     * The original, cancelled only if nobody has changed it first.
-     *
-     * Read, change, `save()` let two taps on a slow connection both pass every
-     * check above and both write a replacement — one visit, booked twice, and
-     * two confirmations for the patient. Conditional on the row as it was read,
-     * exactly one move happens; the other is told, and writes nothing.
-     */
-    const original = await Appointment.findOneAndUpdate(
-      { _id: existing._id, status: existing.status, scheduledFor: existing.scheduledFor },
-      {
-        $set: {
-          status: 'cancelled',
-          cancellationReason: isPatient(req) ? 'Rescheduled by patient' : 'Rescheduled by the clinic',
-          cancelledBy: req.user._id,
+      const fresh = new Appointment({
+        patient: existing.patient,
+        doctor: existing.doctor,
+        clinic: clinic?._id,
+        practice,
+        scheduledFor,
+        mode: existing.mode,
+        reason: existing.reason,
+        durationMinutes,
+        status: 'confirmed',
+        rescheduledFrom: existing._id,
+        // What the booking was, it still is: a priority slot the triage asked
+        // for stays one, and a teleconsult keeps the room its link points at.
+        isPriority: existing.isPriority ?? false,
+        createdFromAlert: existing.createdFromAlert,
+        ...(existing.teleconsult?.roomId
+          ? { teleconsult: { roomId: existing.teleconsult.roomId, joinUrl: existing.teleconsult.joinUrl } }
+          : {}),
+      });
+      // Before the original is touched: a replacement that cannot be written
+      // must not leave the patient with a cancelled appointment and nothing in
+      // its place.
+      await fresh.validate();
+
+      /*
+       * The original, cancelled only if nobody has changed it first.
+       *
+       * Read, change, `save()` let two taps on a slow connection both pass
+       * every check above and both write a replacement — one visit, booked
+       * twice, and two confirmations for the patient. Conditional on the row
+       * as it was read, exactly one move happens; the other is told, and
+       * writes nothing.
+       */
+      const cancelled = await Appointment.findOneAndUpdate(
+        { _id: existing._id, status: existing.status, scheduledFor: existing.scheduledFor },
+        {
+          $set: {
+            status: 'cancelled',
+            cancellationReason: isPatient(req) ? 'Rescheduled by patient' : 'Rescheduled by the clinic',
+            cancelledBy: req.user._id,
+          },
         },
-      },
-      { new: true },
-    );
-    if (!original) {
-      throw conflict('This appointment was changed a moment ago. Nothing was moved; please look at it again.');
-    }
+        { new: true },
+      );
+      if (!cancelled) {
+        throw conflict('This appointment was changed a moment ago. Nothing was moved; please look at it again.');
+      }
 
-    try {
-      await replacement.save();
-    } catch (err) {
-      // Put the original back rather than leave the patient with nothing.
-      await Appointment.updateOne(
-        { _id: existing._id, status: 'cancelled' },
-        { $set: { status: existing.status }, $unset: { cancellationReason: 1, cancelledBy: 1 } },
-      ).catch(() => {});
-      throw err;
-    }
+      try {
+        await fresh.save();
+      } catch (err) {
+        // Put the original back rather than leave the patient with nothing.
+        await Appointment.updateOne(
+          { _id: existing._id, status: 'cancelled' },
+          { $set: { status: existing.status }, $unset: { cancellationReason: 1, cancelledBy: 1 } },
+        ).catch(() => {});
+        throw err;
+      }
+      return { replacement: fresh, original: cancelled };
+    });
 
     await replacement.populate(POPULATE);
 
