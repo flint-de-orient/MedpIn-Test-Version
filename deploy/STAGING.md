@@ -375,6 +375,65 @@ Every other practice sets its own in the app, under Profile → Clinic → Patie
 call number. Until one does, its patients are given the phone of its only
 location, or no number at all.
 
+### Once, after deploying reviewed department assistants
+
+A department's assistant used to be on the moment its scope had a role. Now it
+answers a practice's patients only when that practice's clinician of the
+specialty has approved the scope's current version, and at least ten approved
+passages for the department — one of them its red-flag guidance — exist in the
+languages the conversation is grounded on. `services/ai/assistantAvailability.js`
+is the rule; `scripts/assistantStatus.js` prints its answer.
+
+This release ships AI-drafted scopes and passages for **cardiology** (35) and
+**general physician** (34), every one `pending_review`, and files the existing
+diabetes and endocrine corpus under the diabetology department, where it was
+always meant to be (it had no department, which made it cross-specialty).
+Nothing is approved by any step below, and no new assistant switches on:
+
+```bash
+cd /var/www/clinq-staging/backend     # then /var/www/clinq/backend for production
+node scripts/assistantStatus.js                                            # before: expect diabetology ON, nothing else
+node scripts/seedDepartments.js                                            # report; the departments must exist
+node scripts/seedDepartments.js --apply
+node scripts/seedKnowledge.js --dry                                        # report: drafts to create, corpus to file, scopes to draft
+mongodump --db medpin_staging --collection knowledgechunks --out ~/dumps/assistants-before-drafts
+mongodump --db medpin_staging --collection departments --out ~/dumps/assistants-before-drafts
+node scripts/seedKnowledge.js                                              # writes; embeds new passages with the Gemini key
+node scripts/seedKnowledge.js --dry                                        # again: everything "unchanged"
+node scripts/assistantStatus.js                                            # after: diabetology ON; cardiology, general_physician off, pending review
+```
+
+- **`--no-embed`** writes without calling the embedding API. Retrieval's text
+  fallback still finds the passages, and approving one embeds it; re-run
+  without the flag once the key or quota is available.
+- **It exits 1 if a department is missing** and writes no drafts for it — they
+  are never filed under no department. Run `seedDepartments.js --apply` first.
+- **A second run writes nothing.** A revised draft gets a new version and goes
+  back to review; a practice's approved copy is never touched. A revised scope
+  gets a new version, and every practice's approval of the old wording lapses.
+- **Set every practice's specialty.** `assistantStatus.js` lists the practices
+  with none. A general conversation at such a practice keeps the legacy
+  diabetology remit — right for the founding clinic, wrong for anybody else. In
+  the operator console set `cardiology`, `general_physician` or `diabetology`;
+  a cardiology practice with its specialty set has no assistant until it
+  approves one, which is the intended state. Setting the founding clinic to
+  `diabetology` keeps its assistant exactly as it is.
+- **Check one practice:** `node scripts/assistantStatus.js --practice <practiceId>`
+  (add `--language bn` for Bengali conversations).
+- **Rollback:** restore the two dumps. Leaving the drafts in place is harmless —
+  a draft is never retrieved and a draft scope answers nobody.
+
+Then, for each practice that wants a cardiology or general-medicine assistant,
+a clinician of that specialty at that practice opens the knowledge screen,
+filters to the AI drafts for their department, and reads them against the
+sources cited on each: approves the ones that are right, takes a copy of any
+that need correcting (edit, then approve the copy), and leaves the rest. The
+red-flag passages must be among those approved. They then read the department's
+assistant scope — its covers, refusals and red flags — and approve its current
+version. `assistantStatus.js --practice` shows the assistant on only when both
+are done: a clinician of the specialty reviews and approves in the knowledge
+screen before the assistant switches on.
+
 ## Pointing the app at staging
 
 `API_BASE_URL` is a `--dart-define`, so no code change:
