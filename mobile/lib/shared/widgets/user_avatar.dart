@@ -24,7 +24,12 @@ class UserAvatar extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final initial = (name.isNotEmpty ? name[0] : '?').toUpperCase();
+    // The name's initial, not the title's: "Dr. Sen" is S.
+    final bare = name.trim().replaceFirst(
+      RegExp(r'^(dr|prof|mr|mrs|ms|smt|shri|sri)\.?\s+', caseSensitive: false),
+      '',
+    );
+    final initial = (bare.isNotEmpty ? bare[0] : '?').toUpperCase();
     final headers = ref.watch(imageAuthHeaderProvider).valueOrNull;
 
     Widget fallback() => Container(

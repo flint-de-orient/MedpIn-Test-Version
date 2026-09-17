@@ -37,20 +37,24 @@ class ClinicSnapshot extends StatelessWidget {
 
   /// Percentage of readings in range across the window, and the change against
   /// the previous window of the same length.
-  static (int pct, int? delta) _control(List<ControlPoint> t) {
-    if (t.isEmpty) return (0, null);
-    int pctOf(Iterable<ControlPoint> xs) {
+  ///
+  /// Null, not 0, when nothing was measured: no readings is not "none in
+  /// range". The change is in percentage points, between the later and the
+  /// earlier half of the same window.
+  static (int? pct, int? delta) _control(List<ControlPoint> t) {
+    int? pctOf(Iterable<ControlPoint> xs) {
       final total = xs.fold<int>(0, (a, p) => a + p.total);
-      if (total == 0) return 0;
+      if (total == 0) return null;
       final inRange = xs.fold<int>(0, (a, p) => a + p.inRange);
       return ((inRange / total) * 100).round();
     }
 
+    final all = pctOf(t);
     final half = t.length ~/ 2;
+    if (all == null || half == 0) return (all, null);
     final now = pctOf(t.skip(half));
-    if (half == 0) return (now, null);
     final before = pctOf(t.take(half));
-    return (now, before == 0 ? null : now - before);
+    return (all, now == null || before == null ? null : now - before);
   }
 
   @override
@@ -111,7 +115,7 @@ class ClinicSnapshot extends StatelessWidget {
                         crossAxisAlignment: CrossAxisAlignment.center,
                         children: [
                           Text(
-                            '$pct%',
+                            pct == null ? '—' : '$pct%',
                             maxLines: 1,
                             style: T.display.copyWith(
                               color: T.primary,
@@ -144,7 +148,7 @@ class ClinicSnapshot extends StatelessWidget {
                                   ),
                                   const SizedBox(width: 2),
                                   Text(
-                                    '${delta.abs()}%',
+                                    '${delta.abs()} pts',
                                     style: T.label.copyWith(
                                       fontSize: 12,
                                       color: rising ? T.success : T.danger,
@@ -159,12 +163,14 @@ class ClinicSnapshot extends StatelessWidget {
                     ),
                     const SizedBox(height: 2),
                     Text(
-                      'Readings in target range',
+                      pct == null
+                          ? 'No readings in the last $days days'
+                          : 'Readings in target range',
                       style: T.small.copyWith(color: T.ink),
                     ),
                     if (delta != null)
                       Text(
-                        'vs. previous $days days',
+                        'last ${days ~/ 2} days vs the ${days ~/ 2} before',
                         style: T.small.copyWith(color: T.inkMuted),
                       ),
                   ],

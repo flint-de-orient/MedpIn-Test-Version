@@ -1824,7 +1824,7 @@ class _AnalyteChip extends StatelessWidget {
             style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant),
           ),
           Text(
-            _fmt(analyte.value),
+            analyte.hasValue ? _fmt(analyte.value) : '—',
             style: TextStyle(
               fontSize: 12,
               fontWeight: FontWeight.w800,
@@ -1974,7 +1974,7 @@ class _AnalyteTrendRow extends StatelessWidget {
             ),
           ),
           Sparkline(
-            values: [for (final a in readings) a.value.toDouble()],
+            values: [for (final a in readings) if (a.hasValue) a.value.toDouble()],
             color: AppColors.accentOn(context),
             width: 64,
             height: 24,

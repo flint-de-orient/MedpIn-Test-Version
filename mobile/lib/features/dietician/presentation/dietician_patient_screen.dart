@@ -2366,7 +2366,7 @@ class _AnalyteChip extends StatelessWidget {
             style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant),
           ),
           Text(
-            _fmt(analyte.value),
+            analyte.hasValue ? _fmt(analyte.value) : '—',
             style: TextStyle(
               fontSize: 12,
               fontWeight: FontWeight.w800,
@@ -3598,7 +3598,7 @@ class _LabRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final delta = previous == null ? null : analyte.value - previous!;
+    final delta = previous == null || !analyte.hasValue ? null : analyte.value - previous!;
     final shown =
         delta == null ? null : num.parse(delta.abs().toStringAsFixed(1));
     final hasDelta = shown != null && shown != 0;
@@ -3621,7 +3621,7 @@ class _LabRow extends StatelessWidget {
         const SizedBox(width: T.s3),
         Expanded(child: Text(label, style: T.small.copyWith(color: T.ink))),
         MetricValue(
-          value: '${analyte.value}',
+          value: analyte.hasValue ? '${analyte.value}' : '—',
           unit: analyte.unit,
           size: 17,
           color: analyte.abnormal ? T.warning : T.ink,

@@ -545,7 +545,7 @@ class _ConversationRow extends StatelessWidget {
       case 'dietician':
         return 'Dietician: ';
       case 'clinician':
-        return 'You: ';
+        return 'Clinic: ';
       case 'assistant':
         return 'AI: ';
       default:

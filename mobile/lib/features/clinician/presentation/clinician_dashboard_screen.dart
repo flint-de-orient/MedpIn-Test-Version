@@ -90,7 +90,7 @@ class _ClinicianDashboardScreenState
   }
 
   void _refresh() {
-    if (mounted) setState(() => _lastRefreshed = DateTime.now());
+    // Stamped when the figures arrive (see build), not when they are asked for.
     ref.invalidate(overviewProvider);
     ref.invalidate(clinicAnalyticsProvider(_days));
     ref.invalidate(attentionPatientsProvider);
@@ -123,6 +123,11 @@ class _ClinicianDashboardScreenState
     // valueOrNull, not .when: on a timer refresh the provider briefly re-enters
     // loading, and reading the last value keeps the screen from flashing a
     // spinner every twenty seconds.
+    ref.listen(overviewProvider, (previous, next) {
+      if (next.hasValue && !next.isLoading && !next.hasError && mounted) {
+        setState(() => _lastRefreshed = DateTime.now());
+      }
+    });
     final overview = ref.watch(overviewProvider).valueOrNull;
     final analytics = ref.watch(clinicAnalyticsProvider(_days)).valueOrNull;
     final attention =

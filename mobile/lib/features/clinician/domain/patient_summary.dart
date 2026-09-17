@@ -92,6 +92,7 @@ class Analyte {
     required this.code,
     required this.label,
     required this.value,
+    this.hasValue = true,
     required this.flag,
     this.unit,
     this.refLow,
@@ -101,6 +102,10 @@ class Analyte {
   final String code;
   final String label;
   final num value;
+
+  /// False when the report named the analyte without a value. [value] is
+  /// then 0 only to keep its type, and must not be shown or charted.
+  final bool hasValue;
   final String? unit;
   final num? refLow;
   final num? refHigh;
@@ -123,6 +128,7 @@ class Analyte {
     code: j['code']?.toString() ?? '',
     label: j['label']?.toString() ?? '',
     value: (j['value'] as num?) ?? 0,
+    hasValue: j['value'] is num,
     unit: j['unit']?.toString(),
     refLow: j['refLow'] as num?,
     refHigh: j['refHigh'] as num?,

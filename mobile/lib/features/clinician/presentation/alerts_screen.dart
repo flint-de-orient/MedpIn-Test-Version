@@ -246,8 +246,10 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
                 itemBuilder:
                     (context, i) => _AlertCard(
                       alert: shown[i],
-                      onAcknowledge: () => _acknowledge(paged.items[i]),
-                      onResolve: () => _resolve(paged.items[i]),
+                      // The alert on this card, not the one at the same
+                      // position in the unfiltered page.
+                      onAcknowledge: () => _acknowledge(shown[i]),
+                      onResolve: () => _resolve(shown[i]),
                     ),
               );
             },

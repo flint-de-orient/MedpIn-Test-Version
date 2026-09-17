@@ -133,6 +133,8 @@ class _MarkDoseSheet extends StatelessWidget {
               ),
               onPressed: () async {
                 final reason = await _pickSkipReason(context);
+                // Cancelled or dismissed: nothing was skipped.
+                if (reason == null) return;
                 if (context.mounted) {
                   Navigator.of(
                     context,
@@ -194,7 +196,7 @@ Future<String?> _pickSkipReason(BuildContext context) async {
           ),
           actions: [
             TextButton(
-              onPressed: () => Navigator.pop(ctx, ''),
+              onPressed: () => Navigator.pop(ctx),
               child: Text(l10n.commonCancel),
             ),
             TextButton(

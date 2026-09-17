@@ -123,6 +123,21 @@ class _KnowledgeEditScreenState extends ConsumerState<KnowledgeEditScreen> {
   Future<void> _approve() async {
     final messenger = ScaffoldMessenger.of(context);
     final navigator = Navigator.of(context);
+    // Approving approves what is stored. Unsaved edits on screen would be
+    // discarded while the doctor believed they were approving them.
+    final c = widget.chunk!;
+    final edited =
+        _title.text != c.title ||
+        _content.text != c.content ||
+        _section.text != (c.section ?? '') ||
+        _source.text != (c.sourceCitation ?? '') ||
+        _tags.text != c.tags.join(', ');
+    if (edited) {
+      messenger.showSnackBar(
+        const SnackBar(content: Text('Save your changes first, then approve.')),
+      );
+      return;
+    }
     setState(() => _saving = true);
     try {
       await ref

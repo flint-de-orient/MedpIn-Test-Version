@@ -349,8 +349,10 @@ class _SessionRow extends ConsumerWidget {
                               if (msg == null)
                                 const TextSpan(text: 'No messages yet')
                               else ...[
-                                if (!msg.fromPatient)
-                                  const TextSpan(text: 'You: '),
+                                if (msg.fromAssistant)
+                                  const TextSpan(text: 'Assistant: ')
+                                else if (!msg.fromPatient)
+                                  const TextSpan(text: 'Clinic: '),
                                 if (msg.mediaType != null)
                                   WidgetSpan(
                                     alignment: PlaceholderAlignment.middle,

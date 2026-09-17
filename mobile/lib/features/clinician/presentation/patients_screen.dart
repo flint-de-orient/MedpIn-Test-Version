@@ -830,8 +830,9 @@ class _ConversationRow extends StatelessWidget {
                                 // distinguishable at a glance.
                                 if (msg.fromAssistant)
                                   const TextSpan(text: 'Assistant: ')
+                                // Not "You": a colleague may have written it.
                                 else if (!msg.fromPatient)
-                                  const TextSpan(text: 'You: '),
+                                  const TextSpan(text: 'Clinic: '),
                                 // A subtle monochrome icon for a media turn —
                                 // premium, not a cheap emoji.
                                 if (msg.mediaType != null)
