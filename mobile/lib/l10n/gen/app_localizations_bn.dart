@@ -421,6 +421,10 @@ class AppLocalizationsBn extends AppLocalizations {
   String get chatDisclaimer => 'AI-এর সহায়তা, এটি কোনো রোগ নির্ণয় নয়';
 
   @override
+  String get chatClinicRepliesOnly =>
+      'শুধু আপনার ক্লিনিক উত্তর দেবে, সহায়ক নয়';
+
+  @override
   String get chatThinking => 'MedPin সহায়ক লিখছে…';
 
   @override

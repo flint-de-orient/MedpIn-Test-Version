@@ -424,6 +424,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get chatDisclaimer => 'AI-assisted guidance, not a diagnosis';
 
   @override
+  String get chatClinicRepliesOnly =>
+      'Replies come from your clinic only, not the assistant';
+
+  @override
   String get chatThinking => 'MedPin Assistant is typing…';
 
   @override

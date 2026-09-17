@@ -425,6 +425,10 @@ class AppLocalizationsHi extends AppLocalizations {
   String get chatDisclaimer => 'AI-सहायता प्राप्त सुझाव, यह कोई निदान नहीं है';
 
   @override
+  String get chatClinicRepliesOnly =>
+      'सिर्फ़ आपका क्लिनिक जवाब देगा, सहायक नहीं';
+
+  @override
   String get chatThinking => 'MedPin सहायक लिख रहा है…';
 
   @override

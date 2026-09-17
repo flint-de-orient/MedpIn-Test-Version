@@ -880,6 +880,12 @@ abstract class AppLocalizations {
   /// **'AI-assisted guidance, not a diagnosis'**
   String get chatDisclaimer;
 
+  /// No description provided for @chatClinicRepliesOnly.
+  ///
+  /// In en, this message translates to:
+  /// **'Replies come from your clinic only, not the assistant'**
+  String get chatClinicRepliesOnly;
+
   /// No description provided for @chatThinking.
   ///
   /// In en, this message translates to:

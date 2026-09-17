@@ -73,6 +73,18 @@ class ChatRepository {
     return ThreadList.fromJson(await _client.getJson('/chat/threads'));
   }
 
+  /// The patient has seen this conversation up to [upTo], the newest message
+  /// that was on their screen. Clears the unread number beside it in the list.
+  ///
+  /// Sent in UTC: a local time without an offset is read by the server as its
+  /// own time zone, which on the VPS is five and a half hours out.
+  Future<void> markThreadRead(String sessionId, {required DateTime upTo}) async {
+    await _client.postJson(
+      '/chat/threads/$sessionId/read',
+      body: {'upTo': upTo.toUtc().toIso8601String()},
+    );
+  }
+
   Future<Paged<ChatSession>> getSessions({int page = 1, int limit = 50}) async {
     final json = await _client.getJson(
       '/chat/sessions',

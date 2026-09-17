@@ -280,6 +280,40 @@ router.get(
 );
 
 /**
+ * The patient has read this conversation up to `upTo`: the newest message that
+ * was on their screen.
+ *
+ * Sent by the app while the conversation is in view — not implied by fetching
+ * it, because the screen keeps re-reading the thread from behind other tabs.
+ * The conversation screen shows every care session of the practice together
+ * (see GET /thread), so every one of them is read to the same point. The
+ * marker only moves forward, and never past the present.
+ *
+ * Audited: it is the record that a patient had a doctor's reply on their
+ * screen, and it is sent only when something new has been shown — not on a
+ * timer, so it does not bury the trail the way a heartbeat would.
+ */
+router.post(
+  '/threads/:id/read',
+  audit('update', 'ChatSession'),
+  requireAuth,
+  validate({ body: z.object({ upTo: z.coerce.date().optional() }).default({}) }),
+  asyncHandler(async (req, res) => {
+    const opened = await ChatSession.findOne({ _id: req.params.id, patient: req.user._id }).select('_id').lean();
+    if (!opened) throw notFound('Conversation not found');
+
+    const now = new Date();
+    const asked = req.body?.upTo;
+    const upTo = asked && !Number.isNaN(asked.getTime()) && asked < now ? asked : now;
+
+    const enrollment = await enrolmentForPatientRead(req.user._id, req.params.id);
+    const sessions = await relationshipSessions({ patientId: req.user._id, enrollment, kind: 'care' });
+    await ChatSession.updateMany(sessions, { $max: { patientReadAt: upTo } });
+    res.status(204).end();
+  }),
+);
+
+/**
  * The patient's whole care conversation, across every session it spans.
  *
  * The clinician has always read the thread this way — `careSessionIds`, plural

@@ -18,8 +18,15 @@ import '../../../../l10n/gen/app_localizations.dart';
 /// chip on its own is too terse to be the only statement of it.
 ///
 /// Deliberately not dismissible.
+///
+/// In a conversation no assistant answers — a specialty whose assistant no
+/// clinician has approved — the same place says so instead. "AI-assisted
+/// guidance" above a thread the assistant never replies in told a patient to
+/// wait for an answer that was not coming.
 class AssistantDisclaimerBanner extends StatelessWidget {
-  const AssistantDisclaimerBanner({super.key});
+  const AssistantDisclaimerBanner({super.key, this.clinicRepliesOnly = false});
+
+  final bool clinicRepliesOnly;
 
   @override
   Widget build(BuildContext context) {
@@ -51,7 +58,7 @@ class AssistantDisclaimerBanner extends StatelessWidget {
             const SizedBox(width: T.s2),
             Flexible(
               child: Text(
-                l10n.chatDisclaimer,
+                clinicRepliesOnly ? l10n.chatClinicRepliesOnly : l10n.chatDisclaimer,
                 textAlign: TextAlign.center,
                 // Two lines, because Bengali and Hindi both run appreciably
                 // longer than the English and were being clipped at one.

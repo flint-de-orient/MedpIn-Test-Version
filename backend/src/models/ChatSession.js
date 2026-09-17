@@ -103,6 +103,17 @@ const chatSessionSchema = new mongoose.Schema(
     /// simply walks away — which is what makes it safe to suppress an answer
     /// on: the worst case is that it expires and the assistant resumes.
     clinicianPresentUntil: { type: Date, default: null },
+
+    /// How far the patient has read this conversation: the newest message that
+    /// was on their screen. The number beside a conversation in their list is
+    /// what arrived after it.
+    ///
+    /// Written by the app while the conversation is actually in view, never by
+    /// loading it — the screen keeps re-reading the thread from behind other
+    /// tabs, and a fetch nobody looked at is not a read. Null on every session
+    /// from before it existed; see `unreadFor` in services/threads.js for what
+    /// that counts.
+    patientReadAt: { type: Date, default: null },
   },
   { timestamps: true },
 );

@@ -1,6 +1,9 @@
+import { ChatMessage } from '../models/ChatMessage.js';
 import { ChatSession } from '../models/ChatSession.js';
 import { Department } from '../models/Department.js';
+import { Membership } from '../models/Membership.js';
 import { Practice } from '../models/Practice.js';
+import { User } from '../models/User.js';
 import { practicesFor } from './enrollments.js';
 import { conversationAssistant } from './ai/assistantAvailability.js';
 
@@ -56,23 +59,29 @@ export async function threadsFor(patientId, { language = 'en' } = {}) {
     // Pre-migration: no enrollments, so there is nothing to group by. Return
     // the threads as one unlabelled group, which is precisely today's screen.
     return sessions.length
-      ? [{ practice: null, enrollment: null, threads: await describe(sessions, language, null) }]
+      ? [{ practice: null, doctor: null, enrollment: null, threads: await describe(sessions, language, null) }]
       : [];
   }
 
   const practices = await Practice.find({
     _id: { $in: enrollments.map((e) => e.practice) },
   })
-    .select('name')
+    .select('name logoLightAssetId')
     .lean();
-  const nameOf = new Map(practices.map((p) => [String(p._id), p.name]));
+  const practiceById = new Map(practices.map((p) => [String(p._id), p]));
+  const doctors = await namedDoctors(enrollments);
 
   // Sessions whose enrollment was never backfilled belong to the patient's
   // first practice — it is the only one they had when the row was written.
   const primary = enrollments[0];
 
   const groups = enrollments.map((e) => ({
-    practice: { id: e.practice, name: nameOf.get(e.practice) ?? null },
+    practice: {
+      id: e.practice,
+      name: practiceById.get(e.practice)?.name ?? null,
+      logoUrl: uploadUrl(practiceById.get(e.practice)?.logoLightAssetId),
+    },
+    doctor: doctors.get(e.id) ?? null,
     enrollment: e.id,
     sessions: [],
   }));
@@ -87,13 +96,141 @@ export async function threadsFor(patientId, { language = 'en' } = {}) {
   for (const g of groups) {
     out.push({
       practice: g.practice,
+      doctor: g.doctor,
       enrollment: g.enrollment,
       threads: await describe(g.sessions, language, g.practice.id),
+      // A practice with no conversation yet: whether the first message there
+      // would be answered, so the empty conversation does not promise an
+      // assistant nobody has approved. Null where the threads already say.
+      newConversationHasAssistant: g.sessions.length
+        ? null
+        : (await conversationAssistant({ session: null, practiceId: g.practice.id, language })).enabled,
     });
   }
   // A practice the patient has joined but never messaged still appears, so they
   // can start a conversation rather than wondering where the clinic went.
   return out;
+}
+
+const uploadUrl = (assetId) => (assetId ? `/api/v1/uploads/${assetId}/raw` : null);
+
+/**
+ * The doctor each enrolment names, when that doctor still works there.
+ *
+ * The patient's list shows their doctor's face and name beside the
+ * conversation, the way any messaging app shows a contact. A doctor who has
+ * left the practice is not who answers any more, so the row falls back to the
+ * practice rather than showing somebody who will not reply.
+ *
+ * @returns {Promise<Map<string, {id, name, avatarUrl}>>} keyed by enrolment id
+ */
+async function namedDoctors(enrollments) {
+  const named = enrollments.filter((e) => e.primaryDoctor);
+  if (!named.length) return new Map();
+
+  const users = await User.find({ _id: { $in: [...new Set(named.map((e) => e.primaryDoctor))] } })
+    .select('name avatarAssetId')
+    .lean();
+  const userById = new Map(users.map((u) => [String(u._id), u]));
+
+  const out = new Map();
+  for (const e of named) {
+    const user = userById.get(e.primaryDoctor);
+    // eslint-disable-next-line no-await-in-loop
+    if (!user || !(await Membership.exists(Membership.currentFilter(user._id, e.practice)))) continue;
+    out.set(e.id, { id: String(user._id), name: user.name ?? null, avatarUrl: uploadUrl(user.avatarAssetId) });
+  }
+  return out;
+}
+
+/** Turns a patient's list counts as unread: everything the clinic's side wrote. */
+const FROM_THE_CLINIC = Object.freeze(['assistant', 'clinician', 'dietician']);
+
+/** Enough of a message to recognise it in a list row; the app ellipsises the rest. */
+const PREVIEW_LENGTH = 140;
+
+/**
+ * The newest message the patient can see in a conversation, as a list row
+ * previews it — or null when there is none.
+ *
+ * A message deleted for everyone says so and gives away nothing it said. A
+ * photo, voice note or document with no caption is named by what it is.
+ */
+export async function lastMessageFor(session) {
+  const m = await ChatMessage.findOne({
+    session: session._id,
+    role: { $ne: 'system' },
+    hiddenFor: { $ne: session.patient },
+  })
+    .sort({ createdAt: -1, _id: -1 })
+    .select('role sender content attachments deletedForEveryoneAt createdAt')
+    .populate('sender', 'name')
+    .populate('attachments', 'kind mimeType')
+    .lean();
+  if (!m) return null;
+
+  const deleted = Boolean(m.deletedForEveryoneAt);
+  const text = deleted ? '' : Array.from((m.content ?? '').replace(/\s+/g, ' ').trim()).slice(0, PREVIEW_LENGTH).join('');
+  return {
+    role: m.role,
+    // The clinic's people are named; the patient's own turns and the
+    // assistant's need no name.
+    senderName: m.role === 'clinician' || m.role === 'dietician' ? (m.sender?.name ?? null) : null,
+    deleted,
+    text,
+    attachment: deleted ? null : attachmentKind(m.attachments),
+    at: m.createdAt,
+  };
+}
+
+function attachmentKind(attachments) {
+  const first = (attachments ?? [])[0];
+  if (!first) return null;
+  const mime = String(first.mimeType ?? '');
+  if (mime.startsWith('image/')) return 'photo';
+  if (mime.startsWith('audio/') || first.kind === 'voice_note') return 'voice';
+  return 'document';
+}
+
+/**
+ * How many messages from the clinic's side arrived after the patient last had
+ * this conversation on screen.
+ *
+ * Deleted-for-everyone and hidden messages are not counted: there is nothing
+ * left to read.
+ *
+ * ---- Conversations from before reads were recorded ----------------------
+ *
+ * `patientReadAt` is null on every session older than it, and nobody knows
+ * what the patient read there. Counting the whole history would put "57" on a
+ * conversation they have been reading for months. What is known is that
+ * whatever was there when the patient last wrote was on their screen — and
+ * the assistant's answer to that message streamed onto the same screen. So
+ * such a conversation counts the clinic's people's messages since the
+ * patient's last one, and the first time it is opened it has a real marker.
+ */
+export async function unreadFor(session) {
+  const base = {
+    session: session._id,
+    hiddenFor: { $ne: session.patient },
+    deletedForEveryoneAt: null,
+  };
+  if (session.patientReadAt) {
+    return ChatMessage.countDocuments({
+      ...base,
+      role: { $in: FROM_THE_CLINIC },
+      createdAt: { $gt: session.patientReadAt },
+    });
+  }
+  const lastOwn = await ChatMessage.findOne({ session: session._id, role: 'user' })
+    .sort({ createdAt: -1 })
+    .select('createdAt')
+    .lean();
+  return ChatMessage.countDocuments({
+    ...base,
+    role: { $in: ['clinician', 'dietician'] },
+    ...(lastOwn ? { createdAt: { $gt: lastOwn.createdAt } } : {}),
+  });
 }
 
 /**
@@ -119,7 +256,12 @@ async function describe(sessions, language, practiceId) {
     }
   }
 
-  return sessions.map((s) => {
+  const [lastMessages, unread] = await Promise.all([
+    Promise.all(sessions.map(lastMessageFor)),
+    Promise.all(sessions.map(unreadFor)),
+  ]);
+
+  return sessions.map((s, i) => {
     const d = s.department ? byId.get(String(s.department)) : null;
     const answer = answers.get(s.department ? String(s.department) : 'general');
     return {
@@ -137,6 +279,8 @@ async function describe(sessions, language, practiceId) {
       lastMessageAt: s.lastMessageAt,
       highestUrgency: s.highestUrgency,
       messageCount: s.messageCount ?? 0,
+      lastMessage: lastMessages[i],
+      unreadCount: unread[i],
     };
   });
 }

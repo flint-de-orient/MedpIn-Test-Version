@@ -13,6 +13,7 @@ import '../../../shared/widgets/loading_view.dart';
 import '../../../shared/widgets/markdown_text.dart';
 import '../../../shared/data/care_contact.dart';
 import '../../auth/presentation/auth_controller.dart';
+import '../data/chat_repository.dart';
 import '../domain/chat_message.dart';
 import 'chat_controller.dart';
 import 'widgets/chat_composer.dart';
@@ -26,7 +27,25 @@ import '../../../core/push/chat_push_signal.dart';
 import '../../appointments/presentation/request_appointment_sheet.dart';
 
 class ChatScreen extends ConsumerStatefulWidget {
-  const ChatScreen({super.key});
+  const ChatScreen({
+    super.key,
+    this.title,
+    this.onBack,
+    this.clinicRepliesOnly = false,
+  });
+
+  /// Who the conversation is with, when the patient opened it from their list
+  /// of conversations. Null keeps the tab's own title.
+  final String? title;
+
+  /// Back to the list of conversations — the arrow in the bar and the phone's
+  /// back button both. Null when there is no list: a patient with one
+  /// conversation opens straight into it, and back leaves the tab as before.
+  final VoidCallback? onBack;
+
+  /// No assistant answers in this conversation, so the banner says the clinic
+  /// replies rather than promising AI guidance.
+  final bool clinicRepliesOnly;
 
   @override
   ConsumerState<ChatScreen> createState() => _ChatScreenState();
@@ -111,7 +130,49 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
     // have moved on, so check at once instead of waiting out the timer.
     if (state == AppLifecycleState.resumed && mounted) {
       ref.read(chatControllerProvider.notifier).pollForUpdates();
+      _reportRead();
     }
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Depended on here so switching back to this tab calls in again: what
+    // arrived while another tab was in front is read the moment it is shown.
+    if (TickerMode.valuesOf(context).enabled) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _reportRead());
+    }
+  }
+
+  /// The newest message already reported as read, so a poll that brings
+  /// nothing new sends nothing.
+  DateTime? _reportedReadUpTo;
+
+  /// Tells the server the patient has seen this conversation up to its newest
+  /// message — which clears the number beside it in their list.
+  ///
+  /// Only while it is actually in front of them. The poll keeps re-reading the
+  /// thread from behind other tabs and from the background, and a message
+  /// fetched there has not been read.
+  void _reportRead() {
+    if (!mounted || !TickerMode.valuesOf(context).enabled) return;
+    if (WidgetsBinding.instance.lifecycleState != AppLifecycleState.resumed) return;
+    final chat = ref.read(chatControllerProvider);
+    final sessionId = chat.sessionId;
+    if (sessionId == null) return;
+    final newest = newestDeliveredAt(chat.messages);
+    if (newest == null) return;
+    final reported = _reportedReadUpTo;
+    if (reported != null && !newest.isAfter(reported)) return;
+    _reportedReadUpTo = newest;
+    ref
+        .read(chatRepositoryProvider)
+        .markThreadRead(sessionId, upTo: newest)
+        // Nothing to tell the patient: the list shows a number a little longer,
+        // and the next message on screen reports again.
+        .catchError((Object _) {
+          if (_reportedReadUpTo == newest) _reportedReadUpTo = reported;
+        });
   }
 
   /// The jump-to-latest button appears once the newest row scrolls out of view.
@@ -290,6 +351,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
           previous.messages.last.content.length !=
               next.messages.last.content.length;
       if (lengthChanged || contentGrew) _scrollToBottom();
+      if (lengthChanged) _reportRead();
       // Let the error banner clear itself after a few seconds instead of
       // sitting there until the next message.
       if (previous?.error == null && next.error != null) {
@@ -328,15 +390,29 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
     _entries = entries;
     _itemCount = entries.length + (showGenerating ? 1 : 0);
 
-    return Scaffold(
+    final onBack = widget.onBack;
+    final screen = Scaffold(
       // Transparent so the shell's ground runs unbroken behind this
       // screen and the navigation bar alike. An opaque page here left a
       // visible band of ground around the pill and nowhere else.
       backgroundColor: Colors.transparent,
       appBar: AppBar(
         centerTitle: true,
+        // Opened from the list of conversations: the way back to it. The
+        // screen replaces the list inside the tab rather than being pushed
+        // over it, so there is no route for the bar to imply an arrow from.
+        leading:
+            onBack == null
+                ? null
+                : IconButton(
+                  tooltip: MaterialLocalizations.of(context).backButtonTooltip,
+                  icon: const Icon(Icons.arrow_back_rounded),
+                  onPressed: onBack,
+                ),
         title: Text(
-          l10n.chatTitle,
+          widget.title ?? l10n.chatTitle,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
           style: TextStyle(
             color: AppColors.accentOn(context),
             fontWeight: FontWeight.w700,
@@ -382,7 +458,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
         child: _KeyboardInset(
           child: Column(
             children: [
-              const AssistantDisclaimerBanner(),
+              AssistantDisclaimerBanner(clinicRepliesOnly: widget.clinicRepliesOnly),
               if (chatState.error != null)
                 Container(
                   width: double.infinity,
@@ -601,6 +677,40 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
         ),
       ),
     );
+
+    if (onBack == null) return screen;
+    // The phone's back button goes where the arrow does, instead of closing
+    // the app with the list never shown again.
+    //
+    // Not a PopScope in the app. This screen is the first page of its tab, and
+    // the router's back handling only asks a tab's navigator when that
+    // navigator has something to pop — so a PopScope here is never consulted
+    // and back leaves the app. The router's own dispatcher asks this first.
+    if (Router.maybeOf(context)?.backButtonDispatcher != null) {
+      return BackButtonListener(onBackButtonPressed: _systemBack, child: screen);
+    }
+    // Outside a router there is only a navigator to ask.
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) onBack();
+      },
+      child: screen,
+    );
+  }
+
+  /// Back to the list — unless something else should take this press first.
+  Future<bool> _systemBack() async {
+    final onBack = widget.onBack;
+    if (!mounted || onBack == null) return false;
+    // Another tab is in front: its back is its own.
+    if (!TickerMode.valuesOf(context).enabled) return false;
+    // A sheet or page over the conversation in this tab, or a dialog over the
+    // whole app: back closes that.
+    if (!(ModalRoute.of(context)?.isCurrent ?? true)) return false;
+    if (Navigator.of(context, rootNavigator: true).canPop()) return false;
+    onBack();
+    return true;
   }
 
   /// Interleaves "Today" / "Yesterday" / date markers between messages.

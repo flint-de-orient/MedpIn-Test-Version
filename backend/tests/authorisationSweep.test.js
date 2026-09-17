@@ -117,6 +117,11 @@ const CLASSIFIED = new Map([
   ['feedback.js /', 'self: a patient’s own feedback. The handler refuses non-patients.'],
   ['chat.js /message', 'self: the patient’s own thread. patientId comes from the token.'],
   [
+    'chat.js /threads/:id/read',
+    'self: the patient’s own read marker. The session is looked up with the caller as its ' +
+      'patient — anybody else’s reads as not found — and only that patient’s sessions are written.',
+  ],
+  [
     'chat.js /message/stream',
     'self: the same thread, delivered as Server-Sent Events. Same patientId source, '
       + 'same triage-first order.',

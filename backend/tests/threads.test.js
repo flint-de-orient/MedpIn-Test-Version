@@ -22,7 +22,7 @@ describe('one practice renders as today', () => {
     // Pre-migration. There is nothing to group by, and inventing a grouping
     // would put a practice heading above a conversation that never had one.
     assert.match(service, /if \(!enrollments\.length\)/);
-    assert.match(service, /practice: null, enrollment: null, threads:/);
+    assert.match(service, /practice: null, doctor: null, enrollment: null, threads:/);
   });
 
   test('a thread with no enrollment is attributed to the first practice', () => {

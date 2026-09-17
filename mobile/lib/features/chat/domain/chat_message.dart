@@ -461,3 +461,18 @@ class MessageAction {
     );
   }
 }
+
+/// When the newest message the server has delivered was written: how far a
+/// screen showing [messages] has been read.
+///
+/// A message still being sent carries a temporary id and the phone's own
+/// clock, which can be minutes out from the server's, so it does not count.
+DateTime? newestDeliveredAt(Iterable<ChatMessage> messages) {
+  DateTime? newest;
+  for (final m in messages) {
+    final at = m.createdAt;
+    if (at == null || m.id.isEmpty || m.id.startsWith('__')) continue;
+    if (newest == null || at.isAfter(newest)) newest = at;
+  }
+  return newest;
+}
