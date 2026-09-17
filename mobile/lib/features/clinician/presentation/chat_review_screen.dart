@@ -58,6 +58,15 @@ class _ChatReviewScreenState extends ConsumerState<ChatReviewScreen> {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final async = ref.watch(chatReviewProvider(_query));
+    // A refresh that fails keeps what was on screen, and says so once rather
+    // than letting stale conversations pass for current.
+    ref.listen(chatReviewProvider(_query), (previous, next) {
+      if (next.hasError && next.hasValue && !(previous?.hasError ?? false)) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not refresh. Showing what was last loaded.')),
+        );
+      }
+    });
 
     return Scaffold(
       appBar: AppBar(
@@ -138,6 +147,8 @@ class _ChatReviewScreenState extends ConsumerState<ChatReviewScreen> {
         child: RefreshIndicator(
           onRefresh: () async => ref.invalidate(chatReviewProvider(_query)),
           child: async.when(
+            // A refresh that fails keeps the list; it was wiped for an error.
+            skipError: true,
             loading: () => const Center(child: CircularProgressIndicator()),
             error:
                 (_, _) => Center(

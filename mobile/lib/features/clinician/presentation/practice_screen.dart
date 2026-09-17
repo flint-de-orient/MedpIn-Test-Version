@@ -37,7 +37,8 @@ class PracticeScreen extends ConsumerWidget {
 
     return Scaffold(
       backgroundColor: T.surface,
-      appBar: AppBar(automaticallyImplyLeading: false, title: const Text('Practice')),
+      // Opened from More, so it needs the way back.
+      appBar: AppBar(title: const Text('Practice')),
       body: RefreshIndicator(
         onRefresh: () async => ref.refresh(practiceOverviewProvider.future),
         child: async.when(

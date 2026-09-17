@@ -222,6 +222,7 @@
   "medsMarkTaken": "খাওয়া হয়েছে",
   "medsMarkSkipped": "বাদ দেওয়া হয়েছে",
   "medsStatusTaken": "খাওয়া হয়েছে",
+  "medsStatusTakenLate": "দেরিতে খাওয়া হয়েছে",
   "medsStatusSkipped": "বাদ দেওয়া হয়েছে",
   "medsStatusPending": "বাকি আছে",
   "medsStatusMissed": "মিস হয়েছে",

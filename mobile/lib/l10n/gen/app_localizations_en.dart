@@ -683,6 +683,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get medsStatusTaken => 'Taken';
 
   @override
+  String get medsStatusTakenLate => 'Taken late';
+
+  @override
   String get medsStatusSkipped => 'Skipped';
 
   @override

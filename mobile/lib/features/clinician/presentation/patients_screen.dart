@@ -159,6 +159,15 @@ class _PatientsScreenState extends ConsumerState<PatientsScreen>
   Widget build(BuildContext context) {
     final query = _query;
     final asyncRaw = ref.watch(patientsProvider(query));
+    // A refresh that fails keeps what was on screen, and says so once rather
+    // than letting stale patients pass for current.
+    ref.listen(patientsProvider(query), (previous, next) {
+      if (next.hasError && next.hasValue && !(previous?.hasError ?? false)) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not refresh. Showing what was last loaded.')),
+        );
+      }
+    });
     // Hold the last list while a refresh is in flight. The screen polls, and
     // every tick dropped the whole list to a spinner and back — which is the
     // flicker you see, most obviously at the moment you tap the toggle and are

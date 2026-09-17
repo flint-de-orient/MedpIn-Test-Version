@@ -114,6 +114,15 @@ class _NutritionInboxScreenState extends ConsumerState<NutritionInboxScreen>
   @override
   Widget build(BuildContext context) {
     final asyncRaw = ref.watch(chatReviewProvider(_query));
+    // A refresh that fails keeps what was on screen, and says so once rather
+    // than letting stale conversations pass for current.
+    ref.listen(chatReviewProvider(_query), (previous, next) {
+      if (next.hasError && next.hasValue && !(previous?.hasError ?? false)) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not refresh. Showing what was last loaded.')),
+        );
+      }
+    });
     // Same hold as the Care inbox: the poll was replacing the list with a
     // spinner on every tick, which reads as a flicker when you tap the filter.
     final loaded = asyncRaw.valueOrNull;

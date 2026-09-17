@@ -309,7 +309,9 @@ class _PanelNotificationBellState extends ConsumerState<PanelNotificationBell>
   }
 
   void _tick() {
-    if (mounted) ref.invalidate(overviewProvider);
+    if (!mounted) return;
+    ref.invalidate(overviewProvider);
+    ref.invalidate(clinicianNotificationsProvider);
   }
 
   @override
@@ -322,7 +324,10 @@ class _PanelNotificationBellState extends ConsumerState<PanelNotificationBell>
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final count = ref.watch(overviewProvider).valueOrNull?.waitingTotal ?? 0;
+    // The unread count of the list the bell opens. It counted the dashboard's
+    // open alerts, unread messages and reviews instead, so the badge and the
+    // sheet under it disagreed.
+    final count = ref.watch(clinicianNotificationsProvider).valueOrNull?.unread ?? 0;
 
     return Stack(
       clipBehavior: Clip.none,

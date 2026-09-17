@@ -15,6 +15,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:medpin/shared/widgets/notification_list_sheet.dart';
 
 /// The inbox reaches past its first page.
 ///
@@ -82,6 +83,11 @@ void main() {
       secureStoreProvider.overrideWithValue(_NoSession()),
       brandClinicProvider.overrideWith((ref) async => null),
       overviewProvider.overrideWith((ref) => Completer<ClinicOverview>().future),
+      // The bell counts the notification list it opens; never answered here,
+      // like the overview it used to count.
+      clinicianNotificationsProvider.overrideWith(
+        (ref) => Completer<({int unread, int messages, int alerts, int requests, List<PanelNotification> items})>().future,
+      ),
       pendingEnrolmentsProvider.overrideWith(
         (ref) async => const <PendingEnrolment>[],
       ),

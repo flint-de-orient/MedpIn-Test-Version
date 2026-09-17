@@ -677,6 +677,9 @@ class AppLocalizationsBn extends AppLocalizations {
   String get medsStatusTaken => 'খাওয়া হয়েছে';
 
   @override
+  String get medsStatusTakenLate => 'দেরিতে খাওয়া হয়েছে';
+
+  @override
   String get medsStatusSkipped => 'বাদ দেওয়া হয়েছে';
 
   @override

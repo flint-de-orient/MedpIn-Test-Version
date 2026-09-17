@@ -252,7 +252,8 @@ class _DoseRowState extends ConsumerState<_DoseRow> {
     'taken' => (
       color: AppColors.success,
       icon: Icons.check_circle_rounded,
-      label: 'Taken',
+      // More than two hours after it was due.
+      label: dose.late ? 'Taken late' : 'Taken',
     ),
     'skipped' => (
       color: AppColors.warning,

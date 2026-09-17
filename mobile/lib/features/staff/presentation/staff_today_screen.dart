@@ -173,6 +173,7 @@ class _StaffTodayScreenState extends ConsumerState<StaffTodayScreen> {
                   today: todayAll,
                   requests: requests,
                   onConfirmed: _refresh,
+                  known: todayAsync.hasValue && requestsAsync.hasValue,
                 ),
                 const SizedBox(height: AppSpacing.md),
 
@@ -747,7 +748,12 @@ class _QueueCard extends ConsumerWidget {
     required this.today,
     required this.requests,
     required this.onConfirmed,
+    required this.known,
   });
+
+  /// False until both lists have arrived. The tiles read "0" while loading and
+  /// after a failed load — the same as a quiet day.
+  final bool known;
 
   /// Everything scheduled for today, cancellations included.
   final List<Appointment> today;
@@ -799,7 +805,7 @@ class _QueueCard extends ConsumerWidget {
               Expanded(
                 child: _QueueStat(
                   icon: Icons.event_note_rounded,
-                  value: '$scheduled',
+                  value: known ? '$scheduled' : '—',
                   label: l10n.deskScheduled,
                   caption: l10n.deskToday,
                   tone: AppColors.primary,
@@ -809,7 +815,7 @@ class _QueueCard extends ConsumerWidget {
               Expanded(
                 child: _QueueStat(
                   icon: Icons.hourglass_top_rounded,
-                  value: '${requests.length}',
+                  value: known ? '${requests.length}' : '—',
                   label: l10n.deskWaiting,
                   caption: l10n.deskForScheduling,
                   // Amber only while somebody is actually waiting. A permanent
@@ -824,7 +830,7 @@ class _QueueCard extends ConsumerWidget {
               Expanded(
                 child: _QueueStat(
                   icon: Icons.event_busy_outlined,
-                  value: '$freed',
+                  value: known ? '$freed' : '—',
                   label: l10n.deskFreedUp,
                   caption: l10n.deskTodayLabel,
                   tone:

@@ -72,7 +72,11 @@ class _SheetState extends ConsumerState<_ClinicianNotificationSheet> {
     _marked = true;
     _repo
         .markNotificationsSeen()
-        .then((_) => _container.invalidate(overviewProvider))
+        .then((_) {
+          _container.invalidate(overviewProvider);
+          // The badge reads this list's unread count.
+          _container.invalidate(clinicianNotificationsProvider);
+        })
         // A badge that fails to clear is a nuisance. An error toast over a
         // sheet the doctor opened to read something else is worse.
         .catchError((_) {});

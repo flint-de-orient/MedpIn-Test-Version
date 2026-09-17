@@ -407,11 +407,10 @@ class _KnowledgeEditScreenState extends ConsumerState<KnowledgeEditScreen> {
                         canApprove
                             ? OutlinedButton(
                               onPressed: _saving ? null : _save,
-                              // Says what it leaves behind: an entry saved
-                              // but not approved is a draft the assistant
-                              // will not draw on, and "Save" alone does not
-                              // tell the doctor that.
-                              child: const Text('Save as draft'),
+                              // "Save", not "Save as draft": every save goes
+                              // back to waiting for approval, which the
+                              // confirmation says, and nothing here is a draft.
+                              child: const Text('Save'),
                             )
                             : FilledButton(
                               style: FilledButton.styleFrom(

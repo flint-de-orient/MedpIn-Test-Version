@@ -243,7 +243,11 @@ class _CurrentPlan extends ConsumerWidget {
 
           if (status.renewsOn != null) ...[
             const SizedBox(height: T.s3),
-            _Fact(label: 'Renews on', value: _day(status.renewsOn!)),
+            // A trial ends; it does not renew.
+            _Fact(
+              label: status.plan == 'trial' ? 'Trial ends on' : 'Renews on',
+              value: _day(status.renewsOn!),
+            ),
           ],
 
           if (sub != null) ...[

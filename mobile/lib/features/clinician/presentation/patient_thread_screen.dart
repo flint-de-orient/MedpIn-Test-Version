@@ -173,8 +173,9 @@ class _PatientThreadScreenState extends ConsumerState<PatientThreadScreen> {
       // Only follow a genuinely new message down; re-rendering an edit should
       // not yank the reader away from where they were looking.
       if (grew) _scrollToBottom();
-    } on ApiException {
-      // Ignored — the next tick retries.
+    } catch (_) {
+      // Ignored — the next tick retries. Any failure, not only an API one: a
+      // poll that threw something else stopped refreshing the thread.
     }
   }
 

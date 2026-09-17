@@ -310,9 +310,39 @@ class PrescriptionSummary {
     this.scanUrl,
     this.scanMimeType,
     this.uploadedByName,
+    this.isActive,
+    this.recordState,
+    this.endedReason,
   });
 
   final String id;
+
+  /// Whether it is still in force, by the old flag. Null from a server that
+  /// did not send it.
+  final bool? isActive;
+
+  /// `current` | `voided` | `corrected` | `superseded`, when the server sends
+  /// the record lifecycle.
+  final String? recordState;
+
+  /// Why it was ended, as recorded by whoever ended it.
+  final String? endedReason;
+
+  /// What to say about a prescription that no longer stands, or null for one
+  /// that does. A voided or replaced prescription looked like a current one.
+  String? get endedLabel {
+    final reason = (endedReason ?? '').trim();
+    final why = reason.isEmpty ? '' : ' — $reason';
+    switch (recordState) {
+      case 'voided':
+        return 'Voided$why';
+      case 'superseded':
+        return 'Replaced by a newer prescription$why';
+      case 'corrected':
+        return 'Corrected$why';
+    }
+    return isActive == false ? 'No longer in force' : null;
+  }
 
   /// Human-readable reference printed on the PDF: `RX-2026-000412`, or the
   /// practice's own prefix. References issued before prefixes existed keep the
@@ -380,6 +410,9 @@ class PrescriptionSummary {
     scanUrl: j['scanUrl']?.toString(),
     scanMimeType: j['scanMimeType']?.toString(),
     uploadedByName: j['uploadedByName']?.toString(),
+    isActive: j['isActive'] as bool?,
+    recordState: j['recordState']?.toString(),
+    endedReason: j['endedReason']?.toString(),
     referenceNo: j['referenceNo']?.toString(),
     issuedOn: DateTime.tryParse(j['issuedOn']?.toString() ?? '')?.toLocal(),
     doctorName: j['doctorName']?.toString(),

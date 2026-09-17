@@ -127,7 +127,10 @@ class MedicationSlotTile extends StatelessWidget {
                   Icon(_statusIcon(slot.status), color: color, size: 26),
                   const SizedBox(height: 0),
                   Text(
-                    _statusLabel(l10n, slot.status),
+                    // Taken more than two hours after it was due says so.
+                    slot.status == 'taken' && slot.late
+                        ? l10n.medsStatusTakenLate
+                        : _statusLabel(l10n, slot.status),
                     style: TextStyle(
                       color: color,
                       fontSize: 12,

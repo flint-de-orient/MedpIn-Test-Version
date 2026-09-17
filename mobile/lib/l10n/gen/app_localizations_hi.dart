@@ -683,6 +683,9 @@ class AppLocalizationsHi extends AppLocalizations {
   String get medsStatusTaken => 'ली गई';
 
   @override
+  String get medsStatusTakenLate => 'देर से ली गई';
+
+  @override
   String get medsStatusSkipped => 'छोड़ी गई';
 
   @override

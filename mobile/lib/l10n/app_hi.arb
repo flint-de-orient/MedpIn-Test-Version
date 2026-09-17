@@ -222,6 +222,7 @@
   "medsMarkTaken": "ली गई",
   "medsMarkSkipped": "छोड़ी गई",
   "medsStatusTaken": "ली गई",
+  "medsStatusTakenLate": "देर से ली गई",
   "medsStatusSkipped": "छोड़ी गई",
   "medsStatusPending": "बाकी है",
   "medsStatusMissed": "छूट गई",

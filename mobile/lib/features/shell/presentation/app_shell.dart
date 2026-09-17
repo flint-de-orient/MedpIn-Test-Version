@@ -5,6 +5,7 @@ import '../../../core/update/version_gate.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../l10n/gen/app_localizations.dart';
+import '../../../shared/data/care_contact.dart';
 import '../../../shared/widgets/glass_nav_bar.dart';
 import '../../../shared/widgets/glass_surface.dart';
 
@@ -29,6 +30,14 @@ class AppShell extends ConsumerWidget {
     final updateAvailable =
         ref.watch(versionStatusProvider).valueOrNull?.canUpdate ?? false;
     final l10n = AppLocalizations.of(context);
+    // Known not to be enrolled at any practice: there is no doctor and no
+    // dietician. The conversation tab is the assistant's, and the Dietician tab
+    // is not offered. Unknown (loading, or the check failed) keeps every tab.
+    final contact = ref.watch(careContactProvider);
+    final enrolled = !(contact.hasValue && contact.value!.practiceName == null);
+    // Positions on the bar → branches. Branch 3 is the Dietician tab.
+    final branches = enrolled ? const [0, 1, 2, 3, 4] : const [0, 1, 2, 4];
+    final selected = branches.indexOf(navigationShell.currentIndex);
     // The ground wraps the Scaffold rather than sitting inside the body, so
     // it runs behind the navigation bar as well. The bar's surround is only
     // padding — it was always transparent; what was covering the ground was
@@ -38,11 +47,11 @@ class AppShell extends ConsumerWidget {
         backgroundColor: Colors.transparent,
         body: navigationShell,
         bottomNavigationBar: GlassNavBar(
-          currentIndex: navigationShell.currentIndex,
+          currentIndex: selected < 0 ? 0 : selected,
           onSelected:
               (index) => navigationShell.goBranch(
-                index,
-                initialLocation: index == navigationShell.currentIndex,
+                branches[index],
+                initialLocation: branches[index] == navigationShell.currentIndex,
               ),
           items: [
             const GlassNavItem(
@@ -50,21 +59,22 @@ class AppShell extends ConsumerWidget {
               selectedIcon: Icons.home_rounded,
               label: 'Home',
             ),
-            const GlassNavItem(
+            GlassNavItem(
               icon: Icons.chat_bubble_outline_rounded,
               selectedIcon: Icons.chat_bubble_rounded,
-              label: 'Doctor',
+              label: enrolled ? 'Doctor' : 'Assistant',
             ),
             const GlassNavItem(
               icon: Icons.medication_outlined,
               selectedIcon: Icons.medication_rounded,
               label: 'Medicines',
             ),
-            GlassNavItem(
-              icon: Icons.restaurant_menu_outlined,
-              selectedIcon: Icons.restaurant_menu_rounded,
-              label: 'Dietician',
-            ),
+            if (enrolled)
+              const GlassNavItem(
+                icon: Icons.restaurant_menu_outlined,
+                selectedIcon: Icons.restaurant_menu_rounded,
+                label: 'Dietician',
+              ),
             GlassNavItem(
               icon: Icons.person_outline_rounded,
               selectedIcon: Icons.person_rounded,

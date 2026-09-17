@@ -74,6 +74,15 @@ class _ChatSummariesScreenState extends ConsumerState<ChatSummariesScreen> {
   Widget build(BuildContext context) {
     final query = _query;
     final async = ref.watch(chatSummariesProvider(query));
+    // A refresh that fails keeps what was on screen, and says so once rather
+    // than letting stale summaries pass for current.
+    ref.listen(chatSummariesProvider(query), (previous, next) {
+      if (next.hasError && next.hasValue && !(previous?.hasError ?? false)) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not refresh. Showing what was last loaded.')),
+        );
+      }
+    });
     final data = async.valueOrNull;
     if (query.day == null && data != null) _today = data.day;
     final canGoBack = _today != null && previousClinicDay(_today!) != null;

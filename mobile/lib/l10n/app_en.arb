@@ -278,6 +278,7 @@
   "medsMarkTaken": "Mark taken",
   "medsMarkSkipped": "Mark skipped",
   "medsStatusTaken": "Taken",
+  "medsStatusTakenLate": "Taken late",
   "medsStatusSkipped": "Skipped",
   "medsStatusPending": "Pending",
   "medsStatusMissed": "Missed",

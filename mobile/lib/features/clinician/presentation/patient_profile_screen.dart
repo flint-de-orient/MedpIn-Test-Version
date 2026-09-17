@@ -13,6 +13,7 @@ import '../../medications/domain/med_shorthand.dart';
 import '../domain/lab_catalog.dart';
 
 import '../../../core/network/api_exception.dart';
+import '../../../core/network/submission_keys.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../shared/widgets/auto_refresh.dart';
@@ -53,6 +54,11 @@ class PatientProfileScreen extends ConsumerStatefulWidget {
 class _PatientProfileScreenState extends ConsumerState<PatientProfileScreen> {
   final List<_MedDraft> _meds = [_MedDraft()];
   final _diagnosis = TextEditingController();
+
+  /// Names this form's prescription, so a send retried after a lost answer is
+  /// answered with the prescription already issued instead of issuing a second.
+  /// Replaced after each prescription is sent.
+  SubmissionKeys _submission = SubmissionKeys();
   final _advice = TextEditingController();
   final _labSearch = TextEditingController();
 
@@ -285,6 +291,7 @@ class _PatientProfileScreenState extends ConsumerState<PatientProfileScreen> {
           .createPrescription(
             patientId: widget.patientId,
             items: items,
+            submission: _submission,
             // Each non-empty line is a diagnosis item — matches how the AI context
             // and the prescription PDF list them.
             diagnosis:
@@ -318,6 +325,8 @@ class _PatientProfileScreenState extends ConsumerState<PatientProfileScreen> {
         _selectedTests.clear();
         _followUp = null;
         _saving = false;
+        // The next prescription from this form is a new one.
+        _submission = SubmissionKeys();
       });
       // Sent, so the parked copy is no longer a draft of anything.
       await ref.read(sharedPreferencesProvider).remove(_draftKey);
@@ -339,6 +348,15 @@ class _PatientProfileScreenState extends ConsumerState<PatientProfileScreen> {
     // the record is the doctor writing, and none of it is theirs.
     final isDesk = areaPrefix(ref) == '/staff';
     final async = ref.watch(patientSummaryProvider(widget.patientId));
+    // A refresh that fails keeps what was on screen, and says so once rather
+    // than letting stale figures pass for current.
+    ref.listen(patientSummaryProvider(widget.patientId), (previous, next) {
+      if (next.hasError && next.hasValue && !(previous?.hasError ?? false)) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not refresh. Showing what was last loaded.')),
+        );
+      }
+    });
 
     return Scaffold(
       // No overflow menu: the two secondary destinations sit at the foot of the
@@ -357,6 +375,9 @@ class _PatientProfileScreenState extends ConsumerState<PatientProfileScreen> {
           ref.invalidate(patientMedicationsProvider(widget.patientId));
         },
         child: async.when(
+          // A background refresh that fails keeps the record on screen. It
+          // replaced the whole record with "Could not load patient".
+          skipError: true,
           loading: () => const Center(child: CircularProgressIndicator()),
           error:
               (_, _) => Center(
@@ -1060,6 +1081,10 @@ class _ProfileHeader extends ConsumerWidget {
                       spacing: AppSpacing.sm,
                       runSpacing: 4,
                       children: [
+                        // Only once a risk has actually been worked out: the
+                        // profile's stored default is "low", which read as a
+                        // clinical judgement nobody had made.
+                        if (p.riskComputedAt != null)
                         _HeaderPill(
                           // The warning triangle appears only when the band
                           // earns it — a permanent icon stops being a warning.

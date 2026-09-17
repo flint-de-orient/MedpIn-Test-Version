@@ -1378,6 +1378,12 @@ abstract class AppLocalizations {
   /// **'Taken'**
   String get medsStatusTaken;
 
+  /// No description provided for @medsStatusTakenLate.
+  ///
+  /// In en, this message translates to:
+  /// **'Taken late'**
+  String get medsStatusTakenLate;
+
   /// No description provided for @medsStatusSkipped.
   ///
   /// In en, this message translates to:

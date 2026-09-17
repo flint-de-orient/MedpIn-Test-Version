@@ -270,6 +270,7 @@ class PatientSummary {
     this.diabetesType,
     this.riskBand,
     this.riskScore,
+    this.riskComputedAt,
     this.healthScore,
     this.healthBand,
     this.adherencePercent,
@@ -324,6 +325,10 @@ class PatientSummary {
   final String? diabetesType;
   final String? riskBand;
   final int? riskScore;
+
+  /// When the risk was last worked out. Null means never: the stored band is
+  /// then only the profile's default, not a judgement.
+  final DateTime? riskComputedAt;
 
   final int? healthScore;
   final String? healthBand;
@@ -421,6 +426,7 @@ class PatientSummary {
       diabetesType: profile['diabetesType']?.toString(),
       riskBand: profile['riskBand']?.toString(),
       riskScore: (profile['riskScore'] as num?)?.toInt(),
+      riskComputedAt: DateTime.tryParse(profile['lastRiskComputedAt']?.toString() ?? ''),
       assignedDieticianId:
           profile['assignedDietician'] is Map
               ? (profile['assignedDietician'] as Map)['_id']?.toString()

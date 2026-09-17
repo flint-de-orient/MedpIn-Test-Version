@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
+import '../../../shared/data/care_contact.dart';
 import '../../../shared/widgets/load_failed.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/tokens.dart';
@@ -113,15 +114,25 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
           onRefresh: () async => _refresh(),
           child: async.when(
             loading: () => const Center(child: CircularProgressIndicator()),
+            // One failed request no longer blanks Home: the greeting, today's
+            // doses, appointments and readings have requests of their own and
+            // still show. Only what the care summary carries says it failed.
             error:
                 (_, _) => ListView(
-                  padding: const EdgeInsets.all(T.s6),
+                  padding: const EdgeInsets.fromLTRB(T.s6, T.s2, T.s6, T.s6),
                   children: [
-                    const SizedBox(height: T.s12),
+                    const _Header(mood: Mood.watchful),
+                    const SizedBox(height: T.s5),
+                    const _HeroCard(care: null),
+                    const SizedBox(height: T.s8),
+                    const AppointmentsSection(),
+                    const SizedBox(height: T.s8),
                     LoadFailed(
                       what: 'your care summary',
                       onRetry: () => ref.invalidate(careSummaryProvider),
                     ),
+                    const SizedBox(height: T.s8),
+                    const _GlucoseSection(labHba1c: null),
                   ],
                 ),
             data:
@@ -236,6 +247,10 @@ class _Header extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final user = ref.watch(authControllerProvider).user;
     final name = _firstName(user?.name ?? '');
+    // Known not to be enrolled at any practice: no clinic, so nothing for a
+    // bell to open. Unknown (loading, or the check failed) keeps the bell.
+    final contact = ref.watch(careContactProvider);
+    final enrolled = !(contact.hasValue && contact.value!.practiceName == null);
 
     return Row(
       children: [
@@ -298,11 +313,15 @@ class _Header extends ConsumerWidget {
           ),
         ),
         const SizedBox(width: T.s2),
-        _RoundIconButton(
-          icon: Icons.notifications_none_rounded,
-          onTap: () => context.push('/profile/notifications'),
-        ),
-        const SizedBox(width: T.s2),
+        // It opened notification settings. What reaches a patient is their
+        // clinic's messages, so it opens the conversation with the clinic.
+        if (enrolled) ...[
+          _RoundIconButton(
+            icon: Icons.notifications_none_rounded,
+            onTap: () => context.go('/chat'),
+          ),
+          const SizedBox(width: T.s2),
+        ],
         GestureDetector(
           onTap: () => context.go('/profile'),
           child: StatusAvatar(
@@ -375,7 +394,8 @@ class _RoundIconButton extends StatelessWidget {
 class _HeroCard extends ConsumerWidget {
   const _HeroCard({required this.care});
 
-  final CareSummary care;
+  /// Null when the care summary could not be loaded; the doses still show.
+  final CareSummary? care;
 
   /// Where the photograph lives. Replacing it is a file swap and nothing else
   /// — see assets/cards/README.md.
@@ -400,10 +420,10 @@ class _HeroCard extends ConsumerWidget {
       headline =
           pending.length == 1 ? '1 dose due' : '${pending.length} doses due';
       detail = '${next.name} at ${next.time}';
-    } else if (care.followUpOn != null) {
+    } else if (care?.followUpOn != null) {
       eyebrow = 'NEXT VISIT';
-      headline = DateFormat('d MMM').format(care.followUpOn!);
-      detail = DateFormat('EEEE').format(care.followUpOn!);
+      headline = DateFormat('d MMM').format(care!.followUpOn!);
+      detail = DateFormat('EEEE').format(care!.followUpOn!);
     } else {
       eyebrow = 'TODAY';
       headline = 'All clear';
@@ -414,7 +434,9 @@ class _HeroCard extends ConsumerWidget {
     // outstanding. Telling someone they are on track while three doses sit
     // unticked is the kind of cheerfulness that teaches people to ignore an
     // app.
-    final onTrack = next == null;
+    // And only for somebody with doses today: with no medicines at all there
+    // is nothing to be on track with.
+    final onTrack = next == null && slots.isNotEmpty;
 
     return Semantics(
       button: true,
@@ -1317,14 +1339,8 @@ class _DietPlanCard extends StatelessWidget {
   /// into. Null when they did not write one — which is common, and not an
   /// error to paper over with a zero.
   static String? _calorieTarget(PatientDietPlan plan) {
-    final match = RegExp(
-      r'(\d{3,5}(?:,\d{3})*)\s*k?\s*cal',
-      caseSensitive: false,
-    ).firstMatch('${plan.goal} ${plan.notes}');
-    if (match == null) return null;
-    final n = int.tryParse(match.group(1)!.replaceAll(',', ''));
-    if (n == null || n < 500 || n > 6000) return null;
-    return NumberFormat.decimalPattern().format(n);
+    final n = calorieTargetIn('${plan.goal} ${plan.notes}');
+    return n == null ? null : NumberFormat.decimalPattern().format(n);
   }
 
   /// One icon per meal, chosen from its name. A rail of five identical forks
@@ -1835,4 +1851,19 @@ class _AllergiesCard extends StatelessWidget {
       ),
     );
   }
+}
+
+/// The daily calorie target written in a diet plan's goal or notes, or null.
+///
+/// "1,600 kcal" is 1600. The pattern needed three digits before a comma, so it
+/// skipped "1," and read 600. Figures outside 500–6000 are not targets.
+int? calorieTargetIn(String text) {
+  final match = RegExp(
+    r'(\d{1,2},\d{3}|\d{3,5})\s*k?\s*cal',
+    caseSensitive: false,
+  ).firstMatch(text);
+  if (match == null) return null;
+  final n = int.tryParse(match.group(1)!.replaceAll(',', ''));
+  if (n == null || n < 500 || n > 6000) return null;
+  return n;
 }
