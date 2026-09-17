@@ -393,9 +393,9 @@ node scripts/backfillFeedbackRouting.js                                         
   records?". Until somebody answers, nothing is shared beyond what the
   enrolment gives. There is no script that answers for anybody.
 - **Admin console**: platform feedback — about the app, and from patients no
-  practice has taken on — is at Platform → Feedback (`/admin/feedback`), without
-  the patient's identity. Deploy the console with the API, or that feedback has
-  nowhere to be read.
+  practice has taken on — is in the console at Platform → Feedback (`/feedback/`,
+  reading `GET /api/v1/admin/feedback`), without the patient's identity. Deploy
+  the console with the API, or that feedback has nowhere to be read.
 - **Tell the practices** that patients' own logs and earlier history are now
   asked for at the counter with the code ("The patient answered now"), or in the
   patient's app, and that a patient record shows what has not been shared.
