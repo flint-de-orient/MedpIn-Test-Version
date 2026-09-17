@@ -310,9 +310,26 @@ class PrescriptionSummary {
     this.scanUrl,
     this.scanMimeType,
     this.uploadedByName,
+    this.isActive,
+    this.recordState,
+    this.endedReason,
+    this.endedAt,
   });
 
   final String id;
+
+  /// Whether it is still in force, by the old flag. Null from a server that
+  /// did not send it — which says nothing either way.
+  final bool? isActive;
+
+  /// `current` | `voided` | `corrected` | `superseded`, when the server sends
+  /// the record lifecycle (models/plugins/clinicalRecord.js). Null otherwise:
+  /// an ended prescription is then known to have ended, not how.
+  final String? recordState;
+
+  /// Why and when it was ended, as the doctor who ended it recorded.
+  final String? endedReason;
+  final DateTime? endedAt;
 
   /// Human-readable reference printed on the PDF: `RX-2026-000412`, or the
   /// practice's own prefix. References issued before prefixes existed keep the
@@ -380,6 +397,10 @@ class PrescriptionSummary {
     scanUrl: j['scanUrl']?.toString(),
     scanMimeType: j['scanMimeType']?.toString(),
     uploadedByName: j['uploadedByName']?.toString(),
+    isActive: j['isActive'] is bool ? j['isActive'] as bool : null,
+    recordState: j['recordState']?.toString(),
+    endedReason: j['endedReason']?.toString(),
+    endedAt: DateTime.tryParse(j['endedAt']?.toString() ?? '')?.toLocal(),
     referenceNo: j['referenceNo']?.toString(),
     issuedOn: DateTime.tryParse(j['issuedOn']?.toString() ?? '')?.toLocal(),
     doctorName: j['doctorName']?.toString(),

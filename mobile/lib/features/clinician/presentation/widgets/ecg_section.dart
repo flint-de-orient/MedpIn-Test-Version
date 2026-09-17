@@ -23,6 +23,8 @@ import '../../data/clinician_repository.dart';
 import '../../domain/ecg_report.dart';
 import '../clinician_providers.dart';
 import 'caseload_panels.dart';
+import 'load_states.dart';
+import 'record_ui.dart';
 
 /// The ECGs on a patient's record, and — for whoever may write the record —
 /// the way to file one.
@@ -39,9 +41,13 @@ import 'caseload_panels.dart';
 /// record would be noise to somebody who cannot file one. To somebody who can,
 /// the empty section is where filing starts, so it stays.
 class EcgSection extends ConsumerWidget {
-  const EcgSection({super.key, required this.patientId});
+  const EcgSection({super.key, required this.patientId, this.framed = false});
 
   final String patientId;
+
+  /// Drawn as a section card of its own, rather than as a part of the card it
+  /// sits in.
+  final bool framed;
 
   static const int _shown = 3;
 
@@ -52,75 +58,113 @@ class EcgSection extends ConsumerWidget {
     final items = async.valueOrNull;
     final failed = items == null && async.hasError;
 
-    if (!mayFile && !failed && (items == null || items.isEmpty)) return const SizedBox.shrink();
+    if (!mayFile && !failed && (items == null || items.isEmpty)) {
+      return const SizedBox.shrink();
+    }
 
+    final file =
+        mayFile
+            ? ActionLink(
+              label: 'File ECG',
+              leadingIcon: Icons.add_rounded,
+              onTap: () => EcgFormSheet.show(context, patientId),
+            )
+            : null;
+    final count =
+        items == null || items.isEmpty
+            ? null
+            : items.length == 1
+            ? '1 on record'
+            : '${items.length} on record';
+
+    final body = <Widget>[
+      if (failed)
+        FailureNotice(
+          error: async.error!,
+          what: 'the ECGs',
+          onRetry: () => ref.invalidate(patientEcgsProvider(patientId)),
+        )
+      else if (items == null)
+        const SkeletonLine(width: 180)
+      else if (items.isEmpty)
+        const RecordNote(
+          icon: Icons.monitor_heart_outlined,
+          text: 'No ECGs on this record.',
+        )
+      else ...[
+        for (var i = 0; i < items.length && i < _shown; i++) ...[
+          if (i > 0) const SizedBox(height: T.s2),
+          EcgTile(report: items[i]),
+        ],
+        if (items.length > _shown)
+          Align(
+            alignment: Alignment.centerLeft,
+            child: ActionLink(
+              label: 'View all',
+              onTap: () => _showAll(context, items),
+            ),
+          ),
+      ],
+    ];
+
+    if (framed) {
+      return RecordCard(
+        icon: Icons.monitor_heart_outlined,
+        title: 'ECGs',
+        subtitle: count,
+        trailing: file,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: body,
+        ),
+      );
+    }
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Row(
           children: [
-            Expanded(child: Text('ECGs', style: T.bodyStrong.copyWith(fontWeight: FontWeight.w700))),
-            if (mayFile)
-              TextButton.icon(
-                onPressed: () => EcgFormSheet.show(context, patientId),
-                icon: const Icon(Icons.add),
-                label: const Text('File ECG'),
+            Expanded(
+              child: Text(
+                count == null ? 'ECGs' : 'ECGs · $count',
+                style: T.bodyStrong.copyWith(color: T.ink),
               ),
+            ),
+            if (file != null) file,
           ],
         ),
-        if (failed)
-          Row(
-            children: [
-              Expanded(child: Text('Could not load ECGs.', style: T.small.copyWith(color: T.inkMuted))),
-              TextButton(
-                onPressed: () => ref.invalidate(patientEcgsProvider(patientId)),
-                child: const Text('Retry'),
-              ),
-            ],
-          )
-        else if (items == null)
-          const Padding(
-            padding: EdgeInsets.symmetric(vertical: T.s4),
-            child: Center(
-              child: SizedBox(width: T.s5, height: T.s5, child: CircularProgressIndicator(strokeWidth: 2)),
-            ),
-          )
-        else if (items.isEmpty)
-          Text('No ECGs on this record.', style: T.small.copyWith(color: T.inkMuted))
-        else ...[
-          for (final r in items.take(_shown))
-            Padding(padding: const EdgeInsets.only(top: T.s2), child: EcgTile(report: r)),
-          if (items.length > _shown)
-            Align(
-              alignment: Alignment.centerLeft,
-              child: TextButton(
-                onPressed: () => _showAll(context, items),
-                child: Text('View all (${items.length})'),
-              ),
-            ),
-        ],
+        const SizedBox(height: T.s2),
+        ...body,
       ],
     );
   }
 
-  static Future<void> _showAll(BuildContext context, List<EcgReport> items) => showModalBottomSheet<void>(
+  static Future<void> _showAll(BuildContext context, List<EcgReport> items) =>
+      showModalBottomSheet<void>(
         context: context,
         isScrollControlled: true,
         showDragHandle: true,
-        builder: (_) => DraggableScrollableSheet(
-          expand: false,
-          initialChildSize: 0.8,
-          maxChildSize: 0.95,
-          builder: (_, controller) => ListView.separated(
-            controller: controller,
-            padding: const EdgeInsets.fromLTRB(T.s4, 0, T.s4, T.s6),
-            itemCount: items.length + 1,
-            separatorBuilder: (_, _) => const SizedBox(height: T.s2),
-            itemBuilder: (_, i) => i == 0
-                ? Text('ECGs (${items.length})', style: T.title)
-                : EcgTile(report: items[i - 1]),
-          ),
-        ),
+        builder:
+            (_) => DraggableScrollableSheet(
+              expand: false,
+              initialChildSize: 0.8,
+              maxChildSize: 0.95,
+              builder:
+                  (_, controller) => ListView.separated(
+                    controller: controller,
+                    padding: const EdgeInsets.fromLTRB(T.s4, 0, T.s4, T.s6),
+                    itemCount: items.length + 1,
+                    separatorBuilder: (_, _) => const SizedBox(height: T.s2),
+                    itemBuilder:
+                        (_, i) =>
+                            i == 0
+                                ? Text(
+                                  'ECGs · ${items.length} on record',
+                                  style: T.title.copyWith(color: T.ink),
+                                )
+                                : EcgTile(report: items[i - 1]),
+                  ),
+            ),
       );
 }
 

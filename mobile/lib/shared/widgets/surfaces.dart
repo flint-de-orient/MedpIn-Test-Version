@@ -132,6 +132,28 @@ class SectionHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final dark = Theme.of(context).brightness == Brightness.dark;
+    final heading = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        // Wraps rather than ellipsises. A section called "Tests
+        // ordered by the doct…" tells the reader less than the same
+        // words on two lines, and costs the same room to say it.
+        Text(
+          title,
+          style: T.title.copyWith(color: dark ? Colors.white : T.ink),
+        ),
+        if (subtitle != null)
+          Text(
+            subtitle!,
+            style: T.label.copyWith(
+              fontWeight: FontWeight.w500,
+              letterSpacing: 0,
+              color: T.inkMuted,
+            ),
+          ),
+      ],
+    );
     return Row(
       children: [
         Container(
@@ -149,30 +171,20 @@ class SectionHeader extends StatelessWidget {
         ),
         const SizedBox(width: T.s3),
         Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // Wraps rather than ellipsises. A section called "Tests
-              // ordered by the doct…" tells the reader less than the same
-              // words on two lines, and costs the same room to say it.
-              Text(
-                title,
-                style: T.title.copyWith(color: dark ? Colors.white : T.ink),
-              ),
-              if (subtitle != null)
-                Text(
-                  subtitle!,
-                  style: T.label.copyWith(
-                    fontWeight: FontWeight.w500,
-                    letterSpacing: 0,
-                    color: T.inkMuted,
+          child:
+              trailing == null
+                  ? heading
+                  // Beside the title when both fit on one line, under it when
+                  // they do not. A Row pushed a "Change" button 16px off a
+                  // phone at twice the text size, inside a padded card.
+                  : OverflowBar(
+                    alignment: MainAxisAlignment.spaceBetween,
+                    overflowAlignment: OverflowBarAlignment.start,
+                    spacing: T.s2,
+                    overflowSpacing: T.s1,
+                    children: [heading, trailing!],
                   ),
-                ),
-            ],
-          ),
         ),
-        if (trailing != null) ...[const SizedBox(width: T.s2), trailing!],
       ],
     );
   }
@@ -217,11 +229,15 @@ class ActionLink extends StatelessWidget {
                 Icon(leadingIcon, size: 16, color: tone),
                 const SizedBox(width: T.s1),
               ],
-              Text(
-                label,
-                style: T.small.copyWith(
-                  fontWeight: FontWeight.w700,
-                  color: tone,
+              // Flexible so a long label wraps inside a narrow card at a large
+              // text size instead of running 8px past its edge.
+              Flexible(
+                child: Text(
+                  label,
+                  style: T.small.copyWith(
+                    fontWeight: FontWeight.w700,
+                    color: tone,
+                  ),
                 ),
               ),
               if (leadingIcon == null) ...[
