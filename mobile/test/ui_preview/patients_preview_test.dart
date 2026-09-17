@@ -5,8 +5,6 @@ import 'package:akd_care/features/clinician/domain/patient_registration.dart';
 import 'package:akd_care/features/clinician/presentation/clinician_providers.dart';
 import 'package:akd_care/features/clinician/presentation/patients_screen.dart';
 import 'package:akd_care/shared/models/paged.dart';
-import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'clinical_fixtures.dart';

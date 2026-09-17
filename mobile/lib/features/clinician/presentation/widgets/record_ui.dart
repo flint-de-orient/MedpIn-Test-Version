@@ -18,6 +18,7 @@ import 'package:intl/intl.dart';
 
 import '../../../../core/theme/tokens.dart';
 import '../../../../shared/widgets/surfaces.dart';
+import '../../domain/clinician_models.dart';
 import '../../domain/patient_summary.dart';
 
 // ---- words --------------------------------------------------------------------
@@ -96,6 +97,30 @@ Reading? riskReading(String? band, {required bool computed}) {
     'low' when computed => (word: 'Low risk', status: Status.ok),
     _ => null,
   };
+}
+
+/// Where a prescription stands, in the record lifecycle's words
+/// (backend models/plugins/clinicalRecord.js).
+///
+/// A server that sends only the old `isActive` flag can say that a
+/// prescription ended but not how, and this says exactly that much. One that
+/// sends neither gets no word at all rather than a guess.
+Reading? prescriptionStatus(PrescriptionSummary rx) {
+  final state = rx.recordState;
+  if (state == 'voided') return (word: 'Voided', status: Status.alert);
+  if (state == 'corrected') return (word: 'Corrected', status: Status.watch);
+  if (state == 'superseded') {
+    return (word: 'Superseded', status: Status.neutral);
+  }
+  // A row switched off by the old flag while its state still says current is
+  // one the backfill has not reached; the flag is the truer of the two.
+  if (rx.isActive == false) {
+    return (word: 'No longer current', status: Status.neutral);
+  }
+  if (state == 'current' || rx.isActive == true) {
+    return (word: 'Current', status: Status.ok);
+  }
+  return null;
 }
 
 /// What was diagnosed, in words — the diabetes type first, then the rest.
@@ -178,6 +203,13 @@ String whenLabel(DateTime at, {DateTime? now}) {
   final day = DateTime(at.year, at.month, at.day);
   final days = today.difference(day).inDays;
   if (days < 0) {
+    final ahead = -days;
+    if (ahead == 1) return 'tomorrow';
+    if (ahead < 7) return 'in $ahead days';
+    if (ahead < 28) {
+      final weeks = ahead ~/ 7;
+      return weeks == 1 ? 'in 1 week' : 'in $weeks weeks';
+    }
     return day.year == today.year
         ? DateFormat('d MMM').format(at)
         : DateFormat('d MMM y').format(at);
@@ -192,6 +224,24 @@ String whenLabel(DateTime at, {DateTime? now}) {
   return day.year == today.year
       ? DateFormat('d MMM').format(at)
       : DateFormat('d MMM y').format(at);
+}
+
+/// Whether [whenLabel] said something relative ("in 2 weeks") rather than
+/// repeating a date — so a line never reads "5 Oct · 5 Oct".
+bool isRelativeWhen(String label) =>
+    label == 'today' ||
+    label == 'yesterday' ||
+    label == 'tomorrow' ||
+    label.startsWith('in ') ||
+    label.endsWith(' ago');
+
+/// A date as short as it can be while staying unambiguous: "8 Aug" this year,
+/// "Aug 2025" before it.
+String shortDate(DateTime at, {DateTime? now}) {
+  final year = (now ?? DateTime.now()).year;
+  return at.year == year
+      ? DateFormat('d MMM').format(at)
+      : DateFormat('MMM y').format(at);
 }
 
 /// The same, capitalised to start a line.
@@ -451,6 +501,61 @@ class SkeletonLine extends StatelessWidget {
         color: T.line,
         borderRadius: BorderRadius.circular(T.s1),
       ),
+    );
+  }
+}
+
+/// Quiet actions sharing one row equally — or, when the reader's text size
+/// leaves no room for a label beside its icon, one under another. Never a row
+/// of two and a row of one.
+class QuietActionRow extends StatelessWidget {
+  const QuietActionRow({super.key, required this.actions});
+
+  final List<QuietAction> actions;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final scaler = MediaQuery.textScalerOf(context);
+        // Measured in the face the label is drawn in, which the theme sets —
+        // the token alone names no family.
+        final style = DefaultTextStyle.of(context).style.merge(T.bodyStrong);
+        var widest = 0.0;
+        for (final a in actions) {
+          final painter = TextPainter(
+            text: TextSpan(text: a.label, style: style),
+            textScaler: scaler,
+            textDirection: Directionality.of(context),
+            maxLines: 1,
+          )..layout();
+          if (painter.width > widest) widest = painter.width;
+          painter.dispose();
+        }
+        final gaps = T.s2 * (actions.length - 1);
+        final each = (constraints.maxWidth - gaps) / actions.length;
+        // Label, icon, the gap between them and the button's own padding.
+        final needed = widest + T.s5 + T.s2 + T.s4 * 2;
+        if (needed <= each) {
+          return Row(
+            children: [
+              for (var i = 0; i < actions.length; i++) ...[
+                if (i > 0) const SizedBox(width: T.s2),
+                Expanded(child: actions[i]),
+              ],
+            ],
+          );
+        }
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            for (var i = 0; i < actions.length; i++) ...[
+              if (i > 0) const SizedBox(height: T.s2),
+              actions[i],
+            ],
+          ],
+        );
+      },
     );
   }
 }

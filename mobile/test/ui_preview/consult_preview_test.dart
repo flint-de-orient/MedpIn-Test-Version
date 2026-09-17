@@ -1,7 +1,6 @@
 import 'package:akd_care/features/clinician/domain/clinician_models.dart';
 import 'package:akd_care/features/clinician/presentation/clinician_providers.dart';
 import 'package:akd_care/features/clinician/presentation/consult_screen.dart';
-import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'clinical_fixtures.dart';

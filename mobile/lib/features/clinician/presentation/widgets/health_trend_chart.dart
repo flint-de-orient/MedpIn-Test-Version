@@ -212,8 +212,9 @@ class HealthTrendChart extends StatelessWidget {
                               .toDouble(),
                       getTitlesWidget: (value, meta) {
                         final i = value.toInt();
-                        if (i < 0 || i >= daily.length)
+                        if (i < 0 || i >= daily.length) {
                           return const SizedBox.shrink();
+                        }
                         return Padding(
                           padding: const EdgeInsets.only(top: 4),
                           child: Text(

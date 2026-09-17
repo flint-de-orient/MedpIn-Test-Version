@@ -63,6 +63,9 @@ PatientSummary diabetologyPatient({
     'riskBand': 'high',
     'riskScore': 72,
     'heightCm': 156,
+    'lastRiskComputedAt': _ago(0.5),
+    'lastFootScreeningAt': _ago(40),
+    'lastEyeScreeningAt': _ago(400),
   },
   if (riskReasons != null) 'riskReasons': riskReasons,
   'healthScore': {'score': 54, 'band': 'needs_attention'},
@@ -273,6 +276,7 @@ PatientSummary cardiologyPatient() => PatientSummary.fromJson({
     'riskBand': 'critical',
     'riskScore': 88,
     'heightCm': 172,
+    'lastRiskComputedAt': _ago(0.1),
   },
   'healthScore': {'score': null, 'band': 'unknown'},
   'trends': {'daily': [], 'count': 0, 'stats': null},
@@ -524,6 +528,8 @@ List<PrescriptionSummary> diabetologyPrescriptions() => [
     'items': [],
     'labTestsAdvised': [],
     'isActive': false,
+    'recordState': 'superseded',
+    'endedReason': 'Replaced by the prescription of 4 Sep',
     'pdfUrl': '/api/v1/patients/p-sunita/prescriptions/rx2/pdf',
   }),
   _rx({
@@ -544,9 +550,65 @@ List<PrescriptionSummary> diabetologyPrescriptions() => [
     ],
     'labTestsAdvised': ['HbA1c'],
     'isActive': false,
+    'recordState': 'voided',
+    'endedReason': 'Written for the wrong patient',
     'pdfUrl': '/api/v1/patients/p-sunita/prescriptions/rx1/pdf',
   }),
 ];
+
+/// A long prescription: nine medicines, a diagnosis list and advice that runs
+/// to several lines.
+PrescriptionSummary longPrescription() => _rx({
+  'id': 'rx-long',
+  'source': 'composed',
+  'referenceNo': 'AKD-2026-000499',
+  'issuedOn': _ago(1),
+  'doctorName': 'Dr Anirban Dey',
+  'complaint':
+      'Breathlessness on exertion, swelling of both ankles, poor sleep and '
+      'frequent urination at night for a month',
+  'diagnosis': [
+    'Type 2 diabetes mellitus',
+    'Hypertension',
+    'Dyslipidaemia',
+    'Diabetic peripheral neuropathy',
+    'Chronic kidney disease, stage 3a',
+  ],
+  'items': [
+    for (final (name, strength, freq) in const [
+      ('Metformin', '1000 mg', 'BD'),
+      ('Empagliflozin', '10 mg', 'OD'),
+      ('Glimepiride', '2 mg', 'OD'),
+      ('Telmisartan', '80 mg', 'OD'),
+      ('Amlodipine', '5 mg', 'OD'),
+      ('Atorvastatin', '40 mg', 'HS'),
+      ('Pregabalin', '75 mg', 'HS'),
+      ('Furosemide', '20 mg', 'OD'),
+      ('Pantoprazole', '40 mg', 'OD'),
+    ])
+      {
+        'name': name,
+        'strength': strength,
+        'frequency': freq,
+        'relationToMeal': 'after_meal',
+        'durationDays': 30,
+      },
+  ],
+  'labTestsAdvised': [
+    'HbA1c',
+    'Kidney Function Test',
+    'Lipid Profile',
+    'Urine Microalbumin',
+  ],
+  'generalAdvice':
+      'Restrict salt to under 5 g a day.\nWalk 30 minutes after dinner.\n'
+      'Check feet every evening and report any cut or colour change.\n'
+      'Weigh every morning and call if weight rises by 2 kg in 3 days.',
+  'followUpOn': _iso(_daysAgo(-14)),
+  'isActive': true,
+  'recordState': 'current',
+  'pdfUrl': '/api/v1/patients/p-sunita/prescriptions/rx-long/pdf',
+});
 
 // ---- ECGs ---------------------------------------------------------------------
 
