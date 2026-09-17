@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import dayjs from 'dayjs';
+import mongoose from 'mongoose';
 import { z } from 'zod';
 import { requireAuth, requireClinician, requireDoctor, requireRole } from '../middleware/auth.js';
 import { requirePermission, requireRecordAccess } from '../middleware/authorise.js';
@@ -22,7 +23,16 @@ import {
   notifyDieticianOfAssignment,
 } from '../services/notifications.js';
 import { MediaAsset } from '../models/MediaAsset.js';
-import { KnowledgeChunk } from '../models/KnowledgeChunk.js';
+import { KnowledgeChunk, KNOWLEDGE_CATEGORIES } from '../models/KnowledgeChunk.js';
+import { Department } from '../models/Department.js';
+import { assistantStatusForPractice } from '../services/ai/assistantAvailability.js';
+import {
+  adoptSharedDraft,
+  approveScope,
+  clinicianDepartmentIds,
+  isClinicianOf,
+  withdrawScope,
+} from '../services/ai/assistantReview.js';
 import { Hba1cRecord } from '../models/Hba1cRecord.js';
 import { FootAssessment } from '../models/FootAssessment.js';
 import { LabResult } from '../models/LabResult.js';
@@ -2186,14 +2196,36 @@ const knowledgeSchema = z.object({
   section: z.string().max(300).optional(),
   content: z.string().min(20).max(8000),
   language: z.enum(['en', 'bn', 'hi']).default('en'),
-  category: z.enum([
-    'diabetes_basics', 'hypoglycaemia', 'hyperglycaemia', 'insulin', 'oral_medication',
-    'diet', 'exercise', 'foot_care', 'eye_care', 'kidney', 'hypertension',
-    'sick_day_rules', 'emergency', 'clinic_info', 'general',
-  ]),
+  // The model's list, not a copy of it. The copy had fifteen of the model's
+  // thirty-odd, so a seeded thyroid passage could not be re-saved from the app.
+  category: z.enum(KNOWLEDGE_CATEGORIES),
   tags: z.array(z.string().max(40)).max(20).default([]),
   sourceCitation: z.string().max(500).optional(),
+  // Which specialty a practice's own passage belongs to. Optional: without
+  // one it applies across the practice's departments, as every passage
+  // written before this did.
+  departmentId: z.string().max(40).nullable().optional(),
 });
+
+/**
+ * The department a practice may file a passage under: a shared one, or its
+ * own. Null clears it. Another practice's department is not found.
+ */
+async function knowledgeDepartment(req, departmentId) {
+  if (departmentId === undefined) return undefined;
+  if (departmentId === null || departmentId === '') return null;
+  const mine = await practiceOf(req);
+  const department = mongoose.isValidObjectId(departmentId)
+    ? await Department.findOne({
+        _id: departmentId,
+        $or: [{ practice: null }, ...(mine ? [{ practice: mine }] : [])],
+      })
+        .select('_id')
+        .lean()
+    : null;
+  if (!department) throw notFound('Department not found');
+  return department._id;
+}
 
 /**
  * Which passages a doctor reads: the shared corpus and their practice's own.
@@ -2236,24 +2268,65 @@ router.get(
         status: z.enum(['draft', 'pending_review', 'approved', 'retired']).optional(),
         category: z.string().optional(),
         language: z.enum(['en', 'bn', 'hi']).optional(),
+        // A specialty's passages, for reviewing one department's drafts.
+        department: z.string().max(40).optional(),
+        // `ai_draft` lists what is waiting for a clinician to review.
+        origin: z.enum(['clinician', 'platform_seed', 'ai_draft']).optional(),
       }),
     ),
   }),
   asyncHandler(async (req, res) => {
-    const { page, limit, skip, status, category, language } = q(req);
+    const { page, limit, skip, status, category, language, department, origin } = q(req);
+    // `$and` rather than a spread, so the practice scope cannot be replaced by
+    // a filter keyed on the same field.
     const filter = {
-      ...(status ? { status } : {}),
-      ...(category ? { category } : {}),
-      ...(language ? { language } : {}),
-      ...(await readableKnowledge(req)),
+      $and: [
+        {
+          ...(status ? { status } : {}),
+          ...(category ? { category } : {}),
+          ...(language ? { language } : {}),
+          ...(origin ? { origin } : {}),
+          ...(department
+            ? { department: mongoose.isValidObjectId(department) ? department : null }
+            : {}),
+        },
+        await readableKnowledge(req),
+      ],
     };
     const [items, total] = await Promise.all([
       KnowledgeChunk.find(filter).sort({ updatedAt: -1 }).skip(skip).limit(limit).lean(),
       KnowledgeChunk.countDocuments(filter),
     ]);
-    res.json(paged(items.map(serialiseChunk), { page, limit, total }));
+    const review = await reviewContext(req, items);
+    res.json(paged(items.map((c) => serialiseChunk(c, review)), { page, limit, total }));
   }),
 );
+
+/**
+ * What the caller may do with each passage on a page of the list.
+ *
+ * `canApprove` has to be worked out here rather than in the app: whether a
+ * doctor is a clinician of a specialty lives in memberships and department rows
+ * the app does not hold. The copies this practice has taken of shared drafts
+ * are loaded in one query, so a shared draft can say it has already been
+ * approved here instead of offering the approval again.
+ */
+async function reviewContext(req, items) {
+  const practiceId = await practiceOf(req);
+  const specialties = await clinicianDepartmentIds({ userId: req.user._id, practiceId });
+  const draftIds = items.filter((c) => c.practice == null && c.origin === 'ai_draft').map((c) => c._id);
+  const copies = practiceId && draftIds.length
+    ? await KnowledgeChunk.find({ practice: practiceId, adoptedFrom: { $in: draftIds } })
+        .select('_id adoptedFrom adoptedVersion status version')
+        .lean()
+    : [];
+  return {
+    practiceId,
+    isDoctor: req.user.role === ROLES.DOCTOR,
+    specialties,
+    copies: new Map(copies.map((c) => [String(c.adoptedFrom), c])),
+  };
+}
 
 router.post(
   '/knowledge',
@@ -2269,13 +2342,21 @@ router.post(
     // assistant. See `readableKnowledge`.
     const practice = await practiceOf(req);
     if (!practice) throw forbidden('Knowledge can only be written from within a practice.');
-    const chunk = await KnowledgeChunk.create({ ...req.body, practice, status: 'pending_review' });
+    const { departmentId, ...body } = req.body;
+    const department = await knowledgeDepartment(req, departmentId);
+    const chunk = await KnowledgeChunk.create({
+      ...body,
+      practice,
+      ...(department ? { department } : {}),
+      origin: 'clinician',
+      status: 'pending_review',
+    });
     // Embed in the background — the doctor should not wait on the API, and the
     // chunk is not retrievable until approved anyway.
     embedChunk(chunk._id, req.body.content, req.body.title).catch((err) =>
       logger.error({ err: err?.message }, 'knowledge embedding failed'),
     );
-    res.status(201).json({ chunk: serialiseChunk(chunk) });
+    res.status(201).json({ chunk: serialiseChunk(chunk, await reviewContext(req, [chunk])) });
   }),
 );
 
@@ -2289,8 +2370,19 @@ router.patch(
     const chunk = await KnowledgeChunk.findOne(await ownKnowledge(req));
     if (!chunk) throw notFound('Knowledge entry not found');
 
-    const contentChanged = req.body.content && req.body.content !== chunk.content;
-    Object.assign(chunk, req.body);
+    const { departmentId, ...body } = req.body;
+    const department = await knowledgeDepartment(req, departmentId);
+    const contentChanged = body.content && body.content !== chunk.content;
+    // Moving a passage to another specialty changes who must approve it, so it
+    // goes back for review exactly as a change of wording does.
+    const departmentChanged = department !== undefined && String(department ?? '') !== String(chunk.department ?? '');
+    Object.assign(chunk, body);
+    if (department !== undefined) chunk.department = department;
+    if (departmentChanged && !contentChanged && chunk.status === 'approved') {
+      chunk.status = 'pending_review';
+      chunk.approvedBy = undefined;
+      chunk.approvedAt = undefined;
+    }
     if (contentChanged) {
       // Edited content must be re-approved — otherwise a chunk approved as safe
       // could be silently rewritten and still serve patients.
@@ -2304,7 +2396,7 @@ router.patch(
     if (contentChanged) {
       embedChunk(chunk._id, chunk.content, chunk.title).catch(() => {});
     }
-    res.json({ chunk: serialiseChunk(chunk) });
+    res.json({ chunk: serialiseChunk(chunk, await reviewContext(req, [chunk])) });
   }),
 );
 
@@ -2314,10 +2406,55 @@ router.post(
   requireDoctor,
   requireClinician,
   audit('update', 'KnowledgeChunk'),
+  validate({
+    // The version the clinician read. Optional for the practice's own passages,
+    // which the edit route already sends back for review when they change; used
+    // for a shared draft, which the platform can revise after it was opened.
+    body: z.object({ version: z.number().int().min(1).optional() }).passthrough().default({}),
+  }),
   asyncHandler(async (req, res) => {
-    const chunk = await KnowledgeChunk.findOne(await ownKnowledge(req)).select('+embedding');
-    if (!chunk) throw notFound('Knowledge entry not found');
+    const practiceId = await practiceOf(req);
+    const own = practiceId
+      ? await KnowledgeChunk.findOne({ _id: req.params.id, practice: practiceId }).select('+embedding')
+      : null;
 
+    if (!own) {
+      /*
+       * A shared AI draft is approved for this practice, never in place: the
+       * practice gets its own approved copy and the shared row stays a draft
+       * for everybody else. Anything else shared — the platform's approved
+       * corpus — is still not a practice's to approve, and reads as not found.
+       */
+      const draft = practiceId
+        ? await KnowledgeChunk.findOne({
+            _id: req.params.id,
+            practice: null,
+            origin: 'ai_draft',
+            status: { $in: ['draft', 'pending_review'] },
+          })
+            .select('+embedding')
+            .lean()
+        : null;
+      if (!draft) throw notFound('Knowledge entry not found');
+
+      const { chunk } = await adoptSharedDraft({
+        draft,
+        practiceId,
+        userId: req.user._id,
+        approve: true,
+        version: req.body?.version ?? null,
+      });
+      // Refuse to approve something that cannot actually be retrieved.
+      if (!chunk.embeddedAt) await embedChunk(chunk._id, chunk.content, chunk.title);
+      return res.json({ chunk: serialiseChunk(chunk, await reviewContext(req, [chunk])) });
+    }
+
+    // A passage filed under a specialty is approved by a clinician of it.
+    if (!(await isClinicianOf({ userId: req.user._id, practiceId, departmentId: own.department }))) {
+      throw forbidden('Only a clinician of this specialty at your practice can approve this passage.');
+    }
+
+    const chunk = own;
     // Refuse to approve something that cannot actually be retrieved.
     if (!chunk.embedding?.length) {
       await embedChunk(chunk._id, chunk.content, chunk.title);
@@ -2328,7 +2465,42 @@ router.post(
     chunk.approvedAt = new Date();
     await chunk.save();
 
-    res.json({ chunk: serialiseChunk(chunk) });
+    res.json({ chunk: serialiseChunk(chunk, await reviewContext(req, [chunk])) });
+  }),
+);
+
+/**
+ * Take a shared AI draft into this practice as an editable draft of its own.
+ *
+ * For the clinician who wants to correct the wording before approving it —
+ * approving the shared draft directly would put the uncorrected words in front
+ * of patients, however briefly, before the edit sent them back for review.
+ */
+router.post(
+  '/knowledge/:id/adopt',
+  requireDoctor,
+  requireClinician,
+  audit('create', 'KnowledgeChunk'),
+  asyncHandler(async (req, res) => {
+    const practiceId = await practiceOf(req);
+    if (!practiceId) throw notFound('Knowledge entry not found');
+    const draft = await KnowledgeChunk.findOne({
+      _id: req.params.id,
+      practice: null,
+      origin: 'ai_draft',
+      status: { $in: ['draft', 'pending_review'] },
+    })
+      .select('+embedding')
+      .lean();
+    if (!draft) throw notFound('Knowledge entry not found');
+
+    const { chunk, created } = await adoptSharedDraft({
+      draft,
+      practiceId,
+      userId: req.user._id,
+      approve: false,
+    });
+    res.status(created ? 201 : 200).json({ chunk: serialiseChunk(chunk, await reviewContext(req, [chunk])) });
   }),
 );
 
@@ -2344,7 +2516,112 @@ router.post(
       { new: true },
     );
     if (!chunk) throw notFound('Knowledge entry not found');
-    res.json({ chunk: serialiseChunk(chunk) });
+    res.json({ chunk: serialiseChunk(chunk, await reviewContext(req, [chunk])) });
+  }),
+);
+
+// ---------------------------------------------------------------------------
+// Department assistants: is each one on here, and approving its scope
+// ---------------------------------------------------------------------------
+
+/**
+ * Every department this practice can see, with whether its assistant is on and
+ * why — the approved and pending passages, the sources, the scope's review
+ * state — and the scope itself for a clinician to read.
+ *
+ * The same function the assistant asks before it answers a patient, so what
+ * this screen says and what the patient gets cannot disagree.
+ */
+router.get(
+  '/knowledge/assistants',
+  requireDoctor,
+  asyncHandler(async (req, res) => {
+    const practiceId = await practiceOf(req);
+    const language = ['en', 'bn', 'hi'].includes(req.query.language) ? req.query.language : req.user.language ?? 'en';
+    const departments = await Department.find({
+      isActive: true,
+      $or: [{ practice: null }, ...(practiceId ? [{ practice: practiceId }] : [])],
+    })
+      .sort({ sortIndex: 1, 'names.en': 1 })
+      .lean();
+    const [statuses, specialties] = await Promise.all([
+      assistantStatusForPractice({ practiceId, language, departments }),
+      clinicianDepartmentIds({ userId: req.user._id, practiceId }),
+    ]);
+    const byId = new Map(departments.map((d) => [String(d._id), d]));
+
+    res.json({
+      items: statuses.map((status) => {
+        const scope = byId.get(status.department.id)?.assistantScope ?? {};
+        const awaiting = Boolean(scope.role) && ['draft', 'pending_review'].includes(scope.status);
+        return {
+          ...status,
+          scopeText: scope.role
+            ? {
+                role: scope.role,
+                covers: scope.covers ?? [],
+                refuses: scope.refuses ?? [],
+                redFlags: scope.redFlags ?? [],
+                sources: scope.sources ?? [],
+                version: scope.version ?? null,
+                isAiDrafted: scope.origin === 'ai_draft',
+              }
+            : null,
+          // Whether the button should be offered to this person: a scope
+          // awaiting review, not already approved here in this version, and a
+          // clinician of the specialty looking at it.
+          canApproveScope: awaiting && status.scope.state !== 'approved' && specialties.has(status.department.id),
+          canWithdrawScope: status.scope.state === 'approved' && Boolean(status.scope.approvedAt) && specialties.has(status.department.id),
+        };
+      }),
+    });
+  }),
+);
+
+router.post(
+  '/knowledge/assistants/:departmentId/approve',
+  // Approving a scope is half of what switches an assistant on for patients.
+  requireDoctor,
+  requireClinician,
+  audit('update', 'Department'),
+  validate({ body: z.object({ version: z.number().int().min(1) }) }),
+  asyncHandler(async (req, res) => {
+    const practiceId = await practiceOf(req);
+    if (!practiceId) throw notFound('Department not found');
+    const approval = await approveScope({
+      departmentId: req.params.departmentId,
+      practiceId,
+      userId: req.user._id,
+      version: req.body.version,
+    });
+    const [status] = await assistantStatusForPractice({
+      practiceId,
+      language: req.user.language ?? 'en',
+      departments: [await Department.findById(req.params.departmentId).lean()],
+    });
+    res.json({ approval: { version: approval.version, approvedAt: approval.approvedAt }, status });
+  }),
+);
+
+router.post(
+  '/knowledge/assistants/:departmentId/withdraw',
+  requireDoctor,
+  requireClinician,
+  audit('update', 'Department'),
+  asyncHandler(async (req, res) => {
+    const practiceId = await practiceOf(req);
+    if (!practiceId) throw notFound('Department not found');
+    const outcome = await withdrawScope({
+      departmentId: req.params.departmentId,
+      practiceId,
+      userId: req.user._id,
+    });
+    const [status] = await assistantStatusForPractice({
+      practiceId,
+      language: req.user.language ?? 'en',
+      departments: [await Department.findById(req.params.departmentId).lean()],
+    });
+    res.json({ ...outcome, status });
   }),
 );
 
@@ -2396,25 +2673,75 @@ function serialiseAlert(a, profile) {
   };
 }
 
-const serialiseChunk = (c) => ({
-  id: c._id,
-  docId: c.docId,
-  title: c.title,
-  section: c.section ?? null,
-  content: c.content,
-  language: c.language,
-  category: c.category,
-  tags: c.tags ?? [],
-  status: c.status,
-  version: c.version,
-  hasEmbedding: Boolean(c.embeddedAt),
-  // The platform's shared content, which a practice reads and cannot change.
-  // The app hides the controls the server would refuse.
-  isShared: c.practice == null,
-  sourceCitation: c.sourceCitation ?? null,
-  approvedAt: c.approvedAt ?? null,
-  updatedAt: c.updatedAt,
-});
+/**
+ * One passage for the knowledge screen.
+ *
+ * `review` is the caller's context from [reviewContext]: which specialties they
+ * practise here, and this practice's copies of shared drafts. Without it the
+ * passage still serialises, offering no approval — the safe reading of "we do
+ * not know who is asking".
+ */
+function serialiseChunk(c, review = null) {
+  const isShared = c.practice == null;
+  const isAiDrafted = c.origin === 'ai_draft';
+  const department = c.department ? String(c.department) : null;
+  const ofSpecialty = department == null || Boolean(review?.specialties?.has(department));
+  const copy = isShared && isAiDrafted ? review?.copies?.get(String(c._id)) ?? null : null;
+  const awaiting = c.status === 'draft' || c.status === 'pending_review';
+  const copyIsCurrent = Boolean(copy && copy.status === 'approved' && copy.adoptedVersion === c.version);
+
+  return {
+    id: c._id,
+    docId: c.docId,
+    title: c.title,
+    section: c.section ?? null,
+    content: c.content,
+    language: c.language,
+    category: c.category,
+    tags: c.tags ?? [],
+    status: c.status,
+    version: c.version,
+    hasEmbedding: Boolean(c.embeddedAt),
+    // The platform's shared content, which a practice reads and cannot change.
+    // The app hides the controls the server would refuse.
+    isShared,
+    sourceCitation: c.sourceCitation ?? null,
+    approvedAt: c.approvedAt ?? null,
+    updatedAt: c.updatedAt,
+    /// The specialty it belongs to; null applies across them.
+    departmentId: department,
+    /// Who wrote it — `ai_draft` is to be shown as AI-drafted wherever the
+    /// passage is shown to a reviewer, including on the practice's own copy.
+    origin: c.origin ?? 'clinician',
+    isAiDrafted,
+    sources: (c.sources ?? []).map((s) => ({
+      title: s.title,
+      organisation: s.organisation,
+      year: s.year ?? null,
+      url: s.url,
+      accessed: s.accessed ?? null,
+    })),
+    /// On a practice's copy: the shared draft and version it was taken from.
+    adoptedFrom: c.adoptedFrom ? String(c.adoptedFrom) : null,
+    adoptedVersion: c.adoptedVersion ?? null,
+    /// On a shared draft: this practice's copy of it, if it has one.
+    practiceCopy: copy
+      ? { id: String(copy._id), status: copy.status, adoptedVersion: copy.adoptedVersion ?? null, isCurrent: copyIsCurrent }
+      : null,
+    /// Whether an Approve button would be accepted from this person. A shared
+    /// AI draft is approved for this practice only, by a clinician of its
+    /// specialty; the practice's own passages as they always were, plus the
+    /// specialty rule when one is filed under a department.
+    canApprove: Boolean(
+      review?.isDoctor &&
+        awaiting &&
+        ofSpecialty &&
+        (isShared ? isAiDrafted && !copyIsCurrent : true),
+    ),
+    /// Whether "take a copy to edit" would be accepted.
+    canAdopt: Boolean(review?.isDoctor && isShared && isAiDrafted && awaiting && ofSpecialty && !copy),
+  };
+}
 
 // ---------------------------------------------------------------------------
 // Dietician assignment
