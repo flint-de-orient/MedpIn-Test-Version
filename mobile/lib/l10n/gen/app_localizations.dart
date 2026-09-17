@@ -3100,6 +3100,186 @@ abstract class AppLocalizations {
   /// **'Nobody is waiting to be checked in.'**
   String get deskNobodyToCheckIn;
 
+  /// No description provided for @deskOpenConversation.
+  ///
+  /// In en, this message translates to:
+  /// **'Open conversation'**
+  String get deskOpenConversation;
+
+  /// No description provided for @deskComingInToday.
+  ///
+  /// In en, this message translates to:
+  /// **'Coming in today'**
+  String get deskComingInToday;
+
+  /// No description provided for @deskNext.
+  ///
+  /// In en, this message translates to:
+  /// **'Next'**
+  String get deskNext;
+
+  /// No description provided for @deskInMinutes.
+  ///
+  /// In en, this message translates to:
+  /// **'in {count} min'**
+  String deskInMinutes(int count);
+
+  /// No description provided for @deskNoMoreToday.
+  ///
+  /// In en, this message translates to:
+  /// **'No one else is booked for later today.'**
+  String get deskNoMoreToday;
+
+  /// No description provided for @deskMoreLaterToday.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 more later today} other{{count} more later today}}'**
+  String deskMoreLaterToday(int count);
+
+  /// No description provided for @deskSoFarToday.
+  ///
+  /// In en, this message translates to:
+  /// **'So far today'**
+  String get deskSoFarToday;
+
+  /// No description provided for @deskBookedCount.
+  ///
+  /// In en, this message translates to:
+  /// **'{count} booked'**
+  String deskBookedCount(int count);
+
+  /// No description provided for @deskSeenCount.
+  ///
+  /// In en, this message translates to:
+  /// **'{count} seen'**
+  String deskSeenCount(int count);
+
+  /// No description provided for @deskNoShowCount.
+  ///
+  /// In en, this message translates to:
+  /// **'{count} did not come'**
+  String deskNoShowCount(int count);
+
+  /// No description provided for @deskCancelledCount.
+  ///
+  /// In en, this message translates to:
+  /// **'{count} cancelled'**
+  String deskCancelledCount(int count);
+
+  /// No description provided for @deskInTheClinic.
+  ///
+  /// In en, this message translates to:
+  /// **'In the clinic'**
+  String get deskInTheClinic;
+
+  /// No description provided for @deskArrivedWaiting.
+  ///
+  /// In en, this message translates to:
+  /// **'Arrived, waiting'**
+  String get deskArrivedWaiting;
+
+  /// No description provided for @deskToken.
+  ///
+  /// In en, this message translates to:
+  /// **'Token {number}'**
+  String deskToken(int number);
+
+  /// No description provided for @deskWaitingForTimeTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 patient waiting for a time} other{{count} patients waiting for a time}}'**
+  String deskWaitingForTimeTitle(int count);
+
+  /// No description provided for @deskUnreadMessagesTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 unread message} other{{count} unread messages}}'**
+  String deskUnreadMessagesTitle(int count);
+
+  /// No description provided for @deskNewMessages.
+  ///
+  /// In en, this message translates to:
+  /// **'{count} new'**
+  String deskNewMessages(int count);
+
+  /// No description provided for @deskNutritionChat.
+  ///
+  /// In en, this message translates to:
+  /// **'Nutrition chat'**
+  String get deskNutritionChat;
+
+  /// No description provided for @deskWaitingOnCode.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 patient is waiting on their code} other{{count} patients are waiting on their code}}'**
+  String deskWaitingOnCode(int count);
+
+  /// No description provided for @deskCaughtUp.
+  ///
+  /// In en, this message translates to:
+  /// **'No urgent reports, no one waiting for a time and no unread messages.'**
+  String get deskCaughtUp;
+
+  /// No description provided for @deskStaleTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not refresh'**
+  String get deskStaleTitle;
+
+  /// No description provided for @deskStaleAt.
+  ///
+  /// In en, this message translates to:
+  /// **'Showing what loaded at {time}.'**
+  String deskStaleAt(String time);
+
+  /// No description provided for @deskStaleEarlier.
+  ///
+  /// In en, this message translates to:
+  /// **'Showing what loaded earlier.'**
+  String get deskStaleEarlier;
+
+  /// No description provided for @deskThisWeekSoFar.
+  ///
+  /// In en, this message translates to:
+  /// **'This week so far'**
+  String get deskThisWeekSoFar;
+
+  /// No description provided for @deskNothingThisWeek.
+  ///
+  /// In en, this message translates to:
+  /// **'Nothing booked this week.'**
+  String get deskNothingThisWeek;
+
+  /// No description provided for @deskJustNow.
+  ///
+  /// In en, this message translates to:
+  /// **'Just now'**
+  String get deskJustNow;
+
+  /// No description provided for @deskAgoMinutes.
+  ///
+  /// In en, this message translates to:
+  /// **'{count} min ago'**
+  String deskAgoMinutes(int count);
+
+  /// No description provided for @deskAgoHours.
+  ///
+  /// In en, this message translates to:
+  /// **'{count} h ago'**
+  String deskAgoHours(int count);
+
+  /// No description provided for @deskAgoDays.
+  ///
+  /// In en, this message translates to:
+  /// **'{count} d ago'**
+  String deskAgoDays(int count);
+
+  /// No description provided for @deskNotificationsWaiting.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =0{Notifications} =1{Notifications, 1 waiting} other{Notifications, {count} waiting}}'**
+  String deskNotificationsWaiting(int count);
+
   /// No description provided for @nutritionLoadFailed.
   ///
   /// In en, this message translates to:

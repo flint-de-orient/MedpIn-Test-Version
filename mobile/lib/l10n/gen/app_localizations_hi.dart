@@ -1633,6 +1633,159 @@ class AppLocalizationsHi extends AppLocalizations {
   String get deskNobodyToCheckIn => 'चेक-इन के लिए कोई नहीं है।';
 
   @override
+  String get deskOpenConversation => 'बातचीत खोलें';
+
+  @override
+  String get deskComingInToday => 'आज आने वाले';
+
+  @override
+  String get deskNext => 'अगला';
+
+  @override
+  String deskInMinutes(int count) {
+    return '$count मिनट में';
+  }
+
+  @override
+  String get deskNoMoreToday => 'आज बाद में किसी और की बुकिंग नहीं है।';
+
+  @override
+  String deskMoreLaterToday(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'आज बाद में $count और',
+      one: 'आज बाद में 1 और',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get deskSoFarToday => 'आज अब तक';
+
+  @override
+  String deskBookedCount(int count) {
+    return '$count बुक';
+  }
+
+  @override
+  String deskSeenCount(int count) {
+    return '$count देखे गए';
+  }
+
+  @override
+  String deskNoShowCount(int count) {
+    return '$count नहीं आए';
+  }
+
+  @override
+  String deskCancelledCount(int count) {
+    return '$count रद्द';
+  }
+
+  @override
+  String get deskInTheClinic => 'क्लिनिक में';
+
+  @override
+  String get deskArrivedWaiting => 'आ गए, इंतज़ार में';
+
+  @override
+  String deskToken(int number) {
+    return 'टोकन $number';
+  }
+
+  @override
+  String deskWaitingForTimeTitle(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count मरीज़ समय की प्रतीक्षा में',
+      one: '1 मरीज़ समय की प्रतीक्षा में',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String deskUnreadMessagesTitle(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count अपठित संदेश',
+      one: '1 अपठित संदेश',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String deskNewMessages(int count) {
+    return '$count नए';
+  }
+
+  @override
+  String get deskNutritionChat => 'पोषण चैट';
+
+  @override
+  String deskWaitingOnCode(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count मरीज़ अपने कोड की प्रतीक्षा में',
+      one: '1 मरीज़ अपने कोड की प्रतीक्षा में',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get deskCaughtUp =>
+      'कोई ज़रूरी सूचना नहीं, कोई समय की प्रतीक्षा में नहीं, कोई अपठित संदेश नहीं।';
+
+  @override
+  String get deskStaleTitle => 'रिफ़्रेश नहीं हो सका';
+
+  @override
+  String deskStaleAt(String time) {
+    return '$time बजे जो लोड हुआ था, वही दिखाया जा रहा है।';
+  }
+
+  @override
+  String get deskStaleEarlier => 'पहले जो लोड हुआ था, वही दिखाया जा रहा है।';
+
+  @override
+  String get deskThisWeekSoFar => 'इस हफ़्ते अब तक';
+
+  @override
+  String get deskNothingThisWeek => 'इस हफ़्ते कोई बुकिंग नहीं हुई।';
+
+  @override
+  String get deskJustNow => 'अभी-अभी';
+
+  @override
+  String deskAgoMinutes(int count) {
+    return '$count मिनट पहले';
+  }
+
+  @override
+  String deskAgoHours(int count) {
+    return '$count घंटे पहले';
+  }
+
+  @override
+  String deskAgoDays(int count) {
+    return '$count दिन पहले';
+  }
+
+  @override
+  String deskNotificationsWaiting(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'सूचनाएँ, $count प्रतीक्षा में',
+      zero: 'सूचनाएँ',
+    );
+    return '$_temp0';
+  }
+
+  @override
   String get nutritionLoadFailed => 'बातचीत लोड नहीं हो सकी';
 
   @override

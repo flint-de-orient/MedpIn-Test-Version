@@ -794,6 +794,148 @@
   "deskSearchPatients": "Search by name or phone",
   "deskNoPatientsFound": "No patients found",
   "deskNobodyToCheckIn": "Nobody is waiting to be checked in.",
+  "deskOpenConversation": "Open conversation",
+  "deskComingInToday": "Coming in today",
+  "deskNext": "Next",
+  "deskInMinutes": "in {count} min",
+  "@deskInMinutes": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "deskNoMoreToday": "No one else is booked for later today.",
+  "deskMoreLaterToday": "{count, plural, =1{1 more later today} other{{count} more later today}}",
+  "@deskMoreLaterToday": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "deskSoFarToday": "So far today",
+  "deskBookedCount": "{count} booked",
+  "@deskBookedCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "deskSeenCount": "{count} seen",
+  "@deskSeenCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "deskNoShowCount": "{count} did not come",
+  "@deskNoShowCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "deskCancelledCount": "{count} cancelled",
+  "@deskCancelledCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "deskInTheClinic": "In the clinic",
+  "deskArrivedWaiting": "Arrived, waiting",
+  "deskToken": "Token {number}",
+  "@deskToken": {
+    "placeholders": {
+      "number": {
+        "type": "int"
+      }
+    }
+  },
+  "deskWaitingForTimeTitle": "{count, plural, =1{1 patient waiting for a time} other{{count} patients waiting for a time}}",
+  "@deskWaitingForTimeTitle": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "deskUnreadMessagesTitle": "{count, plural, =1{1 unread message} other{{count} unread messages}}",
+  "@deskUnreadMessagesTitle": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "deskNewMessages": "{count} new",
+  "@deskNewMessages": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "deskNutritionChat": "Nutrition chat",
+  "deskWaitingOnCode": "{count, plural, =1{1 patient is waiting on their code} other{{count} patients are waiting on their code}}",
+  "@deskWaitingOnCode": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "deskCaughtUp": "No urgent reports, no one waiting for a time and no unread messages.",
+  "deskStaleTitle": "Could not refresh",
+  "deskStaleAt": "Showing what loaded at {time}.",
+  "@deskStaleAt": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "deskStaleEarlier": "Showing what loaded earlier.",
+  "deskThisWeekSoFar": "This week so far",
+  "deskNothingThisWeek": "Nothing booked this week.",
+  "deskJustNow": "Just now",
+  "deskAgoMinutes": "{count} min ago",
+  "@deskAgoMinutes": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "deskAgoHours": "{count} h ago",
+  "@deskAgoHours": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "deskAgoDays": "{count} d ago",
+  "@deskAgoDays": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "deskNotificationsWaiting": "{count, plural, =0{Notifications} =1{Notifications, 1 waiting} other{Notifications, {count} waiting}}",
+  "@deskNotificationsWaiting": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "nutritionLoadFailed": "Could not load the conversation",
   "nutritionNoMessages": "No messages yet",
   "deskAlreadyBookedTitle": "Already booked that day",
