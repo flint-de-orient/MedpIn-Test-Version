@@ -155,7 +155,7 @@ class _ClinicianDashboardScreenState
     final widgets =
         caps.ui?.widgets ??
         const ['TRIAGE_QUEUE', 'TODAYS_CLINIC', 'OPEN_ALERTS'];
-    final actions = caps.ui?.quickActions ?? const <String>[];
+    final actions = homeShortcuts(caps.ui?.quickActions ?? const <String>[]);
 
     /*
      * Fetched only when something on this screen will draw it.

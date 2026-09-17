@@ -224,6 +224,27 @@ final Map<String, ActionSpec> dashboardActions = {
   ),
 };
 
+/// Shortcuts Home no longer draws.
+///
+/// Start consultation, Record vitals, Write prescription and Lab reports all
+/// opened the same patient list as the Care tab, and Add patient and Alerts
+/// repeat the Care tab's Add patient button and the bell. Each is still reached
+/// where the work is: the Care tab, the patient's record, the bell and More.
+/// Shortcuts to screens with no tab of their own — team, departments, export —
+/// are still drawn.
+const Set<String> actionsNotOnHome = {
+  'START_CONSULTATION',
+  'ADD_PATIENT',
+  'RECORD_VITALS',
+  'WRITE_PRESCRIPTION',
+  'VIEW_ALERTS',
+  'VIEW_LAB_REPORTS',
+};
+
+/// The shortcuts Home draws, from the ones the server offers.
+List<String> homeShortcuts(List<String> offered) =>
+    [for (final id in offered) if (!actionsNotOnHome.contains(id)) id];
+
 /// The row of actions a dashboard offers.
 ///
 /// A Wrap, not a scroller. This is a bounded, known set — a scroller always
