@@ -333,6 +333,14 @@ class _InboxHeader extends ConsumerWidget {
       ),
       child: Row(
         children: [
+          // Pushed from the doctor's home now that Nutrition is not a tab, so
+          // it needs a way back that is not only a system gesture.
+          if (context.canPop())
+            IconButton(
+              tooltip: 'Back',
+              onPressed: () => context.pop(),
+              icon: const Icon(Icons.arrow_back_rounded),
+            ),
           const Expanded(child: ClinicWordmark()),
           const SizedBox(width: AppSpacing.sm),
           PanelNotificationBell(
