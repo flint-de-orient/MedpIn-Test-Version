@@ -1393,6 +1393,7 @@ router.get(
             createdAt: { $first: '$createdAt' },
             urgency: { $first: '$triage.urgency' },
             attachments: { $first: '$attachments' },
+            deletedForEveryoneAt: { $first: '$deletedForEveryoneAt' },
           },
         },
       ]),
@@ -1450,6 +1451,7 @@ router.get(
     // file|null. A voice note always reads as a voice message; a caption
     // otherwise wins; media with no caption falls back to a plain type label.
     const mediaInfo = (m) => {
+      if (m?.deletedForEveryoneAt) return { preview: 'Message deleted', mediaType: null };
       const atts = (m?.attachments ?? []).map((a) => assetMap.get(a.toString())).filter(Boolean);
       if (atts.some((a) => a.kind === 'voice_note' || (a.mimeType || '').startsWith('audio/'))) {
         return { preview: 'Voice message', mediaType: 'voice' };
@@ -1942,6 +1944,7 @@ router.get(
           role: { $first: '$role' },
           createdAt: { $first: '$createdAt' },
           attachments: { $first: '$attachments' },
+          deletedForEveryoneAt: { $first: '$deletedForEveryoneAt' },
         },
       },
     ]);
@@ -1958,6 +1961,7 @@ router.get(
       ]),
     );
     const mediaInfo = (m) => {
+      if (m?.deletedForEveryoneAt) return { preview: 'Message deleted', mediaType: null };
       const atts = (m?.attachments ?? []).map((a) => assetMap.get(a.toString())).filter(Boolean);
       if (atts.some((a) => a.kind === 'voice_note' || (a.mimeType || '').startsWith('audio/'))) {
         return { preview: 'Voice message', mediaType: 'voice' };

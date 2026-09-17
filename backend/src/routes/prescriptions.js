@@ -492,6 +492,12 @@ function serialise(p) {
     generalAdvice: p.generalAdvice ?? null,
     followUpOn: p.followUpOn ?? null,
     isActive: p.isActive,
+    // The record lifecycle, so a list can say which prescriptions still stand.
+    // Without it a voided or superseded prescription looked like a current one.
+    recordState: p.recordState ?? 'current',
+    endedAt: p.endedAt ?? null,
+    endedReason: p.endedReason ?? null,
+    replacedBy: p.replacedBy ?? null,
     pdfUrl: `/api/v1/patients/${p.patient}/prescriptions/${p._id}/pdf`,
   };
 }
