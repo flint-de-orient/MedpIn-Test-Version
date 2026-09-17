@@ -193,10 +193,16 @@ class DashboardConfig {
     required this.widgets,
     required this.quickActions,
     this.department,
+    this.specialty,
   });
 
   final List<String> widgets;
   final List<String> quickActions;
+
+  /// The specialty whose Home this is — `diabetology`, `cardiology`,
+  /// `general_physician` — or null for the general set, and from a server
+  /// that does not say.
+  final String? specialty;
 
   /// The department key this arrangement came from, or null for the general
   /// clinical set.
@@ -212,6 +218,7 @@ class DashboardConfig {
           .map((e) => e.toString())
           .toList(growable: false),
       department: json['department'] as String?,
+      specialty: json['specialty'] as String?,
     );
   }
 }

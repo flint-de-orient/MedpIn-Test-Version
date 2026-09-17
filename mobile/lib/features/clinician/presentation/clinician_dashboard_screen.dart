@@ -154,7 +154,10 @@ class _ClinicianDashboardScreenState
     final caps = ref.watch(capabilitySetProvider);
     final widgets =
         caps.ui?.widgets ??
-        const ['TRIAGE_QUEUE', 'TODAYS_CLINIC', 'OPEN_ALERTS'];
+        // Nothing specialty-specific while the answer is on its way: Live
+        // Triage ranks by a diabetes risk score, and flashed on a cardiologist's
+        // Home before their own cards arrived.
+        const ['TODAYS_CLINIC', 'OPEN_ALERTS'];
     final actions = homeShortcuts(caps.ui?.quickActions ?? const <String>[]);
 
     /*

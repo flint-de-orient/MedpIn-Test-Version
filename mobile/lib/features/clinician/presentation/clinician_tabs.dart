@@ -33,11 +33,22 @@ const _care = 1;
 const _nutrition = 2;
 const _profile = 3;
 
+/// Specialties whose doctors see Nutrition only when somebody writes diet plans.
+///
+/// The nutrition stream is a diabetes clinic's daily work, and the assistant
+/// alone put the tab in front of every cardiologist and general physician. A
+/// heart or general clinic that employs a dietician still gets it.
+const _nutritionOnlyWithDietician = {'cardiology', 'general_physician'};
+
 List<int> visibleBranches(Capabilities caps) {
+  final nutrition =
+      _nutritionOnlyWithDietician.contains(caps.ui?.specialty)
+          ? caps.hasDietician
+          : caps.has(Cap.aiAssistant) || caps.hasDietician;
   return <int>[
     _home,
     _care,
-    if (caps.has(Cap.aiAssistant) || caps.hasDietician) _nutrition,
+    if (nutrition) _nutrition,
     _profile,
   ];
 }

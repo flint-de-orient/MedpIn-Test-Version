@@ -68,6 +68,10 @@ class _AddPatientScreenState extends ConsumerState<AddPatientScreen> {
 
   bool get _phoneVerified => _phoneToken != null;
 
+  /// The number already has a MedPin account. Registering it texts the patient
+  /// a code to add them to this practice; there is nothing to verify here.
+  bool _existingAccount = false;
+
   /// The number the token was issued for, so editing the field after verifying
   /// drops the proof instead of carrying it onto a different patient.
   String? _verifiedNumber;
@@ -121,10 +125,15 @@ class _AddPatientScreenState extends ConsumerState<AddPatientScreen> {
     final error = result.error;
     if (error != null) {
       setState(() {
-        _phoneError =
-            error.code == 'CONFLICT'
-                ? 'This number already has an account. Open it from the patient list instead.'
-                : ErrorView.messageFor(context, error);
+        // An existing account is not a dead end. It told the doctor to open
+        // the patient from their list — where somebody who signed up on their
+        // own, or who belongs to another practice, is not.
+        if (error.code == 'CONFLICT') {
+          _existingAccount = true;
+          _phoneError = null;
+        } else {
+          _phoneError = ErrorView.messageFor(context, error);
+        }
       });
       return;
     }
@@ -167,6 +176,7 @@ class _AddPatientScreenState extends ConsumerState<AddPatientScreen> {
 
   /// Drops the proof when the number is edited after being verified.
   void _onPhoneChanged() {
+    if (_existingAccount) setState(() => _existingAccount = false);
     if (!_phoneVerified && !_codeSent) return;
     if (_phone.text.trim() == _verifiedNumber) return;
     setState(() {
@@ -214,7 +224,9 @@ class _AddPatientScreenState extends ConsumerState<AddPatientScreen> {
       setState(() => _autovalidate = AutovalidateMode.onUserInteraction);
       return;
     }
-    if (!_phoneVerified && !await _confirmUnverified()) return;
+    // No "they may not be able to sign in" for an existing account: they
+    // already can, and the patient confirms the number with the code.
+    if (!_phoneVerified && !_existingAccount && !await _confirmUnverified()) return;
     if (!mounted) return;
     setState(() {
       _submitting = true;
@@ -470,11 +482,18 @@ class _AddPatientScreenState extends ConsumerState<AddPatientScreen> {
                 busy: _verifying,
                 codeController: _code,
                 error: _phoneError,
+                note:
+                    _existingAccount
+                        ? 'This number already has a MedPin account. Tap Register '
+                            'patient — we will text them a code to add them to '
+                            'your clinic.'
+                        : null,
                 simulated: _sent?.simulated ?? false,
                 onSend: _sendCode,
                 onVerify: _verifyCode,
                 onChangeNumber: () {
                   setState(() {
+                    _existingAccount = false;
                     _phoneToken = null;
                     _verifiedNumber = null;
                     _codeSent = false;
@@ -854,6 +873,7 @@ class _PhoneVerification extends StatelessWidget {
     required this.busy,
     required this.codeController,
     required this.error,
+    this.note,
     required this.simulated,
     required this.onSend,
     required this.onVerify,
@@ -865,6 +885,9 @@ class _PhoneVerification extends StatelessWidget {
   final bool busy;
   final TextEditingController codeController;
   final String? error;
+
+  /// Something to say about the number that is not an error.
+  final String? note;
 
   /// The server has no SMS credentials and logged the code instead. Only ever
   /// true off production, and said plainly — a receptionist waiting for a
@@ -992,11 +1015,14 @@ class _PhoneVerification extends StatelessWidget {
               style: TextStyle(fontSize: 12, color: AppColors.warning),
             ),
         ],
-        if (error != null) ...[
+        if (error != null || note != null) ...[
           const SizedBox(height: AppSpacing.sm),
           Text(
-            error!,
-            style: const TextStyle(fontSize: 12, color: AppColors.danger),
+            error ?? note!,
+            style: TextStyle(
+              fontSize: 12,
+              color: error != null ? AppColors.danger : AppColors.primary,
+            ),
           ),
         ],
       ],
