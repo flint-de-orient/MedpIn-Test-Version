@@ -170,8 +170,24 @@ async function main() {
   await mongoose.disconnect();
 }
 
-main().catch(async (err) => {
-  console.error(err);
-  await mongoose.disconnect().catch(() => {});
-  process.exit(1);
-});
+/*
+ * RETIRED — this script ran once, in production, on 4 September 2026, and must
+ * never run again.
+ *
+ * It created the founding practice and attached every existing clinic and clinician to it. That was recorded as a one-time historical exception (see
+ * deploy/DATA-DECISIONS.md, "The founding-practice migration"): the practices
+ * model arrived after the clinic had been running for months, and the rows it
+ * wrote describe relationships that already existed.
+ *
+ * Run today it would do the same to everybody who has joined since — patients
+ * who signed up alone, and other practices' patients and staff — which is the
+ * pattern the platform now forbids: no practice is ever given a patient, a
+ * clinic or a clinician by default, and no enrolment is ever written without
+ * consent. So main() is no longer called. The code above is kept, unchanged, as
+ * the record of exactly what that migration did.
+ */
+console.error(
+  '\nThis migration is retired. It ran once, on 4 September 2026, as a recorded one-time ' +
+    'exception, and must not run again. See deploy/DATA-DECISIONS.md.\n',
+);
+process.exitCode = 1;
