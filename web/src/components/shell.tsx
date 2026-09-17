@@ -17,6 +17,7 @@ import {
   IconBilling,
   IconClose,
   IconCollapse,
+  IconFeedback,
   IconMenu,
   IconMonitor,
   IconMoon,
@@ -50,6 +51,9 @@ const SECTIONS: { heading: string; items: Item[] }[] = [
       { href: "/signups/", label: "Self signup", Icon: IconSignup },
       { href: "/billing/", label: "Billing", Icon: IconBilling },
       { href: "/analytics/", label: "Analytics", Icon: IconAnalytics },
+      // What no practice reads: feedback about the app, and from patients no
+      // practice has taken on. Without the patient's identity.
+      { href: "/feedback/", label: "Feedback", Icon: IconFeedback },
       { href: "/audit/", label: "Audit", Icon: IconAudit },
     ],
   },
