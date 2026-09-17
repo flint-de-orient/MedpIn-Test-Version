@@ -25,7 +25,7 @@ import { PracticeApplication, APPLICATION_STATUS } from '../models/PracticeAppli
 import { Subscription, SUBSCRIPTION_STATUS } from '../models/Subscription.js';
 import { Membership, MEMBERSHIP_STATUS, PERMISSIONS, presetFor } from '../models/Membership.js';
 import { Department } from '../models/Department.js';
-import { explainCapabilities } from '../services/capabilities.js';
+import { explainCapabilities, BY_TYPE, CAPABILITIES } from '../services/capabilities.js';
 import {
   activePatientCount,
   everPatientCount,
@@ -48,7 +48,9 @@ import {
   sendEmailVerification,
   completeEmailVerification,
 } from '../services/adminReset.js';
-import { mailConfigured } from '../services/mailer.js';
+import { mailConfigured, sendMail, practiceReadyEmail } from '../services/mailer.js';
+import { notifyOwnerOfNewPractice } from '../services/notifications.js';
+import { logger } from '../config/logger.js';
 import { joinByPhone, membersOf } from '../services/memberships.js';
 import { provisionPractice } from '../services/provisionPractice.js';
 import { prefixAvailability, PREFIX_REFUSAL } from '../services/prescriptionPrefix.js';
@@ -932,6 +934,8 @@ router.get(
           .map((w) => w[0].toUpperCase() + w.slice(1))
           .join(' '),
         responsibleLabel: RESPONSIBLE_LABEL[key],
+        // Whether to offer departments at all — from the table that grants them.
+        hasDepartments: BY_TYPE[key]?.includes(CAPABILITIES.DEPARTMENT) ?? false,
       })),
       specialties: shared.map((d) => ({
         key: d.key,
@@ -1053,6 +1057,41 @@ router.post(
       headDoctorPhoneToken: z.string().min(20),
       headDoctorQualifications: z.string().trim().max(120).optional(),
       headDoctorRegistrationNo: z.string().trim().max(60).optional(),
+      /// Where they are told the practice exists. Never a password: they sign in
+      /// with a code texted to the number they just proved.
+      headDoctorEmail: z.string().trim().toLowerCase().email().max(200).optional(),
+
+      /**
+       * Everything the application path already provisions, so a practice made
+       * here is as complete as an approved one: the departments it runs (kept
+       * only where its type can have any), the head doctor's department, the
+       * number its patients ring, and its first location with that location's
+       * phone and weekly hours. A practice made without a location could not
+       * take a booking.
+       */
+      departments: z.array(z.string().trim().min(1).max(80)).max(24).optional(),
+      headDoctorDepartment: z.string().trim().max(80).optional(),
+      emergencyPhone: z.string().trim().max(40).optional(),
+      prescriptionPrefix: z.string().trim().toUpperCase().max(8).optional(),
+      location: z
+        .object({
+          name: z.string().trim().max(160).optional(),
+          addressLine: z.string().trim().max(400).optional(),
+          city: z.string().trim().max(120).optional(),
+          phone: z.string().trim().max(40).optional(),
+          slotMinutes: z.number().int().min(5).max(120).optional(),
+          weeklyHours: z
+            .array(
+              z.object({
+                dayOfWeek: z.number().int().min(0).max(6),
+                start: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/),
+                end: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/),
+              }),
+            )
+            .max(42)
+            .optional(),
+        })
+        .optional(),
     }),
   }),
   asyncHandler(async (req, res) => {
@@ -1062,6 +1101,11 @@ router.post(
       headDoctorPhoneToken,
       headDoctorQualifications,
       headDoctorRegistrationNo,
+      headDoctorEmail,
+      departments,
+      headDoctorDepartment,
+      emergencyPhone,
+      location: locationInput,
       ...brand
     } = req.body;
 
@@ -1087,15 +1131,53 @@ router.post(
      * has to produce exactly the same thing, and a second copy of nine steps
      * is how one path ends up without a head doctor.
      *
-     * See [services/provisionPractice.js] for why each step is where it is.
+     * See [services/provisionPractice.js] for why each step is where it is —
+     * including why every refusal it can make comes before anything is written.
      */
-    const { practice, head } = await provisionPractice({
+    const { practice, head, location, department, departments: seeded } = await provisionPractice({
       brand,
       headDoctorName,
       headDoctorPhone,
       headDoctorQualifications,
       headDoctorRegistrationNo,
+      ownerEmail: headDoctorEmail ?? null,
+      // Proved a moment ago, through /admin/phone/verify — the token says so.
+      phoneVerifiedAt: new Date(),
+      departments: departments ?? [],
+      ownerDepartment: headDoctorDepartment ?? null,
+      emergencyPhone: emergencyPhone ?? null,
+      location: locationInput ?? null,
     });
+
+    /*
+     * The head doctor is told, through the ways MedPin has of reaching them:
+     * the phones their account is already signed in on, and the email the
+     * operator gave. Nothing else can reach somebody new — a text would need a
+     * template approved for it — so the console is told which of these went,
+     * and can say to ring them when neither did.
+     */
+    const pushed = await notifyOwnerOfNewPractice({
+      userId: head.user._id,
+      practiceName: practice.name,
+      managesOnly: false,
+    });
+    const emailTo = headDoctorEmail ?? null;
+    if (emailTo) {
+      sendMail({
+        to: emailTo,
+        ...practiceReadyEmail({ practiceName: practice.name, ownerName: head.user.name, phone: headDoctorPhone }),
+      }).catch((err) => logger.error({ err, practice: String(practice._id) }, 'could not email the head doctor'));
+    }
+
+    const outcome = {
+      headDoctorAccount: head.createdUser ? 'created' : 'existing',
+      signInPhone: headDoctorPhone,
+      locationCreated: Boolean(location),
+      departments: seeded,
+      headDoctorDepartment: department?.key ?? null,
+      notified: { devices: pushed.devices, emailTo, sms: 'not_available' },
+      mailConfigured: mailConfigured(),
+    };
 
     await AdminAuditLog.record({
       admin: req.admin,
@@ -1115,12 +1197,32 @@ router.post(
         // Whether this created an account or attached one that already existed
         // is the difference between onboarding a new doctor and adding a
         // practice to somebody already on the platform.
-        headDoctorAccount: head.createdUser ? 'created' : 'existing',
+        headDoctorAccount: outcome.headDoctorAccount,
+        location: location ? String(location._id) : null,
+        departments: seeded,
+        emergencyPhone: practice.emergencyPhone ?? null,
+        prescriptionPrefix: practice.prescriptionPrefix ?? null,
+        notified: outcome.notified,
       },
       req,
     });
 
-    res.status(201).json({ practice: practice.toPublic() });
+    res.status(201).json({
+      practice: practice.toPublic(),
+      location: location
+        ? {
+            id: String(location._id),
+            name: location.name,
+            phone: location.phone ?? null,
+            weeklyHours: (location.weeklyHours ?? []).map((w) => ({
+              dayOfWeek: w.dayOfWeek,
+              start: w.start,
+              end: w.end,
+            })),
+          }
+        : null,
+      outcome,
+    });
   }),
 );
 

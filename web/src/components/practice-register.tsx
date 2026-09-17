@@ -296,9 +296,21 @@ export function PracticeRegister() {
       <NewPracticeDialog
         open={creating}
         onClose={() => setCreating(false)}
-        onCreated={() => {
+        onCreated={(outcome) => {
           setCreating(false);
-          toast.success("Practice created — onboarding, unverified");
+          // Who heard about it, so the operator knows whether to ring them.
+          // Nothing reaches somebody new except the email, when one was given.
+          const told = outcome
+            ? [
+                outcome.notified.devices ? "their phone" : null,
+                outcome.notified.emailTo && outcome.mailConfigured ? outcome.notified.emailTo : null,
+              ].filter(Boolean)
+            : [];
+          toast.success(
+            told.length
+              ? `Practice created — onboarding, unverified. Told: ${told.join(" and ")}.`
+              : "Practice created — onboarding, unverified. Nobody could be told automatically: ring the head doctor to say it is ready.",
+          );
           void load();
         }}
       />

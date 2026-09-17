@@ -197,6 +197,13 @@ class PushService {
       return;
     }
 
+    // A practice this account now owns has been set up. Its own screen is
+    // where the locations, hours and people are — not the alert list.
+    if (kind == 'practice_ready') {
+      router.go(area == '/staff' ? '/staff/today' : '/clinician/practice');
+      return;
+    }
+
     final patientId = data['patientId']?.toString();
     if (patientId != null && patientId.isNotEmpty) {
       router.push('$area/patients/$patientId/thread');

@@ -624,6 +624,35 @@ export async function notifyDieticianOfAssignment(dieticianId, patientName) {
   });
 }
 
+/**
+ * A practice has been made, and this person owns it.
+ *
+ * Sent when an operator creates a practice or approves an application, to the
+ * phones the owner's account is already signed in on — which, for somebody new
+ * to MedPin, is none, and this sends nothing. Their first way in is the number
+ * they proved: they sign in with a texted code, and nobody set a password for
+ * them. An operator who gave an email is told separately (see the admin route);
+ * a text message would need a template approved for it, and there is none yet.
+ *
+ * Returns how many devices it was addressed to, so the console can say whether
+ * anybody heard.
+ */
+export async function notifyOwnerOfNewPractice({ userId, practiceName, managesOnly = false }) {
+  const owner = await User.findOne({ _id: userId, isActive: true }).select('deviceTokens').lean();
+  const tokens = owner?.deviceTokens ?? [];
+  if (!tokens.length) return { devices: 0 };
+
+  await deliver({
+    tokens,
+    title: `${practiceName} is set up on MedPin`,
+    body: managesOnly
+      ? 'Open MedPin to add the practice’s doctors and staff.'
+      : 'Open MedPin to check your locations and add your staff.',
+    data: { kind: 'practice_ready' },
+  });
+  return { devices: tokens.length };
+}
+
 /** The doctor issued or updated a prescription — medicines and reminders changed. */
 export async function notifyPatientOfPrescription(patientId, doctor) {
   const patient = await User.findById(patientId).select('deviceTokens').lean();

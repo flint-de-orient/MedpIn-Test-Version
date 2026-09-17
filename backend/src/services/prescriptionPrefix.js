@@ -30,7 +30,11 @@ export async function prefixAvailability(prefix, practiceId) {
   if (!PRESCRIPTION_PREFIX_RE.test(prefix ?? '')) return { ok: false, reason: 'format' };
   if (prefix === NEUTRAL_PRESCRIPTION_PREFIX) return { ok: false, reason: 'reserved' };
 
-  const holder = await Practice.findOne({ prescriptionPrefix: prefix, _id: { $ne: practiceId } })
+  // `practiceId` is null for a practice not created yet, which holds nothing and
+  // issued nothing: every holder and every reference is somebody else's.
+  const notThisOne = (field) => (practiceId ? { [field]: { $ne: practiceId } } : {});
+
+  const holder = await Practice.findOne({ prescriptionPrefix: prefix, ...notThisOne('_id') })
     .select('name')
     .lean();
   if (holder) return { ok: false, reason: 'taken', holder: holder.name };
@@ -39,7 +43,7 @@ export async function prefixAvailability(prefix, practiceId) {
   // answers it rather than a scan — and "AK" never matches "AKD-…".
   const issued = await Prescription.exists({
     referenceNo: new RegExp(`^${prefix}-`),
-    practice: { $ne: practiceId },
+    ...notThisOne('practice'),
   });
   if (issued) return { ok: false, reason: 'issued' };
 
