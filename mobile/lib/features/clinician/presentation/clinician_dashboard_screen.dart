@@ -5,27 +5,42 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
-import '../../auth/presentation/auth_controller.dart';
+import '../../../core/capabilities/capabilities.dart';
+import '../../../core/theme/tokens.dart';
+import '../../../shared/widgets/clinic_brand.dart';
+import '../../../shared/widgets/surfaces.dart';
 import '../../../shared/widgets/user_avatar.dart';
+import '../../auth/presentation/auth_controller.dart';
+import '../data/practice_repository.dart';
 import '../domain/clinician_models.dart';
 import 'clinician_providers.dart';
-import 'widgets/panel_ui.dart';
-import 'widgets/clinician_notification_sheet.dart';
-import '../../../core/theme/tokens.dart';
-import 'widgets/triage_queue.dart';
-import '../../../shared/widgets/clinic_brand.dart';
-import 'widgets/chat_summary_card.dart';
 import 'widgets/caseload_panels.dart';
+import 'widgets/chat_summary_card.dart';
+import 'widgets/clinician_notification_sheet.dart';
 import 'widgets/dashboard_registry.dart';
-import '../../../core/capabilities/capabilities.dart';
+import 'widgets/home_actions.dart';
+import 'widgets/home_panel.dart';
+import 'widgets/panel_ui.dart';
+import 'widgets/triage_queue.dart';
 
-/// The doctor's home: the clinic at a glance — headline counts, what is on
-/// today, the alerts that need attention, the live triage queue, and the
-/// nutrition reviews coming due.
+/// The doctor's home: who is booked and waiting today, who needs attention,
+/// and the caseload their specialty is measured by.
 ///
-/// Every number is live: pulled from the API and refreshed on a timer, on
-/// resume, and on pull-to-refresh, so it is never stale while the doctor is
-/// looking at it.
+/// ---- What a doctor asks first, first ---------------------------------------
+///
+/// The order comes from the server (services/uiConfig.js) and every clinical
+/// preset opens the same way: the day, then who needs attention, then the
+/// specialty's panels. The primary action lives with the day, because it is
+/// about the day: start the consultation of whoever is waiting.
+///
+/// ---- Honest about time -----------------------------------------------------
+///
+/// The header said "Updated just now" beside a green dot, and the time behind
+/// it was set when a refresh was *asked for* — so with every request failing,
+/// the screen still claimed to be current. It now says the time the figures
+/// last arrived, and when a refresh fails it keeps the figures and says how old
+/// they are, with a way to try again. A failed refresh never turns a list into
+/// an error or an empty state.
 class ClinicianDashboardScreen extends ConsumerStatefulWidget {
   const ClinicianDashboardScreen({super.key});
 
@@ -34,44 +49,32 @@ class ClinicianDashboardScreen extends ConsumerStatefulWidget {
       _ClinicianDashboardScreenState();
 }
 
-/// The panels that have something to draw, with one gap between each pair.
-///
-/// Nulls dropped before the spacing is worked out, so a panel still waiting on
-/// its data takes its gap with it rather than leaving a hole where it will be.
-/// And no gap after the last one: it would sit on top of the list's own bottom
-/// padding and end the screen in 72px of nothing.
-List<Widget> _spaced(List<Widget?> panels) {
-  final present = panels.whereType<Widget>().toList(growable: false);
-  return [
-    for (var i = 0; i < present.length; i++) ...[
-      present[i],
-      if (i != present.length - 1) const SizedBox(height: T.s6),
-    ],
-  ];
-}
-
 class _ClinicianDashboardScreenState
     extends ConsumerState<ClinicianDashboardScreen>
     with WidgetsBindingObserver {
   Timer? _poll;
 
-  /// When the data on screen was last pulled. The triage queue says this out
-  /// loud — a queue calling itself live owes the reader the time it was true.
-  DateTime _lastRefreshed = DateTime.now();
+  /// When the overview last arrived. Not when it was last asked for.
+  DateTime? _updatedAt;
 
-  /// The snapshot's window, in days. Fourteen by default: long enough for a
-  /// trend to mean something, short enough that a change last week still shows.
+  /// The glucose chart's window, in days.
   int _days = 14;
 
-  AlertsQuery get _alertsQuery => (status: 'open', severity: null);
+  static const _labDays = 30;
+  static const AlertsQuery _openAlerts = (status: 'open', severity: null);
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    // Live updates: re-pull every 20s so a new message, a resolved alert or a
-    // checked-in patient shows without any manual refresh.
-    _poll = Timer.periodic(const Duration(seconds: 20), (_) => _refresh());
+    ref.listenManual(overviewProvider, (previous, next) {
+      if (next is AsyncData && mounted) {
+        setState(() => _updatedAt = DateTime.now());
+      }
+    }, fireImmediately: true);
+    // Live figures every twenty seconds: a check-in, a resolved alert, a new
+    // message show without anybody pulling.
+    _poll = Timer.periodic(const Duration(seconds: 20), (_) => _refreshLive());
   }
 
   @override
@@ -84,32 +87,51 @@ class _ClinicianDashboardScreenState
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
-      _refresh();
-      _refreshConversations();
+      _refreshLive();
+      _refreshCaseload();
     }
   }
 
-  void _refresh() {
-    if (mounted) setState(() => _lastRefreshed = DateTime.now());
-    ref.invalidate(overviewProvider);
-    ref.invalidate(clinicAnalyticsProvider(_days));
-    ref.invalidate(attentionPatientsProvider);
-    ref.invalidate(alertsProvider(_alertsQuery));
-    // Only meaningful when a lab panel is on screen; invalidating a provider
-    // nobody is watching does nothing, which is cheaper than deciding here
-    // whether it is.
-    ref.invalidate(labOverviewProvider(_days));
+  /// Invalidates a request unless one is already on its way: restarting it
+  /// every tick on a slow connection means none ever finishes.
+  void _again(ProviderOrFamily provider, bool Function() inFlight) {
+    if (!inFlight()) ref.invalidate(provider);
   }
 
-  /// The day's conversation summaries: on return to the app and on pull only.
-  ///
-  /// Not on the twenty-second poll. The list reads every conversation of the
-  /// day and may have the assistant summarise each patient whose day moved on,
-  /// and a summary changes when a patient writes, not three times a minute. A
-  /// doctor coming back to the app, or pulling down, is asking for it.
-  void _refreshConversations() {
+  List<String> get _widgets =>
+      ref.read(capabilitySetProvider).ui?.widgets ?? _fallbackWidgets;
+
+  /// What the home is made of before the server's answer arrives: the two
+  /// panels every clinical preset opens with, and nothing that depends on a
+  /// plan. Unknown does not narrow — but it does not invent a specialty either.
+  static const _fallbackWidgets = ['TODAYS_CLINIC', 'TRIAGE_QUEUE'];
+
+  void _refreshLive() {
+    if (!mounted) return;
+    final widgets = _widgets;
+    _again(overviewProvider, () => ref.read(overviewProvider).isLoading);
+    _again(appointmentsTodayProvider, () => ref.read(appointmentsTodayProvider).isLoading);
+    if (widgets.contains('TRIAGE_QUEUE') || widgets.contains('LIVE_ACTIVITY')) {
+      _again(attentionPatientsProvider, () => ref.read(attentionPatientsProvider).isLoading);
+    }
+    if (widgets.contains('ANALYTICS_SUMMARY') || widgets.contains('ACTION_QUEUE')) {
+      _again(clinicAnalyticsProvider(_days), () => ref.read(clinicAnalyticsProvider(_days)).isLoading);
+    }
+    if (widgets.contains('OPEN_ALERTS')) {
+      _again(alertsProvider(_openAlerts), () => ref.read(alertsProvider(_openAlerts)).isLoading);
+    }
+    if (needsLabOverview(widgets)) {
+      _again(labOverviewProvider(_labDays), () => ref.read(labOverviewProvider(_labDays)).isLoading);
+    }
+  }
+
+  /// The conversations and the caseload panels: on return to the app and on
+  /// pull, not on the poll. Each reads a day of conversations or every reading
+  /// in its window for the whole caseload.
+  void _refreshCaseload() {
     ref.invalidate(chatSummariesProvider(ChatSummaryCard.query));
-    // The caseload panels refresh on the same slower rhythm — see providers.
+    ref.invalidate(glucoseFlagsProvider(GlucoseFlagsCard.days));
+    ref.invalidate(hba1cControlProvider(Hba1cControlCard.days));
     ref.invalidate(bpControlProvider(BpControlCard.days));
     ref.invalidate(followUpsProvider(FollowUpsDueCard.days));
     ref.invalidate(conditionRegisterProvider);
@@ -118,274 +140,206 @@ class _ClinicianDashboardScreenState
     ref.invalidate(lipidControlProvider(LipidControlCard.days));
   }
 
+  void _retryAll() {
+    _refreshLive();
+    _refreshCaseload();
+  }
+
+  Future<void> _pull() async {
+    _retryAll();
+    // The spinner stays until the overview answers, either way.
+    try {
+      await ref.read(overviewProvider.future);
+    } catch (_) {
+      // Said on the screen, by the date line and the panels.
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    // valueOrNull, not .when: on a timer refresh the provider briefly re-enters
-    // loading, and reading the last value keeps the screen from flashing a
-    // spinner every twenty seconds.
-    final overview = ref.watch(overviewProvider).valueOrNull;
-    final analytics = ref.watch(clinicAnalyticsProvider(_days)).valueOrNull;
-    final attention =
-        ref.watch(attentionPatientsProvider).valueOrNull ??
-        const <PatientListItem>[];
-    final alerts =
-        ref.watch(alertsProvider(_alertsQuery)).valueOrNull?.items ?? const [];
-    final loading = overview == null && ref.watch(overviewProvider).isLoading;
-
-    /*
-     * What this person's home screen is made of, as the server works it out.
-     *
-     * `Capabilities.unknown` while the answer is in flight, and its `ui` is
-     * null — so the fallback below is the general clinical set rather than an
-     * empty screen. That is the same rule the rest of this file follows and
-     * the same one the server follows: unknown does not narrow.
-     *
-     * The fallback is deliberately short. A long one here would be a second
-     * copy of `uiConfig.js`'s default, drifting from it, and the screen it
-     * produces would be the one somebody sees for the half-second before the
-     * real answer lands — so it holds what every practice has and nothing that
-     * depends on a plan.
-     */
     final caps = ref.watch(capabilitySetProvider);
-    final widgets =
-        caps.ui?.widgets ??
-        const ['TRIAGE_QUEUE', 'TODAYS_CLINIC', 'OPEN_ALERTS'];
+    final widgets = caps.ui?.widgets ?? _fallbackWidgets;
     final actions = caps.ui?.quickActions ?? const <String>[];
 
-    /*
-     * Fetched only when something on this screen will draw it.
-     *
-     * Most practices show no lab panel, and a request on every refresh for
-     * something nobody is looking at is a query per doctor per twenty seconds
-     * for nothing. `watch` inside the condition is safe here because the
-     * condition itself comes from a watched provider: when the dashboard
-     * changes shape, this rebuilds and the subscription follows it.
-     */
-    final wantsLabs = needsLabOverview(widgets);
-    final labs = wantsLabs ? ref.watch(labOverviewProvider(_days)) : null;
-
+    // A practice manager reads no patient, and the overview is a patient
+    // count: the server refuses it. Not asked for, rather than asked for and
+    // announced as refused across the top of their home.
+    final readsPatients = caps.can(Perm.viewPatient);
+    final overview = readsPatients
+        ? ref.watch(overviewProvider)
+        : const AsyncValue<ClinicOverview>.loading();
     final data = DashboardData(
+      caps: caps,
+      widgets: widgets,
+      actions: actions,
       overview: overview,
-      analytics: analytics,
-      attention: attention,
-      alerts: alerts,
-      labs: labs == null
-          ? null
-          : (value: labs.valueOrNull, loading: labs.isLoading),
-      updatedAt: _lastRefreshed,
+      attention: widgets.contains('TRIAGE_QUEUE') || widgets.contains('LIVE_ACTIVITY')
+          ? ref.watch(attentionPatientsProvider)
+          : null,
+      analytics: widgets.contains('ANALYTICS_SUMMARY') || widgets.contains('ACTION_QUEUE')
+          ? ref.watch(clinicAnalyticsProvider(_days))
+          : null,
+      alerts: widgets.contains('OPEN_ALERTS') ? ref.watch(alertsProvider(_openAlerts)) : null,
+      labs: needsLabOverview(widgets) ? ref.watch(labOverviewProvider(_labDays)) : null,
       days: _days,
       onDaysChanged: (d) => setState(() => _days = d),
+      onRetry: _retryAll,
     );
 
+    /*
+     * Composed from what the server says, not from a list written here: the
+     * order and the selection are the argument uiConfig.js makes about what a
+     * diabetologist, a physician and a cardiologist need to see first.
+     */
+    final panels = <Widget>[
+      // A home without the day on it still gets its actions — first.
+      if (actions.isNotEmpty && !widgets.contains('TODAYS_CLINIC'))
+        _actionsWithoutTheDay(actions, data),
+      for (final id in widgets)
+        if (dashboardWidgets[id]?.call(data) case final panel?) panel,
+    ];
+
     return Scaffold(
-      // Transparent so the shell's ground runs unbroken behind this
-      // screen and the navigation bar alike. An opaque page here left a
-      // visible band of ground around the pill and nowhere else.
       backgroundColor: Colors.transparent,
       body: SafeArea(
         bottom: false,
         child: Column(
           children: [
-            _DashboardHeader(updatedAt: _lastRefreshed),
+            _HomeHeader(caps: caps),
             Expanded(
-              child:
-                  loading
-                      ? const Center(child: CircularProgressIndicator())
-                      : RefreshIndicator(
-                        onRefresh: () async {
-                          _refresh();
-                          _refreshConversations();
-                        },
-                        // A plain list. This was briefly a CustomScrollView
-                        // with the band as a collapsing sliver, which was a
-                        // mistake worth recording: FlexibleSpaceBar draws its
-                        // title at *every* extent, not only when collapsed, so
-                        // the compact line rendered on top of the expanded
-                        // band, and CollapseMode.parallax scales the
-                        // background — which pushed the avatar off the right
-                        // edge. Collapsing this header needs a
-                        // SliverPersistentHeader with its own layout, not
-                        // FlexibleSpaceBar.
-                        child: ListView(
-                          padding: const EdgeInsets.fromLTRB(
-                            T.s4,
-                            T.s3,
-                            T.s4,
-                            T.s12,
-                          ),
-                          children: [
-                            /*
-                             * Composed from what the server says, not from a
-                             * list written here.
-                             *
-                             * The order and the selection used to live in this
-                             * file, argued for in comments that are now in
-                             * `uiConfig.js` beside the default they describe —
-                             * because the argument is about what a clinician
-                             * needs to see first, and that answer is different
-                             * for a cardiology caseload and a laboratory
-                             * bench. Hard-coding one of them here meant every
-                             * other department got a diabetes clinic's screen.
-                             *
-                             * What has not changed is that this app decides
-                             * how each panel looks and what it fetches. The
-                             * server sends identifiers and nothing else.
-                             */
-                            if (actions.isNotEmpty) ...[
-                              QuickActionBar(actions: actions),
-                              const SizedBox(height: T.s6),
-                            ],
-
-                            /*
-                             * Built first, then spaced — rather than emitting
-                             * a gap after each panel as it goes.
-                             *
-                             * Two reasons, and both of them are the kind of
-                             * thing that only shows up on a device. A builder
-                             * that returns null is a panel with nothing to say
-                             * yet, and its gap has to go with it or a
-                             * half-loaded dashboard has holes in it. And a gap
-                             * after the *last* panel lands on top of the
-                             * list's own bottom padding, which is 48 — so the
-                             * screen would end in 72px of nothing.
-                             */
-                            ..._spaced([
-                              for (final id in widgets)
-                                dashboardWidgets[id]?.call(data),
-                            ]),
-                          ],
-                        ),
-                      ),
+              child: RefreshIndicator(
+                onRefresh: _pull,
+                child: ListView(
+                  // Clear of the navigation bar: the last card ends above it
+                  // with room to spare, rather than sliding under its edge.
+                  padding: const EdgeInsets.fromLTRB(T.s4, T.s3, T.s4, T.s12),
+                  children: [
+                    _DayLine(
+                      overview: readsPatients ? overview : null,
+                      updatedAt: _updatedAt,
+                      onRetry: _retryAll,
+                    ),
+                    const SizedBox(height: T.s3),
+                    for (var i = 0; i < panels.length; i++) ...[
+                      if (i > 0) const SizedBox(height: T.s4),
+                      panels[i],
+                    ],
+                  ],
+                ),
+              ),
             ),
           ],
         ),
       ),
     );
   }
+
+  Widget _actionsWithoutTheDay(List<String> actions, DashboardData data) {
+    final clinical = actions.contains('START_CONSULTATION') || actions.contains('ADD_PATIENT');
+    if (!clinical) return HomeShortcuts(actions: actions);
+    return HomeCard(
+      child: HomeActions(
+        actions: actions,
+        practiceEmpty: data.practiceEmpty,
+        alertsOnScreen: data.widgets.contains('TRIAGE_QUEUE'),
+      ),
+    );
+  }
 }
 
-// ---- Header ---------------------------------------------------------------
+// ---- Header -------------------------------------------------------------------
 
-class _DashboardHeader extends ConsumerWidget {
-  const _DashboardHeader({required this.updatedAt});
+/// The practice, the doctor and their specialty; the bell; and the way to More.
+///
+/// It said "MedPin — Doctor Panel": the product's name and a description of the
+/// screen, where the practice's name belongs, over an avatar reading "D" for
+/// every doctor whose name begins "Dr.".
+class _HomeHeader extends ConsumerWidget {
+  const _HomeHeader({required this.caps});
 
-  /// When the figures below were last refreshed. It belongs here rather than
-  /// inside the triage card: it is true of the whole screen, and stating it
-  /// once at the top stops each section having to claim its own freshness.
-  final DateTime updatedAt;
+  final Capabilities caps;
+
+  /// The specialty under the doctor's name: their department here, what their
+  /// own letterhead says, or what the practice treats — the same three the
+  /// server composes the home from, so the label explains the screen.
+  static String? specialtyLabel(Capabilities caps, String? ownSpecialty) {
+    final department = caps.department?.name;
+    if (department != null && department.trim().isNotEmpty) return department;
+    if (ownSpecialty != null && ownSpecialty.trim().isNotEmpty) return ownSpecialty.trim();
+    return switch (caps.specialty) {
+      'diabetology' => 'Diabetology',
+      'cardiology' => 'Cardiology',
+      'general_physician' => 'General physician',
+      _ => null,
+    };
+  }
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final user = ref.watch(authControllerProvider).user;
+    final practice = ref.watch(practiceOverviewProvider).valueOrNull;
+    final specialty = specialtyLabel(caps, user?.specialty);
+    final who = [
+      if (user != null && user.name.trim().isNotEmpty) user.name.trim(),
+      if (specialty != null) specialty,
+    ].join(' · ');
 
     return Container(
-      padding: const EdgeInsets.fromLTRB(T.s4, T.s2, T.s4, T.s3),
+      padding: const EdgeInsets.fromLTRB(T.s4, T.s2, T.s2, T.s2),
       decoration: const BoxDecoration(
         border: Border(bottom: BorderSide(color: T.line)),
       ),
-      child: Column(
+      child: Row(
         children: [
-          Row(
-            children: [
-              const Expanded(child: ClinicWordmark(subtitle: 'Doctor Panel')),
-              const SizedBox(width: T.s2),
-              PanelNotificationBell(
-                onTap: () => showClinicianNotifications(context),
-              ),
-              const SizedBox(width: T.s1),
-              // The whole identity block is the tap target, not just the face —
-              // a 38px circle is a small thing to hit, and the name beside it
-              // pointed at the same place while looking inert.
-              InkWell(
-                borderRadius: BorderRadius.circular(12),
-                // `go`, not `push`: Profile is one of this shell's own tabs, so
-                // pushing it stacked a copy while the bar kept the old tab lit.
-                onTap: () => context.go('/clinician/more'),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 4,
-                    vertical: 4,
+          // The practice's own artwork when it has some. Not its initials in
+          // a tile: "DC" says nothing the name beside it does not, and costs
+          // the name the width it needs to stay on two lines.
+          if (practice?.logoLightUrl != null && practice!.logoLightUrl!.isNotEmpty) ...[
+            PracticeMark(name: practice.name, logoUrl: practice.logoLightUrl, size: T.s8 + T.s2),
+            const SizedBox(width: T.s3),
+          ],
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // The practice when there is one. No product name in its
+                // place: a header that has not heard from the server yet says
+                // who is signed in, which it does know.
+                if (practice != null && practice.name.trim().isNotEmpty)
+                  Text(
+                    practice.name.trim(),
+                    style: T.bodyStrong.copyWith(color: T.ink),
+                    // Three lines before it gives way: a long practice name at
+                    // a larger text size is still the practice's whole name.
+                    maxLines: 3,
+                    overflow: TextOverflow.ellipsis,
                   ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      UserAvatar(
-                        name: user?.name ?? '',
-                        avatarUrl: user?.avatarUrl,
-                        accent: T.primary,
-                        size: 38,
-                      ),
-                      // Just the avatar, as on the dietician's header.
-                      //
-                      // The name, the credentials and a chevron shared one row
-                      // with the brand lockup and the bell — four blocks of
-                      // text across a phone, and the chevron promised a menu
-                      // that does not exist. The greeting a line below already
-                      // says who is signed in; tapping the face opens Profile.
-                    ],
-                  ),
-                ),
-              ),
-            ],
+                if (who.isNotEmpty)
+                  Text(who, style: T.small.copyWith(color: T.inkMuted)),
+              ],
+            ),
           ),
-          const SizedBox(height: T.s2),
-          // Today's date, and how current the screen is. Both are context for
-          // everything below, and neither is worth a line of its own.
-          Row(
-            children: [
-              const Icon(
-                Icons.calendar_today_rounded,
-                size: 14,
-                color: T.inkMuted,
-              ),
-              const SizedBox(width: 6),
-              // Expanded, and no Spacer after it.
-              //
-              // This was Flexible followed by Spacer, and both take a flex of
-              // one — so the free space was split evenly between the date and
-              // an empty box, and the date ellipsised with half the row
-              // standing empty beside it. Shortening the format could never
-              // fix that; "Mon, 24 A…" was the same bug as "Monday, 24 A…".
-              //
-              // With the freshness label laid out at its natural width and
-              // Expanded taking whatever is left, the date gets the real
-              // remainder and the label still sits hard right.
-              Expanded(
-                child: Text(
-                  DateFormat('EEE, d MMM yyyy').format(DateTime.now()),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: T.small.copyWith(color: T.inkMuted),
+          const SizedBox(width: T.s1),
+          PanelNotificationBell(onTap: () => showClinicianNotifications(context)),
+          Semantics(
+            button: true,
+            label: 'Your profile and settings',
+            excludeSemantics: true,
+            child: InkWell(
+              customBorder: const CircleBorder(),
+              // `go`, not `push`: More is one of this shell's own tabs.
+              onTap: () => context.go('/clinician/more'),
+              child: Padding(
+                padding: const EdgeInsets.all(T.s1),
+                child: UserAvatar(
+                  name: user?.name ?? '',
+                  avatarUrl: user?.avatarUrl,
+                  accent: T.primary,
+                  size: T.s8 + T.s2,
                 ),
               ),
-              const SizedBox(width: 8),
-              // Never ellipsised. "Updated just n…" tells the reader nothing —
-              // the whole value of the line is the word at the end, and it was
-              // the word being cut. If the row is too narrow for both, the
-              // date gives way first: it is on the phone's status bar anyway,
-              // and how current the screen is, is not.
-              Text(
-                freshnessLabel(updatedAt),
-                maxLines: 1,
-                softWrap: false,
-                textAlign: TextAlign.right,
-                style: T.small.copyWith(color: T.inkMuted),
-              ),
-              const SizedBox(width: 6),
-              // Green only while the screen is genuinely current. A dot that is
-              // always green is a light that is not wired to anything.
-              Container(
-                width: 8,
-                height: 8,
-                decoration: BoxDecoration(
-                  color:
-                      DateTime.now().difference(updatedAt).inMinutes < 2
-                          ? T.success
-                          : T.inkFaint,
-                  shape: BoxShape.circle,
-                ),
-              ),
-            ],
+            ),
           ),
         ],
       ),
@@ -393,4 +347,83 @@ class _DashboardHeader extends ConsumerWidget {
   }
 }
 
+// ---- The date, and how current the figures are -----------------------------
 
+class _DayLine extends StatelessWidget {
+  const _DayLine({
+    required this.overview,
+    required this.updatedAt,
+    required this.onRetry,
+  });
+
+  /// Null for a home that does not read the overview: the date alone.
+  final AsyncValue<Object?>? overview;
+  final DateTime? updatedAt;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    final date = DateFormat('EEEE, d MMMM').format(DateTime.now());
+    final at = updatedAt;
+    final overview = this.overview;
+
+    if (overview == null) {
+      return Text(date, style: T.small.copyWith(color: T.inkMuted));
+    }
+
+    // Fresh, or still arriving for the first time: one quiet line.
+    if (!overview.hasError) {
+      final String status;
+      if (overview.hasValue && at != null) {
+        status = 'Updated ${freshnessLabel(at)}';
+      } else {
+        status = 'Loading';
+      }
+      return Row(
+        children: [
+          Expanded(child: Text(date, style: T.small.copyWith(color: T.inkMuted))),
+          const SizedBox(width: T.s2),
+          Text(status, style: T.small.copyWith(color: T.inkMuted)),
+        ],
+      );
+    }
+
+    // A refresh failed. Keep the figures, and say how old they are.
+    final problem = loadProblemOf(overview.error);
+    final String message;
+    if (problem == LoadProblem.failed) {
+      message = overview.hasValue && at != null
+          ? 'Not updated since ${freshnessLabel(at)}. The figures below may be out of date.'
+          : 'Could not reach the server. Nothing below is current.';
+    } else {
+      message = readableServerMessage(overview.error) ??
+          (problem == LoadProblem.denied
+              ? 'Your role at this practice does not include its overview.'
+              : 'This server cannot show the practice overview yet.');
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(date, style: T.small.copyWith(color: T.inkMuted)),
+        const SizedBox(height: T.s2),
+        InnerTile(
+          tone: problem == LoadProblem.failed ? T.warningTint : null,
+          padding: const EdgeInsets.fromLTRB(T.s3, T.s1, T.s1, T.s1),
+          child: Row(
+            children: [
+              Icon(
+                problem == LoadProblem.failed ? Icons.cloud_off_rounded : Icons.info_outline_rounded,
+                size: T.s5,
+                color: problem == LoadProblem.failed ? T.warning : T.inkMuted,
+              ),
+              const SizedBox(width: T.s2),
+              Expanded(child: Text(message, style: T.small.copyWith(color: T.ink))),
+              if (problem == LoadProblem.failed) RetryButton(onTap: onRetry) else const SizedBox(height: T.tap),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}

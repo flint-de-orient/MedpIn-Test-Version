@@ -1,4 +1,5 @@
-/// The caseload panels a general physician and a cardiologist open onto.
+/// The caseload panels a general physician, a cardiologist and a diabetologist
+/// open onto.
 ///
 /// Mirrors `routes/panels.js`. Every number here is a count the server made
 /// from records this practice may read — never a score it invented — and each
@@ -10,12 +11,19 @@ import 'ecg_report.dart';
 
 DateTime? _date(Object? v) => v is String ? DateTime.tryParse(v)?.toLocal() : null;
 int _int(Object? v) => v is num ? v.toInt() : 0;
+num? _num(Object? v) => v is num ? v : null;
 List<Map<String, dynamic>> _rows(Object? v) =>
     v is List ? v.whereType<Map<String, dynamic>>().toList() : const [];
 
 /// One patient a panel names, and why.
 class PanelPatient {
-  const PanelPatient({required this.id, required this.name, this.at, this.detail});
+  const PanelPatient({
+    required this.id,
+    required this.name,
+    this.at,
+    this.detail,
+    this.flag,
+  });
 
   final String id;
 
@@ -25,6 +33,11 @@ class PanelPatient {
 
   /// The reading or date that put them here, already worded.
   final String? detail;
+
+  /// The band or impression the server put them in, as its API key —
+  /// `hypertensive_crisis`, `abnormal` — so the panel can say it as a word
+  /// beside the reading rather than folded into the same grey line.
+  final String? flag;
 }
 
 // ---------------------------------------------------------------------------
@@ -83,7 +96,8 @@ class BpControl {
             id: '${r['patientId']}',
             name: r['name'] as String?,
             at: _date(r['recordedAt']),
-            detail: '${r['systolic']}/${r['diastolic']} · ${BpBand.fromApi(r['band'] as String?)?.label ?? ''}',
+            detail: '${r['systolic']}/${r['diastolic']} mmHg',
+            flag: r['band'] as String?,
           ),
       ],
       attentionTotal: _int(j['attentionTotal']),
@@ -250,10 +264,10 @@ class EcgPanel {
               name: r['name'] as String?,
               at: _date(r['recordedOn']),
               detail: [
-                EcgImpression.fromApi(r['impression']).label,
                 ecgRhythmLabel(r['rhythm']),
                 if (r['heartRate'] is num) '${(r['heartRate'] as num).round()} bpm',
               ].join(' · '),
+              flag: r['impression'] as String?,
             ),
           ),
       ],
@@ -266,6 +280,220 @@ class EcgPanel {
 
 /// A lab value as a clinician writes it: whole numbers without a decimal point.
 String labValue(num v) => v == v.roundToDouble() ? '${v.round()}' : v.toStringAsFixed(1);
+
+// ---------------------------------------------------------------------------
+
+/// One patient's lows, or one patient's very highs, over the window.
+class GlucoseExcursion {
+  const GlucoseExcursion({
+    required this.patient,
+    required this.count,
+    required this.serious,
+    required this.extreme,
+  });
+
+  final PanelPatient patient;
+
+  /// How many readings in the window crossed the line.
+  final int count;
+
+  /// How many crossed the second line: below 54, or above 400.
+  final int serious;
+
+  /// The lowest low, or the highest high, in mg/dL.
+  final num extreme;
+}
+
+/// Lows and very highs across the caseload, from `GET /doctor/panels/glucose`.
+class GlucoseFlags {
+  const GlucoseFlags({
+    required this.days,
+    required this.low,
+    required this.severeLow,
+    required this.veryHigh,
+    required this.criticalHigh,
+    required this.rangeLow,
+    required this.rangeHigh,
+    required this.caseload,
+    required this.withReadings,
+    required this.withoutReadings,
+    required this.readings,
+    required this.inRange,
+    required this.lows,
+    required this.lowsTotal,
+    required this.highs,
+    required this.highsTotal,
+  });
+
+  final int days;
+
+  /// The triage engine's own lines, sent by the server so no number here is
+  /// written twice: below [low] is a low, below [severeLow] a severe one, above
+  /// [veryHigh] very high and above [criticalHigh] critical.
+  final int low;
+  final int severeLow;
+  final int veryHigh;
+  final int criticalHigh;
+
+  /// The band the practice's glucose chart calls "in range".
+  final int rangeLow;
+  final int rangeHigh;
+
+  final int caseload;
+  final int withReadings;
+  final int withoutReadings;
+  final int readings;
+  final int inRange;
+  final List<GlucoseExcursion> lows;
+  final int lowsTotal;
+  final List<GlucoseExcursion> highs;
+  final int highsTotal;
+
+  /// The share of readings in range, rounded — or null when there were none.
+  ///
+  /// Null, not zero. "0% in range" for a fortnight nobody logged a sugar is a
+  /// statement about control that nothing measured.
+  int? get inRangePercent => readings == 0 ? null : (inRange * 100 / readings).round();
+
+  static List<GlucoseExcursion> _excursions(Object? v, {required String serious, required String extreme}) => [
+        for (final r in _rows(v))
+          GlucoseExcursion(
+            patient: PanelPatient(
+              id: '${r['patientId']}',
+              name: r['name'] as String?,
+              at: _date(r['lastAt']),
+            ),
+            count: _int(r['count']),
+            serious: _int(r[serious]),
+            extreme: _num(r[extreme]) ?? 0,
+          ),
+      ];
+
+  factory GlucoseFlags.fromJson(Map<String, dynamic> j) {
+    final t = j['thresholds'] is Map ? j['thresholds'] as Map : const {};
+    int limit(String key, int fallback) => t[key] is num ? (t[key] as num).toInt() : fallback;
+    return GlucoseFlags(
+      days: _int(j['days']),
+      low: limit('low', 70),
+      severeLow: limit('severeLow', 54),
+      veryHigh: limit('veryHigh', 250),
+      criticalHigh: limit('criticalHigh', 400),
+      rangeLow: limit('rangeLow', 70),
+      rangeHigh: limit('rangeHigh', 180),
+      caseload: _int(j['caseload']),
+      withReadings: _int(j['withReadings']),
+      withoutReadings: _int(j['withoutReadings']),
+      readings: _int(j['readings']),
+      inRange: _int(j['inRange']),
+      lows: _excursions(j['lows'], serious: 'severe', extreme: 'lowest'),
+      lowsTotal: _int(j['lowsTotal']),
+      highs: _excursions(j['highs'], serious: 'critical', extreme: 'highest'),
+      highsTotal: _int(j['highsTotal']),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+
+/// A patient whose latest HbA1c is above their own target.
+class Hba1cAbove {
+  const Hba1cAbove({
+    required this.patient,
+    required this.percentage,
+    required this.target,
+    required this.poorControl,
+  });
+
+  final PanelPatient patient;
+  final num percentage;
+
+  /// Their target, which is not always the practice's default.
+  final num target;
+
+  /// At or above the poor-control line, whatever their target.
+  final bool poorControl;
+}
+
+/// A patient with no HbA1c in the window, and the last one this practice may
+/// read if there is one.
+class Hba1cUntested {
+  const Hba1cUntested({required this.patient, this.lastTestedOn, this.lastPercentage});
+
+  final PanelPatient patient;
+  final DateTime? lastTestedOn;
+  final num? lastPercentage;
+}
+
+/// HbA1c control across the caseload, from `GET /doctor/panels/hba1c`.
+class Hba1cControl {
+  const Hba1cControl({
+    required this.days,
+    required this.defaultTarget,
+    required this.poorControlLine,
+    required this.caseload,
+    required this.withResult,
+    required this.atTarget,
+    required this.aboveTarget,
+    required this.poorControl,
+    required this.above,
+    required this.aboveTotal,
+    required this.untested,
+    required this.untestedTotal,
+  });
+
+  final int days;
+  final num defaultTarget;
+  final num poorControlLine;
+  final int caseload;
+  final int withResult;
+  final int atTarget;
+
+  /// Above their target and below the poor-control line.
+  final int aboveTarget;
+  final int poorControl;
+  final List<Hba1cAbove> above;
+  final int aboveTotal;
+  final List<Hba1cUntested> untested;
+  final int untestedTotal;
+
+  factory Hba1cControl.fromJson(Map<String, dynamic> j) {
+    final target = j['target'] is Map ? j['target'] as Map : const {};
+    final fallback = _num(target['default']) ?? 7;
+    return Hba1cControl(
+      days: _int(j['days']),
+      defaultTarget: fallback,
+      poorControlLine: _num(target['poorControl']) ?? 9,
+      caseload: _int(j['caseload']),
+      withResult: _int(j['withResult']),
+      atTarget: _int(j['atTarget']),
+      aboveTarget: _int(j['aboveTarget']),
+      poorControl: _int(j['poorControl']),
+      above: [
+        for (final r in _rows(j['above']))
+          Hba1cAbove(
+            patient: PanelPatient(
+              id: '${r['patientId']}',
+              name: r['name'] as String?,
+              at: _date(r['testedOn']),
+            ),
+            percentage: _num(r['percentage']) ?? 0,
+            target: _num(r['target']) ?? fallback,
+            poorControl: r['poorControl'] == true,
+          ),
+      ],
+      aboveTotal: _int(j['aboveTotal']),
+      untested: [
+        for (final r in _rows(j['untested']))
+          Hba1cUntested(
+            patient: PanelPatient(id: '${r['patientId']}', name: r['name'] as String?),
+            lastTestedOn: _date(r['lastTestedOn']),
+            lastPercentage: _num(r['lastPercentage']),
+          ),
+      ],
+      untestedTotal: _int(j['untestedTotal']),
+    );
+  }
+}
 
 class LipidControl {
   const LipidControl({

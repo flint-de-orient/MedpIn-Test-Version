@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 
-import '../../../../core/theme/tokens.dart';
+import '../../../../core/capabilities/capabilities.dart';
+import '../../../../shared/models/paged.dart';
 import '../../domain/clinician_models.dart';
 import '../../domain/lab_overview.dart';
 
@@ -31,10 +31,6 @@ import 'triage_queue.dart';
 /// slightly shorter dashboard — not a red screen in front of a patient, and
 /// not a grey box saying `CRITICAL_LAB_RESULTS`.
 ///
-/// The server drops what it does not recognise for the same reason, so an
-/// operator's typo and a stale app fail the same way: quietly, and only in the
-/// one panel.
-///
 /// ---- Adding one ----------------------------------------------------------
 ///
 /// A new identifier is added to `uiConfig.js` and to this map in the same
@@ -45,122 +41,164 @@ typedef WidgetBuilderFn = Widget? Function(DashboardData data);
 
 /// What every dashboard component is built from.
 ///
-/// Passed in rather than read from providers inside each builder, so that one
-/// screen's poll drives every panel on it. A component reaching for its own
-/// provider would refresh on its own schedule, and a dashboard whose panels
-/// disagree about what time it is has no business calling any of them live.
+/// ---- Requests, not values ------------------------------------------------
+///
+/// This carried `ClinicOverview?` and a list defaulted to empty, so a panel
+/// could not tell "nobody needs attention" from "the request failed" — and
+/// said the first either way. Each field is now the request's whole state, and
+/// [HomePanel] turns it into loading, failed, refused, unavailable, answered or
+/// out of date.
+///
+/// Passed in rather than read inside each builder for the requests the home
+/// polls together, so one screen's poll drives them all.
 class DashboardData {
   const DashboardData({
+    required this.caps,
+    required this.widgets,
+    required this.actions,
     required this.overview,
-    required this.analytics,
     required this.attention,
+    required this.analytics,
     required this.alerts,
     required this.labs,
-    required this.updatedAt,
     required this.days,
     required this.onDaysChanged,
+    required this.onRetry,
   });
 
-  final ClinicOverview? overview;
-  final ClinicAnalytics? analytics;
-  final List<PatientListItem> attention;
-  final List<ClinicalAlert> alerts;
+  final Capabilities caps;
 
-  /// Null until a laboratory component asks for it. Most practices never do,
-  /// and a request on every dashboard load for a panel nobody is showing is a
-  /// query per doctor per twenty seconds for nothing.
-  final LabOverviewData? labs;
+  /// The components on this home, so one can defer to another — the alerts
+  /// action steps aside when the triage card already links the alerts.
+  final List<String> widgets;
 
-  /// When the data on screen was pulled. Anything calling itself live owes the
-  /// reader the time it was true.
-  final DateTime updatedAt;
+  /// The actions the server allowed, in its order.
+  final List<String> actions;
+
+  final AsyncValue<ClinicOverview> overview;
+
+  /// Null when nothing on this home needs it, and it is not fetched.
+  final AsyncValue<List<PatientListItem>>? attention;
+  final AsyncValue<ClinicAnalytics>? analytics;
+  final AsyncValue<Paged<ClinicalAlert>>? alerts;
+  final AsyncValue<LabOverview>? labs;
 
   final int days;
   final ValueChanged<int> onDaysChanged;
-}
 
-/// The lab overview and its loading state, kept together.
-///
-/// A panel that cannot tell "no critical results" from "the request has not
-/// come back" will say the reassuring one, and be wrong at exactly the moment
-/// it matters most.
-typedef LabOverviewData = ({LabOverview? value, bool loading});
+  /// Ask again for everything the home polls.
+  final VoidCallback onRetry;
+
+  /// True once the overview has answered that this practice has no patients.
+  ///
+  /// Null-safe in the direction that matters: while the overview is loading or
+  /// has failed this is false, and every panel shows its own state rather than
+  /// all of them vanishing behind a claim nobody has checked.
+  bool get practiceEmpty => overview.valueOrNull?.patientCount == 0;
+
+  /// Whether anything answers in this practice's nutrition conversations, and
+  /// this person may read them.
+  bool get nutritionStream =>
+      caps.can(Perm.chatRead) && (caps.has(Cap.aiAssistant) || caps.hasDietician);
+}
 
 /// The registry. Keys mirror `WIDGETS` in `services/uiConfig.js`.
 final Map<String, WidgetBuilderFn> dashboardWidgets = {
   // ---- the clinical day ---------------------------------------------------
-  'TRIAGE_QUEUE': (d) =>
-      TriageQueue(patients: d.attention, updatedAt: d.updatedAt),
+  'TODAYS_CLINIC': (d) => TodaysClinic(
+    actions: d.actions,
+    practiceEmpty: d.practiceEmpty,
+    alertsOnScreen: d.widgets.contains('TRIAGE_QUEUE'),
+  ),
 
-  'TODAYS_CLINIC': (d) => const TodaysClinic(),
-
-  // Null rather than an empty card until both halves have arrived: this panel
-  // is counts over a window, and half of it is a different number.
-  'ACTION_QUEUE': (d) => d.overview == null || d.analytics == null
+  // A new practice has nobody to triage; the card that says so, once, stands
+  // in for the caseload.
+  'TRIAGE_QUEUE': (d) => d.practiceEmpty
+      ? const EmptyPracticeCard()
+      : d.attention == null
       ? null
-      : ActionQueue(overview: d.overview!, analytics: d.analytics!),
+      : TriageQueue(
+          patients: d.attention!,
+          openAlerts: d.overview.valueOrNull?.totalOpenAlerts,
+        ),
 
-  'NUTRITION_REVIEWS': (d) => d.overview == null
+  'ACTION_QUEUE': (d) {
+    final o = d.overview.valueOrNull;
+    // Noise when empty, so hidden once answered with nothing waiting — but a
+    // failure or the first load still shows, so it cannot vanish silently.
+    if (o != null &&
+        WaitingOnYouCard.rows(o, d.analytics?.valueOrNull, nutritionStream: d.nutritionStream).isEmpty) {
+      return null;
+    }
+    return WaitingOnYouCard(
+      overview: d.overview,
+      analytics: d.analytics?.valueOrNull,
+      nutritionStream: d.nutritionStream,
+      onRetry: d.onRetry,
+    );
+  },
+
+  'NUTRITION_REVIEWS': (d) => !d.nutritionStream || d.practiceEmpty
       ? null
-      : NutritionReviewQueue(reviews: d.overview!.nutritionReviews),
+      : NutritionCard(overview: d.overview, onRetry: d.onRetry),
 
-  'OPEN_ALERTS': (d) => AlertDigest(alerts: d.alerts),
+  'OPEN_ALERTS': (d) => d.alerts == null
+      ? null
+      : OpenAlertsCard(alerts: d.alerts!, onRetry: d.onRetry),
 
   'LIVE_ACTIVITY': (d) {
     final events = LiveActivity.from(
-      patients: d.attention,
-      reviews: d.overview?.nutritionReviews ?? const [],
+      patients: d.attention?.valueOrNull ?? const [],
+      reviews: d.overview.valueOrNull?.nutritionReviews ?? const [],
     );
-    // Hidden when there is nothing, unlike the alert digest above. The
-    // difference is what the emptiness means: no alerts is a clinical fact
-    // worth stating, and no recent activity is the absence of a log.
+    // Hidden when there is nothing, unlike the panels above. No recent
+    // activity is the absence of a log, not a clinical fact.
     return events.isEmpty ? null : LiveActivity(events: events);
   },
 
   // Its own request rather than the shared poll — see ChatSummaryCard.
-  'CHAT_SUMMARIES': (d) => const ChatSummaryCard(),
+  'CHAT_SUMMARIES': (d) => d.practiceEmpty ? null : const ChatSummaryCard(),
 
   // ---- the caseload: routes/panels.js ---------------------------------------
-  // Their own requests, like the conversations above. See caseload_panels.dart.
-  'BP_CONTROL': (d) => const BpControlCard(),
-  'FOLLOW_UPS_DUE': (d) => const FollowUpsDueCard(),
-  'CONDITION_REGISTRY': (d) => const ConditionRegisterCard(),
-  'HEART_RATE_FLAGS': (d) => const HeartRateFlagsCard(),
-  'RECENT_ECGS': (d) => const RecentEcgsCard(),
-  'LIPID_CONTROL': (d) => const LipidControlCard(),
+  // Their own requests, on the slower rhythm. See caseload_panels.dart. A
+  // practice with no patients shows EmptyPracticeCard instead of each of these
+  // saying so in turn.
+  'GLUCOSE_FLAGS': (d) => d.practiceEmpty
+      ? null
+      : GlucoseFlagsCard(showInRange: !d.widgets.contains('ANALYTICS_SUMMARY')),
+  'HBA1C_CONTROL': (d) => d.practiceEmpty ? null : const Hba1cControlCard(),
+  'BP_CONTROL': (d) => d.practiceEmpty ? null : const BpControlCard(),
+  'FOLLOW_UPS_DUE': (d) => d.practiceEmpty ? null : const FollowUpsDueCard(),
+  'CONDITION_REGISTRY': (d) => d.practiceEmpty ? null : const ConditionRegisterCard(),
+  'HEART_RATE_FLAGS': (d) => d.practiceEmpty ? null : const HeartRateFlagsCard(),
+  'RECENT_ECGS': (d) => d.practiceEmpty ? null : const RecentEcgsCard(),
+  'LIPID_CONTROL': (d) => d.practiceEmpty ? null : const LipidControlCard(),
 
   // ---- what the practice has bought ---------------------------------------
-  'ANALYTICS_SUMMARY': (d) => d.analytics == null
+  'ANALYTICS_SUMMARY': (d) => d.analytics == null || d.practiceEmpty
       ? null
-      : ClinicSnapshot(
+      : GlucoseInRangeCard(
           analytics: d.analytics!,
           days: d.days,
           onDaysChanged: d.onDaysChanged,
+          onRetry: d.onRetry,
         ),
 
   // ---- labs ---------------------------------------------------------------
-  'CRITICAL_LAB_RESULTS': (d) => _lab(d, (o) => CriticalLabResults(overview: o)),
-  'RECENT_LAB_REPORTS': (d) => _lab(d, (o) => RecentLabReports(overview: o)),
-  'LAB_FLAG_SUMMARY': (d) => _lab(d, (o) => LabFlagSummary(overview: o)),
+  'CRITICAL_LAB_RESULTS': (d) => d.labs == null
+      ? null
+      : CriticalLabResults(overview: d.labs!, onRetry: d.onRetry),
+  'RECENT_LAB_REPORTS': (d) => d.labs == null
+      ? null
+      : RecentLabReports(overview: d.labs!, onRetry: d.onRetry),
+  'LAB_FLAG_SUMMARY': (d) => d.labs == null
+      ? null
+      : LabFlagSummary(overview: d.labs!, onRetry: d.onRetry),
 };
-
-/// A lab panel, or nothing while the answer is still in flight.
-///
-/// Deliberately not the empty state during loading. "No result has come back
-/// critical" is a reassuring sentence, and saying it before the request has
-/// returned is saying it without knowing — the same failure as a freshness
-/// badge that cannot detect staleness.
-Widget? _lab(DashboardData d, Widget Function(LabOverview overview) build) {
-  final labs = d.labs;
-  if (labs == null || labs.loading || labs.value == null) return null;
-  return build(labs.value!);
-}
 
 /// Whether anything on this dashboard needs the lab overview fetched.
 ///
-/// So a clinic that shows no lab panel makes no lab request. The alternative
-/// is fetching it always and throwing most of it away, which is a query per
-/// doctor per refresh for a panel nobody is looking at.
+/// So a clinic that shows no lab panel makes no lab request.
 bool needsLabOverview(List<String> widgets) =>
     widgets.any((id) => id.contains('LAB'));
 
@@ -173,9 +211,10 @@ typedef ActionSpec = ({String label, IconData icon, String route});
 
 /// Keys mirror `QUICK_ACTIONS` in `services/uiConfig.js`.
 ///
-/// Named for what pressing it does, in one voice: the app once had "See all",
-/// "View all", "View full plan" and "+ Add" for the same gesture. A reader
-/// learns one affordance and should not re-learn it per card.
+/// Named for what pressing it does, in the words the rest of the app uses for
+/// the same place — "People", "Export data", as on the More screen. Three of
+/// these open the patient list; [HomeActions] draws only the first of any
+/// actions that share a destination.
 final Map<String, ActionSpec> dashboardActions = {
   'START_CONSULTATION': (
     label: 'Start consultation',
@@ -184,7 +223,7 @@ final Map<String, ActionSpec> dashboardActions = {
   ),
   'ADD_PATIENT': (
     label: 'Add patient',
-    icon: Icons.person_add_outlined,
+    icon: Icons.person_add_alt_1_outlined,
     route: '/clinician/patients/new',
   ),
   'RECORD_VITALS': (
@@ -198,22 +237,22 @@ final Map<String, ActionSpec> dashboardActions = {
     route: '/clinician/patients',
   ),
   'VIEW_ALERTS': (
-    label: 'Alerts',
-    icon: Icons.warning_amber_outlined,
+    label: 'Clinical alerts',
+    icon: Icons.notification_important_outlined,
     route: '/clinician/alerts',
   ),
   'VIEW_LAB_REPORTS': (
-    label: 'Lab reports',
+    label: 'Find a patient’s reports',
     icon: Icons.science_outlined,
     route: '/clinician/patients',
   ),
   'EXPORT_REPORT': (
-    label: 'Export',
-    icon: Icons.download_outlined,
+    label: 'Export data',
+    icon: Icons.ios_share_rounded,
     route: '/clinician/export',
   ),
   'MANAGE_TEAM': (
-    label: 'Team',
+    label: 'People',
     icon: Icons.groups_outlined,
     route: '/clinician/team',
   ),
@@ -223,81 +262,3 @@ final Map<String, ActionSpec> dashboardActions = {
     route: '/clinician/departments',
   ),
 };
-
-/// The row of actions a dashboard offers.
-///
-/// A Wrap, not a scroller. This is a bounded, known set — a scroller always
-/// cuts whatever lands at the edge, and an action somebody cannot see is an
-/// action they do not use. Fading the edge only makes the cut prettier.
-class QuickActionBar extends ConsumerWidget {
-  const QuickActionBar({super.key, required this.actions});
-
-  final List<String> actions;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final specs = actions
-        .map((id) => dashboardActions[id])
-        .whereType<ActionSpec>()
-        .toList(growable: false);
-
-    if (specs.isEmpty) return const SizedBox.shrink();
-
-    return Wrap(
-      spacing: T.s2,
-      runSpacing: T.s2,
-      children: [
-        for (final spec in specs)
-          _ActionButton(spec: spec, onTap: () => context.push(spec.route)),
-      ],
-    );
-  }
-}
-
-class _ActionButton extends StatelessWidget {
-  const _ActionButton({required this.spec, required this.onTap});
-
-  final ActionSpec spec;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    // The text scaler, not a constant. "Needs review" fitted at 1.0 and
-    // truncated mid-word one notch above it, on the one caption that had to be
-    // unambiguous.
-    final scale = MediaQuery.textScalerOf(context);
-
-    return Semantics(
-      button: true,
-      label: spec.label,
-      child: Material(
-        color: T.primaryTint,
-        borderRadius: BorderRadius.circular(T.rControl),
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(T.rControl),
-          child: Container(
-            // 48 is the tap floor, and it grows with the text rather than
-            // clipping it.
-            constraints: BoxConstraints(minHeight: scale.scale(T.tap)),
-            padding: const EdgeInsets.symmetric(
-              horizontal: T.s4,
-              vertical: T.s2,
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(spec.icon, size: 20, color: T.primary),
-                const SizedBox(width: T.s2),
-                Text(
-                  spec.label,
-                  style: T.bodyStrong.copyWith(color: T.primary),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}

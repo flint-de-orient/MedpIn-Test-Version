@@ -653,6 +653,14 @@ router.get(
               role: ctx.membership?.role ?? req.user.role,
               capabilities: effectiveCapabilities(ctx),
               permissions: granted,
+              // What they practise and what the practice treats, for a home
+              // composed by specialty when no department says — see
+              // specialtyOf in services/uiConfig.js.
+              personSpecialty: req.user.specialty ?? null,
+              practiceSpecialty: ctx.practice?.specialty ?? null,
+              // No diet-review panel where nothing answers in those
+              // conversations. Unknown (no practice) does not narrow.
+              hasDietician: ctx.practice ? hasDietician : undefined,
             }),
       // Null for a caller the backfill has not reached, and for every patient.
       // The client should read it as "no practice context", not as "no access".

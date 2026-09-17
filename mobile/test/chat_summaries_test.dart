@@ -8,6 +8,7 @@ import 'package:akd_care/features/clinician/domain/chat_summary.dart';
 import 'package:akd_care/features/clinician/presentation/chat_summaries_screen.dart';
 import 'package:akd_care/features/clinician/presentation/clinician_providers.dart';
 import 'package:akd_care/features/clinician/presentation/widgets/chat_summary_card.dart';
+import 'package:akd_care/features/clinician/presentation/widgets/home_panel.dart';
 
 /// The day's patient conversations, as the doctor they did not interrupt sees
 /// them.
@@ -169,7 +170,9 @@ void main() {
         ).overrideWith((ref) => never.future),
       ], settle: false);
 
-      expect(find.byType(CircularProgressIndicator), findsOneWidget);
+      // Placeholders, like every panel on the home, rather than a spinner —
+      // the claim that matters is that nothing is said about the day yet.
+      expect(find.byType(PanelLoading), findsOneWidget);
       expect(find.textContaining('wrote today'), findsNothing);
     });
 

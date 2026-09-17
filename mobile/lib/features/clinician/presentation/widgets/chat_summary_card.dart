@@ -6,6 +6,7 @@ import '../../../../core/theme/tokens.dart';
 import '../../../../shared/widgets/surfaces.dart';
 import '../../domain/chat_summary.dart';
 import '../clinician_providers.dart';
+import 'home_panel.dart';
 
 /// Today's patient conversations, on the clinician's home screen.
 ///
@@ -33,93 +34,39 @@ class ChatSummaryCard extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final async = ref.watch(chatSummariesProvider(query));
-    final data = async.valueOrNull;
-    final waiting = data?.waiting ?? const <ChatSummary>[];
-
     void open() => context.push('/clinician/chat-summaries');
 
-    return SectionCard(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              const Icon(Icons.forum_outlined, size: 18, color: T.primary),
-              const SizedBox(width: T.s2),
-              Expanded(
-                child: Text(
-                  'Today’s conversations',
-                  style: T.title.copyWith(fontSize: 16),
-                ),
-              ),
-              TextButton(
-                onPressed: open,
-                style: TextButton.styleFrom(
-                  visualDensity: VisualDensity.compact,
-                  padding: const EdgeInsets.symmetric(horizontal: T.s2),
-                ),
-                child: const Text('View all'),
-              ),
-            ],
-          ),
-
-          if (data == null && async.hasError)
-            Padding(
-              padding: const EdgeInsets.only(top: T.s2),
-              child: Text(
-                // Never "nobody wrote": a list that did not load has said
-                // nothing about the day.
-                'Could not load today’s conversations. Pull down to try again.',
-                style: T.small.copyWith(color: T.inkMuted),
-              ),
-            )
-          else if (data == null)
-            // A spinner rather than an empty card. "None of your patients
-            // wrote" before the answer arrives is said without knowing.
-            const Padding(
-              padding: EdgeInsets.symmetric(vertical: T.s5),
-              child: Center(
-                child: SizedBox(
-                  width: T.s5,
-                  height: T.s5,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                ),
-              ),
-            )
-          else ...[
-            Padding(
-              padding: const EdgeInsets.only(top: T.s2),
-              child: Text(
-                headline(data),
-                style:
-                    waiting.isEmpty
-                        ? T.small.copyWith(color: T.inkMuted)
-                        : T.small.copyWith(
-                          color: T.warning,
-                          fontWeight: FontWeight.w600,
-                        ),
-              ),
+    // Through HomePanel, like every panel on the home: never "nobody wrote"
+    // for a list that did not load, placeholders rather than a claim while it
+    // is on its way, and the last day that loaded kept if a refresh fails.
+    return HomePanel<ChatSummaryDay>(
+      icon: Icons.forum_outlined,
+      title: 'Today’s conversations',
+      what: 'today’s conversations',
+      value: ref.watch(chatSummariesProvider(query)),
+      onRetry: () => ref.invalidate(chatSummariesProvider(query)),
+      onViewAll: open,
+      viewAllLabel: 'View all of today’s conversations',
+      builder: (data) {
+        final waiting = data.waiting;
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              headline(data),
+              style: waiting.isEmpty
+                  ? T.body.copyWith(color: T.ink)
+                  : T.bodyStrong.copyWith(color: T.ink),
             ),
             for (final item in waiting.take(shown)) ...[
               const SizedBox(height: T.s2),
               _WaitingRow(item: item, onTap: open),
             ],
             if (waiting.length > shown)
-              Padding(
-                padding: const EdgeInsets.only(top: T.s1),
-                child: TextButton(
-                  onPressed: open,
-                  style: TextButton.styleFrom(
-                    visualDensity: VisualDensity.compact,
-                    padding: EdgeInsets.zero,
-                  ),
-                  child: Text('+${waiting.length - shown} more waiting'),
-                ),
-              ),
+              PanelNote('+${waiting.length - shown} more waiting'),
           ],
-        ],
-      ),
+        );
+      },
     );
   }
 
