@@ -496,12 +496,17 @@ class ClinicianRepository {
   /// Not their name or number — those belong to the person and are edited from
   /// their own profile. Pass an explicit null to clear a department or a
   /// location; omitting it leaves it alone.
+  ///
+  /// [version] is the one the People screen showed. The server refuses the
+  /// change with `MEMBER_CHANGED` when somebody else has changed this person
+  /// since, rather than one manager's save silently undoing another's.
   Future<void> updateMember(
     String membershipId, {
     String? role,
     Object? departmentId = _unset,
     Object? locationId = _unset,
     String? status,
+    int? version,
   }) async {
     await _client.patchJson(
       '/team/$membershipId',
@@ -510,6 +515,7 @@ class ClinicianRepository {
         if (!identical(departmentId, _unset)) 'departmentId': departmentId,
         if (!identical(locationId, _unset)) 'locationId': locationId,
         if (status != null) 'status': status,
+        if (version != null) 'version': version,
       },
     );
   }

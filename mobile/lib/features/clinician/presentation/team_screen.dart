@@ -726,6 +726,10 @@ class _MemberSheetState extends ConsumerState<_MemberSheet> {
             status: _suspended == _wasOut
                 ? null
                 : (_suspended ? 'suspended' : 'active'),
+            // The row as this sheet opened it. If a colleague has changed this
+            // person since, the server says so and nothing is saved — the
+            // message appears here, and closing the sheet reloads the list.
+            version: widget.member.version,
           );
       if (mounted) Navigator.of(context).pop();
     } catch (e) {
