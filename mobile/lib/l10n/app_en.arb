@@ -288,6 +288,595 @@
   "medsRelationWithMeal": "With meal",
   "medsRelationAnytime": "Anytime",
   "medsSkipReasonTitle": "Why are you skipping this dose?",
+  "ptTabDoctor": "Doctor",
+  "ptTabAssistant": "Assistant",
+  "ptTabMedicines": "Medicines",
+  "ptTabDietician": "Dietician",
+  "ptNothingLost": "Your records are safe. Check your connection and try again.",
+  "ptStaleShowingLastLoaded": "Could not refresh. Showing what was loaded at {time}.",
+  "@ptStaleShowingLastLoaded": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "ptStaleShowingEarlier": "Could not refresh. Showing what was loaded earlier.",
+  "ptGreetingMorning": "Good morning",
+  "ptGreetingAfternoon": "Good afternoon",
+  "ptGreetingEvening": "Good evening",
+  "ptCouldNotLoadCarePlan": "Could not load your care summary.",
+  "ptTodayTitle": "Today",
+  "ptCouldNotLoadTodaysMedicines": "Could not load today's medicines.",
+  "ptAllMedicines": "All medicines",
+  "ptNoDosesToday": "Nothing to take today",
+  "ptNoDosesTodayBody": "None of your medicines is scheduled for today.",
+  "ptNoMedicinesYet": "No medicines yet",
+  "ptNoMedicinesYetBody": "Medicines your doctor prescribes appear here, with reminders.",
+  "ptAllDosesTaken": "All taken",
+  "ptDosesMissed": "{count} missed",
+  "@ptDosesMissed": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "ptDosesTakenLate": "{count} taken late",
+  "@ptDosesTakenLate": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "ptDosesSkipped": "{count} skipped",
+  "@ptDosesSkipped": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "ptDosesTakenOf": "{taken} of {total} doses taken",
+  "@ptDosesTakenOf": {
+    "placeholders": {
+      "taken": {
+        "type": "int"
+      },
+      "total": {
+        "type": "int"
+      }
+    }
+  },
+  "ptDoseDueNow": "Due now · {time}",
+  "@ptDoseDueNow": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "ptNextDoseAt": "Next dose at {time}",
+  "@ptNextDoseAt": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "ptRecordThisDose": "Record this dose",
+  "ptNoReadingsInDays": "No sugar readings in the last {days} days",
+  "@ptNoReadingsInDays": {
+    "placeholders": {
+      "days": {
+        "type": "int"
+      }
+    }
+  },
+  "ptLastReadingDaysAgo": "{days, plural, =0{Last reading was today} =1{Last reading was yesterday} other{Last reading was {days} days ago}}",
+  "@ptLastReadingDaysAgo": {
+    "placeholders": {
+      "days": {
+        "type": "int"
+      }
+    }
+  },
+  "ptSugarCheckDue": "Time to check your sugar",
+  "ptAddAReading": "Add a reading",
+  "ptNoReadingsTryLonger": "No readings in the last {days} days. A longer period may show older ones.",
+  "@ptNoReadingsTryLonger": {
+    "placeholders": {
+      "days": {
+        "type": "int"
+      }
+    }
+  },
+  "ptSugarTitle": "Blood sugar",
+  "ptCouldNotLoadReadings": "Could not load your sugar readings.",
+  "ptOneReadingSoFar": "One reading so far. Your trend appears after the next one.",
+  "ptRange7Days": "7 days",
+  "ptRange14Days": "14 days",
+  "ptRange30Days": "30 days",
+  "ptRange3Months": "3 months",
+  "ptRange6Months": "6 months",
+  "ptLatestReading": "Latest reading",
+  "ptReadingNeedsAttention": "Needs attention",
+  "ptReadingWellAbove": "Well above target",
+  "ptReadingAbove": "Above target",
+  "ptReadingBelow": "Below target",
+  "ptReadingInRange": "In target range",
+  "ptAverageOverDays": "{days}-day average",
+  "@ptAverageOverDays": {
+    "placeholders": {
+      "days": {
+        "type": "int"
+      }
+    }
+  },
+  "ptEstimatedHba1c": "Estimated HbA1c",
+  "ptEstimatedHba1cNote": "From your readings, not a blood test",
+  "ptLabHba1c": "Lab HbA1c",
+  "ptFromABloodTest": "From a blood test",
+  "ptTestedOn": "Tested {date}",
+  "@ptTestedOn": {
+    "placeholders": {
+      "date": {
+        "type": "String"
+      }
+    }
+  },
+  "ptAboveYourTarget": "Above your target",
+  "ptChartDailyAverage": "{days, plural, =1{daily average} other{{days}-day average}}",
+  "@ptChartDailyAverage": {
+    "placeholders": {
+      "days": {
+        "type": "int"
+      }
+    }
+  },
+  "ptChartTargetBand": "Target {low}–{high}",
+  "@ptChartTargetBand": {
+    "placeholders": {
+      "low": {
+        "type": "String"
+      },
+      "high": {
+        "type": "String"
+      }
+    }
+  },
+  "ptChartOutsideTarget": "Outside target",
+  "ptChartNoReadings": "No readings",
+  "ptCouldNotLoadAppointments": "Could not load your appointments.",
+  "ptFollowUpBy": "Your doctor asked to see you again on {date}.",
+  "@ptFollowUpBy": {
+    "placeholders": {
+      "date": {
+        "type": "String"
+      }
+    }
+  },
+  "ptFromYourClinic": "From your clinic",
+  "ptOpenChat": "Open chat",
+  "ptRoleDoctor": "Doctor",
+  "ptRoleClinicTeam": "Clinic team",
+  "ptRoleDietician": "Dietician",
+  "ptVoiceMessage": "Voice message",
+  "ptDietPlanTitle": "Your diet plan",
+  "ptFromName": "From {name}",
+  "@ptFromName": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "ptUpdatedOn": "Updated {date}",
+  "@ptUpdatedOn": {
+    "placeholders": {
+      "date": {
+        "type": "String"
+      }
+    }
+  },
+  "ptDailyCalorieTarget": "Daily target: {kcal} kcal",
+  "@ptDailyCalorieTarget": {
+    "placeholders": {
+      "kcal": {
+        "type": "String"
+      }
+    }
+  },
+  "ptSeeFullPlan": "See full plan",
+  "ptBestAvoided": "Best avoided",
+  "ptRecentMeals": "Recent meals",
+  "ptNoMealsLogged": "No meals logged yet",
+  "ptNoMealsLoggedBody": "A photo or a line about what you ate helps your dietician advise you.",
+  "ptLogAMeal": "Log a meal",
+  "ptMealBreakfast": "Breakfast",
+  "ptMealLunch": "Lunch",
+  "ptMealDinner": "Dinner",
+  "ptMealSnack": "Snack",
+  "ptMealOther": "Meal",
+  "ptPhotoOnly": "Photo only",
+  "ptMealHistory": "Meal history",
+  "ptCouldNotLoadMeals": "Could not load your meals.",
+  "ptDeleteMealTitle": "Delete this meal?",
+  "ptDeleteMealBody": "It is removed from your log, and your dietician will no longer see it.",
+  "ptDeleteMeal": "Delete meal",
+  "ptWhatDidYouEat": "What did you eat? For example: 2 rotis, dal, salad",
+  "ptAddMealPhoto": "Add a photo of your meal",
+  "ptSaveMeal": "Save meal",
+  "ptAddPhotoOrNote": "Add a photo or a note first.",
+  "ptWhichMeal": "Which meal?",
+  "ptUploadingPhoto": "Uploading photo…",
+  "ptHealthDetailsTitle": "Your health details",
+  "ptCondition": "Condition",
+  "ptWeight": "Weight",
+  "ptHeight": "Height",
+  "ptBmi": "BMI",
+  "ptBloodPressure": "Blood pressure",
+  "ptNothingOnFile": "Nothing recorded yet. Add your height, weight and any allergies.",
+  "ptAllergyWarning": "Tell every doctor who treats you",
+  "ptConditionType1": "Type 1 diabetes",
+  "ptConditionType2": "Type 2 diabetes",
+  "ptConditionGestational": "Gestational diabetes",
+  "ptConditionPrediabetes": "Prediabetes",
+  "ptConditionNone": "No diabetes",
+  "ptWhoseRecord": "Whose record",
+  "ptRelationYou": "You",
+  "ptRelationChild": "Child",
+  "ptRelationParent": "Parent",
+  "ptRelationSpouse": "Spouse",
+  "ptRelationFamily": "Family",
+  "ptCouldNotLoadMedicines": "Could not load your medicines.",
+  "ptDoseTakenLate": "Taken late",
+  "ptDoseDueNowShort": "Due now",
+  "ptDoseLaterToday": "Later today",
+  "ptRecordDose": "Record",
+  "ptSaving": "Saving…",
+  "ptDoseNotSaved": "Not saved: {answer}",
+  "@ptDoseNotSaved": {
+    "placeholders": {
+      "answer": {
+        "type": "String"
+      }
+    }
+  },
+  "ptDoseNotSavedSnack": "That dose was not saved. Tap Try again.",
+  "ptYourMedicines": "Your medicines",
+  "ptFinishedCoursesNote": "Finished courses now move to Past medicines.",
+  "ptStopTaking": "Stop taking",
+  "ptWhenNeeded": "Take when needed",
+  "ptEveryOtherDay": "Every other day",
+  "ptOnDays": "On {days}",
+  "@ptOnDays": {
+    "placeholders": {
+      "days": {
+        "type": "String"
+      }
+    }
+  },
+  "ptNoTimeSet": "No reminder time set",
+  "ptScanPrescription": "Add from a prescription photo",
+  "ptStoppedByYou": "Stopped by you",
+  "ptStartAgain": "Start again",
+  "ptYouStoppedOn": "You stopped on {date}",
+  "@ptYouStoppedOn": {
+    "placeholders": {
+      "date": {
+        "type": "String"
+      }
+    }
+  },
+  "ptYouStopped": "You stopped taking this",
+  "ptPastMedicines": "Past medicines",
+  "ptCourseFinishedOn": "Course finished on {date}",
+  "@ptCourseFinishedOn": {
+    "placeholders": {
+      "date": {
+        "type": "String"
+      }
+    }
+  },
+  "ptCourseFinished": "Course finished",
+  "ptStoppedByDoctorOn": "Stopped by your doctor on {date}",
+  "@ptStoppedByDoctorOn": {
+    "placeholders": {
+      "date": {
+        "type": "String"
+      }
+    }
+  },
+  "ptStoppedByDoctor": "Stopped by your doctor",
+  "ptCancelledByDoctorOn": "Cancelled by your doctor on {date}",
+  "@ptCancelledByDoctorOn": {
+    "placeholders": {
+      "date": {
+        "type": "String"
+      }
+    }
+  },
+  "ptCancelledByDoctor": "Cancelled by your doctor",
+  "ptNoLongerTaken": "No longer taken",
+  "ptViewAllCount": "View all {count}",
+  "@ptViewAllCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "ptAlsoPrescribedElsewhere": "Also prescribed by another clinic: {what}. Ask your doctor before taking both.",
+  "@ptAlsoPrescribedElsewhere": {
+    "placeholders": {
+      "what": {
+        "type": "String"
+      }
+    }
+  },
+  "ptAlsoOnYourList": "Also on your list: {what}. Ask your doctor before taking both.",
+  "@ptAlsoOnYourList": {
+    "placeholders": {
+      "what": {
+        "type": "String"
+      }
+    }
+  },
+  "ptRecordsAndReminders": "Records and reminders",
+  "ptPrescriptionsSub": "View and share what your doctor wrote",
+  "ptReminderTimes": "Reminder times",
+  "ptMealTimesLine": "Breakfast {breakfast}, lunch {lunch}, dinner {dinner}",
+  "@ptMealTimesLine": {
+    "placeholders": {
+      "breakfast": {
+        "type": "String"
+      },
+      "lunch": {
+        "type": "String"
+      },
+      "dinner": {
+        "type": "String"
+      }
+    }
+  },
+  "ptDoseHistory": "Dose history",
+  "ptDoseHistorySub": "What you took, day by day",
+  "ptRemindersOffTitle": "Your medicine reminders are off",
+  "ptRemindersOffBody": "{count, plural, =1{You have 1 reminder set up, but this phone will not show it.} other{You have {count} reminders set up, but this phone will not show any of them.}}",
+  "@ptRemindersOffBody": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "ptNotificationsBlockedTitle": "Notifications are blocked",
+  "ptNotificationsBlockedBody": "Reminders cannot appear until notifications are allowed for this app.",
+  "ptRemindersLateTitle": "Reminders may arrive late",
+  "ptRemindersLateBody": "Exact alarms are not allowed, so a reminder can come a few minutes after its time.",
+  "ptTurnRemindersOn": "Turn reminders back on",
+  "ptRemindersSet": "Reminders are set.",
+  "ptRemindersStillOff": "Still not set. Open Settings, then Apps, then {app}, and allow notifications, alarms and background activity.",
+  "@ptRemindersStillOff": {
+    "placeholders": {
+      "app": {
+        "type": "String"
+      }
+    }
+  },
+  "ptDidYouTakeThisDose": "Did you take this dose?",
+  "ptYesTookIt": "Yes, I took it",
+  "ptNoSkippedIt": "No, I skipped it",
+  "ptSkipHonestyNote": "Your answer helps your doctor. A skipped dose is nothing to hide.",
+  "ptNoReason": "No reason",
+  "ptStopTakingQuestion": "Stop taking {name}?",
+  "@ptStopTakingQuestion": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "ptStopPatientOwnedBody": "Its reminders stop. You can start it again later.",
+  "ptStopPrescribedBody": "Its reminders stop. Your doctor's prescription stays as they wrote it, and they will see that you stopped. You can start again later.",
+  "ptStopSideEffectNote": "If a side effect is worrying you, contact your clinic.",
+  "ptReasonSideEffects": "Side effects",
+  "ptReasonRanOut": "Ran out",
+  "ptReasonFeelingBetter": "Feeling better",
+  "ptReasonDoctorTold": "My doctor told me to",
+  "ptWhyStopping": "Why are you stopping? (optional)",
+  "ptKeepTaking": "Keep taking it",
+  "ptYouStoppedTaking": "You stopped taking {name}.",
+  "@ptYouStoppedTaking": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "ptYouStoppedTakingDoctorSees": "You stopped taking {name}. Your doctor will see this.",
+  "@ptYouStoppedTakingDoctorSees": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "ptRemindersBackOn": "Reminders for {name} are back on.",
+  "@ptRemindersBackOn": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "ptCouldNotLoadHistory": "Could not load your dose history.",
+  "ptNoDosesInPeriod": "No doses in this period",
+  "ptTakenOfTotal": "{taken} of {total} taken",
+  "@ptTakenOfTotal": {
+    "placeholders": {
+      "taken": {
+        "type": "int"
+      },
+      "total": {
+        "type": "int"
+      }
+    }
+  },
+  "ptTakenAt": "Taken at {time}",
+  "@ptTakenAt": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "ptTakenLateAt": "Taken late, at {time}",
+  "@ptTakenLateAt": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "ptITookThisOne": "I took this one",
+  "ptCouldNotSaveDose": "Could not save this dose. Try again.",
+  "ptYou": "You",
+  "ptAssistantName": "Assistant",
+  "ptHealthAssistant": "Health assistant",
+  "ptYourClinic": "Your clinic",
+  "ptRequestAppointment": "Ask for an appointment",
+  "ptRequestSent": "Request sent. The clinic will confirm a time and let you know.",
+  "ptEdited": "edited",
+  "ptEditWindowNote": "Within 15 minutes. The other side sees it was edited.",
+  "ptNotSent": "Your message was not sent",
+  "ptAttachDocument": "Document",
+  "ptAttachDocumentSub": "PDF, Word, Excel or text",
+  "ptCouldNotPlayVoice": "Could not play this voice message",
+  "ptCancelReply": "Cancel reply",
+  "ptPlaySpeed": "Playback speed",
+  "ptMessageDietician": "Message your dietician",
+  "ptNoDieticianYet": "Not assigned yet · a dietician will reply",
+  "ptYourDieticianSub": "Your dietician · Food and nutrition",
+  "ptAskDieticianBody": "Ask your dietician about food, portions or your plan.",
+  "ptAttachment": "Attachment",
+  "ptClinicAlertedEmergency": "This looks urgent — the clinic has been told. If you feel unwell now, call them.",
+  "ptClinicAlerted": "The clinic has been told about this message.",
+  "ptTestsTitle": "Tests and reports",
+  "ptAskedForByDoctor": "Asked for by your doctor",
+  "ptNoTestsAdvised": "No tests asked for yet. Your doctor adds them when they prescribe.",
+  "ptReportUploadedStatus": "Report uploaded",
+  "ptNotUploadedYet": "Not uploaded yet",
+  "ptUpload": "Upload",
+  "ptUploadAgain": "Upload again",
+  "ptYourReports": "Your reports",
+  "ptNoReportsYet": "Reports you upload appear here. Your doctor and dietician can see them.",
+  "ptReadingReport": "Reading your report…",
+  "ptCouldNotReadReport": "Could not be read",
+  "ptFlaggedOnReport": "Out of range on the report: {list}",
+  "@ptFlaggedOnReport": {
+    "placeholders": {
+      "list": {
+        "type": "String"
+      }
+    }
+  },
+  "ptDeleteReportTitle": "Delete this {name} report?",
+  "@ptDeleteReportTitle": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "ptDeleteReportBody": "It is removed from your record, with any readings the clinic took from it. You can upload the right file afterwards.",
+  "ptDeleteReport": "Delete report",
+  "ptReportDeleted": "Report deleted",
+  "ptReportUploaded": "{name} report uploaded",
+  "@ptReportUploaded": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "ptUploadAReport": "Upload a report",
+  "ptPdfOrDocument": "PDF or document",
+  "ptPdfOrDocumentSub": "The report your lab sent you",
+  "ptWhichTest": "Which test is this?",
+  "ptOrTypeTestName": "Or type the test name",
+  "ptTestNameHint": "For example: HbA1c, lipid profile",
+  "ptCouldNotLoadTests": "Could not load your tests.",
+  "ptUploading": "Uploading…",
+  "ptCouldNotLoadPrescriptions": "Could not load your prescriptions.",
+  "ptNoPrescriptionsYet": "No prescriptions yet",
+  "ptNoPrescriptionsYetBody": "They appear here once your doctor writes one.",
+  "ptMedicineCount": "{count, plural, =0{No medicines} =1{1 medicine} other{{count} medicines}}",
+  "@ptMedicineCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "ptUndated": "No date",
+  "ptByName": "By {name}",
+  "@ptByName": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "ptOpenPdf": "Open PDF",
+  "ptShare": "Share",
+  "ptCouldNotOpenPrescription": "Could not open the prescription.",
+  "ptCouldNotSharePrescription": "Could not share the prescription.",
+  "ptComplaint": "Complaint",
+  "ptDiagnosis": "Diagnosis",
+  "ptTestsAdvised": "Tests advised",
+  "ptAdvice": "Advice",
+  "ptFollowUp": "Follow-up",
+  "ptForDays": "{days, plural, =1{for 1 day} other{for {days} days}}",
+  "@ptForDays": {
+    "placeholders": {
+      "days": {
+        "type": "int"
+      }
+    }
+  },
+  "ptYourInformation": "Your information",
+  "ptHelp": "Help",
+  "ptVersion": "Version {version}",
+  "@ptVersion": {
+    "placeholders": {
+      "version": {
+        "type": "String"
+      }
+    }
+  },
+  "ptViewLicences": "View licences",
+  "ptAboutLine": "Your care, on your phone.",
+  "ptCheckInReminders": "Sugar check reminders",
+  "ptCheckInRemindersSub": "A reminder when you have not logged a reading for 3 days",
+  "ptReminderReliability": "Make reminders reliable",
+  "ptReminderReliabilitySub": "Keep dose alarms working when the phone sleeps",
+  "ptClinicMessagesNote": "Messages from your clinic always arrive. To silence them, use your phone's notification settings.",
+  "ptSetByDoctor": "Set by your doctor from your diagnosis",
+  "ptMostRecentMeasurements": "Your most recent measurements. Recording a new one updates them.",
+  "ptNumberBetween": "Enter a number between {low} and {high}",
+  "@ptNumberBetween": {
+    "placeholders": {
+      "low": {
+        "type": "String"
+      },
+      "high": {
+        "type": "String"
+      }
+    }
+  },
   "medsLast30Days": "Last 30 days",
   "careTitle": "Care",
   "careFootCare": "Foot Care",

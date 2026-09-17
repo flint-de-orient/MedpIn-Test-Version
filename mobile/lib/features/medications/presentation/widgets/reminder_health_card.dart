@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../../../core/theme/app_colors.dart';
-import '../../../../core/theme/app_spacing.dart';
+import '../../../../core/theme/tokens.dart';
+import '../../../../l10n/gen/app_localizations.dart';
 import '../../../../shared/services/notification_service.dart';
+import '../../../../shared/widgets/surfaces.dart';
+import '../../../shell/presentation/widgets/patient_kit.dart';
 import '../medications_providers.dart';
 
 /// Says so when the medicine reminders are not going to fire.
@@ -30,7 +32,8 @@ import '../medications_providers.dart';
 /// about that, because nothing else asks the platform.
 ///
 /// It draws nothing when reminders are healthy. A card that is always there is
-/// a card nobody reads on the day it matters.
+/// a card nobody reads on the day it matters. When it does draw, it brings its
+/// own space below it, so an absent card leaves no gap.
 class ReminderHealthCard extends ConsumerStatefulWidget {
   const ReminderHealthCard({super.key});
 
@@ -60,6 +63,7 @@ class _ReminderHealthCardState extends ConsumerState<ReminderHealthCard> {
   }
 
   Future<void> _repair() async {
+    final l10n = AppLocalizations.of(context);
     setState(() => _repairing = true);
     final messenger = ScaffoldMessenger.of(context);
     try {
@@ -71,20 +75,15 @@ class _ReminderHealthCardState extends ConsumerState<ReminderHealthCard> {
 
       final after = _health;
       if (after != null && after.healthy) {
-        messenger.showSnackBar(
-          const SnackBar(content: Text('Reminders are set.')),
-        );
+        messenger.showSnackBar(SnackBar(content: Text(l10n.ptRemindersSet)));
       } else {
         // Told plainly rather than left looking like it worked. On these
         // handsets the usual remaining cause is the battery manager, which no
         // app can change on its own.
         messenger.showSnackBar(
-          const SnackBar(
-            content: Text(
-              'Still not set. Open Settings → Apps → MedPin and allow '
-              'notifications, alarms, and background activity.',
-            ),
-            duration: Duration(seconds: 8),
+          SnackBar(
+            content: Text(l10n.ptRemindersStillOff(l10n.appName)),
+            duration: const Duration(seconds: 8),
           ),
         );
       }
@@ -95,99 +94,55 @@ class _ReminderHealthCardState extends ConsumerState<ReminderHealthCard> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     final h = _health;
     if (h == null || h.healthy) return const SizedBox.shrink();
 
     // Red for silence, amber for degraded. A reminder that will fire a few
     // minutes late is a different thing from one that will not fire at all,
     // and colouring them the same wastes the red.
-    final severe = h.silent;
-    final tone = severe ? AppColors.danger : AppColors.warning;
+    final status = h.silent ? Status.alert : Status.watch;
 
     final String title;
     final String body;
     if (h.silent) {
-      title = 'Your medicine reminders are off';
-      body =
-          'You have ${h.expected} reminder${h.expected == 1 ? '' : 's'} set up, '
-          'but this phone is not going to show any of them.';
+      title = l10n.ptRemindersOffTitle;
+      body = l10n.ptRemindersOffBody(h.expected);
     } else if (!h.notificationsAllowed) {
-      title = 'Notifications are blocked';
-      body = 'MedPin cannot show you anything until notifications are allowed.';
+      title = l10n.ptNotificationsBlockedTitle;
+      body = l10n.ptNotificationsBlockedBody;
     } else {
-      title = 'Reminders may arrive late';
-      body =
-          'Exact alarms are not permitted, so a reminder can arrive some '
-          'minutes after the time you set.';
+      title = l10n.ptRemindersLateTitle;
+      body = l10n.ptRemindersLateBody;
     }
 
-    return Container(
-      margin: const EdgeInsets.only(bottom: AppSpacing.md),
-      padding: const EdgeInsets.all(AppSpacing.md),
-      decoration: BoxDecoration(
-        color: tone.withValues(alpha: 0.08),
-        borderRadius: BorderRadius.circular(AppSpacing.cardRadius),
-        border: Border.all(color: tone.withValues(alpha: 0.4)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Icon(
-                severe
-                    ? Icons.notifications_off_rounded
-                    : Icons.warning_amber_rounded,
-                color: tone,
-                size: 20,
-              ),
-              const SizedBox(width: AppSpacing.sm),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      title,
-                      style: TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w800,
-                        color: tone,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      body,
-                      style: const TextStyle(fontSize: 13, height: 1.35),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: AppSpacing.sm),
-          SizedBox(
-            width: double.infinity,
-            child: FilledButton(
-              onPressed: _repairing ? null : _repair,
-              style: FilledButton.styleFrom(
-                backgroundColor: tone,
-                foregroundColor: Colors.white,
-              ),
-              child:
-                  _repairing
-                      ? const SizedBox(
-                        width: 18,
-                        height: 18,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2.2,
-                          color: Colors.white,
-                        ),
-                      )
-                      : const Text('Turn reminders back on'),
+    return Padding(
+      padding: const EdgeInsets.only(bottom: kSectionGap),
+      child: SectionCard(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            StatusWord(
+              label: title,
+              status: status,
+              icon:
+                  h.silent
+                      ? Icons.notifications_off_outlined
+                      : Icons.warning_amber_rounded,
             ),
-          ),
-        ],
+            const SizedBox(height: T.s1),
+            Text(body, style: T.body.copyWith(color: T.ink)),
+            const SizedBox(height: T.s3),
+            // Outlined, in the status colour: the day's dose is still the
+            // screen's one filled action, and this card is loud enough.
+            SecondaryAction(
+              label: l10n.ptTurnRemindersOn,
+              icon: Icons.notifications_active_outlined,
+              tone: status.tone,
+              onPressed: _repairing ? null : _repair,
+            ),
+          ],
+        ),
       ),
     );
   }

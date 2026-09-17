@@ -3,6 +3,8 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:medpin/features/medications/domain/medication.dart';
 import 'package:medpin/features/medications/presentation/widgets/medicine_lifecycle.dart';
+import 'package:medpin/features/shell/presentation/widgets/patient_kit.dart';
+import 'package:medpin/l10n/gen/app_localizations.dart';
 
 /// The patient's side of a medicine's life: stopping it, and what has ended.
 ///
@@ -48,24 +50,39 @@ void main() {
     expect(m.alsoOnList.single.samePractice, isFalse);
   });
 
+  // Rendered, since the wording moved into the app's translations: the words
+  // come from the list a patient reads, in English.
   group('what ended, in words', () {
-    test('a finished course says it finished', () {
-      final m = fromJson({'prescriptionState': 'completed', 'completedAt': '2026-09-03T10:00:00Z'});
-      expect(endedText(m), startsWith('Course finished on'));
+    Future<void> past(WidgetTester tester, Medication m) => tester.pumpWidget(
+      MaterialApp(
+        locale: const Locale('en'),
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: Scaffold(body: PastMedicinesList(medicines: [m])),
+      ),
+    );
+
+    testWidgets('a finished course says it finished', (tester) async {
+      await past(tester, fromJson({'prescriptionState': 'completed', 'completedAt': '2026-09-03T10:00:00Z'}));
+      expect(find.textContaining('Course finished on'), findsOneWidget);
     });
 
-    test('a doctor’s stop says it was the doctor, and why', () {
-      final m = fromJson({
-        'prescriptionState': 'stopped_by_doctor',
-        'stoppedByDoctor': {'at': '2026-09-05T10:00:00Z', 'reason': 'Switched to insulin'},
-      });
-      expect(endedText(m), contains('Stopped by your doctor'));
-      expect(endedText(m), contains('Switched to insulin'));
+    testWidgets('a doctor’s stop says it was the doctor, and why', (tester) async {
+      await past(
+        tester,
+        fromJson({
+          'prescriptionState': 'stopped_by_doctor',
+          'stoppedByDoctor': {'at': '2026-09-05T10:00:00Z', 'reason': 'Switched to insulin'},
+        }),
+      );
+      expect(find.textContaining('Stopped by your doctor'), findsOneWidget);
+      expect(find.textContaining('Switched to insulin'), findsOneWidget);
     });
 
-    test('an old stop nobody recorded is not attributed to anyone', () {
-      final m = fromJson({'prescriptionState': 'ended_legacy', 'isActive': false});
-      expect(endedText(m), 'No longer taken.');
+    testWidgets('an old stop nobody recorded is not attributed to anyone', (tester) async {
+      await past(tester, fromJson({'prescriptionState': 'ended_legacy', 'isActive': false}));
+      expect(find.text('No longer taken'), findsOneWidget);
+      expect(find.textContaining('doctor'), findsNothing);
     });
   });
 
@@ -73,6 +90,9 @@ void main() {
     Future<void> open(WidgetTester tester, Medication m, void Function(({String? reason})?) onResult) async {
       await tester.pumpWidget(
         MaterialApp(
+          locale: const Locale('en'),
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
           home: Scaffold(
             body: Builder(
               builder: (context) => TextButton(
@@ -95,7 +115,8 @@ void main() {
 
     testWidgets('on a prescribed medicine it says the prescription stays and the doctor will see', (tester) async {
       await open(tester, fromJson({}), (_) {});
-      expect(find.textContaining('Your doctor’s prescription stays as they wrote it'), findsOneWidget);
+      // Either apostrophe: the translations use a straight one.
+      expect(find.textContaining(RegExp("Your doctor[’']s prescription stays as they wrote it")), findsOneWidget);
       expect(find.textContaining('contact your clinic'), findsOneWidget);
     });
 
@@ -103,7 +124,7 @@ void main() {
       await open(tester, fromJson({'ownedBy': 'patient'}), (_) {});
       // "My doctor told me to" stays as a reason anyone can give; what goes is
       // the claim that a doctor prescribed this and will be told.
-      expect(find.textContaining('Your doctor’s prescription'), findsNothing);
+      expect(find.textContaining(RegExp("Your doctor[’']s prescription")), findsNothing);
       expect(find.textContaining('they will see'), findsNothing);
       expect(find.textContaining('Its reminders stop'), findsOneWidget);
     });
@@ -113,7 +134,8 @@ void main() {
       await open(tester, fromJson({}), (r) => result = r);
       await tester.tap(find.text('Side effects'));
       await tester.pump();
-      await tester.tap(find.widgetWithText(FilledButton, 'Stop taking'));
+      // The patient redesign draws it as the sheet's secondary action.
+      await tester.tap(find.widgetWithText(SecondaryAction, 'Stop taking'));
       await tester.pumpAndSettle();
       expect(result?.reason, 'Side effects');
     });
@@ -138,7 +160,14 @@ void main() {
         {'id': 'm2', 'strength': '1000', 'samePractice': false},
       ],
     });
-    await tester.pumpWidget(MaterialApp(home: Scaffold(body: AlsoOnListNote(medication: m))));
+    await tester.pumpWidget(
+      MaterialApp(
+        locale: const Locale('en'),
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: Scaffold(body: AlsoOnListNote(medication: m)),
+      ),
+    );
     expect(find.textContaining('Also prescribed by another clinic: Metformin 1000 mg'), findsOneWidget);
     expect(find.textContaining('Ask your doctor before taking both'), findsOneWidget);
   });

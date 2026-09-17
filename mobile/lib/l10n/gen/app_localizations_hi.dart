@@ -713,6 +713,924 @@ class AppLocalizationsHi extends AppLocalizations {
   String get medsSkipReasonTitle => 'आप यह खुराक क्यों छोड़ रहे हैं?';
 
   @override
+  String get ptTabDoctor => 'डॉक्टर';
+
+  @override
+  String get ptTabAssistant => 'सहायक';
+
+  @override
+  String get ptTabMedicines => 'दवाइयाँ';
+
+  @override
+  String get ptTabDietician => 'डाइटिशियन';
+
+  @override
+  String get ptNothingLost =>
+      'आपकी जानकारी सुरक्षित है। इंटरनेट कनेक्शन जाँचकर फिर से कोशिश करें।';
+
+  @override
+  String ptStaleShowingLastLoaded(String time) {
+    return 'नई जानकारी नहीं आ सकी। $time बजे लोड हुई जानकारी दिखाई जा रही है।';
+  }
+
+  @override
+  String get ptStaleShowingEarlier =>
+      'नई जानकारी नहीं आ सकी। पहले लोड हुई जानकारी दिखाई जा रही है।';
+
+  @override
+  String get ptGreetingMorning => 'सुप्रभात';
+
+  @override
+  String get ptGreetingAfternoon => 'शुभ दोपहर';
+
+  @override
+  String get ptGreetingEvening => 'शुभ संध्या';
+
+  @override
+  String get ptCouldNotLoadCarePlan => 'आपके इलाज का सारांश लोड नहीं हो सका।';
+
+  @override
+  String get ptTodayTitle => 'आज';
+
+  @override
+  String get ptCouldNotLoadTodaysMedicines => 'आज की दवाइयाँ लोड नहीं हो सकीं।';
+
+  @override
+  String get ptAllMedicines => 'सभी दवाइयाँ';
+
+  @override
+  String get ptNoDosesToday => 'आज कोई दवा नहीं लेनी है';
+
+  @override
+  String get ptNoDosesTodayBody => 'आज के लिए आपकी कोई दवा तय नहीं है।';
+
+  @override
+  String get ptNoMedicinesYet => 'अभी कोई दवा नहीं';
+
+  @override
+  String get ptNoMedicinesYetBody =>
+      'डॉक्टर जो दवाइयाँ लिखेंगे, वे रिमाइंडर के साथ यहाँ दिखेंगी।';
+
+  @override
+  String get ptAllDosesTaken => 'सभी ली गईं';
+
+  @override
+  String ptDosesMissed(int count) {
+    return '$count छूट गईं';
+  }
+
+  @override
+  String ptDosesTakenLate(int count) {
+    return '$count देर से ली गईं';
+  }
+
+  @override
+  String ptDosesSkipped(int count) {
+    return '$count छोड़ी गईं';
+  }
+
+  @override
+  String ptDosesTakenOf(int taken, int total) {
+    return '$total में से $taken खुराक ली गईं';
+  }
+
+  @override
+  String ptDoseDueNow(String time) {
+    return 'अभी लेनी है · $time';
+  }
+
+  @override
+  String ptNextDoseAt(String time) {
+    return 'अगली खुराक $time बजे';
+  }
+
+  @override
+  String get ptRecordThisDose => 'यह खुराक दर्ज करें';
+
+  @override
+  String ptNoReadingsInDays(int days) {
+    return 'पिछले $days दिनों में कोई शुगर रीडिंग नहीं';
+  }
+
+  @override
+  String ptLastReadingDaysAgo(int days) {
+    String _temp0 = intl.Intl.pluralLogic(
+      days,
+      locale: localeName,
+      other: 'आखिरी रीडिंग $days दिन पहले',
+      one: 'आखिरी रीडिंग कल',
+      zero: 'आखिरी रीडिंग आज',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get ptSugarCheckDue => 'शुगर जाँचने का समय';
+
+  @override
+  String get ptAddAReading => 'रीडिंग जोड़ें';
+
+  @override
+  String ptNoReadingsTryLonger(int days) {
+    return 'पिछले $days दिनों में कोई रीडिंग नहीं। लंबी अवधि चुनने पर पुरानी रीडिंग दिख सकती हैं।';
+  }
+
+  @override
+  String get ptSugarTitle => 'ब्लड शुगर';
+
+  @override
+  String get ptCouldNotLoadReadings => 'आपकी शुगर रीडिंग लोड नहीं हो सकीं।';
+
+  @override
+  String get ptOneReadingSoFar =>
+      'अब तक एक रीडिंग। अगली जोड़ने पर रुझान दिखेगा।';
+
+  @override
+  String get ptRange7Days => '7 दिन';
+
+  @override
+  String get ptRange14Days => '14 दिन';
+
+  @override
+  String get ptRange30Days => '30 दिन';
+
+  @override
+  String get ptRange3Months => '3 महीने';
+
+  @override
+  String get ptRange6Months => '6 महीने';
+
+  @override
+  String get ptLatestReading => 'नवीनतम रीडिंग';
+
+  @override
+  String get ptReadingNeedsAttention => 'ध्यान देने की ज़रूरत';
+
+  @override
+  String get ptReadingWellAbove => 'लक्ष्य से काफ़ी ऊपर';
+
+  @override
+  String get ptReadingAbove => 'लक्ष्य से ऊपर';
+
+  @override
+  String get ptReadingBelow => 'लक्ष्य से नीचे';
+
+  @override
+  String get ptReadingInRange => 'लक्ष्य सीमा में';
+
+  @override
+  String ptAverageOverDays(int days) {
+    return '$days दिन का औसत';
+  }
+
+  @override
+  String get ptEstimatedHba1c => 'अनुमानित HbA1c';
+
+  @override
+  String get ptEstimatedHba1cNote => 'आपकी रीडिंग से अनुमान, खून की जाँच नहीं';
+
+  @override
+  String get ptLabHba1c => 'लैब HbA1c';
+
+  @override
+  String get ptFromABloodTest => 'खून की जाँच से';
+
+  @override
+  String ptTestedOn(String date) {
+    return 'जाँच: $date';
+  }
+
+  @override
+  String get ptAboveYourTarget => 'आपके लक्ष्य से ऊपर';
+
+  @override
+  String ptChartDailyAverage(int days) {
+    String _temp0 = intl.Intl.pluralLogic(
+      days,
+      locale: localeName,
+      other: '$days दिन का औसत',
+      one: 'दैनिक औसत',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String ptChartTargetBand(String low, String high) {
+    return 'लक्ष्य $low–$high';
+  }
+
+  @override
+  String get ptChartOutsideTarget => 'लक्ष्य से बाहर';
+
+  @override
+  String get ptChartNoReadings => 'कोई रीडिंग नहीं';
+
+  @override
+  String get ptCouldNotLoadAppointments => 'आपके अपॉइंटमेंट लोड नहीं हो सके।';
+
+  @override
+  String ptFollowUpBy(String date) {
+    return 'डॉक्टर ने आपको $date को फिर दिखाने को कहा है।';
+  }
+
+  @override
+  String get ptFromYourClinic => 'आपके क्लिनिक से';
+
+  @override
+  String get ptOpenChat => 'चैट खोलें';
+
+  @override
+  String get ptRoleDoctor => 'डॉक्टर';
+
+  @override
+  String get ptRoleClinicTeam => 'क्लिनिक टीम';
+
+  @override
+  String get ptRoleDietician => 'डाइटिशियन';
+
+  @override
+  String get ptVoiceMessage => 'वॉइस संदेश';
+
+  @override
+  String get ptDietPlanTitle => 'आपका डाइट प्लान';
+
+  @override
+  String ptFromName(String name) {
+    return '$name की ओर से';
+  }
+
+  @override
+  String ptUpdatedOn(String date) {
+    return 'अपडेट: $date';
+  }
+
+  @override
+  String ptDailyCalorieTarget(String kcal) {
+    return 'दैनिक लक्ष्य: $kcal किलो कैलोरी';
+  }
+
+  @override
+  String get ptSeeFullPlan => 'पूरा प्लान देखें';
+
+  @override
+  String get ptBestAvoided => 'इनसे बचें';
+
+  @override
+  String get ptRecentMeals => 'हाल के भोजन';
+
+  @override
+  String get ptNoMealsLogged => 'अभी कोई भोजन दर्ज नहीं';
+
+  @override
+  String get ptNoMealsLoggedBody =>
+      'आपने क्या खाया, उसकी एक फ़ोटो या एक पंक्ति से डाइटिशियन बेहतर सलाह दे पाएंगे।';
+
+  @override
+  String get ptLogAMeal => 'भोजन दर्ज करें';
+
+  @override
+  String get ptMealBreakfast => 'नाश्ता';
+
+  @override
+  String get ptMealLunch => 'दोपहर का भोजन';
+
+  @override
+  String get ptMealDinner => 'रात का भोजन';
+
+  @override
+  String get ptMealSnack => 'स्नैक';
+
+  @override
+  String get ptMealOther => 'भोजन';
+
+  @override
+  String get ptPhotoOnly => 'केवल फ़ोटो';
+
+  @override
+  String get ptMealHistory => 'भोजन का इतिहास';
+
+  @override
+  String get ptCouldNotLoadMeals => 'आपका भोजन इतिहास लोड नहीं हो सका।';
+
+  @override
+  String get ptDeleteMealTitle => 'यह भोजन हटाएं?';
+
+  @override
+  String get ptDeleteMealBody =>
+      'यह आपकी सूची से हट जाएगा और डाइटिशियन इसे नहीं देख पाएंगे।';
+
+  @override
+  String get ptDeleteMeal => 'भोजन हटाएं';
+
+  @override
+  String get ptWhatDidYouEat => 'आपने क्या खाया? जैसे: 2 रोटी, दाल, सलाद';
+
+  @override
+  String get ptAddMealPhoto => 'भोजन की फ़ोटो जोड़ें';
+
+  @override
+  String get ptSaveMeal => 'भोजन सेव करें';
+
+  @override
+  String get ptAddPhotoOrNote => 'पहले एक फ़ोटो या नोट जोड़ें।';
+
+  @override
+  String get ptWhichMeal => 'कौन सा भोजन?';
+
+  @override
+  String get ptUploadingPhoto => 'फ़ोटो अपलोड हो रही है…';
+
+  @override
+  String get ptHealthDetailsTitle => 'आपकी स्वास्थ्य जानकारी';
+
+  @override
+  String get ptCondition => 'बीमारी';
+
+  @override
+  String get ptWeight => 'वज़न';
+
+  @override
+  String get ptHeight => 'लंबाई';
+
+  @override
+  String get ptBmi => 'BMI';
+
+  @override
+  String get ptBloodPressure => 'ब्लड प्रेशर';
+
+  @override
+  String get ptNothingOnFile =>
+      'अभी कुछ दर्ज नहीं है। अपनी लंबाई, वज़न और एलर्जी जोड़ें।';
+
+  @override
+  String get ptAllergyWarning => 'इलाज करने वाले हर डॉक्टर को बताएं';
+
+  @override
+  String get ptConditionType1 => 'टाइप 1 डायबिटीज़';
+
+  @override
+  String get ptConditionType2 => 'टाइप 2 डायबिटीज़';
+
+  @override
+  String get ptConditionGestational => 'गर्भावस्था की डायबिटीज़';
+
+  @override
+  String get ptConditionPrediabetes => 'प्रीडायबिटीज़';
+
+  @override
+  String get ptConditionNone => 'डायबिटीज़ नहीं';
+
+  @override
+  String get ptWhoseRecord => 'किसकी जानकारी';
+
+  @override
+  String get ptRelationYou => 'आप';
+
+  @override
+  String get ptRelationChild => 'बच्चा';
+
+  @override
+  String get ptRelationParent => 'माता या पिता';
+
+  @override
+  String get ptRelationSpouse => 'पति या पत्नी';
+
+  @override
+  String get ptRelationFamily => 'परिवार';
+
+  @override
+  String get ptCouldNotLoadMedicines => 'आपकी दवाइयाँ लोड नहीं हो सकीं।';
+
+  @override
+  String get ptDoseTakenLate => 'देर से ली गई';
+
+  @override
+  String get ptDoseDueNowShort => 'अभी लेनी है';
+
+  @override
+  String get ptDoseLaterToday => 'आज बाद में';
+
+  @override
+  String get ptRecordDose => 'दर्ज करें';
+
+  @override
+  String get ptSaving => 'सेव हो रहा है…';
+
+  @override
+  String ptDoseNotSaved(String answer) {
+    return 'सेव नहीं हुआ: $answer';
+  }
+
+  @override
+  String get ptDoseNotSavedSnack =>
+      'खुराक सेव नहीं हुई। \"फिर से कोशिश करें\" दबाएं।';
+
+  @override
+  String get ptYourMedicines => 'आपकी दवाइयाँ';
+
+  @override
+  String get ptFinishedCoursesNote =>
+      'पूरे हो चुके कोर्स अब \"पिछली दवाइयाँ\" में चले जाते हैं।';
+
+  @override
+  String get ptStopTaking => 'लेना बंद करें';
+
+  @override
+  String get ptWhenNeeded => 'ज़रूरत होने पर लें';
+
+  @override
+  String get ptEveryOtherDay => 'एक दिन छोड़कर';
+
+  @override
+  String ptOnDays(String days) {
+    return '$days को';
+  }
+
+  @override
+  String get ptNoTimeSet => 'रिमाइंडर का समय तय नहीं';
+
+  @override
+  String get ptScanPrescription => 'पर्चे की फ़ोटो से जोड़ें';
+
+  @override
+  String get ptStoppedByYou => 'आपने बंद कीं';
+
+  @override
+  String get ptStartAgain => 'फिर से शुरू करें';
+
+  @override
+  String ptYouStoppedOn(String date) {
+    return 'आपने $date को बंद की';
+  }
+
+  @override
+  String get ptYouStopped => 'आपने यह लेना बंद किया';
+
+  @override
+  String get ptPastMedicines => 'पिछली दवाइयाँ';
+
+  @override
+  String ptCourseFinishedOn(String date) {
+    return 'कोर्स $date को पूरा हुआ';
+  }
+
+  @override
+  String get ptCourseFinished => 'कोर्स पूरा हुआ';
+
+  @override
+  String ptStoppedByDoctorOn(String date) {
+    return 'डॉक्टर ने $date को बंद की';
+  }
+
+  @override
+  String get ptStoppedByDoctor => 'डॉक्टर ने बंद की';
+
+  @override
+  String ptCancelledByDoctorOn(String date) {
+    return 'डॉक्टर ने $date को रद्द की';
+  }
+
+  @override
+  String get ptCancelledByDoctor => 'डॉक्टर ने रद्द की';
+
+  @override
+  String get ptNoLongerTaken => 'अब नहीं ली जाती';
+
+  @override
+  String ptViewAllCount(int count) {
+    return 'सभी देखें ($count)';
+  }
+
+  @override
+  String ptAlsoPrescribedElsewhere(String what) {
+    return 'दूसरे क्लिनिक ने भी लिखी है: $what। दोनों लेने से पहले डॉक्टर से पूछें।';
+  }
+
+  @override
+  String ptAlsoOnYourList(String what) {
+    return 'आपकी सूची में यह भी है: $what। दोनों लेने से पहले डॉक्टर से पूछें।';
+  }
+
+  @override
+  String get ptRecordsAndReminders => 'रिकॉर्ड और रिमाइंडर';
+
+  @override
+  String get ptPrescriptionsSub => 'डॉक्टर के लिखे पर्चे देखें और शेयर करें';
+
+  @override
+  String get ptReminderTimes => 'रिमाइंडर का समय';
+
+  @override
+  String ptMealTimesLine(String breakfast, String lunch, String dinner) {
+    return 'नाश्ता $breakfast, दोपहर $lunch, रात $dinner';
+  }
+
+  @override
+  String get ptDoseHistory => 'खुराक का इतिहास';
+
+  @override
+  String get ptDoseHistorySub => 'रोज़ आपने क्या लिया';
+
+  @override
+  String get ptRemindersOffTitle => 'आपकी दवा के रिमाइंडर बंद हैं';
+
+  @override
+  String ptRemindersOffBody(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other:
+          '$count रिमाइंडर सेट हैं, लेकिन यह फ़ोन उनमें से कोई नहीं दिखाएगा।',
+      one: '1 रिमाइंडर सेट है, लेकिन यह फ़ोन उसे नहीं दिखाएगा।',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get ptNotificationsBlockedTitle => 'नोटिफ़िकेशन बंद हैं';
+
+  @override
+  String get ptNotificationsBlockedBody =>
+      'इस ऐप के नोटिफ़िकेशन चालू किए बिना रिमाइंडर नहीं दिखेंगे।';
+
+  @override
+  String get ptRemindersLateTitle => 'रिमाइंडर देर से आ सकते हैं';
+
+  @override
+  String get ptRemindersLateBody =>
+      'सटीक अलार्म की अनुमति नहीं है, इसलिए रिमाइंडर कुछ मिनट बाद आ सकता है।';
+
+  @override
+  String get ptTurnRemindersOn => 'रिमाइंडर फिर से चालू करें';
+
+  @override
+  String get ptRemindersSet => 'रिमाइंडर चालू हो गए।';
+
+  @override
+  String ptRemindersStillOff(String app) {
+    return 'अभी भी चालू नहीं। सेटिंग्स > ऐप्स > $app खोलें और नोटिफ़िकेशन, अलार्म और बैकग्राउंड गतिविधि की अनुमति दें।';
+  }
+
+  @override
+  String get ptDidYouTakeThisDose => 'क्या आपने यह खुराक ली?';
+
+  @override
+  String get ptYesTookIt => 'हाँ, ले ली';
+
+  @override
+  String get ptNoSkippedIt => 'नहीं, छोड़ दी';
+
+  @override
+  String get ptSkipHonestyNote =>
+      'आपका जवाब डॉक्टर की मदद करता है। खुराक छोड़ना छिपाने की बात नहीं है।';
+
+  @override
+  String get ptNoReason => 'बिना कारण';
+
+  @override
+  String ptStopTakingQuestion(String name) {
+    return '$name लेना बंद करें?';
+  }
+
+  @override
+  String get ptStopPatientOwnedBody =>
+      'इसके रिमाइंडर बंद हो जाएंगे। आप बाद में फिर शुरू कर सकते हैं।';
+
+  @override
+  String get ptStopPrescribedBody =>
+      'इसके रिमाइंडर बंद हो जाएंगे। डॉक्टर का पर्चा वैसा ही रहेगा, और उन्हें दिखेगा कि आपने दवा बंद की। आप बाद में फिर शुरू कर सकते हैं।';
+
+  @override
+  String get ptStopSideEffectNote =>
+      'किसी साइड इफ़ेक्ट से चिंता हो तो क्लिनिक से संपर्क करें।';
+
+  @override
+  String get ptReasonSideEffects => 'साइड इफ़ेक्ट';
+
+  @override
+  String get ptReasonRanOut => 'दवा खत्म हो गई';
+
+  @override
+  String get ptReasonFeelingBetter => 'बेहतर महसूस हो रहा है';
+
+  @override
+  String get ptReasonDoctorTold => 'डॉक्टर ने कहा';
+
+  @override
+  String get ptWhyStopping => 'क्यों बंद कर रहे हैं? (वैकल्पिक)';
+
+  @override
+  String get ptKeepTaking => 'लेते रहें';
+
+  @override
+  String ptYouStoppedTaking(String name) {
+    return 'आपने $name लेना बंद किया।';
+  }
+
+  @override
+  String ptYouStoppedTakingDoctorSees(String name) {
+    return 'आपने $name लेना बंद किया। डॉक्टर इसे देख पाएंगे।';
+  }
+
+  @override
+  String ptRemindersBackOn(String name) {
+    return '$name के रिमाइंडर फिर चालू हो गए।';
+  }
+
+  @override
+  String get ptCouldNotLoadHistory => 'खुराक का इतिहास लोड नहीं हो सका।';
+
+  @override
+  String get ptNoDosesInPeriod => 'इस अवधि में कोई खुराक नहीं';
+
+  @override
+  String ptTakenOfTotal(int taken, int total) {
+    return '$total में से $taken ली गईं';
+  }
+
+  @override
+  String ptTakenAt(String time) {
+    return '$time बजे ली गई';
+  }
+
+  @override
+  String ptTakenLateAt(String time) {
+    return 'देर से ली गई, $time बजे';
+  }
+
+  @override
+  String get ptITookThisOne => 'यह ली थी';
+
+  @override
+  String get ptCouldNotSaveDose => 'खुराक सेव नहीं हो सकी। फिर से कोशिश करें।';
+
+  @override
+  String get ptYou => 'आप';
+
+  @override
+  String get ptAssistantName => 'सहायक';
+
+  @override
+  String get ptHealthAssistant => 'स्वास्थ्य सहायक';
+
+  @override
+  String get ptYourClinic => 'आपका क्लिनिक';
+
+  @override
+  String get ptRequestAppointment => 'अपॉइंटमेंट मांगें';
+
+  @override
+  String get ptRequestSent =>
+      'अनुरोध भेज दिया गया। क्लिनिक समय तय करके बताएगा।';
+
+  @override
+  String get ptEdited => 'संपादित';
+
+  @override
+  String get ptEditWindowNote =>
+      '15 मिनट के भीतर। दूसरी ओर दिखेगा कि यह संपादित है।';
+
+  @override
+  String get ptNotSent => 'आपका संदेश नहीं भेजा गया';
+
+  @override
+  String get ptAttachDocument => 'दस्तावेज़';
+
+  @override
+  String get ptAttachDocumentSub => 'PDF, Word, Excel या टेक्स्ट';
+
+  @override
+  String get ptCouldNotPlayVoice => 'यह वॉइस संदेश नहीं चल सका';
+
+  @override
+  String get ptCancelReply => 'जवाब रद्द करें';
+
+  @override
+  String get ptPlaySpeed => 'चलाने की गति';
+
+  @override
+  String get ptMessageDietician => 'डाइटिशियन को संदेश लिखें';
+
+  @override
+  String get ptNoDieticianYet => 'अभी तय नहीं · कोई डाइटिशियन जवाब देंगे';
+
+  @override
+  String get ptYourDieticianSub => 'आपके डाइटिशियन · भोजन और पोषण';
+
+  @override
+  String get ptAskDieticianBody =>
+      'भोजन, मात्रा या अपने प्लान के बारे में डाइटिशियन से पूछें।';
+
+  @override
+  String get ptAttachment => 'अटैचमेंट';
+
+  @override
+  String get ptClinicAlertedEmergency =>
+      'यह ज़रूरी लग रहा है — क्लिनिक को बता दिया गया है। अभी तबीयत ठीक न लगे तो उन्हें फ़ोन करें।';
+
+  @override
+  String get ptClinicAlerted =>
+      'इस संदेश के बारे में क्लिनिक को बता दिया गया है।';
+
+  @override
+  String get ptTestsTitle => 'जाँच और रिपोर्ट';
+
+  @override
+  String get ptAskedForByDoctor => 'डॉक्टर ने जो जाँच कराने को कहा';
+
+  @override
+  String get ptNoTestsAdvised =>
+      'अभी कोई जाँच नहीं कही गई। डॉक्टर पर्चा लिखते समय जोड़ेंगे।';
+
+  @override
+  String get ptReportUploadedStatus => 'रिपोर्ट अपलोड हुई';
+
+  @override
+  String get ptNotUploadedYet => 'अभी अपलोड नहीं हुई';
+
+  @override
+  String get ptUpload => 'अपलोड करें';
+
+  @override
+  String get ptUploadAgain => 'फिर से अपलोड करें';
+
+  @override
+  String get ptYourReports => 'आपकी रिपोर्ट';
+
+  @override
+  String get ptNoReportsYet =>
+      'आपकी अपलोड की गई रिपोर्ट यहाँ दिखेंगी। डॉक्टर और डाइटिशियन इन्हें देख सकते हैं।';
+
+  @override
+  String get ptReadingReport => 'रिपोर्ट पढ़ी जा रही है…';
+
+  @override
+  String get ptCouldNotReadReport => 'पढ़ी नहीं जा सकी';
+
+  @override
+  String ptFlaggedOnReport(String list) {
+    return 'रिपोर्ट में सीमा से बाहर: $list';
+  }
+
+  @override
+  String ptDeleteReportTitle(String name) {
+    return 'यह $name रिपोर्ट हटाएं?';
+  }
+
+  @override
+  String get ptDeleteReportBody =>
+      'यह आपके रिकॉर्ड से हट जाएगी, साथ ही क्लिनिक ने इससे जो मान लिए थे वे भी। बाद में सही फ़ाइल अपलोड कर सकते हैं।';
+
+  @override
+  String get ptDeleteReport => 'रिपोर्ट हटाएं';
+
+  @override
+  String get ptReportDeleted => 'रिपोर्ट हटा दी गई';
+
+  @override
+  String ptReportUploaded(String name) {
+    return '$name रिपोर्ट अपलोड हुई';
+  }
+
+  @override
+  String get ptUploadAReport => 'रिपोर्ट अपलोड करें';
+
+  @override
+  String get ptPdfOrDocument => 'PDF या दस्तावेज़';
+
+  @override
+  String get ptPdfOrDocumentSub => 'लैब ने जो रिपोर्ट भेजी';
+
+  @override
+  String get ptWhichTest => 'यह किस जाँच की रिपोर्ट है?';
+
+  @override
+  String get ptOrTypeTestName => 'या जाँच का नाम लिखें';
+
+  @override
+  String get ptTestNameHint => 'जैसे: HbA1c, लिपिड प्रोफ़ाइल';
+
+  @override
+  String get ptCouldNotLoadTests => 'आपकी जाँच की जानकारी लोड नहीं हो सकी।';
+
+  @override
+  String get ptUploading => 'अपलोड हो रहा है…';
+
+  @override
+  String get ptCouldNotLoadPrescriptions => 'आपके पर्चे लोड नहीं हो सके।';
+
+  @override
+  String get ptNoPrescriptionsYet => 'अभी कोई पर्चा नहीं';
+
+  @override
+  String get ptNoPrescriptionsYetBody => 'डॉक्टर के लिखते ही यहाँ दिखेंगे।';
+
+  @override
+  String ptMedicineCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count दवाइयाँ',
+      one: '1 दवा',
+      zero: 'कोई दवा नहीं',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get ptUndated => 'तारीख नहीं';
+
+  @override
+  String ptByName(String name) {
+    return '$name द्वारा';
+  }
+
+  @override
+  String get ptOpenPdf => 'PDF खोलें';
+
+  @override
+  String get ptShare => 'शेयर करें';
+
+  @override
+  String get ptCouldNotOpenPrescription => 'पर्चा नहीं खुल सका।';
+
+  @override
+  String get ptCouldNotSharePrescription => 'पर्चा शेयर नहीं हो सका।';
+
+  @override
+  String get ptComplaint => 'शिकायत';
+
+  @override
+  String get ptDiagnosis => 'निदान';
+
+  @override
+  String get ptTestsAdvised => 'सुझाई गई जाँच';
+
+  @override
+  String get ptAdvice => 'सलाह';
+
+  @override
+  String get ptFollowUp => 'अगली मुलाकात';
+
+  @override
+  String ptForDays(int days) {
+    String _temp0 = intl.Intl.pluralLogic(
+      days,
+      locale: localeName,
+      other: '$days दिन के लिए',
+      one: '1 दिन के लिए',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get ptYourInformation => 'आपकी जानकारी';
+
+  @override
+  String get ptHelp => 'मदद';
+
+  @override
+  String ptVersion(String version) {
+    return 'संस्करण $version';
+  }
+
+  @override
+  String get ptViewLicences => 'लाइसेंस देखें';
+
+  @override
+  String get ptAboutLine => 'आपका इलाज, आपके फ़ोन पर।';
+
+  @override
+  String get ptCheckInReminders => 'शुगर जाँच रिमाइंडर';
+
+  @override
+  String get ptCheckInRemindersSub =>
+      '3 दिन तक रीडिंग दर्ज न करने पर एक रिमाइंडर';
+
+  @override
+  String get ptReminderReliability => 'रिमाइंडर भरोसेमंद बनाएं';
+
+  @override
+  String get ptReminderReliabilitySub =>
+      'फ़ोन स्लीप में हो तब भी खुराक अलार्म चालू रखें';
+
+  @override
+  String get ptClinicMessagesNote =>
+      'क्लिनिक के संदेश हमेशा आएंगे। बंद करने के लिए फ़ोन की नोटिफ़िकेशन सेटिंग्स इस्तेमाल करें।';
+
+  @override
+  String get ptSetByDoctor => 'निदान के आधार पर डॉक्टर ने तय किया';
+
+  @override
+  String get ptMostRecentMeasurements =>
+      'आपके नवीनतम माप। नया माप दर्ज करने पर ये बदल जाएंगे।';
+
+  @override
+  String ptNumberBetween(String low, String high) {
+    return '$low और $high के बीच कोई संख्या लिखें';
+  }
+
+  @override
   String get medsLast30Days => 'पिछले 30 दिन';
 
   @override

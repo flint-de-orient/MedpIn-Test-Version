@@ -4,7 +4,9 @@ import 'package:intl/intl.dart';
 
 import '../../../../core/network/api_exception.dart';
 import '../../../../core/theme/tokens.dart';
+import '../../../../l10n/gen/app_localizations.dart';
 import '../../../../shared/widgets/surfaces.dart';
+import '../../../shell/presentation/widgets/patient_kit.dart';
 import '../../data/medications_repository.dart';
 import '../../domain/medication.dart';
 import '../../domain/strength.dart';
@@ -22,10 +24,12 @@ import '../medications_providers.dart';
 /// wrote" — which is what it used to do.
 
 /// "Metformin 500 mg".
-String medicineLabel(Medication m) =>
-    [m.name, formatStrength(m.strength)].where((s) => s.isNotEmpty).join(' ');
+String medicineLabel(Medication m) => keepUnitsTogether(
+  [m.name, formatStrength(m.strength)].where((s) => s.isNotEmpty).join(' '),
+);
 
-String _day(DateTime? d) => d == null ? '' : DateFormat('d MMM y').format(d);
+String _day(BuildContext context, DateTime d) =>
+    DateFormat('d MMM y', Localizations.localeOf(context).toString()).format(d);
 
 /// Everything that shows medicines, refreshed after one changes.
 void refreshMedicineLists(WidgetRef ref) {
@@ -40,7 +44,12 @@ void refreshMedicineLists(WidgetRef ref) {
 // ---------------------------------------------------------------------------
 
 /// Asks, then stops taking [m]. Re-arms the reminders so its alarms go at once.
-Future<void> stopTakingFlow(BuildContext context, WidgetRef ref, Medication m) async {
+Future<void> stopTakingFlow(
+  BuildContext context,
+  WidgetRef ref,
+  Medication m,
+) async {
+  final l10n = AppLocalizations.of(context);
   final answer = await showModalBottomSheet<({String? reason})>(
     context: context,
     isScrollControlled: true,
@@ -64,8 +73,8 @@ Future<void> stopTakingFlow(BuildContext context, WidgetRef ref, Medication m) a
       SnackBar(
         content: Text(
           m.patientOwned
-              ? 'You stopped taking ${medicineLabel(m)}.'
-              : 'You stopped taking ${medicineLabel(m)}. Your doctor will see this.',
+              ? l10n.ptYouStoppedTaking(medicineLabel(m))
+              : l10n.ptYouStoppedTakingDoctorSees(medicineLabel(m)),
         ),
       ),
     );
@@ -80,8 +89,14 @@ class StopTakingSheet extends StatefulWidget {
 
   final Medication medication;
 
-  /// Offered as one tap each: typing is hard for many of the people using this.
-  static const reasons = ['Side effects', 'Ran out', 'Feeling better', 'My doctor told me to'];
+  /// Offered as one tap each: typing is hard for many of the people using
+  /// this. In the patient's own language, because the reason is theirs.
+  static List<String> reasons(AppLocalizations l10n) => [
+    l10n.ptReasonSideEffects,
+    l10n.ptReasonRanOut,
+    l10n.ptReasonFeelingBetter,
+    l10n.ptReasonDoctorTold,
+  ];
 
   @override
   State<StopTakingSheet> createState() => _StopTakingSheetState();
@@ -98,29 +113,32 @@ class _StopTakingSheetState extends State<StopTakingSheet> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     final m = widget.medication;
     return Padding(
-      padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+      padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
       child: SafeArea(
         child: SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(T.s4, 0, T.s4, T.s4),
+          padding: const EdgeInsets.fromLTRB(T.s5, 0, T.s5, T.s5),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Text('Stop taking ${medicineLabel(m)}?', style: T.title),
+              Text(
+                l10n.ptStopTakingQuestion(medicineLabel(m)),
+                style: T.title.copyWith(color: T.ink),
+              ),
               const SizedBox(height: T.s2),
               Text(
                 m.patientOwned
-                    ? 'Its reminders stop. You can start it again later.'
-                    : 'Its reminders stop. Your doctor’s prescription stays as they wrote it, '
-                        'and they will see that you stopped. You can start again later.',
+                    ? l10n.ptStopPatientOwnedBody
+                    : l10n.ptStopPrescribedBody,
                 style: T.body.copyWith(color: T.ink),
               ),
               if (!m.patientOwned) ...[
                 const SizedBox(height: T.s2),
                 Text(
-                  'If a side effect is worrying you, contact your clinic.',
+                  l10n.ptStopSideEffectNote,
                   style: T.small.copyWith(color: T.inkMuted),
                 ),
               ],
@@ -129,8 +147,11 @@ class _StopTakingSheetState extends State<StopTakingSheet> {
                 spacing: T.s2,
                 runSpacing: T.s2,
                 children: [
-                  for (final r in StopTakingSheet.reasons)
-                    ActionChip(label: Text(r), onPressed: () => setState(() => _reason.text = r)),
+                  for (final r in StopTakingSheet.reasons(l10n))
+                    ActionChip(
+                      label: Text(r),
+                      onPressed: () => setState(() => _reason.text = r),
+                    ),
                 ],
               ),
               const SizedBox(height: T.s3),
@@ -140,26 +161,23 @@ class _StopTakingSheetState extends State<StopTakingSheet> {
                 minLines: 1,
                 maxLines: 3,
                 textCapitalization: TextCapitalization.sentences,
-                decoration: const InputDecoration(labelText: 'Why are you stopping? (optional)'),
+                decoration: InputDecoration(labelText: l10n.ptWhyStopping),
               ),
               const SizedBox(height: T.s3),
-              Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton(
-                      onPressed: () => Navigator.of(context).pop(),
-                      child: const Text('Keep taking it'),
-                    ),
-                  ),
-                  const SizedBox(width: T.s3),
-                  Expanded(
-                    child: FilledButton(
-                      style: FilledButton.styleFrom(backgroundColor: T.danger, foregroundColor: T.surface),
-                      onPressed: () => Navigator.of(context).pop((reason: _reason.text.trim())),
-                      child: const Text('Stop taking'),
-                    ),
-                  ),
-                ],
+              // Keeping it is the safe answer, so it is the filled one; the
+              // stop is said in the danger colour, with its word.
+              PrimaryAction(
+                label: l10n.ptKeepTaking,
+                onPressed: () => Navigator.of(context).pop(),
+              ),
+              const SizedBox(height: T.s2),
+              SecondaryAction(
+                label: l10n.ptStopTaking,
+                tone: T.danger,
+                onPressed:
+                    () => Navigator.of(
+                      context,
+                    ).pop((reason: _reason.text.trim())),
               ),
             ],
           ),
@@ -175,61 +193,78 @@ class _StopTakingSheetState extends State<StopTakingSheet> {
 
 /// The medicines the patient stopped while their prescription still stands.
 ///
-/// Hidden when there are none: an empty "Stopped by you" is noise.
-class StoppedByYouList extends ConsumerWidget {
+/// Drawn by the Medicines tab only when there are some: an empty "Stopped by
+/// you" is noise.
+class StoppedByYouList extends ConsumerStatefulWidget {
   const StoppedByYouList({super.key, required this.medicines});
 
   final List<Medication> medicines;
 
-  Future<void> _resume(BuildContext context, WidgetRef ref, Medication m) async {
+  @override
+  ConsumerState<StoppedByYouList> createState() => _StoppedByYouListState();
+}
+
+class _StoppedByYouListState extends ConsumerState<StoppedByYouList> {
+  /// The medicine being started again, so its button cannot be pressed twice.
+  String? _resuming;
+
+  Future<void> _resume(Medication m) async {
+    final l10n = AppLocalizations.of(context);
     final messenger = ScaffoldMessenger.of(context);
+    setState(() => _resuming = m.id);
     try {
       await ref.read(medicationsRepositoryProvider).resumeTaking(m.id);
       refreshMedicineLists(ref);
-      messenger.showSnackBar(SnackBar(content: Text('Reminders for ${medicineLabel(m)} are back on.')));
+      messenger.showSnackBar(
+        SnackBar(content: Text(l10n.ptRemindersBackOn(medicineLabel(m)))),
+      );
       await refreshAndScheduleMedicationReminders(ref);
     } on ApiException catch (e) {
       messenger.showSnackBar(SnackBar(content: Text(e.message)));
       refreshMedicineLists(ref);
+    } finally {
+      if (mounted) setState(() => _resuming = null);
     }
   }
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        for (final m in medicines)
+        for (final (i, m) in widget.medicines.indexed) ...[
+          if (i > 0) const Divider(height: 1, color: T.line),
           Padding(
-            padding: const EdgeInsets.only(bottom: T.s2),
-            child: InnerTile(
-              tone: T.warningTint,
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(medicineLabel(m), style: T.bodyStrong),
-                        Text(
-                          [
-                            'You stopped taking this${m.stoppedTaking?.at == null ? '' : ' on ${_day(m.stoppedTaking!.at)}'}.',
-                            if ((m.stoppedTaking?.reason ?? '').isNotEmpty) m.stoppedTaking!.reason!,
-                          ].join(' '),
-                          style: T.small.copyWith(color: T.inkMuted),
-                        ),
-                      ],
-                    ),
+            padding: const EdgeInsets.symmetric(vertical: T.s3),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(medicineLabel(m), style: T.bodyStrong.copyWith(color: T.ink)),
+                StatusWord(
+                  label:
+                      m.stoppedTaking?.at == null
+                          ? l10n.ptYouStopped
+                          : l10n.ptYouStoppedOn(_day(context, m.stoppedTaking!.at!)),
+                  status: Status.neutral,
+                  icon: Icons.pause_circle_outline_rounded,
+                ),
+                if ((m.stoppedTaking?.reason ?? '').isNotEmpty)
+                  Text(
+                    m.stoppedTaking!.reason!,
+                    style: T.small.copyWith(color: T.inkMuted),
                   ),
-                  const SizedBox(width: T.s2),
-                  TextButton(
-                    onPressed: () => _resume(context, ref, m),
-                    child: const Text('Start again'),
-                  ),
-                ],
-              ),
+                const SizedBox(height: T.s2),
+                SecondaryAction(
+                  label: l10n.ptStartAgain,
+                  icon: Icons.play_arrow_rounded,
+                  expand: false,
+                  onPressed: _resuming == null ? () => _resume(m) : null,
+                ),
+              ],
             ),
           ),
+        ],
       ],
     );
   }
@@ -240,19 +275,45 @@ class StoppedByYouList extends ConsumerWidget {
 // ---------------------------------------------------------------------------
 
 /// What happened to a medicine that is no longer prescribed, in words.
-String endedText(Medication m) {
-  String reason(String? r) => (r ?? '').isEmpty ? '' : ': $r';
+String endedText(BuildContext context, Medication m) {
+  final l10n = AppLocalizations.of(context);
   switch (m.prescriptionState) {
     case 'completed':
-      return 'Course finished${m.completedAt == null ? '' : ' on ${_day(m.completedAt)}'}.';
+      return m.completedAt == null
+          ? l10n.ptCourseFinished
+          : l10n.ptCourseFinishedOn(_day(context, m.completedAt!));
     case 'stopped_by_doctor':
-      return 'Stopped by your doctor${m.stoppedByDoctor?.at == null ? '' : ' on ${_day(m.stoppedByDoctor!.at)}'}${reason(m.stoppedByDoctor?.reason)}.';
+      return m.stoppedByDoctor?.at == null
+          ? l10n.ptStoppedByDoctor
+          : l10n.ptStoppedByDoctorOn(_day(context, m.stoppedByDoctor!.at!));
     case 'cancelled':
-      return 'Cancelled by your doctor${m.cancelled?.at == null ? '' : ' on ${_day(m.cancelled!.at)}'}${reason(m.cancelled?.reason)}.';
+      return m.cancelled?.at == null
+          ? l10n.ptCancelledByDoctor
+          : l10n.ptCancelledByDoctorOn(_day(context, m.cancelled!.at!));
     default:
-      return 'No longer taken.';
+      return l10n.ptNoLongerTaken;
   }
 }
+
+/// The doctor's reason for ending it, when they gave one.
+String? _endedReason(Medication m) {
+  final reason = switch (m.prescriptionState) {
+    'stopped_by_doctor' => m.stoppedByDoctor?.reason,
+    'cancelled' => m.cancelled?.reason,
+    _ => null,
+  };
+  return (reason ?? '').isEmpty ? null : reason;
+}
+
+/// Whether [medicines] holds a course that finished recently — the patient most
+/// likely to look for it on the active list, where it used to stay.
+bool hasRecentlyFinishedCourse(List<Medication> medicines, DateTime now) =>
+    medicines.any(
+      (m) =>
+          m.prescriptionState == 'completed' &&
+          (m.completedAt == null ||
+              now.difference(m.completedAt!) <= const Duration(days: 60)),
+    );
 
 /// The medicines that have ended — finished, stopped by the doctor, cancelled.
 /// Kept, because a course that finished is still part of what was taken.
@@ -263,48 +324,69 @@ class PastMedicinesList extends StatelessWidget {
 
   static const int shown = 3;
 
-  static Widget _row(Medication m) => Padding(
-        padding: const EdgeInsets.only(bottom: T.s2),
-        child: InnerTile(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(medicineLabel(m), style: T.bodyStrong),
-              Text(endedText(m), style: T.small.copyWith(color: T.inkMuted)),
-            ],
-          ),
-        ),
-      );
+  static Widget _row(BuildContext context, Medication m) {
+    final reason = _endedReason(m);
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: T.s3),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(medicineLabel(m), style: T.bodyStrong.copyWith(color: T.ink)),
+          Text(endedText(context, m), style: T.small.copyWith(color: T.inkMuted)),
+          if (reason != null)
+            Text(reason, style: T.small.copyWith(color: T.inkMuted)),
+        ],
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        for (final m in medicines.take(shown)) _row(m),
+        for (final (i, m) in medicines.take(shown).indexed) ...[
+          if (i > 0) const Divider(height: 1, color: T.line),
+          _row(context, m),
+        ],
         if (medicines.length > shown)
           Align(
             alignment: Alignment.centerLeft,
-            child: TextButton(
-              onPressed: () => showModalBottomSheet<void>(
-                context: context,
-                isScrollControlled: true,
-                showDragHandle: true,
-                builder: (_) => DraggableScrollableSheet(
-                  expand: false,
-                  initialChildSize: 0.7,
-                  builder: (_, controller) => ListView(
-                    controller: controller,
-                    padding: const EdgeInsets.fromLTRB(T.s4, 0, T.s4, T.s6),
-                    children: [
-                      Text('Past medicines (${medicines.length})', style: T.title),
-                      const SizedBox(height: T.s3),
-                      for (final m in medicines) _row(m),
-                    ],
+            child: ActionLink(
+              label: l10n.ptViewAllCount(medicines.length),
+              onTap:
+                  () => showModalBottomSheet<void>(
+                    context: context,
+                    isScrollControlled: true,
+                    showDragHandle: true,
+                    builder:
+                        (sheet) => DraggableScrollableSheet(
+                          expand: false,
+                          initialChildSize: 0.7,
+                          builder:
+                              (_, controller) => ListView(
+                                controller: controller,
+                                padding: const EdgeInsets.fromLTRB(
+                                  T.s5,
+                                  0,
+                                  T.s5,
+                                  T.s6,
+                                ),
+                                children: [
+                                  Text(
+                                    l10n.ptPastMedicines,
+                                    style: T.title.copyWith(color: T.ink),
+                                  ),
+                                  for (final (i, m) in medicines.indexed) ...[
+                                    if (i > 0)
+                                      const Divider(height: 1, color: T.line),
+                                    _row(sheet, m),
+                                  ],
+                                ],
+                              ),
+                        ),
                   ),
-                ),
-              ),
-              child: Text('View all (${medicines.length})'),
             ),
           ),
       ],
@@ -328,6 +410,7 @@ class AlsoOnListNote extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     final others = medication.alsoOnList;
     if (others.isEmpty) return const SizedBox.shrink();
     final elsewhere = others.any((o) => !o.samePractice);
@@ -336,26 +419,17 @@ class AlsoOnListNote extends StatelessWidget {
         .where((s) => s.isNotEmpty)
         .toSet()
         .join(', ');
-    final what = strengths.isEmpty ? medication.name : '${medication.name} $strengths';
+    final what =
+        strengths.isEmpty ? medication.name : '${medication.name} $strengths';
     return Padding(
-      padding: const EdgeInsets.only(top: T.s3),
-      child: InnerTile(
-        tone: T.warningTint,
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Icon(Icons.warning_amber_rounded, color: T.warning),
-            const SizedBox(width: T.s2),
-            Expanded(
-              child: Text(
-                elsewhere
-                    ? 'Also prescribed by another clinic: $what. Ask your doctor before taking both.'
-                    : 'Also on your list: $what. Ask your doctor before taking both.',
-                style: T.small.copyWith(color: T.ink),
-              ),
-            ),
-          ],
-        ),
+      padding: const EdgeInsets.only(top: T.s2),
+      child: NoticeTile(
+        status: Status.watch,
+        icon: Icons.warning_amber_rounded,
+        message:
+            elsewhere
+                ? l10n.ptAlsoPrescribedElsewhere(what)
+                : l10n.ptAlsoOnYourList(what),
       ),
     );
   }
