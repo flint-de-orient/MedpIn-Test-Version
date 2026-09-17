@@ -7,12 +7,13 @@ import 'package:image_picker/image_picker.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../core/capabilities/capabilities.dart';
 import '../../../core/router/area.dart';
 
 import '../../../core/network/api_exception.dart';
 import '../../../shared/data/upload_repository.dart';
-import '../../../core/theme/app_colors.dart';
-import '../../../core/theme/app_spacing.dart';
+import '../../../core/theme/tokens.dart';
+import '../../../shared/widgets/load_failed.dart';
 import '../../chat/domain/chat_message.dart';
 import '../../chat/data/chat_repository.dart';
 
@@ -23,16 +24,33 @@ import '../../../shared/widgets/user_avatar.dart';
 import '../data/clinician_repository.dart';
 import '../../chat/presentation/widgets/edit_message_sheet.dart';
 import '../../chat/presentation/widgets/assistant_control.dart';
+import 'widgets/inbox_states.dart';
 
 /// What the doctor's attach button offers.
 enum _DoctorAttach { camera, gallery, document }
 
-/// The clinician's view of a patient's conversation.
+/// The clinician's view of a patient's conversation — the doctor's, and the
+/// front desk's.
 ///
 /// Renders with [ChatMessageBubble] — the same widget the patient's Care Team
 /// screen uses — so the doctor is looking at exactly what the patient is
 /// looking at, down to the emergency cards and citations. A separate clinician
 /// chat UI was what let the two drift into showing different conversations.
+///
+/// ---- What changed, and why -------------------------------------------------
+///
+/// Re-reading after a send that then failed replaced the whole conversation
+/// with "Could not load the conversation", and a poll that failed was silently
+/// ignored, so the thread could sit hours out of date with nothing saying so.
+/// The messages that loaded now stay on screen, marked with when they loaded.
+///
+/// A role that may read conversations but not answer them was shown a
+/// composer whose every send the server refused. It is told it can read and
+/// not reply, and a role that may not read them at all is told that, rather
+/// than that the thread failed to load.
+///
+/// The name in the header was cut to "Kalyani Bandyopadh…" by the controls
+/// beside it. The bar grows with the text size, and the name has two lines.
 class PatientThreadScreen extends ConsumerStatefulWidget {
   const PatientThreadScreen({
     super.key,
@@ -77,7 +95,16 @@ class _PatientThreadScreenState extends ConsumerState<PatientThreadScreen> {
   /// True while the doctor is recording a reply, which swaps the composer for
   /// [VoiceRecorderBar] — same treatment as the patient's side.
   bool _recording = false;
+
+  /// Why nothing could be shown — only ever set while there are no messages.
   Object? _error;
+
+  /// A read failed after messages had loaded, so what is on screen may be out
+  /// of date. The messages stay; this says so.
+  bool _stale = false;
+
+  /// When the messages on screen last arrived from the server.
+  DateTime? _loadedAt;
 
   /// Whether the newest message has scrolled out of view. Same affordance the
   /// patient has: on a long thread, reading back and then returning to the
@@ -156,25 +183,40 @@ class _PatientThreadScreenState extends ConsumerState<PatientThreadScreen> {
 
   Future<void> _pollForUpdates() async {
     if (!mounted || _sending || _loading) return;
+    // A role that may not read the thread would only collect refusals.
+    if (!mayReadConversations(ref.read(capabilitySetProvider))) return;
+    if (refusedForRole(_error)) return;
     try {
       final result = await ref
           .read(clinicianRepositoryProvider)
           .patientThread(widget.patientId);
       if (!mounted) return;
+      _loadedAt = DateTime.now();
+      final recovered = _stale || _error != null;
       // Count is not the only thing that changes.
       //
       // This compared lengths and returned unless the thread had GROWN, so an
       // edited message, a deleted-for-everyone tombstone and a turn whose
       // attachments finished uploading all went unnoticed until the screen was
       // left and reopened. Compare what is actually on the row.
-      if (!_threadChanged(result.messages, _messages)) return;
+      final changed = _threadChanged(result.messages, _messages);
+      if (!changed && !recovered) return;
       final grew = result.messages.length > _messages.length;
-      setState(() => _messages = result.messages);
+      setState(() {
+        _messages = result.messages;
+        _stale = false;
+        _error = null;
+      });
       // Only follow a genuinely new message down; re-rendering an edit should
       // not yank the reader away from where they were looking.
       if (grew) _scrollToBottom();
-    } on ApiException {
-      // Ignored — the next tick retries.
+    } catch (_) {
+      // Any failure, not only an ApiException: a narrow catch is how a poll
+      // quietly stops for the rest of a session. The next tick retries; until
+      // one succeeds, the messages on screen are marked as possibly old.
+      if (mounted && _messages.isNotEmpty && !_stale) {
+        setState(() => _stale = true);
+      }
     }
   }
 
@@ -191,13 +233,22 @@ class _PatientThreadScreenState extends ConsumerState<PatientThreadScreen> {
         _patientAvatarUrl = result.patientAvatarUrl ?? _patientAvatarUrl;
         _loading = false;
         _error = null;
+        _stale = false;
+        _loadedAt = DateTime.now();
       });
       _scrollToBottom();
-    } on ApiException catch (e) {
+    } catch (e) {
       if (!mounted) return;
       setState(() {
         _loading = false;
-        _error = e;
+        // Messages already on screen are kept and marked, never replaced by
+        // an error: a reload after a send that fails must not blank the
+        // conversation the doctor is in the middle of.
+        if (_messages.isEmpty) {
+          _error = e;
+        } else {
+          _stale = true;
+        }
       });
     }
   }
@@ -553,114 +604,137 @@ class _PatientThreadScreenState extends ConsumerState<PatientThreadScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final caps = ref.watch(capabilitySetProvider);
+    final mayRead = mayReadConversations(caps) && !refusedForRole(_error);
+    final mayReply = mayReplyInConversations(caps);
+    final name = _patientName;
+
+    // The bar grows with the text size, so a two-line name is never cut.
+    final barHeight =
+        MediaQuery.textScalerOf(
+          context,
+        ).scale(T.s12 + T.s4).clamp(kToolbarHeight, T.s12 * 2).toDouble();
+
     return Scaffold(
       appBar: AppBar(
+        toolbarHeight: barHeight,
         titleSpacing: 0,
-        // The face and the name ARE the way into the record now.
-        //
-        // There was a separate icon in the actions for it, which is one more
-        // thing competing for a row that also holds an assistant switch and a
-        // call button — and tapping a person's photograph to see who they are
-        // is what every messaging app has trained people to expect.
+        // The face and the name are the way into the record: tapping a
+        // person's photograph to see who they are is what every messaging app
+        // has taught people to expect.
         title: Semantics(
           button: true,
-          label: 'Open ${_patientName ?? 'patient'} record',
+          label: 'Open ${name ?? 'the patient'}’s record',
+          excludeSemantics: true,
           child: InkWell(
+            borderRadius: BorderRadius.circular(T.rControl),
             // The prefix, not a literal: this header is the front desk's only
             // way into a record, and `/clinician/...` is an area the router
             // bounces staff straight out of — onto a blank Today.
             onTap:
                 () => context.push(
                   '${areaPrefix(ref)}/patients/${widget.patientId}',
-                  extra: _patientName,
+                  extra: name,
                 ),
-            child: Row(
-              children: [
-                UserAvatar(
-                  name: _patientName ?? '?',
-                  avatarUrl: _patientAvatarUrl,
-                  accent: AppColors.accentOn(context),
-                  size: 36,
-                ),
-                const SizedBox(width: 8),
-                Flexible(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        _patientName ?? 'Conversation',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          color: AppColors.accentOn(context),
-                          fontWeight: FontWeight.w700,
-                          fontSize: 16,
-                        ),
-                      ),
-                      // Says what tapping does, and takes the pressure off the
-                      // name — which was being cut to "Rahul…" by the controls
-                      // beside it even though there was room on a second line.
-                      Text(
-                        'View record',
-                        maxLines: 1,
-                        style: TextStyle(
-                          fontSize: 11,
-                          color: AppColors.accentOn(
-                            context,
-                          ).withValues(alpha: 0.75),
-                        ),
-                      ),
-                    ],
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: T.s1),
+              child: Row(
+                children: [
+                  UserAvatar(
+                    name: nameForInitial(name ?? '?'),
+                    avatarUrl: _patientAvatarUrl,
+                    accent: T.primary,
+                    size: T.s8 + T.s1,
                   ),
-                ),
-              ],
+                  const SizedBox(width: T.s3),
+                  Flexible(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          name ?? 'Conversation',
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: T.bodyStrong.copyWith(
+                            color: T.ink,
+                            height: 1.25,
+                          ),
+                        ),
+                        // Says what tapping does.
+                        Text(
+                          'View record',
+                          style: T.label.copyWith(
+                            color: T.primary,
+                            letterSpacing: 0,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         ),
         actions: [
-          // In the thread's own header, not a settings screen: the decision is
-          // about this conversation and is normally made on opening it.
-          AssistantToggle(patientId: widget.patientId, kind: ThreadKind.care),
+          if (mayRead && mayReply)
+            // In the thread's own header, not a settings screen: the decision
+            // is about this conversation and is normally made on opening it.
+            AssistantToggle(patientId: widget.patientId, kind: ThreadKind.care),
           // Calling belongs here rather than on the inbox row: the decision to
-          // stop typing and phone someone is made while reading the exchange,
-          // not while scanning the list.
-          IconButton(
-            tooltip: 'Call ${_patientName ?? 'patient'}',
-            icon: Icon(Icons.call_rounded, color: AppColors.accentOn(context)),
-            onPressed: _patientPhone == null ? null : _call,
-          ),
+          // stop typing and phone someone is made while reading the exchange.
+          if (_patientPhone != null)
+            IconButton(
+              tooltip: 'Call ${name ?? 'the patient'}',
+              icon: const Icon(Icons.call_outlined, color: T.primary),
+              onPressed: _call,
+            ),
+          const SizedBox(width: T.s1),
         ],
       ),
-      // Matches the patient's screen: a fixed background that never repaints as
-      // the keyboard animates.
+      // Matches the patient's screen: a fixed background that never repaints
+      // as the keyboard animates.
       resizeToAvoidBottomInset: false,
       body: ChatBackground(
         child: _KeyboardInset(
           child: Column(
             children: [
+              if (mayRead && _stale && _messages.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(T.s4, T.s2, T.s4, 0),
+                  child: StaleNotice.english(
+                    context: context,
+                    what: 'the conversation',
+                    loadedAt: _loadedAt,
+                    onRetry: _load,
+                  ),
+                ),
               Expanded(
                 child: Stack(
                   children: [
-                    _body(),
+                    _body(mayRead),
                     if (_showJumpToLatest)
                       Positioned(
-                        right: AppSpacing.md,
-                        bottom: AppSpacing.md,
-                        child: Material(
-                          color: AppColors.accentOn(context),
-                          shape: const CircleBorder(),
-                          elevation: 3,
-                          child: InkWell(
-                            customBorder: const CircleBorder(),
-                            onTap: _scrollToBottom,
-                            child: const SizedBox(
-                              width: 48,
-                              height: 46,
-                              child: Icon(
-                                Icons.keyboard_arrow_down_rounded,
-                                color: Colors.white,
-                                size: 26,
+                        right: T.s4,
+                        bottom: T.s4,
+                        child: Semantics(
+                          button: true,
+                          label: 'Jump to the newest message',
+                          excludeSemantics: true,
+                          child: Material(
+                            color: T.primary,
+                            shape: const CircleBorder(),
+                            elevation: 3,
+                            child: InkWell(
+                              customBorder: const CircleBorder(),
+                              onTap: _scrollToBottom,
+                              child: const SizedBox.square(
+                                dimension: T.tap,
+                                child: Icon(
+                                  Icons.keyboard_arrow_down_rounded,
+                                  color: T.surfaceRaised,
+                                ),
                               ),
                             ),
                           ),
@@ -669,30 +743,34 @@ class _PatientThreadScreenState extends ConsumerState<PatientThreadScreen> {
                   ],
                 ),
               ),
-              // The turn being quoted, shown above the composer until sent.
-              if (_replyingTo != null)
-                _ReplyPreviewBar(
-                  message: _replyingTo!,
-                  onCancel: () => setState(() => _replyingTo = null),
-                ),
-              // Recording replaces the composer, as on the patient's side.
-              if (_recording)
-                VoiceRecorderBar(
-                  onCancel: () => setState(() => _recording = false),
-                  onSend: (path, _) {
-                    setState(() => _recording = false);
-                    _sendVoiceNote(path);
-                  },
-                )
-              else
-                _Composer(
-                  controller: _controller,
-                  focusNode: _focusNode,
-                  sending: _sending,
-                  onSend: _send,
-                  onRecord: () => setState(() => _recording = true),
-                  onAttach: _sendImage,
-                ),
+              if (mayRead) ...[
+                // The turn being quoted, shown above the composer until sent.
+                if (_replyingTo != null)
+                  _ReplyPreviewBar(
+                    message: _replyingTo!,
+                    onCancel: () => setState(() => _replyingTo = null),
+                  ),
+                if (!mayReply)
+                  const _ReadOnlyNote()
+                // Recording replaces the composer, as on the patient's side.
+                else if (_recording)
+                  VoiceRecorderBar(
+                    onCancel: () => setState(() => _recording = false),
+                    onSend: (path, _) {
+                      setState(() => _recording = false);
+                      _sendVoiceNote(path);
+                    },
+                  )
+                else
+                  _Composer(
+                    controller: _controller,
+                    focusNode: _focusNode,
+                    sending: _sending,
+                    onSend: _send,
+                    onRecord: () => setState(() => _recording = true),
+                    onAttach: _sendImage,
+                  ),
+              ],
             ],
           ),
         ),
@@ -700,57 +778,42 @@ class _PatientThreadScreenState extends ConsumerState<PatientThreadScreen> {
     );
   }
 
-  Widget _body() {
+  Widget _body(bool mayRead) {
+    if (!mayRead) {
+      return ListView(
+        padding: const EdgeInsets.all(T.s4),
+        children: const [NotYourRole(what: 'patients’ conversations')],
+      );
+    }
+
     if (_loading) return const Center(child: CircularProgressIndicator());
 
     if (_error != null) {
-      return Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text('Could not load the conversation'),
-            const SizedBox(height: AppSpacing.sm),
-            OutlinedButton(onPressed: _load, child: const Text('Retry')),
-          ],
-        ),
+      return ListView(
+        padding: const EdgeInsets.all(T.s4),
+        children: [LoadFailed(what: 'the conversation', onRetry: _retry)],
       );
     }
 
     if (_messages.isEmpty) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(AppSpacing.lg),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                Icons.forum_outlined,
-                size: 48,
-                color: Theme.of(context).colorScheme.outlineVariant,
-              ),
-              const SizedBox(height: AppSpacing.md),
-              Text(
-                'No messages yet.\nAnything you send starts the conversation.',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
-                ),
-              ),
-            ],
+      return ListView(
+        padding: const EdgeInsets.all(T.s4),
+        children: const [
+          InboxEmpty(
+            icon: Icons.forum_outlined,
+            title: 'No messages yet',
+            body:
+                'Nothing has been written in this conversation. Anything you '
+                'send starts it, and the patient reads it in the app.',
           ),
-        ),
+        ],
       );
     }
 
     return ListView.builder(
       controller: _scrollController,
       // Bottom clearance for the floating jump-to-latest button.
-      padding: const EdgeInsets.fromLTRB(
-        AppSpacing.md,
-        AppSpacing.md,
-        AppSpacing.md,
-        AppSpacing.md + 48,
-      ),
+      padding: const EdgeInsets.fromLTRB(T.s4, T.s4, T.s4, T.s4 + T.tap),
       itemCount: _messages.length,
       itemBuilder: (context, i) {
         final m = _messages[i];
@@ -779,6 +842,15 @@ class _PatientThreadScreenState extends ConsumerState<PatientThreadScreen> {
       },
     );
   }
+
+  /// Try the first load again, from a clean slate.
+  Future<void> _retry() async {
+    setState(() {
+      _error = null;
+      _loading = true;
+    });
+    await _load();
+  }
 }
 
 /// See the identical widget on the patient's chat screen: reading the keyboard
@@ -798,6 +870,32 @@ class _KeyboardInset extends StatelessWidget {
   }
 }
 
+/// Where the composer would be, for a role that may read but not answer.
+class _ReadOnlyNote extends StatelessWidget {
+  const _ReadOnlyNote();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      decoration: const BoxDecoration(
+        color: T.surfaceRaised,
+        border: Border(top: BorderSide(color: T.line)),
+      ),
+      child: SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.all(T.s4),
+          child: Text(
+            'Your role can read this conversation but not reply to it.',
+            style: T.small.copyWith(color: T.inkMuted),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 /// The quoted-turn strip shown above the composer while the doctor is replying
 /// to a specific message. Cancelling clears the quote.
 class _ReplyPreviewBar extends StatelessWidget {
@@ -808,19 +906,28 @@ class _ReplyPreviewBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    final who = message.isUser ? (message.senderName ?? 'Patient') : 'You';
+    // Who is being quoted. Every turn that was not the patient's said "You",
+    // so quoting the assistant read as quoting yourself.
+    final who =
+        message.isUser
+            ? (message.senderName ?? 'the patient')
+            : message.isClinician || message.isDietician
+            ? (message.senderName ?? 'the clinic')
+            : 'the assistant';
     final preview =
         message.content.trim().isNotEmpty
             ? message.content.trim()
             : (message.voiceNotes.isNotEmpty ? 'Voice message' : 'Attachment');
     return Container(
-      color: scheme.surfaceContainerHigh.withValues(alpha: 0.6),
-      padding: const EdgeInsets.fromLTRB(AppSpacing.md, 8, AppSpacing.sm, 8),
+      decoration: const BoxDecoration(
+        color: T.surfaceRaised,
+        border: Border(top: BorderSide(color: T.line)),
+      ),
+      padding: const EdgeInsets.fromLTRB(T.s4, T.s2, T.s1, T.s2),
       child: Row(
         children: [
-          Container(width: 3, height: 34, color: AppColors.accentOn(context)),
-          const SizedBox(width: 8),
+          Container(width: T.s1, height: T.s8, color: T.primary),
+          const SizedBox(width: T.s2),
           Expanded(
             child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -828,27 +935,20 @@ class _ReplyPreviewBar extends StatelessWidget {
               children: [
                 Text(
                   'Replying to $who',
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700,
-                    color: AppColors.accentOn(context),
-                  ),
+                  style: T.label.copyWith(color: T.primary),
                 ),
                 Text(
                   preview,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: 14,
-                    color: scheme.onSurfaceVariant,
-                  ),
+                  style: T.small.copyWith(color: T.inkMuted),
                 ),
               ],
             ),
           ),
           IconButton(
             tooltip: 'Cancel reply',
-            icon: const Icon(Icons.close_rounded, size: 20),
+            icon: const Icon(Icons.close_rounded),
             onPressed: onCancel,
           ),
         ],
@@ -872,136 +972,124 @@ class _Composer extends StatelessWidget {
   /// voice — which carries reassurance that text does not.
   final VoidCallback onRecord;
 
-  /// Attach a photo to send the patient — same affordance the patient has, for
-  /// sending back a marked-up report, a diagram, or a photographed note.
+  /// Attach a photo or a document to send the patient.
   final VoidCallback onAttach;
 
   final TextEditingController controller;
 
   /// Held by the screen rather than the TextField's own internal one, so a
-  /// rebuild from the three-second poll cannot drop focus while the doctor is
-  /// mid-sentence.
+  /// rebuild from the poll cannot drop focus while the doctor is mid-sentence.
   final FocusNode focusNode;
   final bool sending;
   final VoidCallback onSend;
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-
-    return Container(
-      // Transparent bar so the chat wallpaper shows behind the composer,
-      // WhatsApp-style, instead of a solid strip hiding it. The input pill keeps
-      // its own fill so typing stays readable.
-      color: Colors.transparent,
-      child: SafeArea(
-        top: false,
-        child: Padding(
-          padding: const EdgeInsets.all(AppSpacing.sm),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Expanded(
-                // Whole pill is the tap target, so the keyboard opens on the
-                // first tap wherever it lands.
-                child: GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onTap: () {
-                    if (!focusNode.hasFocus) focusNode.requestFocus();
-                  },
-                  child: Container(
-                    constraints: const BoxConstraints(minHeight: 52),
-                    decoration: BoxDecoration(
-                      // Filled, not outlined — matches the patient's composer.
-                      color: scheme.surfaceContainerHigh.withValues(
-                        alpha: 0.55,
+    return SafeArea(
+      top: false,
+      child: Padding(
+        padding: const EdgeInsets.all(T.s2),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            Expanded(
+              // Whole pill is the tap target, so the keyboard opens on the
+              // first tap wherever it lands.
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () {
+                  if (!focusNode.hasFocus) focusNode.requestFocus();
+                },
+                child: Container(
+                  constraints: const BoxConstraints(minHeight: T.hControl),
+                  decoration: BoxDecoration(
+                    color: T.surfaceRaised,
+                    borderRadius: BorderRadius.circular(T.rControl),
+                    border: Border.all(color: T.line),
+                  ),
+                  padding: const EdgeInsets.symmetric(horizontal: T.s1),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      // Attach on the left, matching the patient's composer.
+                      IconButton(
+                        tooltip: 'Attach a photo or document',
+                        onPressed: sending ? null : onAttach,
+                        icon: const Icon(
+                          Icons.attach_file_rounded,
+                          color: T.inkMuted,
+                        ),
                       ),
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: Padding(
-                      padding: const EdgeInsets.only(left: 4, right: 4),
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.end,
-                        children: [
-                          // Attach on the LEFT, matching the patient's composer.
-                          IconButton(
-                            tooltip: 'Attach a photo',
-                            onPressed: sending ? null : onAttach,
-                            icon: Icon(
-                              Icons.attach_file_rounded,
-                              color: scheme.onSurfaceVariant,
+                      Expanded(
+                        child: TextField(
+                          controller: controller,
+                          focusNode: focusNode,
+                          minLines: 1,
+                          maxLines: 5,
+                          textCapitalization: TextCapitalization.sentences,
+                          style: T.body.copyWith(color: T.ink),
+                          decoration: const InputDecoration(
+                            hintText: 'Reply to this patient…',
+                            hintMaxLines: 1,
+                            border: InputBorder.none,
+                            enabledBorder: InputBorder.none,
+                            focusedBorder: InputBorder.none,
+                            filled: false,
+                            isDense: true,
+                            contentPadding: EdgeInsets.symmetric(
+                              vertical: T.s4,
                             ),
                           ),
-                          Expanded(
-                            child: TextField(
-                              controller: controller,
-                              focusNode: focusNode,
-                              minLines: 1,
-                              maxLines: 5,
-                              textCapitalization: TextCapitalization.sentences,
-                              style: const TextStyle(fontSize: 16),
-                              decoration: const InputDecoration(
-                                hintText: 'Reply to this patient…',
-                                hintMaxLines: 1,
-                                border: InputBorder.none,
-                                enabledBorder: InputBorder.none,
-                                focusedBorder: InputBorder.none,
-                                filled: false,
-                                isDense: true,
-                                contentPadding: EdgeInsets.symmetric(
-                                  vertical: 16,
-                                ),
-                              ),
-                              onSubmitted: (_) => onSend(),
-                            ),
-                          ),
-                          // Speak instead of typing, same as the patient has.
-                          IconButton(
-                            tooltip: 'Record a voice reply',
-                            onPressed: sending ? null : onRecord,
-                            icon: Icon(
-                              Icons.mic_none_rounded,
-                              color: scheme.onSurfaceVariant,
-                            ),
-                          ),
-                        ],
+                          onSubmitted: (_) => onSend(),
+                        ),
                       ),
-                    ),
+                      // Speak instead of typing, same as the patient has.
+                      IconButton(
+                        tooltip: 'Record a voice reply',
+                        onPressed: sending ? null : onRecord,
+                        icon: const Icon(
+                          Icons.mic_none_rounded,
+                          color: T.inkMuted,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ),
-              const SizedBox(width: AppSpacing.sm),
-              Material(
-                color: AppColors.accentOn(context),
+            ),
+            const SizedBox(width: T.s2),
+            Semantics(
+              button: true,
+              label: 'Send',
+              excludeSemantics: true,
+              child: Material(
+                color: T.primary,
                 shape: const CircleBorder(),
                 child: InkWell(
                   customBorder: const CircleBorder(),
                   onTap: sending ? null : onSend,
-                  child: SizedBox(
-                    width: 52,
-                    height: 52,
+                  child: SizedBox.square(
+                    dimension: T.hControl,
                     child: Center(
                       child:
                           sending
-                              ? const SizedBox(
-                                width: 20,
-                                height: 22,
+                              ? const SizedBox.square(
+                                dimension: T.s5,
                                 child: CircularProgressIndicator(
-                                  strokeWidth: 2.5,
-                                  color: Colors.white,
+                                  strokeWidth: 2,
+                                  color: T.surfaceRaised,
                                 ),
                               )
                               : const Icon(
                                 Icons.send_rounded,
-                                color: Colors.white,
-                                size: 24,
+                                color: T.surfaceRaised,
                               ),
                     ),
                   ),
                 ),
               ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
