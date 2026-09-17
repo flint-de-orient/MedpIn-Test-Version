@@ -57,12 +57,14 @@ describe('no scope means no assistant, not a general one', () => {
     assert.match(service, /No scope, no assistant/);
   });
 
-  test('a route can ask whether to show a composer, and gets the reviewed answer', () => {
-    // It read the role alone, which a scope still awaiting review also has.
-    // Whether a department answers is now one function's answer — see
-    // assistantAvailability.test.js, which runs it against a real database.
-    assert.match(service, /export async function departmentHasAssistant/);
-    assert.match(service, /assistantStatus\(\{ departmentId, practiceId, language \}\)\)\.enabled/);
+  test('whether a department answers is asked of one function, not worked out here', () => {
+    // departmentHasAssistant read the role alone, which a scope still awaiting
+    // review also has, and nothing called it. The answer now lives in
+    // assistantAvailability.js — assistantAvailability.test.js runs it against a
+    // real database — and the prompt context asks it before building anything.
+    assert.ok(!/export async function departmentHasAssistant/.test(service), 'a second answer to "is there an assistant" is back');
+    assert.match(service, /const availability = status \?\? \(await assistantStatus\(\{ department: row, practiceId, language \}\)\);/);
+    assert.match(service, /if \(!availability\.enabled\) return null;/);
   });
 
   test('a written scope awaiting review is not an assistant', () => {

@@ -168,14 +168,8 @@ export async function threadFor({ patientId, enrollmentId = null, departmentId =
   });
 }
 
-/**
- * Whether a reply may be generated in this thread at all.
- *
- * A department with no approved assistant gets silence, and the composer should
- * say so rather than accept a message nothing will answer. A practice's general
- * thread follows the practice's specialty; with no specialty on the practice it
- * keeps the assistant it has always had. See ai/assistantAvailability.js.
- */
-export async function threadHasAssistant(session, { practiceId = null, language = 'en' } = {}) {
-  return (await conversationAssistant({ session, practiceId, language })).enabled;
-}
+// Whether a reply may be generated in a thread is `conversationAssistant` in
+// ai/assistantAvailability.js: a department with no approved assistant gets
+// silence, a practice's general thread follows the practice's specialty, and
+// with no specialty on the practice it keeps the assistant it has always had.
+// The thread list above and the assistant itself both ask it.

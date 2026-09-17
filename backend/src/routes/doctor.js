@@ -2286,8 +2286,10 @@ router.get(
           ...(category ? { category } : {}),
           ...(language ? { language } : {}),
           ...(origin ? { origin } : {}),
+          // An id that is not one matches nothing — not the passages filed
+          // under no department, which is what `null` would have selected.
           ...(department
-            ? { department: mongoose.isValidObjectId(department) ? department : null }
+            ? { department: mongoose.isValidObjectId(department) ? department : new mongoose.Types.ObjectId() }
             : {}),
         },
         await readableKnowledge(req),

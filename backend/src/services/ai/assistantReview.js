@@ -152,12 +152,16 @@ export async function adoptSharedDraft({ draft, practiceId, userId, approve, ver
     ? { $set: { ...fields, approvedBy: oid(userId), approvedAt: now } }
     : { $set: fields, $unset: { approvedBy: '', approvedAt: '' } };
 
+  // `.exec()` so the write visibly runs where it is built — see
+  // queriesActuallyRun.test.js on queries that are built and never executed.
   const write = () =>
     KnowledgeChunk.findOneAndUpdate({ practice, adoptedFrom: draft._id }, update, {
       upsert: true,
       new: true,
       setDefaultsOnInsert: true,
-    }).lean();
+    })
+      .lean()
+      .exec();
 
   try {
     return { chunk: await write(), created: !existing, unchanged: false };

@@ -170,14 +170,7 @@ export function buildScopeBlock({ department, role, conditions, language }) {
   return lines.join('\n');
 }
 
-/**
- * Whether a thread in this department may produce an AI reply at all.
- *
- * Separate from [assistantContextFor] so a route can decide whether to show a
- * composer without paying for the patient's conditions. The practice matters:
- * a shared draft scope is on only where a clinician there approved it.
- */
-export async function departmentHasAssistant(departmentId, { practiceId = null, language = 'en' } = {}) {
-  if (!departmentId) return false;
-  return (await assistantStatus({ departmentId, practiceId, language })).enabled;
-}
+// Whether a department may answer at all is not asked here any more. A route
+// that needs a yes or no asks assistantAvailability.js — `assistantStatus` for a
+// department, `conversationAssistant` for a thread — which is the one place the
+// answer is computed.
