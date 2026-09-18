@@ -19,7 +19,7 @@ Nothing here can be done from the codebase. Roughly in the order I'd do them.
 
 ### 1. Enrol two-factor on the admin console
 
-The single weakest point in the system. `admin.medpin.in` is public, can suspend
+The single weakest point in the system. `testadmin.medpin.in` is public, can suspend
 every practice, and today a password is the only thing in the way. The console
 already nags about it on every page. Five minutes at **Account → Two-factor**.
 

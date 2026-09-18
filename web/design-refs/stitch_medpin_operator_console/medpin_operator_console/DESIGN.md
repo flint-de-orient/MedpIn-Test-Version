@@ -111,4 +111,4 @@ spacing:
 ---
 
 # MedPin operator console — design system
-The web admin console at admin.medpin.in. Brand color is #003399 on near-white ground (#fbfcfd) with white panels, 6px radii, hairline borders, and zero decorative gradients.
+The web admin console at testadmin.medpin.in. Brand color is #003399 on near-white ground (#fbfcfd) with white panels, 6px radii, hairline borders, and zero decorative gradients.

@@ -449,7 +449,7 @@ describe('the operator console cannot be locked out silently', () => {
      * relied on — and the one host it exists for is not in it.
      */
     withEnv({
-      ADMIN_CONSOLE_URL: 'https://admin.medpin.in/applications',
+      ADMIN_CONSOLE_URL: 'https://testadmin.medpin.in/applications',
       ALLOWED_ORIGINS: 'https://console.medpin.in',
     });
 
@@ -462,8 +462,8 @@ describe('the operator console cannot be locked out silently', () => {
     // ADMIN_CONSOLE_URL is a URL with a path; ALLOWED_ORIGINS holds origins.
     // Compared as written, the two never match.
     withEnv({
-      ADMIN_CONSOLE_URL: 'https://admin.medpin.in/applications',
-      ALLOWED_ORIGINS: 'https://admin.medpin.in',
+      ADMIN_CONSOLE_URL: 'https://testadmin.medpin.in/applications',
+      ALLOWED_ORIGINS: 'https://testadmin.medpin.in',
     });
     assert.equal(find('browserOrigins').state, 'ready');
   });
@@ -484,17 +484,17 @@ describe('the operator console cannot be locked out silently', () => {
 
   test('a trailing slash is trimmed rather than left to be debugged', () => {
     /*
-     * `https://admin.medpin.in/` is what a person pastes out of an address
+     * `https://testadmin.medpin.in/` is what a person pastes out of an address
      * bar. No browser ever sends that as an Origin, so the match fails, every
      * request is refused, and nothing says why.
      */
     withEnv({
       ADMIN_CONSOLE_URL: '',
-      ALLOWED_ORIGINS: 'https://admin.medpin.in/, https://console.medpin.in',
+      ALLOWED_ORIGINS: 'https://testadmin.medpin.in/, https://console.medpin.in',
     });
 
     assert.deepEqual(allowedOrigins(), [
-      'https://admin.medpin.in',
+      'https://testadmin.medpin.in',
       'https://console.medpin.in',
     ]);
     assert.equal(find('browserOrigins').state, 'ready');
@@ -502,7 +502,7 @@ describe('the operator console cannot be locked out silently', () => {
 
   test('an entry that is not a bare origin is degraded', () => {
     // Worse than missing, because it looks configured.
-    withEnv({ ADMIN_CONSOLE_URL: '', ALLOWED_ORIGINS: 'https://admin.medpin.in/console' });
+    withEnv({ ADMIN_CONSOLE_URL: '', ALLOWED_ORIGINS: 'https://testadmin.medpin.in/console' });
 
     const check = find('browserOrigins');
     assert.equal(check.state, 'degraded');

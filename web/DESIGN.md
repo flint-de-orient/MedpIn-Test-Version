@@ -1,6 +1,6 @@
 # MedPin operator console — design system
 
-The web admin console at `admin.medpin.in`. This document covers the console
+The web admin console at `testadmin.medpin.in`. This document covers the console
 only; `PROJECT_STATUS.md` at the repository root covers the backend and the
 Flutter app as well.
 

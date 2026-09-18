@@ -27,7 +27,8 @@ const read = (p) => readFileSync(root(p), 'utf8');
 const ecosystem = read('deploy/ecosystem.config.cjs');
 const stagingEnv = read('deploy/staging.env.example');
 const stagingVhost = read('deploy/apache/staging.clinq.flintdeorient.in.conf');
-const adminVhost = read('deploy/apache/admin.medpin.in.conf');
+const adminVhost = read('deploy/apache/testadmin.medpin.in.conf');
+const consoleDeploy = read('web/deploy.sh');
 const runbook = read('deploy/STAGING.md');
 
 /** The value of a key inside one pm2 app block. */
@@ -151,7 +152,7 @@ describe('staging cannot message a real patient by default', () => {
 describe('the console vhost carries the proxy the console needs', () => {
   test('both prefixes the console actually calls', () => {
     /*
-     * `admin.medpin.in` proxies exactly `/api/v1/admin/` and
+     * `testadmin.medpin.in` proxies exactly `/api/v1/admin/` and
      * `/api/v1/applications/`, and the console calls exactly those two. That
      * narrowness is the right arrangement rather than a half-finished one:
      * `/auth/`, `/doctor/` and `/billing/` are not reachable behind the
@@ -169,6 +170,34 @@ describe('the console vhost carries the proxy the console needs', () => {
     // SameSite=Strict forbids cross-origin, so the API has to come from the
     // console's own host or the console cannot authenticate at all.
     assert.match(adminVhost, /SameSite=Strict|first-party/i);
+  });
+
+  test('the test console reaches the test backend, never production’s', () => {
+    // A console that can suspend every practice, at a test address, pointed at
+    // live data, is the mistake this file exists to make impossible.
+    assert.match(adminVhost, /ServerName\s+testadmin\.medpin\.in/);
+    const port = appValue('clinq-staging', 'PORT');
+    assert.match(adminVhost, new RegExp(`127\\.0\\.0\\.1:${port}/api/v1/`), `the test console does not proxy to ${port}`);
+    assert.ok(
+      !adminVhost.includes(`127.0.0.1:${appValue('clinq', 'PORT')}`),
+      'the test console proxies to production',
+    );
+  });
+
+  test('and ships to its own folder, so it cannot overwrite the live console', () => {
+    // Both consoles are on one server. The live one is in /var/www/medpin-admin.
+    const root = adminVhost.match(/DocumentRoot\s+(\S+)/)?.[1];
+    assert.equal(root, '/var/www/medpin-testadmin');
+    assert.match(consoleDeploy, /WEB_ROOT="\$\{WEB_ROOT:-\/var\/www\/medpin-testadmin\}"/);
+    const policy = adminVhost.match(/Include\s+(\S+csp\.conf)/)?.[1];
+    assert.equal(policy, '/etc/apache2/conf-available/medpin-testadmin-csp.conf');
+    assert.ok(consoleDeploy.includes(`CSP_PATH:-${policy}`), 'deploy.sh uploads the policy somewhere the vhost does not read');
+  });
+
+  test('and the test backend accepts it as its console', () => {
+    assert.match(stagingEnv, /^ALLOWED_ORIGINS=https:\/\/testadmin\.medpin\.in$/m);
+    assert.match(stagingEnv, /^ADMIN_CONSOLE_URL=https:\/\/testadmin\.medpin\.in$/m);
+    assert.match(stagingEnv, /^ADMIN_RP_ID=testadmin\.medpin\.in$/m);
   });
 });
 

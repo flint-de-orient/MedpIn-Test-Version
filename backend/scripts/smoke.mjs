@@ -3,7 +3,7 @@
  * Verify a deployed origin, from outside it.
  *
  *   node scripts/smoke.mjs https://staging.clinq.flintdeorient.in
- *   node scripts/smoke.mjs https://admin.medpin.in        # the console's proxy
+ *   node scripts/smoke.mjs https://testadmin.medpin.in        # the console's proxy
  *
  * Exits non-zero if anything fails, so a deploy can gate on it.
  *
@@ -37,7 +37,7 @@ const surfaceArg = (process.argv[3] ?? '').replace(/^--/, '');
 if (!origin) {
   console.error('usage: node scripts/smoke.mjs <origin> [--api|--console]');
   console.error('   eg: node scripts/smoke.mjs https://staging.clinq.flintdeorient.in');
-  console.error('       node scripts/smoke.mjs https://admin.medpin.in --console');
+  console.error('       node scripts/smoke.mjs https://testadmin.medpin.in --console');
   process.exit(2);
 }
 
@@ -51,7 +51,7 @@ if (!origin) {
  * not proxied from this host". That was wrong, and wrong in the expensive
  * direction: it had already gone into an audit report as a production blocker.
  *
- * `admin.medpin.in` proxies exactly two prefixes — `/api/v1/admin/` and
+ * `testadmin.medpin.in` proxies exactly two prefixes — `/api/v1/admin/` and
  * `/api/v1/applications/` — and the console calls exactly those two and
  * nothing else. It is not a partial deployment. It is a correctly narrow one,
  * and narrow is better: `/auth/`, `/doctor/` and `/billing/` are not reachable

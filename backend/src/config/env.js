@@ -161,7 +161,7 @@ const schema = z.object({
 
   /*
    * Which browsers may call this API. Comma-separated, exact, e.g.
-   * `https://admin.medpin.in,https://console.medpin.in`
+   * `https://testadmin.medpin.in,https://console.medpin.in`
    *
    * Declared here rather than read straight out of `process.env` in app.js,
    * which is where it used to live. Unset in production, `cors()` was handed
@@ -175,7 +175,7 @@ const schema = z.object({
    * What is wrong is the *combination* — a console switched on with nothing
    * allowed to reach it — and `readiness()` is where combinations are judged.
    *
-   * Matching is exact, scheme and port included. `https://admin.medpin.in/`
+   * Matching is exact, scheme and port included. `https://testadmin.medpin.in/`
    * with the trailing slash is a different string and matches nothing, so
    * `allowedOrigins()` trims one rather than leaving it to be found at 9pm.
    */
@@ -329,7 +329,7 @@ export const isProd = env.NODE_ENV === 'production';
  * eventually disagree. The disagreement that matters here is a passkey
  * assertion accepted from an origin CORS would have refused.
  *
- * A trailing slash is trimmed rather than honoured. `https://admin.medpin.in/`
+ * A trailing slash is trimmed rather than honoured. `https://testadmin.medpin.in/`
  * is what a person pastes out of a browser's address bar, it is not equal to
  * the `Origin` header any browser sends, and the failure it causes — every
  * request refused, no error anywhere — looks nothing like its cause.

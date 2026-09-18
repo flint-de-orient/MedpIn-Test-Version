@@ -35,10 +35,13 @@ if [[ -z "$SERVER" ]]; then
   exit 1
 fi
 
-WEB_ROOT="${WEB_ROOT:-/var/www/medpin-admin}"
+# The test console at testadmin.medpin.in. It shares a server with the live
+# console, whose files are in /var/www/medpin-admin — so its own folder and its
+# own policy file, or deploying the test console would overwrite the live one.
+WEB_ROOT="${WEB_ROOT:-/var/www/medpin-testadmin}"
 # Apache reads conf-enabled only for server-wide config; this one is Included
 # by the vhost so it applies to this site alone. See DEPLOY.md.
-CSP_PATH="${CSP_PATH:-/etc/apache2/conf-available/medpin-admin-csp.conf}"
+CSP_PATH="${CSP_PATH:-/etc/apache2/conf-available/medpin-testadmin-csp.conf}"
 
 cd "$(dirname "$0")"
 

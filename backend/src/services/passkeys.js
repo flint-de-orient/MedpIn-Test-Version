@@ -29,7 +29,7 @@ import { allowedOrigins } from '../config/env.js';
  * and is in. That attack works against every TOTP deployment ever built.
  *
  * A passkey signature is bound to the origin by the browser. A page on
- * medpin-admin-login.example cannot obtain a signature that admin.medpin.in
+ * medpin-admin-login.example cannot obtain a signature that testadmin.medpin.in
  * will accept, because the browser refuses to produce one. The phishing attack
  * is not made harder, it is made impossible.
  *
@@ -49,7 +49,7 @@ const CHALLENGE_TTL_MS = 2 * 60 * 1000;
  * Which domain the credential is bound to.
  *
  * The relying-party id is an effective domain, not an origin: no scheme, no
- * port. A credential registered against `admin.medpin.in` is unusable anywhere
+ * port. A credential registered against `testadmin.medpin.in` is unusable anywhere
  * else, which is the property that makes phishing impossible — and also means
  * getting this wrong produces a credential that cannot be used at all.
  *

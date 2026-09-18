@@ -33,7 +33,7 @@ In the API's `.env`:
 
 ```
 ADMIN_JWT_SECRET=<the value above>
-ALLOWED_ORIGINS=https://admin.medpin.in
+ALLOWED_ORIGINS=https://testadmin.medpin.in
 ```
 
 `ADMIN_JWT_SECRET` **must differ from `JWT_ACCESS_SECRET`**. If they match, the
@@ -84,15 +84,15 @@ both halves from one origin is what lets the session cookie stay
 > host is never sent from a page on this one, so that arrangement cannot
 > authenticate at all. `'self'` is the version that matches the cookie.
 
-Written to `/etc/apache2/sites-available/admin.medpin.in.conf`:
+Written to `/etc/apache2/sites-available/testadmin.medpin.in.conf`:
 
 ```apache
 <VirtualHost *:443>
-    ServerName admin.medpin.in
+    ServerName testadmin.medpin.in
 
     SSLEngine on
-    SSLCertificateFile    /etc/letsencrypt/live/admin.medpin.in/fullchain.pem
-    SSLCertificateKeyFile /etc/letsencrypt/live/admin.medpin.in/privkey.pem
+    SSLCertificateFile    /etc/letsencrypt/live/testadmin.medpin.in/fullchain.pem
+    SSLCertificateKeyFile /etc/letsencrypt/live/testadmin.medpin.in/privkey.pem
 
     DocumentRoot /var/www/medpin-admin
 
@@ -132,8 +132,8 @@ Written to `/etc/apache2/sites-available/admin.medpin.in.conf`:
 </VirtualHost>
 
 <VirtualHost *:80>
-    ServerName admin.medpin.in
-    Redirect permanent / https://admin.medpin.in/
+    ServerName testadmin.medpin.in
+    Redirect permanent / https://testadmin.medpin.in/
 </VirtualHost>
 ```
 
@@ -141,17 +141,17 @@ Enable it, and the two modules the proxy needs:
 
 ```bash
 a2enmod proxy proxy_http headers ssl
-a2ensite admin.medpin.in
+a2ensite testadmin.medpin.in
 apache2ctl configtest && systemctl reload apache2
 ```
 
-Certificate: `certbot --apache -d admin.medpin.in`.
+Certificate: `certbot --apache -d testadmin.medpin.in`.
 
 Check the proxy before anything else — it is the piece whose absence looks like
 a broken console rather than a missing route:
 
 ```bash
-curl -s https://admin.medpin.in/api/v1/health
+curl -s https://testadmin.medpin.in/api/v1/health
 # {"status":"ok","db":"connected",...}
 ```
 

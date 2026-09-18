@@ -23,12 +23,12 @@ import crypto from 'node:crypto';
  * A strict cookie is never sent on a cross-site request, which is the whole
  * CSRF defence rather than a mitigation of it. The price is that the console
  * and the API must be the same site: a cookie set by `clinq.flintdeorient.in`
- * will not be sent from a page on `admin.medpin.in`, because those are
+ * will not be sent from a page on `testadmin.medpin.in`, because those are
  * different registrable domains.
  *
  * So production reverse-proxies `/api/v1/admin/` from the console's own host.
  * That is not a workaround — it is better than the cross-origin arrangement it
- * replaces. The cookie is now scoped to `admin.medpin.in` and is never sent
+ * replaces. The cookie is now scoped to `testadmin.medpin.in` and is never sent
  * anywhere else, so a script running on the *clinic* app cannot reach the admin
  * API with credentials even if it tries.
  *
