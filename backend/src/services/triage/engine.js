@@ -241,6 +241,34 @@ export function extractVitalsFromText(text) {
     if (v >= 50 && v <= 100) out.spo2 = v;
   }
 
+  // Pulse — "pulse 150", "heart rate 40", "140 bpm" — graded by the same limits
+  // as a logged reading (classifyVitals). It was graded when tapped in and
+  // ignored when typed, so "my pulse is 150" in the chat was routine. "hr" is
+  // left out: it is also "hour", and "sugar 180, 2 hr after food" is not a
+  // heart rate.
+  const pulse =
+    t.match(/\b(?:pulse|heart\s*rate|heart\s*beat)\b[^0-9\n]{0,15}(\d{2,3})\b/i) ??
+    t.match(/\b(\d{2,3})\s*(?:bpm|beats\s*(?:per|a|\/)\s*min\w*)\b/i) ??
+    t.match(/(?:পালস|নাড়ি|হৃদস্পন্দন|হার্ট\s*রেট)[^0-9\n]{0,15}(\d{2,3})/) ??
+    t.match(/(?:पल्स|नब्ज़|नब्ज|धड़कन|हार्ट\s*रेट)[^0-9\n]{0,15}(\d{2,3})/);
+  if (pulse) {
+    const v = Number(pulse[1]);
+    if (v >= 20 && v <= 250 && v !== out.systolic && v !== out.diastolic) out.pulse = v;
+  }
+
+  // Temperature — "fever 103", "temperature 39.5". Home thermometers here are
+  // mostly Fahrenheit, so a reading in its range is converted; one in neither
+  // range ("fever for 10 days") is not a temperature at all.
+  const temp =
+    t.match(/\b(?:temp|temperature|fever)\b[^0-9\n]{0,15}(\d{2,3}(?:\.\d)?)/i) ??
+    t.match(/(?:জ্বর|তাপমাত্রা|টেম্পারেচার)[^0-9\n]{0,15}(\d{2,3}(?:\.\d)?)/) ??
+    t.match(/(?:बुखार|तापमान|टेम्परेचर)[^0-9\n]{0,15}(\d{2,3}(?:\.\d)?)/);
+  if (temp) {
+    const v = Number(temp[1]);
+    if (v >= 93 && v <= 110) out.temperatureC = Math.round((((v - 32) * 5) / 9) * 10) / 10;
+    else if (v >= 34 && v <= 43) out.temperatureC = v;
+  }
+
   return out;
 }
 

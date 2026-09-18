@@ -70,7 +70,7 @@ export const RED_FLAG_RULES = Object.freeze([
     urgency: 'emergency',
     alertType: 'severe_hypoglycaemia',
     patterns: [
-      /\b(unconscious|unresponsive|passed\s+out|blacked\s+out|fainted|collapsed)\b/i,
+      /\b(unconscious|unresponsive|passed\s+out|blacked\s+out|knocked\s+out|fainted|collapsed)\b/i,
       /\b(seizure|convulsion|fits|fitting)\b/i,
       /\bnot\s+waking\s+up\b/i,
       /(অজ্ঞান|জ্ঞান\s*হারা|সংজ্ঞাহীন|খিঁচুনি|মূর্ছা)/,
@@ -210,6 +210,259 @@ export const RED_FLAG_RULES = Object.freeze([
       /\b(foot|feet|toe|heel)\b[^.!?]{0,40}\b(wound|ulcer|sore|cut|blister|swollen|red|infected)\b/i,
       /(পা|পায়ে|পায়ের|আঙুলে)[^।.!?]{0,30}(ঘা|ক্ষত|কাটা|ফোস্কা|ফুলে|লাল)/,
       /(पैर|पाँव|पांव|उंगली|एड़ी)[^।.!?]{0,30}(घाव|ज़ख्म|जख्म|कट|छाला|सूजन|लाल)/,
+    ],
+  },
+  // ==========================================================================
+  // Heart and general-medicine warning signs
+  //
+  // The rules above were written for a diabetes clinic. Cardiologists and
+  // general physicians now see patients here too, and the "go to hospital now"
+  // lists drafted for their assistants (src/knowledge/seedContentCardiology.js
+  // and seedContentGeneralMedicine.js) named signs these rules did not catch —
+  // so "my heart is racing and I feel faint" was routine. A list in a prompt is
+  // only as good as the model reading it, and the model may be off or down;
+  // these fire whether it is or not.
+  //
+  // Shared, not per department, on purpose: a patient messaging their
+  // diabetologist can be having a heart attack, and the department they
+  // happened to write to must not decide whether the clinic is paged.
+  // ==========================================================================
+  {
+    // Palpitations alone are usually harmless and are not flagged. With any of
+    // these alongside, they can be a dangerous rhythm.
+    id: 'RF_PALPITATIONS_WITH_WARNING',
+    label: 'Fast or irregular heartbeat with warning signs',
+    urgency: 'emergency',
+    alertType: 'other',
+    patterns: [
+      /\b(palpitation\w*|heart\s+(is\s+)?(racing|pounding|fluttering|skipping|beating\s+(very\s+)?fast)|(racing|pounding|irregular|fast)\s+heart\s*(beat|rate)?|heart\s*beat\s+(is\s+)?(irregular|very\s+fast|too\s+fast))\b[^.!?]{0,60}\b(dizz\w*|faint\w*|light[-\s]?headed|breath\w*|chest|confus\w+|blurr\w+|weak\w*)\b/i,
+      /\b(dizz\w*|faint\w*|light[-\s]?headed|breathless|chest\s+pain|confus\w+)\b[^.!?]{0,60}\b(palpitation\w*|heart\s+(is\s+)?(racing|pounding|fluttering|skipping)|(racing|pounding|irregular|fast)\s+heart\s*(beat|rate)?)\b/i,
+      /(হৃদস্পন্দন|হার্টবিট|বুকের\s*ধুকপুকানি)[^।.!?]{0,30}(দ্রুত|অনিয়মিত|খুব\s*জোরে)[^।.!?]{0,50}(মাথা\s*ঘোর|অজ্ঞান|শ্বাস|বুকে|দুর্বল)/,
+      /(धड़कन|दिल)[^।.!?]{0,20}(तेज़|तेज|बहुत\s*तेज|अनियमित|ज़ोर\s*से|जोर\s*से)[^।.!?]{0,50}(चक्कर|बेहोश|सांस|साँस|सीने|छाती|कमज़ोरी|कमजोरी)/,
+      /\b(dhadkan|dil)\b[^.!?]{0,20}\b(tez|tej|bahut\s+tez)\b[^.!?]{0,50}\b(chakkar|behosh|saans|sans)\b/i,
+    ],
+  },
+  {
+    id: 'RF_ANGINA_NOT_SETTLING',
+    label: 'Angina that does not settle',
+    urgency: 'emergency',
+    alertType: 'chest_pain',
+    patterns: [
+      /\bangina\b[^.!?]{0,60}\b(not\s+(going|stopping|settling|better|easing)|won'?t\s+(go|stop|settle)|still|worse|after\s+(rest\w*|spray|the\s+spray|tablet))\b/i,
+      /(অ্যানজাইনা|এনজাইনা)[^।.!?]{0,50}(কমছে\s*না|থামছে\s*না|যাচ্ছে\s*না|বাড়ছে)/,
+      /(एनजाइना|एंजाइना)[^।.!?]{0,50}(कम\s*नहीं|रुक\s*नहीं|ठीक\s*नहीं|बढ़)/,
+    ],
+  },
+  {
+    id: 'RF_CYANOSIS',
+    label: 'Blue, grey or very pale lips or skin',
+    urgency: 'emergency',
+    alertType: 'breathing_difficulty',
+    patterns: [
+      /\b(lips?|face|tongue|fingers?|skin)\b[^.!?]{0,25}\b(blue|bluish|grey|gray|purple)\b/i,
+      /\b(blue|bluish|grey|gray)\s+(lips?|face|tongue|fingers?)\b/i,
+      /(ঠোঁট|মুখ|আঙুল|জিভ)[^।.!?]{0,20}(নীল|নীলচে|ধূসর)/,
+      /(होंठ|होठ|चेहरा|उंगलि|जीभ)[^।.!?]{0,20}(नीले|नीला|नीली|स्लेटी)/,
+    ],
+  },
+  {
+    // Bleeding that can be internal, and bleeding that will not stop — both
+    // matter most for somebody on a blood thinner, but are emergencies anyway.
+    id: 'RF_SERIOUS_BLEEDING',
+    label: 'Vomiting or coughing blood, black stools, or bleeding that will not stop',
+    urgency: 'emergency',
+    alertType: 'other',
+    patterns: [
+      /\b(vomit\w*|throw\w*\s+up|threw\s+up)\b[^.!?]{0,30}\bblood\w*\b/i,
+      /\bblood\w*\s+(in\s+(my\s+|the\s+)?)?(vomit|stool|stools|poo|motion|motions)\b/i,
+      /\bcoffee[-\s]?grounds?\b/i,
+      /\b(black|tarry|sticky\s+black)\s+(stool|stools|poo|motion|motions)\b/i,
+      /\b(stool|stools|poo|motion|motions)\b[^.!?]{0,20}\b(black|tarry|bloody)\b/i,
+      /\bcough\w*\s+(up\s+)?blood\b/i,
+      /\bnose\s*bleed\w*\b[^.!?]{0,40}\b(not\s+stop\w*|won'?t\s+stop|still|for\s+\d+\s*min\w*|hour)/i,
+      /\bbleeding\b[^.!?]{0,30}\b(won'?t|will\s+not|does\s*n[o']?t|not)\s+stop\w*\b/i,
+      /(রক্ত\s*বমি|বমিতে\s*রক্ত|বমির\s*সাথে\s*রক্ত|কাশির\s*সাথে\s*রক্ত|কাশিতে\s*রক্ত|পায়খানায়\s*রক্ত|কালো\s*পায়খানা|রক্ত\s*পড়া\s*বন্ধ\s*হচ্ছে\s*না)/,
+      /(खून\s*की\s*उल्टी|उल्टी\s*में\s*खून|खांसी\s*में\s*खून|खाँसी\s*में\s*खून|मल\s*में\s*खून|टट्टी\s*में\s*खून|काला\s*मल|काली\s*टट्टी|खून\s*बंद\s*नहीं)/,
+      /\b(khoon|khun|rokto|rakta)\b[^.!?]{0,15}\b(ki\s+ulti|ulti|bomi|vomit)\b/i,
+    ],
+  },
+  {
+    // Very high blood pressure is only an emergency with symptoms. A number is
+    // graded on its own elsewhere; this catches it said in words.
+    id: 'RF_HIGH_BP_WITH_SYMPTOMS',
+    label: 'Very high blood pressure with symptoms',
+    urgency: 'emergency',
+    alertType: 'hypertensive_crisis',
+    patterns: [
+      /\b(blood\s*pressure|bp)\b[^.!?]{0,30}\b(very\s+high|extremely\s+high|dangerously\s+high|too\s+high|shooting|high)\b[^.!?]{0,50}\b(severe\s+headache|worst\s+headache|blurr\w+|vision|confus\w+|chest\s+pain|nose\s*bleed\w*)\b/i,
+      /\b(severe\s+headache|blurr\w+\s+vision|confus\w+)\b[^.!?]{0,50}\b(blood\s*pressure|bp)\b[^.!?]{0,20}\b(very\s+high|high|up)\b/i,
+      /(প্রেসার|রক্তচাপ|বিপি)[^।.!?]{0,20}(খুব\s*বেশি|বেশি|বেড়ে|হাই)[^।.!?]{0,40}(প্রচণ্ড\s*মাথা\s*ব্যথা|মাথা\s*ব্যথা|চোখে\s*ঝাপসা|ঝাপসা\s*দেখ|বিভ্রান্ত)/,
+      /(बीपी|ब्लड\s*प्रेशर|रक्तचाप)[^।.!?]{0,20}(बहुत\s*ज्यादा|बहुत\s*ज़्यादा|ज्यादा|ज़्यादा|बढ़|हाई)[^।.!?]{0,40}(तेज़\s*सिरदर्द|तेज\s*सिर\s*दर्द|सिरदर्द|सिर\s*दर्द|धुंधला|भ्रम)/,
+    ],
+  },
+  {
+    id: 'RF_HEART_FAILURE_WARNING',
+    label: 'Swollen legs with breathlessness, or breathless lying flat',
+    urgency: 'emergency',
+    alertType: 'breathing_difficulty',
+    patterns: [
+      /\b(swollen|swelling|puffy)\b[^.!?]{0,30}\b(legs?|ankles?|feet)\b[^.!?]{0,50}\b(breath\w*|faint\w*|chest|confus\w+|clammy)\b/i,
+      /\b(legs?|ankles?|feet)\b[^.!?]{0,20}\b(swollen|swelling|puffy)\b[^.!?]{0,50}\b(breath\w*|faint\w*|chest|confus\w+|clammy)\b/i,
+      /\bcan(no|')?t\s+(breathe\s+)?(when\s+)?(lie|lying)\s+(down\s+)?flat\b/i,
+      /\b(wake|waking|woke)\s+up\b[^.!?]{0,20}\b(breathless|gasping|short\s+of\s+breath)\b/i,
+      /(পা|গোড়ালি)[^।.!?]{0,20}(ফুলে|ফোলা)[^।.!?]{0,40}(শ্বাস|দম|বুকে)/,
+      /(पैर|टखने|पांव|पाँव)[^।.!?]{0,20}(सूज|सूजन)[^।.!?]{0,40}(सांस|साँस|दम|सीने)/,
+      /(শুলে|শুয়ে)[^।.!?]{0,20}(শ্বাস|দম)[^।.!?]{0,20}(কষ্ট|আটকে|নিতে\s*পারি\s*না)/,
+      /(लेटने\s*पर|लेटते\s*ही)[^।.!?]{0,20}(सांस|साँस|दम)/,
+    ],
+  },
+  {
+    id: 'RF_ANAPHYLAXIS',
+    label: 'Swelling of the throat, tongue or lips — possible severe allergic reaction',
+    urgency: 'emergency',
+    alertType: 'breathing_difficulty',
+    patterns: [
+      /\banaphyla\w*\b/i,
+      /\b(throat|tongue|lips?)\b[^.!?]{0,20}\b(swell\w*|swollen|closing|tight\w*)\b/i,
+      /\b(swell\w*|swollen)\b[^.!?]{0,20}\b(throat|tongue|lips?)\b/i,
+      /\b(severe\s+)?allergic\s+reaction\b[^.!?]{0,40}\b(breath\w*|throat|faint\w*|swell\w*|dizz\w*)\b/i,
+      /(গলা|জিভ|ঠোঁট)[^।.!?]{0,15}(ফুলে|ফোলা|বন্ধ\s*হয়ে)/,
+      /(गला|जीभ|होंठ|होठ)[^।.!?]{0,15}(सूज|सूजन|बंद\s*हो)/,
+    ],
+  },
+  {
+    id: 'RF_SEPSIS',
+    label: 'Possible sepsis',
+    urgency: 'emergency',
+    alertType: 'other',
+    patterns: [
+      /\b(sepsis|septic)\b/i,
+      /\brash\b[^.!?]{0,40}\b(does\s*n[o']?t|doesn'?t|not|won'?t)\s+(fade|go\s+away\s+when\s+pressed|blanch)\b/i,
+      /\b(non[-\s]?blanching\s+rash|glass\s+test)\b/i,
+      /\b(mottled|blotchy)\s+skin\b/i,
+      /\b(fever|temperature|infection)\b[^.!?]{0,50}\b(confus\w+|not\s+making\s+sense|very\s+drowsy|hard\s+to\s+wake|can(no|')?t\s+wake)\b/i,
+      /\bbreathing\s+(very\s+)?fast\b[^.!?]{0,50}\b(confus\w+|fever|drowsy|infection)\b/i,
+      /(জ্বর|সংক্রমণ|ইনফেকশন)[^।.!?]{0,40}(ভুল\s*বকছে|বিভ্রান্ত|জাগানো\s*যাচ্ছে\s*না|সাড়া\s*দিচ্ছে\s*না)/,
+      /(बुखार|संक्रमण|इन्फेक्शन)[^।.!?]{0,40}(भ्रम|उलझन|होश\s*नहीं|जगाने\s*पर\s*नहीं|जवाब\s*नहीं\s*दे)/,
+    ],
+  },
+  {
+    id: 'RF_MENINGITIS',
+    label: 'Fever with a stiff neck or light hurting the eyes — possible meningitis',
+    urgency: 'emergency',
+    alertType: 'other',
+    patterns: [
+      /\bmeningitis\b/i,
+      /\b(fever|temperature)\b[^.!?]{0,60}\b(stiff\s+neck|neck\s+(is\s+|feels\s+)?stiff|can(no|')?t\s+bend\s+(my\s+|his\s+|her\s+)?neck|light\s+hurts|bright\s+light\w*\s+hurt\w*)\b/i,
+      /\b(stiff\s+neck|neck\s+(is\s+|feels\s+)?stiff)\b[^.!?]{0,60}\b(fever|temperature)\b/i,
+      /(জ্বর)[^।.!?]{0,40}(ঘাড়\s*শক্ত|ঘাড়ে\s*টান|ঘাড়\s*বাঁকাতে\s*পারছ)/,
+      /(ঘাড়\s*শক্ত)[^।.!?]{0,40}(জ্বর)/,
+      /(बुखार)[^।.!?]{0,40}(गर्दन\s*(में\s*)?अकड़|गर्दन\s*अकड़|गर्दन\s*नहीं\s*मुड़)/,
+      /(गर्दन\s*(में\s*)?अकड़)[^।.!?]{0,40}(बुखार)/,
+    ],
+  },
+  {
+    id: 'RF_SUDDEN_SEVERE_HEADACHE',
+    label: 'Sudden severe headache, or headache with weakness, confusion or vision loss',
+    urgency: 'emergency',
+    alertType: 'other',
+    patterns: [
+      /\b(sudden\w*|thunderclap|explosive)\b[^.!?]{0,20}\b(severe\s+|worst\s+|terrible\s+|excruciating\s+|bad\s+|very\s+bad\s+)?headache\b/i,
+      /\bheadache\b[^.!?]{0,50}\b(weakness|numb\w*|confus\w+|can(no|')?t\s+see|lost\s+(my\s+)?vision|slurr\w+|difficulty\s+speaking|can(no|')?t\s+speak)\b/i,
+      /(হঠাৎ)[^।.!?]{0,20}(প্রচণ্ড|তীব্র|খুব)[^।.!?]{0,10}মাথা\s*ব্যথা/,
+      /(अचानक)[^।.!?]{0,20}(बहुत\s*तेज़?|तेज़|तेज|भयंकर)[^।.!?]{0,10}(सिरदर्द|सिर\s*दर्द|सिर\s*में\s*दर्द)/,
+    ],
+  },
+  {
+    id: 'RF_HEAD_INJURY_WARNING',
+    label: 'Head injury with warning signs',
+    urgency: 'emergency',
+    alertType: 'other',
+    patterns: [
+      /\b(hit|banged|bumped|injur\w+|fell\s+on|knock\w*)\b[^.!?]{0,20}\bhead\b[^.!?]{0,60}\b(vomit\w*|knocked\s+out|unconscious|fit|seizure|drowsy|sleepy|confus\w+|fluid|bleeding\s+from\s+(the\s+|his\s+|her\s+|my\s+)?(ear|nose)|weak\w*|numb\w*)\b/i,
+      /\bhead\s+injury\b[^.!?]{0,60}\b(vomit\w*|drowsy|sleepy|confus\w+|fluid|fit|seizure|weak\w*|numb\w*)\b/i,
+      /(মাথায়)[^।.!?]{0,15}(চোট|আঘাত|লেগেছে)[^।.!?]{0,50}(বমি|অজ্ঞান|ঘুম\s*পাচ্ছে|ঝিমুনি|খিঁচুনি|রক্ত)/,
+      /(सिर\s*(पर|में))[^।.!?]{0,15}(चोट|लगी|लग\s*गई)[^।.!?]{0,50}(उल्टी|बेहोश|नींद|सुस्ती|दौरा|खून)/,
+    ],
+  },
+  {
+    id: 'RF_DENGUE_WARNING',
+    label: 'Dengue warning signs',
+    urgency: 'emergency',
+    alertType: 'other',
+    patterns: [
+      /\bdengue\b[^.!?]{0,80}\b(stomach\s+pain|abdominal\s+pain|belly\s+pain|vomit\w*|bleed\w*|gums?|nose\s*bleed\w*|black\s+stool\w*|breath\w*|very\s+thirsty|cold|clammy|drowsy|restless)\b/i,
+      /\b(stomach\s+pain|abdominal\s+pain|vomit\w*|bleeding\s+gums|nose\s*bleed\w*)\b[^.!?]{0,80}\bdengue\b/i,
+      /(ডেঙ্গু|ডেঙ্গি)[^।.!?]{0,60}(পেটে\s*ব্যথা|বমি|রক্ত|মাড়ি|শ্বাস)/,
+      /(डेंगू|डेंगी)[^।.!?]{0,60}(पेट\s*(में\s*)?दर्द|उल्टी|खून|मसूड़|सांस|साँस)/,
+    ],
+  },
+  {
+    // A bare "how do I avoid heatstroke" is a question, not an emergency, so
+    // the words alone do not fire; somebody having it now does.
+    id: 'RF_HEATSTROKE',
+    label: 'Possible heatstroke',
+    urgency: 'emergency',
+    alertType: 'other',
+    patterns: [
+      /\b(has|have|had|got|getting|with)\s+(a\s+)?(heat\s*stroke|sun\s*stroke)\b/i,
+      /\b(heat\s*stroke|sun\s*stroke)\b[^.!?]{0,40}\b(confus\w+|faint\w*|collaps\w*|not\s+sweating|fit|unconscious)\b/i,
+      /\b(not|stopped)\s+sweating\b[^.!?]{0,50}\b(hot|confus\w+|faint\w*|dizz\w*)\b/i,
+      /(হিট\s*স্ট্রোক|সান\s*স্ট্রোক|সর্দিগর্মি)[^।.!?]{0,15}(হয়েছে|হয়ে\s*গেছে|লেগেছে)/,
+      /(लू\s*लग|हीट\s*स्ट्रोक\s*(हो|हुआ))/,
+    ],
+  },
+  {
+    // Cauda equina syndrome: back pain with these signs needs surgery within
+    // hours, and patients rarely connect the bladder to the back.
+    id: 'RF_CAUDA_EQUINA',
+    label: 'Back pain with numbness or loss of bladder or bowel control',
+    urgency: 'emergency',
+    alertType: 'other',
+    patterns: [
+      /\bback\s*(pain|ache)\b[^.!?]{0,80}\b(numb\w*|can(no|')?t\s+(control|hold)|lost\s+control|incontinen\w+|wet\s+myself|both\s+legs)\b/i,
+      /\bnumb\w*\b[^.!?]{0,30}\b(genital\w*|groin|bottom|buttocks|saddle|private\s+parts)\b/i,
+      /\bsaddle\s+(numbness|an(a)?esthesia)\b/i,
+      /(কোমরে|পিঠে)[^।.!?]{0,20}ব্যথা[^।.!?]{0,50}(প্রস্রাব|পায়খানা)[^।.!?]{0,20}(আটকে|নিয়ন্ত্রণ|ধরে\s*রাখতে)/,
+      /(कमर|पीठ)[^।.!?]{0,20}दर्द[^।.!?]{0,50}(पेशाब|मल)[^।.!?]{0,20}(रुक|कंट्रोल|रोक\s*नहीं)/,
+    ],
+  },
+  {
+    id: 'RF_SEVERE_DEHYDRATION',
+    label: 'Dehydration with confusion, drowsiness or no urine',
+    urgency: 'emergency',
+    alertType: 'other',
+    patterns: [
+      /\b(dehydrat\w+|diarrh\w+|loose\s+motions?|vomit\w*)\b[^.!?]{0,60}\b(confus\w+|very\s+sleepy|drowsy|hard\s+to\s+wake|not\s+waking|cold\s+(and\s+)?(blotchy|clammy)|breathing\s+fast|no\s+urine|not\s+(passed|passing)\s+urine|hasn'?t\s+(passed|peed))\b/i,
+      /(পাতলা\s*পায়খানা|ডায়রিয়া|ডায়েরিয়া|বমি)[^।.!?]{0,50}(ঝিমুনি|অচেতন|সাড়া\s*দিচ্ছে\s*না|প্রস্রাব\s*হচ্ছে\s*না|প্রস্রাব\s*হয়নি)/,
+      /(दस्त|डायरिया|उल्टी)[^।.!?]{0,50}(सुस्ती|बेहोश|होश\s*नहीं|पेशाब\s*नहीं)/,
+    ],
+  },
+  {
+    id: 'RF_SNAKEBITE',
+    label: 'Snakebite',
+    urgency: 'emergency',
+    alertType: 'other',
+    patterns: [
+      /\b(snake\s*bite|bitten\s+by\s+a\s+snake|snake\s+(bit|has\s+bitten))\b/i,
+      /(সাপে\s*কেটেছে|সাপে\s*কামড়|সাপের\s*কামড়)/,
+      /(सांप|साँप)\s*(ने\s*)?(काटा|काट\s*लिया|का\s*काटना)/,
+    ],
+  },
+  {
+    // Rabies vaccine after a bite is a same-day matter, not an ambulance one.
+    id: 'RF_ANIMAL_BITE',
+    label: 'Bite or scratch from an animal that could carry rabies',
+    urgency: 'urgent',
+    alertType: 'other',
+    patterns: [
+      /\b(dog|cat|monkey|bat|jackal|mongoose|stray)\b[^.!?]{0,20}\b(bit|bite|bitten)\b/i,
+      // A scratch counts when it is to somebody — "the cat scratched the sofa"
+      // is not a rabies exposure.
+      /\b(dog|cat|monkey|bat|stray)\b[^.!?]{0,20}\bscratch\w*\s+(me|my|him|her|his|us|our|the\s+(child|baby|kid))\b/i,
+      /\bbitten\s+by\s+a\s+(dog|cat|monkey|bat|stray)\b/i,
+      /(কুকুর|বিড়াল|বাঁদর|বানর)[^।.!?]{0,10}(কামড়|কামড়েছে|আঁচড়)/,
+      /(कुत्ते|कुत्ता|बिल्ली|बंदर)[^।.!?]{0,10}(ने\s*)?(काटा|काट\s*लिया|नोच|खरोंच)/,
     ],
   },
   {

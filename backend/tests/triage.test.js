@@ -165,6 +165,94 @@ describe('matchRedFlags — multilingual', () => {
   });
 });
 
+/**
+ * The warning signs the cardiology and general-medicine assistants were given
+ * in their prompts, now caught without the model too. Each was routine before:
+ * "my heart is racing and I feel faint" paged nobody, and neither did a typed
+ * pulse of 150 that the same number tapped in would have flagged.
+ */
+describe('heart and general-medicine warning signs, without the model', () => {
+  const cases = [
+    ['my heart is racing and I feel faint', 'RF_PALPITATIONS_WITH_WARNING', 'emergency'],
+    ['হৃদস্পন্দন খুব দ্রুত আর মাথা ঘোরাচ্ছে', 'RF_PALPITATIONS_WITH_WARNING', 'emergency'],
+    ['धड़कन बहुत तेज़ है और चक्कर आ रहा है', 'RF_PALPITATIONS_WITH_WARNING', 'emergency'],
+    ['angina pain not going away after rest', 'RF_ANGINA_NOT_SETTLING', 'emergency'],
+    ['my lips are turning blue', 'RF_CYANOSIS', 'emergency'],
+    ['ঠোঁট নীল হয়ে গেছে', 'RF_CYANOSIS', 'emergency'],
+    ['I am on apixaban and my stool is black', 'RF_SERIOUS_BLEEDING', 'emergency'],
+    ['রক্ত বমি হয়েছে', 'RF_SERIOUS_BLEEDING', 'emergency'],
+    ['खून की उल्टी हुई', 'RF_SERIOUS_BLEEDING', 'emergency'],
+    ['my bp is very high and I have a severe headache', 'RF_HIGH_BP_WITH_SYMPTOMS', 'emergency'],
+    ['बीपी बहुत ज्यादा है और सिर दर्द', 'RF_HIGH_BP_WITH_SYMPTOMS', 'emergency'],
+    ['my ankles are swollen and I am short of breath', 'RF_HEART_FAILURE_WARNING', 'emergency'],
+    ['I cannot lie flat at night', 'RF_HEART_FAILURE_WARNING', 'emergency'],
+    ['my throat is swelling after the injection', 'RF_ANAPHYLAXIS', 'emergency'],
+    ['जीभ सूज गई है', 'RF_ANAPHYLAXIS', 'emergency'],
+    ['fever and a rash that does not fade when pressed', 'RF_SEPSIS', 'emergency'],
+    ['জ্বর আর ভুল বকছে', 'RF_SEPSIS', 'emergency'],
+    ['fever with stiff neck', 'RF_MENINGITIS', 'emergency'],
+    ['बुखार और गर्दन में अकड़न', 'RF_MENINGITIS', 'emergency'],
+    ['sudden severe headache like never before', 'RF_SUDDEN_SEVERE_HEADACHE', 'emergency'],
+    ['হঠাৎ প্রচণ্ড মাথা ব্যথা', 'RF_SUDDEN_SEVERE_HEADACHE', 'emergency'],
+    ['he hit his head and is vomiting', 'RF_HEAD_INJURY_WARNING', 'emergency'],
+    ['सिर पर चोट लगी और उल्टी हो रही है', 'RF_HEAD_INJURY_WARNING', 'emergency'],
+    ['dengue and severe stomach pain', 'RF_DENGUE_WARNING', 'emergency'],
+    ['ডেঙ্গু হয়েছে, মাড়ি থেকে রক্ত', 'RF_DENGUE_WARNING', 'emergency'],
+    ['my father has heat stroke', 'RF_HEATSTROKE', 'emergency'],
+    ['लू लग गई है', 'RF_HEATSTROKE', 'emergency'],
+    ['back pain and I cannot control my bladder', 'RF_CAUDA_EQUINA', 'emergency'],
+    ['diarrhoea and very drowsy', 'RF_SEVERE_DEHYDRATION', 'emergency'],
+    ['পাতলা পায়খানা আর প্রস্রাব হচ্ছে না', 'RF_SEVERE_DEHYDRATION', 'emergency'],
+    ['a snake bit me', 'RF_SNAKEBITE', 'emergency'],
+    ['সাপে কেটেছে', 'RF_SNAKEBITE', 'emergency'],
+    ['a stray dog bit my son', 'RF_ANIMAL_BITE', 'urgent'],
+    ['कुत्ते ने काट लिया', 'RF_ANIMAL_BITE', 'urgent'],
+  ];
+
+  for (const [text, id, urgency] of cases) {
+    test(`"${text}" -> ${id}`, () => {
+      const r = triageMessage({ text });
+      assert.ok(r.matchedRules.includes(id), `expected ${id}, got [${r.matchedRules.join(', ')}]`);
+      assert.equal(r.urgency, urgency);
+    });
+  }
+
+  test('a pulse or a fever typed in the chat is graded like one tapped in', () => {
+    assert.equal(extractVitalsFromText('my pulse is 150').pulse, 150);
+    assert.equal(extractVitalsFromText('পালস 140').pulse, 140);
+    assert.equal(extractVitalsFromText('140 bpm').pulse, 140);
+    assert.equal(extractVitalsFromText('fever 103').temperatureC, 39.4);
+    assert.equal(extractVitalsFromText('temperature 39.5').temperatureC, 39.5);
+    for (const text of ['my pulse is 150', 'heart rate 38 today', 'पल्स 150 है', 'fever 103 since morning', 'জ্বর 104']) {
+      assert.equal(triageMessage({ text }).urgency, 'urgent', `"${text}" should be urgent`);
+    }
+  });
+
+  test('and ordinary talk about the same things stays ordinary', () => {
+    const ordinary = [
+      'how do I avoid heat stroke in summer',
+      'what is angina?',
+      'I get palpitations sometimes when I drink tea',
+      'my legs are swollen in the evening',
+      'blood test report came normal',
+      'stool test is due',
+      'back pain since morning',
+      'I had a headache yesterday, better now',
+      'my lips are dry',
+      'my cat scratched the sofa',
+      'fever for 3 days',
+      'pulse 72',
+      'temperature 98.6',
+      'sugar 180 2 hr after food',
+      'I wore a blue shirt',
+    ];
+    for (const text of ordinary) {
+      const r = triageMessage({ text });
+      assert.ok(['routine', 'advice'].includes(r.urgency), `"${text}" escalated to ${r.urgency} [${r.matchedRules.join(', ')}]`);
+    }
+  });
+});
+
 describe('triageMessage — end to end', () => {
   test('the brief\'s five example queries all triage above routine', () => {
     const examples = [

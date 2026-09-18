@@ -39,9 +39,10 @@ const apply = process.argv.includes('--apply');
  * general ones rather than showing something wrong.
  *
  * `triageRules` is empty on every row. Deliberately, and it should stay that
- * way until a clinician in that specialty writes them. The 21 existing red
- * flags are diabetes-tuned; obstetric bleeding and suicidal ideation are not
- * among them and cannot be inferred from them.
+ * way until a clinician in that specialty writes them. The shared red flags
+ * (src/services/triage/redFlagRules.js) cover diabetes and the general heart
+ * and medical emergencies every department shares; specialty signs such as
+ * obstetric bleeding are not among them and cannot be inferred from them.
  */
 const DEPARTMENTS = [
   {
