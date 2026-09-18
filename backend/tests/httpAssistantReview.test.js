@@ -14,11 +14,13 @@ import { PLAN, PRACTICE_TYPE } from '../src/models/Practice.js';
  *
  * ---- What this proves --------------------------------------------------------
  *
- * Nothing drafted reaches a patient until a clinician of that specialty, at the
- * patient's own practice, has approved both the scope and enough of the
- * guidance; approving at one practice changes nothing at another; a general
- * physician cannot sign off what the cardiology assistant says; and the shared
- * drafts themselves are never approved in place.
+ * Guidance passages still waiting for review reach a patient only once a
+ * clinician of that specialty, at the patient's own practice, approves them on
+ * the knowledge screen; approving at one practice changes nothing at another; a
+ * general physician cannot sign off what the cardiology assistant says; and the
+ * shared drafts themselves are never approved in place. There is no separate
+ * approval of the assistant: once its guidance is there it answers, and the
+ * chat-screen toggle switches it off and on for one patient.
  *
  * Every outbound request is refused, as in httpChatByPractice.test.js: the
  * model is never called, and a reply that does come back is the scripted
@@ -87,7 +89,9 @@ async function world() {
       specialty: 'cardiology',
     });
     const cardiologist = await makeMember(practice, { name: `Dr ${name} Heart`, isOwner: true });
-    const patient = await makePatient({ name: `${name} Patient`, practices: [practice] });
+    // Under that cardiologist: a patient with no assigned doctor has no doctor's
+    // chat and no assistant.
+    const patient = await makePatient({ name: `${name} Patient`, practices: [practice], primaryDoctor: cardiologist.user });
     await PatientProfile.create({ user: patient.user._id });
     return { practice, cardiologist, patient };
   };
@@ -113,22 +117,18 @@ async function approveAllDrafts(member) {
   }
 }
 
-const cardiologyStatus = async (member) => {
-  const res = await as(member.token).get('/doctor/knowledge/assistants');
+/** The cardiology row of the department list, as this practice sees it. */
+const cardiologyOnList = async (member) => {
+  const res = await as(member.token).get('/departments');
   assert.equal(res.status, 200);
-  return res.body.items.find((s) => s.department.key === 'cardiology');
+  return res.body.items.find((d) => d.key === 'cardiology');
 };
 
 const say = (patient, text) => as(patient.token).post('/chat/message', { text });
 
-/** Approve & turn on, at the versions the doctor's own screen shows. */
-async function approveAssistant(member) {
-  const status = await cardiologyStatus(member);
-  return as(member.token).post(`/doctor/knowledge/assistants/${w.cardiology._id}/approve`, {
-    version: status.scopeText.version,
-    knowledgeVersion: status.knowledgeVersion,
-  });
-}
+/** The chat-screen assistant toggle, as a clinician flips it for one patient. */
+const toggle = (member, patient, enabled) =>
+  as(member.token).patch(`/chat/patients/${patient.user._id}/assistant`, { kind: 'care', enabled });
 
 describe('an AI-drafted assistant reaches patients only through a clinician of the specialty', () => {
   before(async () => {
@@ -190,63 +190,46 @@ describe('an AI-drafted assistant reaches patients only through a clinician of t
     assert.equal(await KnowledgeChunk.countDocuments({ practice: w.a.practice._id }), 0);
   });
 
-  test('approved knowledge without an approved scope is still no assistant', async () => {
+  test('once a practice approves the guidance, its patients are answered — no separate approval of the assistant', async () => {
+    const before = await say(w.a.patient, 'what is a normal blood pressure');
+    assert.equal(before.status, 200);
+    assert.equal(before.body.reply, null, 'the assistant answered from guidance nobody approved');
+    assert.deepEqual(before.body.assistant, { enabled: false, reason: 'too_little_approved_knowledge' });
+
     await approveAllDrafts(w.a.cardiologist);
 
-    const status = await cardiologyStatus(w.a.cardiologist);
-    assert.equal(status.enabled, false);
-    assert.equal(status.reason, 'scope_not_approved');
-    assert.equal(status.knowledge.approved.forLanguage, DRAFTS);
-    assert.equal(status.knowledge.pending.total, 0, 'drafts approved here are still counted as waiting');
-
-    const sent = await say(w.a.patient, 'what is a normal blood pressure');
-    assert.equal(sent.status, 200);
-    assert.equal(sent.body.reply, null, 'the assistant answered before its scope was approved');
-    assert.deepEqual(sent.body.assistant, { enabled: false, reason: 'scope_not_approved' });
-  });
-
-  test('the scope is approved by version, by the specialty, for one practice only', async () => {
-    await approveAllDrafts(w.a.cardiologist);
-    const path = `/doctor/knowledge/assistants/${w.cardiology._id}/approve`;
-
-    const { knowledgeVersion } = await cardiologyStatus(w.a.cardiologist);
-
-    assert.equal((await as(w.a.cardiologist.token).post(path, {})).status, 400, 'approved without naming the version read');
-    assert.equal((await as(w.a.cardiologist.token).post(path, { version: 1 })).status, 400, 'approved without naming the knowledge read');
-    assert.equal((await as(w.a.cardiologist.token).post(path, { version: 2, knowledgeVersion })).status, 409);
-    assert.equal((await as(w.a.physician.token).post(path, { version: 1, knowledgeVersion })).status, 403);
-
-    const approved = await as(w.a.cardiologist.token).post(path, { version: 1, knowledgeVersion });
-    assert.equal(approved.status, 200, JSON.stringify(approved.body));
-    assert.equal(approved.body.item.enabled, true, `${approved.body.item.reasons}`);
-    assert.equal(approved.body.item.state, 'on');
-
+    const status = await cardiologyOnList(w.a.cardiologist);
+    assert.equal(status.hasAssistant, true, `${status.assistant?.reason}`);
+    assert.equal(status.assistant.pendingDocuments, 0, 'drafts approved here are still counted as waiting');
     const answered = await say(w.a.patient, 'what is a normal blood pressure');
-    assert.equal(answered.status, 200);
-    assert.ok(answered.body.reply, 'the approved cardiology assistant did not answer');
-    assert.equal(answered.body.assistant.enabled, true);
+    assert.ok(answered.body.reply, 'the cardiology assistant did not answer once its guidance was approved');
 
-    // The other cardiology practice approved nothing.
+    // The other cardiology practice approved nothing of its own.
     const elsewhere = await say(w.b.patient, 'what is a normal blood pressure');
-    assert.equal(elsewhere.body.reply, null, 'one practice’s approval switched another practice’s assistant on');
-    const behala = await cardiologyStatus(w.b.cardiologist);
-    assert.equal(behala.enabled, false);
-    assert.equal(behala.knowledge.approved.total, 0, 'Behala counts Salt Lake’s approved copies');
-    assert.equal(behala.knowledge.pending.total, DRAFTS);
-
+    assert.equal(elsewhere.body.reply, null, 'one practice’s approvals switched another practice’s assistant on');
+    assert.equal((await cardiologyOnList(w.b.cardiologist)).assistant.approvedDocuments, 0);
     const scope = (await Department.findById(w.cardiology._id).lean()).assistantScope;
-    assert.equal(scope.status, 'pending_review', 'the shared scope was approved for every practice');
+    assert.equal(scope.status, 'pending_review', 'the shared scope was changed by a practice');
   });
 
-  test('withdrawing the scope silences the assistant at once', async () => {
-    assert.equal((await approveAssistant(w.a.cardiologist)).status, 200);
+  test('there is no assistant approval step to call', async () => {
+    const path = `/doctor/knowledge/assistants/${w.cardiology._id}`;
+    assert.equal((await as(w.a.cardiologist.token).get('/doctor/knowledge/assistants')).status, 404);
+    assert.equal((await as(w.a.cardiologist.token).post(`${path}/approve`, { version: 1 })).status, 404);
+    assert.equal((await as(w.a.cardiologist.token).post(`${path}/withdraw`, {})).status, 404);
+  });
+
+  test('the chat toggle is the switch: off silences one patient’s conversation, on brings it back', async () => {
+    await approveAllDrafts(w.a.cardiologist);
     assert.ok((await say(w.a.patient, 'hello heart clinic')).body.reply);
 
-    const withdrawn = await as(w.a.cardiologist.token).post(`/doctor/knowledge/assistants/${w.cardiology._id}/withdraw`, {});
-    assert.equal(withdrawn.status, 200);
-    assert.equal(withdrawn.body.item.enabled, false);
-    assert.equal(withdrawn.body.item.state, 'withdrawn');
-    assert.equal((await say(w.a.patient, 'hello again heart clinic')).body.reply, null);
+    const off = await toggle(w.a.cardiologist, w.a.patient, false);
+    assert.equal(off.status, 200, JSON.stringify(off.body));
+    assert.equal(off.body.assistantEnabled, false);
+    assert.equal((await say(w.a.patient, 'hello again heart clinic')).body.reply, null, 'the assistant answered with its toggle off');
+
+    assert.equal((await toggle(w.a.cardiologist, w.a.patient, true)).status, 200);
+    assert.ok((await say(w.a.patient, 'and once more')).body.reply, 'the assistant stayed quiet with its toggle back on');
   });
 
   test('a copy taken to edit is reviewed as the practice’s own, and not overwritten by the draft', async () => {
@@ -277,10 +260,10 @@ describe('an AI-drafted assistant reaches patients only through a clinician of t
     const before = await as(w.a.cardiologist.token).get('/departments');
     assert.equal(before.status, 200);
     const cardiology = before.body.items.find((d) => d.key === 'cardiology');
-    assert.equal(cardiology.hasAssistant, false, 'a draft scope was listed as an assistant');
-    assert.equal(cardiology.assistant.reason, 'scope_not_approved');
+    assert.equal(cardiology.hasAssistant, false, 'an assistant with no approved guidance was listed as on');
+    assert.equal(cardiology.assistant.reason, 'too_little_approved_knowledge');
 
-    assert.equal((await approveAssistant(w.a.cardiologist)).status, 200);
+    await approveAllDrafts(w.a.cardiologist);
 
     const afterApproval = await as(w.a.cardiologist.token).get('/departments');
     assert.equal(afterApproval.body.items.find((d) => d.key === 'cardiology').hasAssistant, true);
@@ -296,6 +279,6 @@ describe('an AI-drafted assistant reaches patients only through a clinician of t
     const behalaThreads = await as(w.b.patient.token).get('/chat/threads');
     const behalaThread = behalaThreads.body.groups.flatMap((g) => g.threads)[0];
     assert.equal(behalaThread.hasAssistant, false);
-    assert.deepEqual(behalaThread.assistant, { enabled: false, reason: 'scope_not_approved' });
+    assert.deepEqual(behalaThread.assistant, { enabled: false, reason: 'too_little_approved_knowledge' });
   });
 });

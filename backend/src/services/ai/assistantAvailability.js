@@ -1,6 +1,9 @@
 import mongoose from 'mongoose';
 
 import { Department } from '../../models/Department.js';
+import { DoctorDepartment } from '../../models/DoctorDepartment.js';
+import { Enrollment, ENROLLMENT_STATUS } from '../../models/Enrollment.js';
+import { Membership, MEMBERSHIP_STATUS } from '../../models/Membership.js';
 import { Practice } from '../../models/Practice.js';
 import { KnowledgeChunk } from '../../models/KnowledgeChunk.js';
 import { scopeReviewFor } from '../../models/guidanceReview.js';
@@ -25,9 +28,8 @@ import { ENDOCRINE } from './prompts.js';
  * A department's assistant answers a patient only when all of these hold:
  *
  *   1. the department exists and is active;
- *   2. its scope is live for the patient's practice — the legacy diabetology
- *      remit, or a draft a clinician of that specialty at this practice approved
- *      in the version the prompt now carries (see guidanceReview.js);
+ *   2. it has a scope — what the assistant covers, refuses and escalates —
+ *      that is not retired (see guidanceReview.js);
  *   3. at least MIN_APPROVED_DOCUMENTS approved passages for that department
  *      are retrievable for this practice in the conversation's grounding
  *      languages — the ones retrieval will actually read;
@@ -35,6 +37,11 @@ import { ENDOCRINE } from './prompts.js';
  *      (category `emergency`).
  *
  * Anything short of that is no assistant, and the thread says so.
+ *
+ * There is no approval step. Past these, whether the assistant answers one
+ * patient's conversation is the clinicians' switch on that conversation — the
+ * assistant toggle on the chat screen, on by default (see assistantShouldReply
+ * in assistant.js).
  *
  * ---- Why ten, and why a red flag -------------------------------------------
  *
@@ -67,15 +74,16 @@ import { ENDOCRINE } from './prompts.js';
  * corpus switches a Bengali thread on, and the count per language is reported
  * so nobody mistakes that for Bengali content existing.
  *
- * ---- No exception for the founding scope ------------------------------------
+ * ---- Which specialty answers ------------------------------------------------
  *
- * A practice's general thread with no specialty on the practice is answered by
- * the diabetology assistant, with the prompt it has always had — and, like
- * every other, only once a diabetologist at that practice has approved it. It
- * used to be on everywhere with no approval at all, which made the one scope
- * nobody reviewed the one scope every practice received. The status reports
- * the route as `via: 'legacy_default'` so an operator can see which practices
- * still rely on it and set their specialty.
+ * The patient's own doctor's: a cardiologist's patient is answered by the
+ * cardiology assistant and a general physician's by the general-medicine one,
+ * so a practice with both is answered in both. A patient with no assigned
+ * doctor has no doctor's chat, and no assistant. A doctor placed in no
+ * department is taken to practise the practice's specialty, and at a practice
+ * with none — the founding diabetes clinic's case — the diabetology assistant
+ * answers with the prompt it has always had (`via: 'legacy_default'`). See
+ * conversationAssistant.
  */
 
 /** The fewest approved passages a department's assistant may answer from. See above. */
@@ -94,12 +102,11 @@ export const OFF_REASONS = Object.freeze({
   NO_DEPARTMENT: 'no_department',
   DEPARTMENT_INACTIVE: 'department_inactive',
   NO_SCOPE: 'no_scope',
-  SCOPE_NOT_APPROVED: 'scope_not_approved',
-  SCOPE_APPROVAL_OUTDATED: 'scope_approval_outdated',
   SCOPE_RETIRED: 'scope_retired',
   TOO_LITTLE_APPROVED_KNOWLEDGE: 'too_little_approved_knowledge',
   NO_APPROVED_RED_FLAG_GUIDANCE: 'no_approved_red_flag_guidance',
   SPECIALTY_HAS_NO_DEPARTMENT: 'specialty_has_no_department',
+  NO_ASSIGNED_DOCTOR: 'no_assigned_doctor',
 });
 
 export const ON_REASONS = Object.freeze({
@@ -160,6 +167,10 @@ function summariseKnowledge(docs, { practiceId, language }) {
     const cite = keys.length ? keys : d.sourceCitation ? [d.sourceCitation] : [];
     cite.forEach((k) => citedSources.add(k));
 
+    // A shared passage this practice has its own copy of is counted once, as
+    // the copy, whether the shared one is live or still waiting.
+    if (d.practice == null && copied.has(String(d._id))) continue;
+
     if (d.status === 'approved') {
       approved.total += 1;
       if (d.language in approved.byLanguage) approved.byLanguage[d.language] += 1;
@@ -170,7 +181,6 @@ function summariseKnowledge(docs, { practiceId, language }) {
         if (d.category === RED_FLAG_CATEGORY) redFlagGuidanceApproved = true;
       }
     } else if (d.status === 'pending_review' || d.status === 'draft') {
-      if (d.practice == null && copied.has(String(d._id))) continue;
       pending.total += 1;
       if (d.origin === 'ai_draft') pending.aiDrafts += 1;
       if (d.language in pending.byLanguage) pending.byLanguage[d.language] += 1;
@@ -209,8 +219,6 @@ export function statusFrom(department, docs, { practiceId = null, language = 'en
 
   if (scopeReview.state === 'none') reasons.push(OFF_REASONS.NO_SCOPE);
   else if (scopeReview.state === 'retired') reasons.push(OFF_REASONS.SCOPE_RETIRED);
-  else if (scopeReview.state === 'approval_outdated') reasons.push(OFF_REASONS.SCOPE_APPROVAL_OUTDATED);
-  else if (!scopeReview.live) reasons.push(OFF_REASONS.SCOPE_NOT_APPROVED);
 
   if (knowledge.approved.forLanguage < MIN_APPROVED_DOCUMENTS) {
     reasons.push(OFF_REASONS.TOO_LITTLE_APPROVED_KNOWLEDGE);
@@ -218,10 +226,6 @@ export function statusFrom(department, docs, { practiceId = null, language = 'en
   if (!knowledge.redFlagGuidanceApproved) reasons.push(OFF_REASONS.NO_APPROVED_RED_FLAG_GUIDANCE);
 
   const scope = department.assistantScope ?? {};
-  const currentApprovals = (scope.approvals ?? []).filter(
-    (a) => a.version === scopeReview.version && !a.withdrawnAt,
-  );
-  const approval = scopeReview.approval;
 
   return {
     department: {
@@ -241,17 +245,6 @@ export function statusFrom(department, docs, { practiceId = null, language = 'en
       reviewStatus: scope.status ?? null,
       origin: scope.origin ?? null,
       version: scopeReview.version,
-      approvedAt: approval?.approvedAt ?? null,
-      approvedBy: approval?.approvedBy ? String(approval.approvedBy) : null,
-      approvedByName: approval?.approvedByName ?? null,
-      approvedVersion: approval?.version ?? null,
-      approvedKnowledgeVersion: approval?.knowledgeVersion ?? null,
-      withdrawnAt: approval?.withdrawnAt ?? null,
-      withdrawnBy: approval?.withdrawnBy ? String(approval.withdrawnBy) : null,
-      withdrawnByName: approval?.withdrawnByName ?? null,
-      // Across the platform, how many practices have signed off the current
-      // wording. The console's answer to "is anybody using this draft".
-      practicesApproved: currentApprovals.length,
       sources: (scope.sources ?? []).length,
     },
     knowledge,
@@ -378,16 +371,83 @@ export async function departmentForSpecialty(specialty, practiceId = null) {
 }
 
 /**
+ * The specialty of the patient's own doctor at this practice.
+ *
+ * The doctor the enrolment names, while they still work here: the department
+ * their membership names, then their department rows here, primary first. Of
+ * those, the first with an assistant. `doctor` is null when the patient has no
+ * assigned doctor here, or theirs has left. `hasDepartment` says the doctor is
+ * placed in a specialty at all — a dermatologist's patient must not be handed
+ * the diabetes assistant just because dermatology has none.
+ */
+async function doctorSpecialty({ enrollmentId = null, patientId = null, practiceId = null }) {
+  const practice = oid(practiceId);
+  if (!practice) return { doctor: null, department: null, hasDepartment: false };
+  const enrollment = oid(enrollmentId)
+    ? await Enrollment.findOne({ _id: oid(enrollmentId), practice }).select('primaryDoctor').lean()
+    : oid(patientId)
+      ? await Enrollment.findOne({
+          patient: oid(patientId),
+          practice,
+          status: ENROLLMENT_STATUS.ACTIVE,
+          revokedAt: null,
+        })
+          .select('primaryDoctor')
+          .lean()
+      : null;
+  const doctor = oid(enrollment?.primaryDoctor);
+  if (!doctor) return { doctor: null, department: null, hasDepartment: false };
+
+  const [membership, rows] = await Promise.all([
+    Membership.findOne({ user: doctor, practice, status: MEMBERSHIP_STATUS.ACTIVE, endedOn: null })
+      .select('department')
+      .lean(),
+    DoctorDepartment.find({ doctor, practice, endedOn: null }).select('department isPrimary').lean(),
+  ]);
+  // A doctor who has left the practice decides nothing about its conversations.
+  if (!membership) return { doctor: null, department: null, hasDepartment: false };
+
+  const ids = [
+    ...new Set(
+      [
+        membership.department,
+        ...rows.filter((r) => r.isPrimary).map((r) => r.department),
+        ...rows.filter((r) => !r.isPrimary).map((r) => r.department),
+      ]
+        .filter(Boolean)
+        .map(String),
+    ),
+  ];
+  if (!ids.length) return { doctor, department: null, hasDepartment: false };
+
+  const departments = await Department.find({
+    _id: { $in: ids },
+    isActive: true,
+    'assistantScope.role': { $nin: [null, ''] },
+    $or: [{ practice: null }, { practice }],
+  }).lean();
+  const byId = new Map(departments.map((d) => [String(d._id), d]));
+  const department = ids.map((id) => byId.get(id)).find(Boolean) ?? null;
+  return { doctor, department, hasDepartment: true };
+}
+
+/**
  * Whether a conversation may be answered, and as which department.
  *
  * ---- Which department a conversation is ------------------------------------
  *
  *   thread               the session names a department
- *   practice_specialty   a general thread at a practice whose specialty names one
- *   legacy_default       a general thread at a practice with no specialty — the
- *                        founding clinic's case — answered by the diabetology
- *                        assistant with its original prompt, once that
- *                        practice's diabetologist has approved it
+ *   no_doctor            the patient has no assigned doctor here (or theirs has
+ *                        left): no doctor's chat, so no assistant
+ *   doctor               the patient's own doctor here is placed in a
+ *                        specialty: that specialty's assistant, or none if the
+ *                        specialty has none
+ *   practice_specialty   their doctor is placed in no department, and the
+ *                        practice's specialty names one
+ *   legacy_default       their doctor is placed in no department at a practice
+ *                        with no specialty — the founding clinic's case —
+ *                        answered by the diabetology assistant with its
+ *                        original prompt
  *
  * A specialty that names no department gets no assistant: there is no approved
  * scope to answer from, and the thin remit the prompt used to improvise for it
@@ -401,7 +461,13 @@ export async function departmentForSpecialty(specialty, practiceId = null) {
  *   comes from the department row or stays the practice default: a legacy
  *   scope keeps the prompt the general thread has always had.
  */
-export async function conversationAssistant({ session, practiceId = null, language = 'en' } = {}) {
+export async function conversationAssistant({
+  session,
+  practiceId = null,
+  language = 'en',
+  enrollmentId = null,
+  patientId = null,
+} = {}) {
   if (session?.department) {
     const department = oid(session.department) ? await Department.findById(oid(session.department)).lean() : null;
     const status = department
@@ -418,13 +484,44 @@ export async function conversationAssistant({ session, practiceId = null, langua
     };
   }
 
+  // The patient's own doctor's specialty, so a practice with a cardiologist and a
+  // general physician answers each one's patients as that specialty.
+  const mine = await doctorSpecialty({
+    enrollmentId: session?.enrollment ?? enrollmentId,
+    patientId: session?.patient ?? patientId,
+    practiceId,
+  });
+  if (!mine.doctor) {
+    return {
+      enabled: false,
+      reason: OFF_REASONS.NO_ASSIGNED_DOCTOR,
+      via: 'no_doctor',
+      department: null,
+      retrievalDepartment: null,
+      useDepartmentBlock: false,
+      status: null,
+    };
+  }
+  if (mine.hasDepartment) {
+    const status = mine.department
+      ? await assistantStatus({ department: mine.department, practiceId, language })
+      : { ...noDepartment(practiceId, language), reason: OFF_REASONS.NO_SCOPE, reasons: [OFF_REASONS.NO_SCOPE] };
+    return {
+      enabled: status.enabled,
+      reason: status.reason,
+      via: 'doctor',
+      department: mine.department,
+      retrievalDepartment: mine.department?._id ?? null,
+      useDepartmentBlock: mine.department ? mine.department.key !== LEGACY_DEPARTMENT_KEY : false,
+      status,
+    };
+  }
+
   const practice = oid(practiceId) ? await Practice.findById(oid(practiceId)).select('specialty').lean() : null;
   const specialty = practice?.specialty?.trim() || null;
 
   if (!specialty) {
-    // The diabetology assistant, with the prompt this thread has always had —
-    // on only where this practice's diabetologist approved it. It was on
-    // everywhere, approved by nobody.
+    // The diabetology assistant, with the prompt this thread has always had.
     const legacy = await Department.findOne({ practice: null, key: LEGACY_DEPARTMENT_KEY }).lean();
     const status = legacy
       ? await assistantStatus({ department: legacy, practiceId, language })

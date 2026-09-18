@@ -39,17 +39,17 @@ describe('no scope means no assistant, not a general one', () => {
     assert.equal(d.toPublic().hasAssistant, false);
   });
 
-  test('a role alone is not an assistant — a doctor’s approval at the practice is', () => {
-    // A scope with no review status used to read as approved for every
-    // practice. Nothing but a doctor of the specialty, at the practice, switches
-    // one on, and a department row on its own cannot say which practice is asking.
+  test('one with a role reports it has one', () => {
+    // A written scope is live — there is no approval step. Whether it answers a
+    // given conversation is asked of assistantAvailability.js, which also needs
+    // its guidance to be there, and the route passes that answer in.
     const d = new Department({
       key: 'derm',
       names: { en: 'Dermatologist' },
       assistantScope: { role: 'a dermatology assistant' },
     });
-    assert.equal(d.toPublic().hasAssistant, false);
-    assert.equal(d.toPublic('en', { assistant: { enabled: true } }).hasAssistant, true);
+    assert.equal(d.toPublic().hasAssistant, true);
+    assert.equal(d.toPublic('en', { assistant: { enabled: false } }).hasAssistant, false);
   });
 
   test('the service returns null rather than falling back', () => {
@@ -71,13 +71,20 @@ describe('no scope means no assistant, not a general one', () => {
     assert.match(service, /if \(!availability\.enabled\) return null;/);
   });
 
-  test('a written scope awaiting review is not an assistant', () => {
-    const d = new Department({
+  test('a written scope is live whatever its review status — only a retired one is not', () => {
+    // There is no approval step; see scopeReviewFor in guidanceReview.js.
+    const waiting = new Department({
       key: 'cardiology',
       names: { en: 'Cardiologist' },
       assistantScope: { role: 'the cardiology assistant', status: 'pending_review', version: 1 },
     });
-    assert.equal(d.toPublic().hasAssistant, false, 'a draft scope reads as a live assistant');
+    assert.equal(waiting.toPublic().hasAssistant, true);
+    const retired = new Department({
+      key: 'cardiology',
+      names: { en: 'Cardiologist' },
+      assistantScope: { role: 'the cardiology assistant', status: 'retired', version: 1 },
+    });
+    assert.equal(retired.toPublic().hasAssistant, false, 'a retired scope reads as a live assistant');
   });
 });
 

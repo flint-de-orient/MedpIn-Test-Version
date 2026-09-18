@@ -34,7 +34,6 @@ import '../../features/clinician/presentation/knowledge_edit_screen.dart';
 import '../../features/clinician/presentation/export_screen.dart';
 import '../../features/clinician/presentation/daily_report_screen.dart';
 import '../../features/clinician/presentation/feedback_inbox_screen.dart';
-import '../../features/clinician/presentation/ai_assistants_screen.dart';
 import '../../features/clinician/presentation/knowledge_screen.dart';
 import '../../features/clinician/presentation/patient_thread_screen.dart';
 import '../../features/clinician/presentation/nutrition_inbox_screen.dart';
@@ -301,10 +300,6 @@ final Provider<GoRouter> appRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/clinician/daily-report',
         builder: (context, state) => const DailyReportScreen(),
-      ),
-      GoRoute(
-        path: '/clinician/assistants',
-        builder: (context, state) => const AiAssistantsScreen(),
       ),
       GoRoute(
         path: '/clinician/knowledge',

@@ -1,6 +1,6 @@
 # Bengali and Hindi translations: what to check first
 
-The Bengali and Hindi passages in this folder are machine translations of the English cardiology and general-medicine drafts. The English versions are the ones checked against the cited guidance. Every translation keeps its English passage's meaning, numbers, lists and urgency, and is pending review like any draft.
+The Bengali and Hindi passages in this folder are machine translations of the English cardiology and general-medicine drafts. The English versions are the ones checked against the cited guidance. Every translation keeps its English passage's meaning, numbers, lists and urgency, and is live, like its English original.
 
 A clinician who reads the language should check the phrases below first. The translators flagged them as the hardest to render faithfully.
 

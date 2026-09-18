@@ -102,19 +102,15 @@ const departmentSchema = new mongoose.Schema(
     /// the patient cannot tell the difference and neither can the doctor
     /// reviewing it afterwards.
     ///
-    /// ---- Written is not approved ---------------------------------------
+    /// ---- A written scope is live ----------------------------------------
     ///
-    /// A role used to be the whole switch: write one and the department had an
-    /// assistant. That made drafting a scope the same act as putting it in
-    /// front of patients. A scope now carries a review status, and a shared
-    /// draft is live only for a practice whose clinician of that specialty
-    /// approved the version in the prompt — see `scopeReviewFor` in
-    /// guidanceReview.js, and services/ai/assistantAvailability.js, which also
-    /// requires approved knowledge before the assistant answers anybody.
+    /// There is no approval step. A written, unretired scope is in use (see
+    /// `scopeReviewFor` in guidanceReview.js); services/ai/assistantAvailability.js
+    /// also requires the department's approved guidance before it answers, and
+    /// the clinicians' toggle on each conversation switches it off and on.
     ///
     /// The diabetology scope has a role and no status. It is the remit the
-    /// original prompt already enforced for that clinic, lifted verbatim, and
-    /// it stays live exactly as it was.
+    /// original prompt already enforced for that clinic, lifted verbatim.
     assistantScope: {
       /// How the assistant introduces itself — "a cardiology assistant".
       /// Absent, there is no assistant in this department's thread at all.
@@ -252,8 +248,9 @@ departmentSchema.methods.toPublic = function toPublic(language = 'en', { assista
     // to say "no assistant in this thread" rather than showing a composer that
     // silently does nothing.
     //
-    // A written scope is no longer enough: a draft awaiting review has a role
-    // and must still read as no assistant.
+    // From the practice's own answer when the route asked for it — which also
+    // needs the department's guidance to be there — and from the scope alone
+    // otherwise.
     hasAssistant: assistant ? Boolean(assistant.enabled) : scopeReviewFor(this.assistantScope).live,
     // Why, when the route asked for this practice: approved and pending
     // counts, and the reason it is off. Absent otherwise.

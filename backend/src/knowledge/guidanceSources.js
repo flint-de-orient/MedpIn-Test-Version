@@ -49,8 +49,8 @@ const src = (organisation, title, year, url) => Object.freeze({ title, organisat
  *
  * A passage cites one of these only where the guideline supports what it says.
  * Where a guideline says something different, it is not cited for that passage
- * and the difference is shown to the doctor before they approve instead — see
- * reviewNotes.js. The US ACC/AHA guidelines could not be opened (their
+ * and the difference is written down for a cardiologist instead — see
+ * CARDIOLOGY_REVIEW.md. The US ACC/AHA guidelines could not be opened (their
  * publishers refused the request) and are cited nowhere.
  */
 export const SPECIALIST_ACCESSED = '2026-09-18';

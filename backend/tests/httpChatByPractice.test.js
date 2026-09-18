@@ -430,17 +430,15 @@ describe('the assistant speaks for the practice the conversation is with', () =>
     const refused = await AiUsage.findOne({ practice: centre._id }).lean();
     assert.equal(refused?.refused, 1, 'the refusal was not recorded against the practice the conversation is with');
 
-    // Salt Lake's assistant, approved by its own diabetologist. No assistant
-    // answers anywhere without that — the one this conversation had used to be
-    // on for every practice, approved by nobody.
+    // Salt Lake has no specialty and its doctor no department, so its
+    // conversation is the diabetology assistant's, which answers once its
+    // guidance is there — and only for a patient with an assigned doctor.
+    await Enrollment.updateOne({ _id: w.a.enrollment._id }, { $set: { primaryDoctor: w.a.doctor.user._id } });
     const diabetology = await Department.create({
       key: 'diabetology',
       names: { en: 'Diabetes & Endocrinology' },
       practice: null,
-      assistantScope: {
-        role: 'the AI health assistant',
-        approvals: [{ practice: w.a.practice._id, version: 1, approvedBy: w.a.doctor.user._id, approvedAt: new Date() }],
-      },
+      assistantScope: { role: 'the AI health assistant' },
     });
     for (let i = 0; i < 10; i += 1) {
       await KnowledgeChunk.create({

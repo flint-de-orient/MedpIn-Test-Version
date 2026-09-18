@@ -24,9 +24,11 @@ export const REVIEW_STATUSES = Object.freeze(['draft', 'pending_review', 'approv
  *   clinician      typed into the knowledge screen by somebody at a practice
  *   platform_seed  the platform's original diabetes and endocrine corpus,
  *                  which the seed has always written as approved
- *   ai_draft       drafted by an AI from cited public guidance. Nothing in the
- *                  platform approves one: a clinician of the specialty does,
- *                  for their own practice, on the knowledge screen.
+ *   ai_draft       drafted by an AI from cited public guidance, and seeded
+ *                  approved so the specialty's assistant can answer from it.
+ *                  The origin stays on the row, so the knowledge screen shows
+ *                  which passages a machine wrote; a practice can edit or retire
+ *                  its copy there.
  */
 export const CONTENT_ORIGINS = Object.freeze(['clinician', 'platform_seed', 'ai_draft']);
 
@@ -51,21 +53,14 @@ export const guidanceSourceSchema = new mongoose.Schema(
 );
 
 /**
- * One practice's sign-off on one version of a shared scope.
- *
- * Per practice because a scope approved by a cardiologist at one clinic is a
- * decision about that clinic's patients; nothing about it entitles the clinic
- * across town to the same assistant. Per version because the draft can be
- * revised after somebody read it, and an approval of words that have since
- * changed is not an approval of the words now in the prompt.
+ * One practice's sign-off on one version of a shared scope — from an approval
+ * step that no longer exists. Kept so rows written then still load; nothing
+ * reads it. See scopeReviewFor.
  */
 export const scopeApprovalSchema = new mongoose.Schema(
   {
     practice: { type: mongoose.Schema.Types.ObjectId, ref: 'Practice', required: true },
     version: { type: Number, required: true },
-    /// The department's knowledge base as the doctor saw it — see
-    /// knowledgeVersionFor in services/ai/assistantReview.js. Absent on
-    /// approvals written before it was recorded.
     knowledgeVersion: { type: String, trim: true, maxlength: 64, default: null },
     approvedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
     /// The doctor's name when they approved, so the record still says who it
@@ -82,54 +77,38 @@ export const scopeApprovalSchema = new mongoose.Schema(
 );
 
 /**
- * Where a department's assistant scope stands for one practice.
+ * Whether a department's assistant scope is in use.
  *
- * ---- One rule, for every specialty -----------------------------------------
+ * ---- No approval step ---------------------------------------------------------
  *
- * Live only where a doctor of the specialty at this practice approved the
- * version in use, and has not withdrawn it. Nothing else switches an assistant
- * on: not writing a scope, not a status set in the database, not a practice
- * somewhere else having approved it.
+ * A scope is live when it is written and not retired, for every practice. There
+ * is no per-practice sign-off: whether the assistant answers a given patient is
+ * decided by the conversation's own switch — the assistant toggle a clinician
+ * has on the chat screen, on by default — and by the department having enough
+ * approved guidance to answer from (services/ai/assistantAvailability.js).
  *
- * The diabetology remit used to be the exception. It predates review, carried
- * no status, and was read as approved for every practice on the platform —
- * including ones whose diabetologist had never seen it. It is now reviewed like
- * the rest, at version 1 when it has no version of its own, and is off for a
- * practice until that practice's diabetologist approves it. `approved` in place
- * is read the same way: a status is not a doctor.
+ * `approvals` on a scope, and scopeApprovalSchema above, are records of an
+ * earlier per-practice approval step. They are kept so existing rows still load,
+ * and nothing reads them.
  *
- * ---- The states ------------------------------------------------------------
+ *   none      no scope written. No assistant.
+ *   retired   withdrawn from the platform. No assistant anywhere.
+ *   live      in use.
  *
- *   none               no scope written. No assistant.
- *   approved           this practice approved the current version. Live.
- *   withdrawn          this practice approved and then withdrew. Not live.
- *   approval_outdated  this practice approved an earlier version. Not live: the
- *                      words changed after they were read.
- *   pending_review     awaiting this practice's approval (also `draft`).
- *   retired            withdrawn from the platform. Not live anywhere.
+ * Pure, so a model's `toPublic` can call it without a query. The second
+ * argument is accepted and ignored, so older callers need not change.
  *
- * Pure, so a model's `toPublic` can call it without a query.
- *
- * @returns {{state: string, live: boolean, version: ?number, approval: ?object}}
+ * @returns {{state: string, live: boolean, version: ?number, approval: null}}
  */
-export function scopeReviewFor(scope, practiceId = null) {
+// eslint-disable-next-line no-unused-vars
+export function scopeReviewFor(scope, _practiceId = null) {
   if (!scope?.role) return { state: 'none', live: false, version: null, approval: null };
-
   const version = scopeVersionOf(scope);
   if (scope.status === 'retired') return { state: 'retired', live: false, version, approval: null };
-
-  const approval = practiceId
-    ? (scope.approvals ?? []).find((a) => String(a.practice) === String(practiceId)) ?? null
-    : null;
-  if (approval?.withdrawnAt) return { state: 'withdrawn', live: false, version, approval };
-  if (approval && approval.version === version) {
-    return { state: 'approved', live: true, version, approval };
-  }
-  if (approval) return { state: 'approval_outdated', live: false, version, approval };
-  return { state: scope.status === 'draft' ? 'draft' : 'pending_review', live: false, version, approval: null };
+  return { state: 'live', live: true, version, approval: null };
 }
 
-/** The version a doctor approves: the scope's own, or 1 for one that has none. */
+/** A scope's version: its own, or 1 for one that has none. */
 export function scopeVersionOf(scope) {
   return scope?.version ?? 1;
 }

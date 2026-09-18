@@ -5,14 +5,20 @@ import { DRAFT_TRANSLATIONS, TRANSLATED_LANGUAGES } from './draftTranslations.js
 /**
  * The AI-drafted scopes and passages, in the shape the knowledge seed writes.
  *
- * ---- Why the review state is stamped here and not left to the seed ---------
+ * ---- Live, and still attributed ---------------------------------------------
  *
- * `KNOWLEDGE_SEED` used to be one list the seed script approved wholesale. The
- * drafts join that list — the practice backfill and the corpus tests read it,
- * and a draft missing from it would be mistaken for a passage somebody wrote in
- * the app — so each draft carries its own `status` and `origin` from the moment
- * it is exported. The seed reads them rather than deciding, and a test asserts
- * that every entry from this file says `pending_review` and `ai_draft`.
+ * There is no approval step for an assistant, so the cardiology and
+ * general-medicine guidance is seeded `approved` — the status retrieval reads —
+ * and each specialty's assistant answers from it. `origin: 'ai_draft'` stays on
+ * every row, so the knowledge screen shows which passages a machine wrote, and a
+ * practice that disagrees with one takes its own copy there to edit or retire.
+ * Before they went live, the two passages that sent worsening angina and chest
+ * pain that comes and goes to a same-day clinic contact were changed to
+ * emergency care, as ESC guidance advises; the other differences from the
+ * specialist guidance are listed in CARDIOLOGY_REVIEW.md for a cardiologist.
+ *
+ * The status and origin are stamped here, not decided by the seed, so a test
+ * can assert what every entry is written as.
  *
  * ---- Adding a specialty -----------------------------------------------------
  *
@@ -23,7 +29,7 @@ import { DRAFT_TRANSLATIONS, TRANSLATED_LANGUAGES } from './draftTranslations.js
  * none, which would make them cross-specialty.
  */
 
-export const DRAFT_STATUS = 'pending_review';
+export const DRAFT_STATUS = 'approved';
 export const DRAFT_ORIGIN = 'ai_draft';
 
 const DRAFT_SETS = Object.freeze([
@@ -69,7 +75,7 @@ function translationsOf(english, departmentKey) {
   });
 }
 
-/** Every AI-drafted passage, ready to seed. Never approved — see above. */
+/** Every AI-drafted passage, ready to seed — live, see above. */
 export const AI_DRAFT_SEED = Object.freeze(
   DRAFT_SETS.flatMap(({ scope, drafts }) =>
     drafts.flatMap((d) => {
@@ -86,7 +92,7 @@ export const AI_DRAFT_SEED = Object.freeze(
   ),
 );
 
-/** Every AI-drafted assistant scope, ready to seed. Never approved either. */
+/** Every AI-drafted assistant scope, ready to seed. */
 export const AI_DRAFT_SCOPES = Object.freeze(
   DRAFT_SETS.map(({ scope }) => Object.freeze({ ...scope, origin: DRAFT_ORIGIN, status: DRAFT_STATUS })),
 );

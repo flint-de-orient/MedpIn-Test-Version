@@ -1,5 +1,7 @@
 import 'package:flutter/foundation.dart';
-import 'package:flutter/services.dart';
+// Newer Flutter exports an `appBuildNumber` of its own from services.dart; the
+// app's is the one from version_gate.dart, and the two collided at compile time.
+import 'package:flutter/services.dart' hide appBuildNumber;
 
 import '../config/app_config.dart';
 import 'version_gate.dart' show appBuildNumber;

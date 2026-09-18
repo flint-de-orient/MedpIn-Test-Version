@@ -17,23 +17,20 @@
  * grounded on insulin advice.
  *
  * The AI drafts — cardiology and general medicine, from src/knowledge/aiDrafts.js
- * — are written `pending_review` with origin `ai_draft`, and so are their
- * assistant scopes. Nothing in this script approves either, and nothing it does
- * can switch an assistant on: a clinician of the specialty approves them for
- * their own practice on the knowledge screen. A shared draft somebody approved
- * in place, outside that flow, is put back to review and reported.
+ * — are written live (`approved`) with origin `ai_draft`, and so are their
+ * assistant scopes: there is no approval step, and those specialties' assistants
+ * answer from them. Whether an assistant answers one conversation is the
+ * clinicians' toggle on that conversation, not anything this script writes.
  *
  * ---- What a second run does -----------------------------------------------------
  *
  * Nothing, when nothing changed. Rows are matched on docId among the shared
  * rows only — a practice's approved copy of a draft carries the same docId and
- * is never touched. A draft whose wording changed gets the new wording, a new
- * version, and goes back to (or stays in) review; practices that approved the
- * earlier version keep their own copy until they review the new one. A scope
- * whose wording changed gets a new version, which makes every practice's
- * approval of the old wording lapse — deliberately, since that approval was of
- * different words. A scope that is live (the legacy diabetology remit, or one
- * approved in place) is never overwritten. A retired draft is left retired.
+ * is never touched. A draft whose wording changed gets the new wording and a
+ * new version; a practice that took its own copy keeps it. An AI-drafted scope
+ * whose wording changed gets the new wording and a new version. A scope the seed
+ * did not write — the diabetology remit, or one a practice wrote — is never
+ * overwritten. A retired draft or scope is left retired.
  *
  * ---- Importable without running --------------------------------------------------
  *
@@ -136,16 +133,8 @@ export async function planKnowledgeSeed({ entries = KNOWLEDGE_SEED, scopes = AI_
         continue;
       }
       const changed = differs(CONTENT_FIELDS, row, entry);
-      const approvedInPlace = row.status === 'approved';
-      if (approvedInPlace) {
-        plan.warnings.push(
-          `Shared draft "${entry.docId}" was approved in place, which applies it to every practice. ` +
-            'It is put back to review; practices approve their own copies.',
-        );
-      }
       const needs =
         changed.length > 0 ||
-        approvedInPlace ||
         row.status !== DRAFT_STATUS ||
         row.origin !== DRAFT_ORIGIN ||
         String(row.department ?? '') !== String(department._id);
@@ -198,12 +187,14 @@ export async function planKnowledgeSeed({ entries = KNOWLEDGE_SEED, scopes = AI_
       continue;
     }
     const current = department.assistantScope ?? {};
-    if (current.role && (current.status == null || current.status === 'approved')) {
-      plan.scopes.push({ departmentKey: scope.departmentKey, action: 'left_live_scope', departmentId: department._id });
-      continue;
-    }
     if (current.role && current.status === 'retired') {
       plan.scopes.push({ departmentKey: scope.departmentKey, action: 'left_retired', departmentId: department._id });
+      continue;
+    }
+    // A scope this seed did not write — the diabetology remit, or one a
+    // practice wrote — is somebody's own words, and is never overwritten.
+    if (current.role && current.origin !== DRAFT_ORIGIN) {
+      plan.scopes.push({ departmentKey: scope.departmentKey, action: 'left_own_scope', departmentId: department._id });
       continue;
     }
     if (!current.role) {
@@ -213,12 +204,11 @@ export async function planKnowledgeSeed({ entries = KNOWLEDGE_SEED, scopes = AI_
     const changed = differs(SCOPE_FIELDS, current, scope);
     plan.scopes.push({
       departmentKey: scope.departmentKey,
-      action: changed.length ? 'update' : 'unchanged',
+      action: changed.length || current.status !== DRAFT_STATUS ? 'update' : 'unchanged',
       departmentId: department._id,
       scope,
       changed,
       version: current.version ?? 1,
-      approvalsLapsing: changed.length ? (current.approvals ?? []).filter((a) => a.version === current.version).length : 0,
     });
   }
 
@@ -346,14 +336,14 @@ export async function applyKnowledgeSeed(plan, { embedder = null, approver = nul
       );
       counts.scopesCreated += 1;
     } else if (item.action === 'update') {
-      // Conditioned on the version read, so a scope revised or approved in
-      // between is not overwritten; approvals are left alone and lapse with the
-      // old version.
+      // Conditioned on the version read and on the seed having written it, so a
+      // scope revised or retired in between is not overwritten.
       await Department.updateOne(
         {
           _id: item.departmentId,
           'assistantScope.version': item.version,
-          'assistantScope.status': { $in: ['draft', 'pending_review'] },
+          'assistantScope.origin': DRAFT_ORIGIN,
+          'assistantScope.status': { $ne: 'retired' },
         },
         {
           $set: {
@@ -364,7 +354,7 @@ export async function applyKnowledgeSeed(plan, { embedder = null, approver = nul
             'assistantScope.sources': item.scope.sources ?? [],
             'assistantScope.status': DRAFT_STATUS,
             'assistantScope.origin': DRAFT_ORIGIN,
-            'assistantScope.version': item.version + 1,
+            'assistantScope.version': item.changed.length ? item.version + 1 : item.version,
           },
         },
       );
@@ -387,8 +377,7 @@ function report(plan) {
   for (const [key, n] of Object.entries(tally(plan.chunks)).sort()) console.log(`  ${String(n).padStart(4)}  ${key}`);
   console.log('\nAssistant scopes:');
   for (const s of plan.scopes) {
-    const lapsing = s.approvalsLapsing ? ` (${s.approvalsLapsing} practice approval(s) of the old wording will lapse)` : '';
-    console.log(`  ${s.departmentKey.padEnd(20)} ${s.action}${lapsing}`);
+    console.log(`  ${s.departmentKey.padEnd(20)} ${s.action}`);
   }
   for (const w of plan.warnings) console.log(`\n  warning: ${w}`);
   for (const e of plan.errors) console.log(`\n  ERROR: ${e}`);

@@ -13,7 +13,6 @@ import '../domain/department.dart';
 import '../domain/team_member.dart';
 import '../domain/clinician_models.dart';
 import '../domain/lab_overview.dart';
-import '../domain/ai_assistant.dart';
 import '../domain/knowledge_chunk.dart';
 import '../domain/patient_summary.dart';
 import '../../../shared/widgets/notification_list_sheet.dart';
@@ -912,35 +911,6 @@ class ClinicianRepository {
   Future<KnowledgeChunk> retireKnowledge(String id) async {
     final json = await _client.postJson('/doctor/knowledge/$id/retire');
     return KnowledgeChunk.fromJson(json['chunk'] as Map<String, dynamic>);
-  }
-
-  /// The AI assistants for this doctor's own specialties, at their practice.
-  Future<List<AiAssistant>> aiAssistants() async {
-    final json = await _client.getJson('/doctor/knowledge/assistants');
-    return (json['items'] as List? ?? const [])
-        .whereType<Map<String, dynamic>>()
-        .map(AiAssistant.fromJson)
-        .toList();
-  }
-
-  /// Approve & turn on, at exactly the versions the doctor was shown. The
-  /// server refuses if either has changed since, and the doctor reviews again.
-  Future<AiAssistant> approveAiAssistant(AiAssistant assistant) async {
-    final json = await _client.postJson(
-      '/doctor/knowledge/assistants/${assistant.departmentId}/approve',
-      body: {
-        'version': assistant.version,
-        'knowledgeVersion': assistant.knowledgeVersion,
-      },
-    );
-    return AiAssistant.fromJson(json['item'] as Map<String, dynamic>);
-  }
-
-  Future<AiAssistant> withdrawAiAssistant(AiAssistant assistant) async {
-    final json = await _client.postJson(
-      '/doctor/knowledge/assistants/${assistant.departmentId}/withdraw',
-    );
-    return AiAssistant.fromJson(json['item'] as Map<String, dynamic>);
   }
 }
 

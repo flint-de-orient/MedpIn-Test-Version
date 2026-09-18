@@ -623,15 +623,6 @@ class _ClinicianMoreScreenState extends ConsumerState<ClinicianMoreScreen> {
                   subtitle: 'What the assistant has been telling patients',
                   onTap: () => context.push('/clinician/chat-review'),
                 ),
-              // Only a doctor can switch on their specialty's assistant, so
-              // only a doctor is offered the screen that does it.
-              if (user?.role == 'doctor')
-                ProfileRow(
-                  icon: Icons.smart_toy_outlined,
-                  title: 'AI assistants',
-                  subtitle: 'Review and switch on your specialty’s assistant',
-                  onTap: () => context.push('/clinician/assistants'),
-                ),
               ProfileRow(
                 icon: Icons.menu_book_outlined,
                 title: 'Knowledge base',

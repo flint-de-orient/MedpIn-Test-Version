@@ -101,10 +101,18 @@ export async function threadsFor(patientId, { language = 'en' } = {}) {
       threads: await describe(g.sessions, language, g.practice.id),
       // A practice with no conversation yet: whether the first message there
       // would be answered, so the empty conversation does not promise an
-      // assistant nobody has approved. Null where the threads already say.
+      // assistant that is not there. Null where the threads already say.
       newConversationHasAssistant: g.sessions.length
         ? null
-        : (await conversationAssistant({ session: null, practiceId: g.practice.id, language })).enabled,
+        : (
+            await conversationAssistant({
+              session: null,
+              enrollmentId: g.enrollment,
+              patientId,
+              practiceId: g.practice.id,
+              language,
+            })
+          ).enabled,
     });
   }
   // A practice the patient has joined but never messaged still appears, so they

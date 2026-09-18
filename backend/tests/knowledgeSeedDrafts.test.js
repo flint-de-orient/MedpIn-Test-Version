@@ -6,10 +6,9 @@ import mongoose from 'mongoose';
 import { Department } from '../src/models/Department.js';
 import { KnowledgeChunk, KNOWLEDGE_CATEGORIES } from '../src/models/KnowledgeChunk.js';
 import { KNOWLEDGE_SEED } from '../src/knowledge/seedContent.js';
-import { AI_DRAFT_SEED, AI_DRAFT_SCOPES } from '../src/knowledge/aiDrafts.js';
+import { AI_DRAFT_SEED, AI_DRAFT_SCOPES, DRAFT_STATUS } from '../src/knowledge/aiDrafts.js';
 import { SOURCES, SPECIALIST_ACCESSED } from '../src/knowledge/guidanceSources.js';
 import { SPECIALIST_EVIDENCE } from '../src/knowledge/specialistEvidence.js';
-import { REVIEW_NOTES } from '../src/knowledge/reviewNotes.js';
 import { planKnowledgeSeed, applyKnowledgeSeed } from '../scripts/seedKnowledge.js';
 import { SEED_DOC_IDS } from '../scripts/backfillKnowledgePractice.js';
 import { assistantStatusForPractice, RED_FLAG_CATEGORY } from '../src/services/ai/assistantAvailability.js';
@@ -29,14 +28,17 @@ import { assistantStatusForPractice, RED_FLAG_CATEGORY } from '../src/services/a
 const PLATFORM = KNOWLEDGE_SEED.filter((e) => e.origin !== 'ai_draft');
 
 describe('the drafts as written', () => {
-  test('every draft is pending review and AI-drafted, and so is every scope', () => {
+  test('every draft is live and still attributed as AI-drafted, and so is every scope', () => {
+    // No approval step: the specialty assistants answer from these. The origin
+    // stays, so the knowledge screen shows which passages a machine wrote.
+    assert.equal(DRAFT_STATUS, 'approved');
     assert.ok(AI_DRAFT_SEED.length >= 50, `only ${AI_DRAFT_SEED.length} drafts`);
     for (const d of AI_DRAFT_SEED) {
-      assert.equal(d.status, 'pending_review', `${d.docId} is not pending review`);
+      assert.equal(d.status, 'approved', `${d.docId} is not live`);
       assert.equal(d.origin, 'ai_draft', `${d.docId} is not attributed as AI-drafted`);
     }
     for (const s of AI_DRAFT_SCOPES) {
-      assert.equal(s.status, 'pending_review');
+      assert.equal(s.status, 'approved');
       assert.equal(s.origin, 'ai_draft');
     }
   });
@@ -92,7 +94,7 @@ describe('the drafts as written', () => {
         assert.equal(t.departmentKey, d.departmentKey);
         assert.equal(t.category, d.category, `${t.docId} is filed differently from its English`);
         assert.deepEqual(t.sources, d.sources, `${t.docId} cites differently from its English`);
-        assert.equal(t.status, 'pending_review');
+        assert.equal(t.status, d.status);
         assert.equal(t.origin, 'ai_draft');
         // Western digits, so the dose and phone checks below read them.
         assert.ok(!/[০-৯०-९]/.test(t.content), `${t.docId} writes a number in native digits`);
@@ -131,15 +133,20 @@ describe('the drafts as written', () => {
     }
   });
 
-  test('the notes a doctor reads before approving name passages that exist', () => {
-    const english = new Set(AI_DRAFT_SEED.filter((x) => x.language === 'en').map((x) => x.docId));
-    for (const [key, notes] of Object.entries(REVIEW_NOTES)) {
-      for (const note of notes) {
-        assert.ok(note.title && note.detail, `${key}: a note with nothing to say`);
-        for (const id of note.docIds) assert.ok(english.has(id), `${key} note names ${id}, which is not a passage`);
-      }
+  test('worsening angina and chest pain that comes and goes go to emergency care, in all three languages', () => {
+    // These two told patients to contact the clinic the same day, where ESC
+    // guidance treats the same symptoms as possible unstable angina. They were
+    // changed before the drafts went live, and must not drift back.
+    const text = (docId) => AI_DRAFT_SEED.find((d) => d.docId === docId).content;
+    for (const docId of ['cardio-angina', 'cardio-bp-emergency']) {
+      assert.match(text(docId), /call an ambulance or go to the nearest hospital emergency department/i);
+      assert.doesNotMatch(text(docId), /same day[^.]*chest pain that comes and goes/i, `${docId} sends chest pain to a same-day contact`);
+      assert.match(text(`${docId}-bn`), /অ্যাম্বুলেন্স ডাকুন অথবা নিকটতম হাসপাতালের জরুরি বিভাগে/);
+      assert.match(text(`${docId}-hi`), /एम्बुलेंस बुलाएं या सबसे नज़दीकी अस्पताल के इमरजेंसी विभाग/);
     }
-    assert.ok(REVIEW_NOTES.cardiology.length > 1, 'the cardiology guideline differences are not shown to the doctor');
+    assert.doesNotMatch(text('cardio-angina'), /Contact your clinic the same day if your angina/);
+    assert.doesNotMatch(text('cardio-angina-bn'), /সেই দিনই আপনার ক্লিনিকে/);
+    assert.doesNotMatch(text('cardio-angina-hi'), /उसी दिन अपने क्लिनिक/);
   });
 
   test('no brand names, no doses, and no phone number but the national quit line', () => {
@@ -206,15 +213,15 @@ describe('the knowledge seed', () => {
     assert.equal(cardiology.assistantScope?.role ?? null, null);
   });
 
-  test('drafts and scopes land in review; the platform corpus lands approved under diabetology', async () => {
+  test('drafts and scopes land live; the platform corpus lands approved under diabetology', async () => {
     const counts = await seedOnce();
     assert.equal(counts.created, KNOWLEDGE_SEED.length);
     assert.equal(counts.scopesCreated, 2);
 
     const drafts = await KnowledgeChunk.find({ origin: 'ai_draft' }).lean();
     assert.equal(drafts.length, AI_DRAFT_SEED.length);
-    assert.ok(drafts.every((d) => d.status === 'pending_review' && d.practice == null && d.department), 'a draft was written approved, owned or unfiled');
-    assert.ok(drafts.every((d) => !d.approvedBy && !d.approvedAt));
+    assert.ok(drafts.every((d) => d.status === 'approved' && d.practice == null && d.department), 'a draft was written not live, owned or unfiled');
+    assert.ok(drafts.every((d) => !d.approvedBy), 'a draft was attributed to a person who never approved it');
 
     const platform = await KnowledgeChunk.find({ origin: 'platform_seed' }).lean();
     const diabetology = await Department.findOne({ key: 'diabetology' }).lean();
@@ -223,12 +230,11 @@ describe('the knowledge seed', () => {
 
     for (const key of ['cardiology', 'general_physician']) {
       const scope = (await Department.findOne({ key }).lean()).assistantScope;
-      assert.equal(scope.status, 'pending_review');
+      assert.equal(scope.status, 'approved');
       assert.equal(scope.origin, 'ai_draft');
       assert.equal(scope.version, 1);
-      assert.deepEqual(scope.approvals, []);
     }
-    // The live diabetology scope was not touched.
+    // The hand-written diabetology scope was not touched.
     assert.equal(diabetology.assistantScope.status, undefined);
   });
 
@@ -244,19 +250,18 @@ describe('the knowledge seed', () => {
     assert.deepEqual(afterRun.map((r) => String(r.updatedAt)), before.map((r) => String(r.updatedAt)));
   });
 
-  test('on a fresh seed no assistant is on, diabetology included — only a doctor switches one on', async () => {
+  test('on a fresh seed the diabetes, cardiology and general-medicine assistants are all on', async () => {
     await seedOnce();
     const statuses = await assistantStatusForPractice({ practiceId: null, language: 'en' });
     const byKey = Object.fromEntries(statuses.map((s) => [s.department.key, s]));
 
-    // Its knowledge is approved and ready; its scope waits for a diabetologist.
-    assert.equal(byKey.diabetology.enabled, false, 'seeding switched the diabetes assistant on');
-    assert.deepEqual(byKey.diabetology.reasons, ['scope_not_approved']);
+    for (const key of ['diabetology', 'cardiology', 'general_physician']) {
+      assert.equal(byKey[key].enabled, true, `${key}: ${byKey[key].reasons}`);
+    }
     for (const key of ['cardiology', 'general_physician']) {
-      assert.equal(byKey[key].enabled, false, `${key} switched on by seeding`);
-      assert.deepEqual(byKey[key].reasons, ['scope_not_approved', 'too_little_approved_knowledge', 'no_approved_red_flag_guidance']);
-      assert.equal(byKey[key].knowledge.approved.total, 0);
-      assert.equal(byKey[key].knowledge.pending.aiDrafts, AI_DRAFT_SEED.filter((d) => d.departmentKey === key).length);
+      // English, Bengali and Hindi, each specialty's own and nobody else's.
+      assert.equal(byKey[key].knowledge.approved.total, AI_DRAFT_SEED.filter((d) => d.departmentKey === key).length);
+      assert.equal(byKey[key].knowledge.pending.total, 0);
     }
   });
 
@@ -286,7 +291,7 @@ describe('the knowledge seed', () => {
     assert.equal(row.approvedAt.toISOString(), approvedAt.toISOString(), 'unchanged wording was re-approved');
   });
 
-  test('a revised draft goes back to review with a new version, and a practice’s copy is not touched', async () => {
+  test('a revised draft gets the new wording and version, and a practice’s copy is not touched', async () => {
     await seedOnce();
     const draft = AI_DRAFT_SEED[0];
     const shared = await KnowledgeChunk.findOne({ docId: draft.docId, practice: null }).lean();
@@ -303,47 +308,49 @@ describe('the knowledge seed', () => {
 
     const after = await KnowledgeChunk.findById(shared._id).lean();
     assert.equal(after.version, 2);
-    assert.equal(after.status, 'pending_review');
+    assert.equal(after.status, 'approved');
     const copy = await KnowledgeChunk.findOne({ practice, adoptedFrom: shared._id }).lean();
     assert.equal(copy.content, draft.content, 'the seed rewrote a practice’s approved copy');
     assert.equal(copy.status, 'approved');
   });
 
-  test('a draft approved in place is put back to review, and a retired one is left alone', async () => {
+  test('a draft left waiting from before is made live, and a retired one is left alone', async () => {
     await seedOnce();
     const [first, second] = AI_DRAFT_SEED;
-    await KnowledgeChunk.updateOne({ docId: first.docId, practice: null }, { $set: { status: 'approved', approvedAt: new Date() } });
+    await KnowledgeChunk.updateOne({ docId: first.docId, practice: null }, { $set: { status: 'pending_review' } });
     await KnowledgeChunk.updateOne({ docId: second.docId, practice: null }, { $set: { status: 'retired' } });
 
     const plan = await planKnowledgeSeed({ entries: [first, second], scopes: [] });
-    assert.ok(plan.warnings.some((w) => w.includes(first.docId)));
     await applyKnowledgeSeed(plan, { embedder: null });
 
-    assert.equal((await KnowledgeChunk.findOne({ docId: first.docId, practice: null }).lean()).status, 'pending_review');
+    assert.equal((await KnowledgeChunk.findOne({ docId: first.docId, practice: null }).lean()).status, 'approved');
     assert.equal((await KnowledgeChunk.findOne({ docId: second.docId, practice: null }).lean()).status, 'retired');
   });
 
-  test('a revised scope lapses approvals of the old wording; a live scope is never overwritten', async () => {
+  test('a revised AI-drafted scope takes the new wording; a scope the seed did not write is never overwritten', async () => {
     await seedOnce();
-    const practice = new mongoose.Types.ObjectId();
-    await Department.updateOne(
-      { key: 'cardiology' },
-      { $push: { 'assistantScope.approvals': { practice, version: 1, approvedBy: new mongoose.Types.ObjectId(), approvedAt: new Date() } } },
-    );
-
     const cardiologyScope = AI_DRAFT_SCOPES.find((s) => s.departmentKey === 'cardiology');
     const revised = { ...cardiologyScope, covers: [...cardiologyScope.covers, 'A line added in revision.'] };
     const diabetologyAttempt = { ...cardiologyScope, departmentKey: 'diabetology' };
     const plan = await planKnowledgeSeed({ entries: [], scopes: [revised, diabetologyAttempt] });
-    assert.equal(plan.scopes.find((s) => s.departmentKey === 'cardiology').approvalsLapsing, 1);
-    assert.equal(plan.scopes.find((s) => s.departmentKey === 'diabetology').action, 'left_live_scope');
+    assert.equal(plan.scopes.find((s) => s.departmentKey === 'diabetology').action, 'left_own_scope');
     await applyKnowledgeSeed(plan, { embedder: null });
 
     const cardiology = (await Department.findOne({ key: 'cardiology' }).lean()).assistantScope;
     assert.equal(cardiology.version, 2);
-    assert.equal(cardiology.approvals.length, 1, 'approvals were deleted rather than left to lapse');
+    assert.ok(cardiology.covers.includes('A line added in revision.'));
     const diabetology = (await Department.findOne({ key: 'diabetology' }).lean()).assistantScope;
-    assert.equal(diabetology.role, 'the AI health assistant', 'the live diabetology scope was overwritten');
+    assert.equal(diabetology.role, 'the AI health assistant', 'the hand-written diabetology scope was overwritten');
+  });
+
+  test('a scope written before, still waiting, is made live without a new version', async () => {
+    await seedOnce();
+    await Department.updateOne({ key: 'cardiology' }, { $set: { 'assistantScope.status': 'pending_review' } });
+    const plan = await planKnowledgeSeed({ entries: [], scopes: AI_DRAFT_SCOPES });
+    await applyKnowledgeSeed(plan, { embedder: null });
+    const cardiology = (await Department.findOne({ key: 'cardiology' }).lean()).assistantScope;
+    assert.equal(cardiology.status, 'approved');
+    assert.equal(cardiology.version, 1);
   });
 
   test('without the department, its drafts are not written at all — never filed under no department', async () => {

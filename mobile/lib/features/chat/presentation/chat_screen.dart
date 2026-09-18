@@ -382,7 +382,12 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
     // The "analysing" bubble covers the whole wait — from send until there is
     // actual text — so the two never swap to a blank gap in between. Once the
     // reply starts streaming it would be a duplicate, so it goes.
+    //
+    // Not where no assistant answers: the banner above already says the clinic
+    // replies here, and "MedPin is analyzing data…" under it promised a reply
+    // that was never coming.
     final showGenerating =
+        !widget.clinicRepliesOnly &&
         chatState.isSending &&
         (messages.isEmpty || messages.last.isUser || awaitingFirstToken);
 

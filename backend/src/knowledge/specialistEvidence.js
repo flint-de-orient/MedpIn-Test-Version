@@ -8,6 +8,11 @@
  * (guidanceSources.js). A test asserts that every specialist citation has one.
  */
 export const SPECIALIST_EVIDENCE = Object.freeze({
+  "cardio-angina": Object.freeze([
+    Object.freeze({ source: "esc2023Acs", quote: "It is characterized by specific clinical findings of prolonged (>20 min) angina at rest; new onset of severe angina; angina that is increasing in frequency, longer in duration, or lower in threshold", location: "Section 2.1 Definitions (unstable angina)" }),
+    Object.freeze({ source: "esc2023Acs", quote: "the public should be educated to call the EMS directly rather than a primary care physician for symptoms suggestive of ACS.", location: "Section 4.1.4" }),
+    Object.freeze({ source: "esc2024Ccs", quote: "Unstable cardiac symptoms with angina, heart failure or arrhythmia: acute assessment by the ED", location: "Figure 2 Stepwise approach to the initial management of individuals with suspected CCS" }),
+  ]),
   "cardio-bp-what-it-is": Object.freeze([
     Object.freeze({ source: "esc2024Hypertension", quote: "Hypertension is predominantly an asymptomatic condition that is typically detected by systematic or opportunistic screening in a healthcare setting.", location: "Section 7.2 Confirming the diagnosis of hypertension" }),
     Object.freeze({ source: "esc2024Hypertension", quote: "Symptoms of hypertensive emergency depend on the organs affected but may include headache, visual disturbances, chest pain, shortness of breath, dizziness, and other neurological deficits.", location: "Section 10.1.1 Definition and characteristics of hypertensive emergencies" }),
@@ -38,6 +43,7 @@ export const SPECIALIST_EVIDENCE = Object.freeze({
   "cardio-bp-emergency": Object.freeze([
     Object.freeze({ source: "esc2024Hypertension", quote: "Symptoms of hypertensive emergency depend on the organs affected but may include headache, visual disturbances, chest pain, shortness of breath, dizziness, and other neurological deficits.", location: "Section 10.1.1 Definition and characteristics of hypertensive emergencies" }),
     Object.freeze({ source: "esc2024Hypertension", quote: "Hypertensive emergencies are potentially life-threatening and require immediate and careful intervention to reduce BP, often with i.v. therapy.", location: "Section 10.1.1 Definition and characteristics of hypertensive emergencies" }),
+    Object.freeze({ source: "esc2023Acs", quote: "the public should be educated to call the EMS directly rather than a primary care physician for symptoms suggestive of ACS.", location: "Section 4.1.4" }),
   ]),
   "cardio-low-bp": Object.freeze([
     Object.freeze({ source: "esc2024Hypertension", quote: "Patients with orthostatic hypotension should be asked to change position slowly, maintain adequate hydration, and avoid alcohol and large meals.", location: "Section 9.5 Orthostatic hypotension with supine hypertension" }),

@@ -192,7 +192,7 @@ If you take blood pressure medicine, keep taking it while you make these changes
     section: 'Signs that cannot wait',
     category: 'emergency',
     tags: ['emergency', 'blood pressure', 'chest pain', 'stroke', 'red flags'],
-    sources: [S.whoHypertension, S.nhsHighBloodPressure, S.nhsChestPain, S.nhsStrokeSymptoms, S.esc2024Hypertension],
+    sources: [S.whoHypertension, S.nhsHighBloodPressure, S.nhsChestPain, S.nhsStrokeSymptoms, S.esc2024Hypertension, S.esc2023Acs],
     content: `Seek care immediately — go to the nearest hospital emergency department — if you have high blood pressure together with symptoms such as:
 - a severe headache
 - chest pain
@@ -207,7 +207,7 @@ Call an ambulance straight away for:
 - chest pain with sweating, feeling sick, light-headedness or shortness of breath
 - signs of a stroke, such as one side of the face drooping, weakness in one arm, or slurred speech
 
-Contact your clinic the same day if you often get headaches or blurred vision, or you have chest pain that comes and goes.
+Contact your clinic the same day if you often get headaches or blurred vision. If you have chest pain that comes and goes, call an ambulance or go to the nearest hospital emergency department.
 
 Do not try to bring your blood pressure down yourself by taking extra doses of any medicine.`,
   },
@@ -348,7 +348,7 @@ Call an ambulance immediately if you think someone is having, or has had, a stro
     section: 'Managing angina pain',
     category: 'coronary_heart_disease',
     tags: ['angina', 'chest pain', 'gtn', 'coronary', 'triggers'],
-    sources: [S.nhsAngina],
+    sources: [S.nhsAngina, S.esc2023Acs, S.esc2024Ccs],
     content: `Angina is pain or tightness, usually in the chest, that can be a sign of a heart problem. It can be felt in the chest, neck, shoulders, jaw or arms, and may feel like tightness, squeezing or pressure, or a dull ache. Some people also feel sick, breathless, dizzy or sweaty.
 
 It is often brought on by exercise, stress, emotion or cold temperatures, although sometimes there is no obvious trigger.
@@ -360,7 +360,7 @@ During an angina attack:
 
 Call an ambulance straight away for sudden chest pain or discomfort that does not go away.
 
-Contact your clinic the same day if your angina feels worse than before, happens more often, lasts longer, or comes on when you are resting, or if you have chest pain that comes and goes.`,
+Call an ambulance or go to the nearest hospital emergency department straight away if your angina feels worse than before, happens more often, lasts longer, or comes on when you are resting, or if you have chest pain that comes and goes. These can be signs of unstable angina, which needs to be checked in hospital.`,
   },
   {
     docId: 'cardio-chd-living',
