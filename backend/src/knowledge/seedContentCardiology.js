@@ -93,7 +93,7 @@ export const CARDIOLOGY_DRAFTS = [
     section: 'Understanding high blood pressure',
     category: 'hypertension',
     tags: ['blood pressure', 'hypertension', 'risk', 'symptoms'],
-    sources: [S.whoHypertension, S.nhsHighBloodPressure],
+    sources: [S.whoHypertension, S.nhsHighBloodPressure, S.esc2024Hypertension],
     content: `High blood pressure (hypertension) means the pressure in your blood vessels is too high. Over time it can lead to serious problems such as heart attacks and strokes.
 
 Most people with high blood pressure do not feel any symptoms. The only way to know is to have your blood pressure checked.
@@ -110,7 +110,7 @@ If you have been prescribed medicine for blood pressure, take it exactly as your
     section: 'What the two numbers mean',
     category: 'hypertension',
     tags: ['blood pressure', 'systolic', 'diastolic', 'reading', 'numbers'],
-    sources: [S.nhsBloodPressureTest, S.whoHypertension],
+    sources: [S.nhsBloodPressureTest, S.whoHypertension, S.esc2024Hypertension],
     content: `A blood pressure reading has two numbers, written like 140/90.
 
 - The first (top) number is the systolic pressure: the highest level your blood pressure reaches when your heart pumps blood around the body.
@@ -128,7 +128,7 @@ What your own readings mean for you, and what your target should be, is for your
     section: 'Getting an accurate reading',
     category: 'hypertension',
     tags: ['blood pressure', 'home monitoring', 'measuring', 'cuff', 'log'],
-    sources: [S.cdcMeasureBloodPressure, S.nhsBloodPressureTest, S.whoHypertension],
+    sources: [S.cdcMeasureBloodPressure, S.nhsBloodPressureTest, S.whoHypertension, S.esc2024Hypertension],
     content: `Home readings are most useful when they are taken the same way every time.
 
 Before you measure:
@@ -152,7 +152,7 @@ If a reading is high and you also have symptoms such as a severe headache, chest
     section: 'How much salt, and how to cut down',
     category: 'diet',
     tags: ['salt', 'sodium', 'blood pressure', 'diet', 'processed food'],
-    sources: [S.whoSodium, S.whoHealthyDiet, S.whoHypertension],
+    sources: [S.whoSodium, S.whoHealthyDiet, S.whoHypertension, S.esc2024Hypertension, S.esc2021Prevention],
     content: `Eating too much salt raises blood pressure, which increases the risk of heart disease and stroke.
 
 The World Health Organization recommends that adults eat less than 5 grams of salt a day — just under a teaspoon. That is less than 2,000 mg of sodium. In 2021 adults around the world ate about 11 grams of salt a day on average, more than double that amount.
@@ -173,7 +173,7 @@ Eating less salt helps, but it does not replace any blood pressure medicine you 
     section: 'What you can do',
     category: 'hypertension',
     tags: ['blood pressure', 'lifestyle', 'exercise', 'weight', 'alcohol', 'smoking'],
-    sources: [S.nhsHighBloodPressure, S.whoHypertension, S.whoAlcohol],
+    sources: [S.nhsHighBloodPressure, S.whoHypertension, S.whoAlcohol, S.esc2024Hypertension],
     content: `Changes to daily life can help lower blood pressure, alongside any medicine your doctor has prescribed:
 
 - Eat a healthy, balanced diet with plenty of vegetables and fruit.
@@ -192,7 +192,7 @@ If you take blood pressure medicine, keep taking it while you make these changes
     section: 'Signs that cannot wait',
     category: 'emergency',
     tags: ['emergency', 'blood pressure', 'chest pain', 'stroke', 'red flags'],
-    sources: [S.whoHypertension, S.nhsHighBloodPressure, S.nhsChestPain, S.nhsStrokeSymptoms],
+    sources: [S.whoHypertension, S.nhsHighBloodPressure, S.nhsChestPain, S.nhsStrokeSymptoms, S.esc2024Hypertension],
     content: `Seek care immediately — go to the nearest hospital emergency department — if you have high blood pressure together with symptoms such as:
 - a severe headache
 - chest pain
@@ -217,7 +217,7 @@ Do not try to bring your blood pressure down yourself by taking extra doses of a
     section: 'Symptoms and what helps',
     category: 'cardiac_symptoms',
     tags: ['low blood pressure', 'hypotension', 'dizziness', 'fainting', 'postural'],
-    sources: [S.nhsLowBloodPressure, S.nhsRamiprilSideEffects, S.nhsFainting],
+    sources: [S.nhsLowBloodPressure, S.nhsRamiprilSideEffects, S.nhsFainting, S.esc2024Hypertension],
     content: `Low blood pressure is a reading of less than 90/60. Symptoms can include light-headedness or dizziness, feeling sick, blurred vision, generally feeling weak, confusion and fainting.
 
 If symptoms come on when you stand up or change position suddenly, this may be a type called postural hypotension. Some medicines can cause low blood pressure; feeling dizzy or light-headed when you stand up or sit up quickly is a common side effect of some blood pressure medicines.
@@ -260,7 +260,7 @@ What a good level is for you depends on your age, your health conditions and you
     section: 'What to eat more of and less of',
     category: 'dyslipidaemia',
     tags: ['cholesterol', 'diet', 'saturated fat', 'ghee', 'exercise'],
-    sources: [S.nhsLowerCholesterol, S.nhsHighCholesterol, S.whoHealthyDiet],
+    sources: [S.nhsLowerCholesterol, S.nhsHighCholesterol, S.whoHealthyDiet, S.esc2021Prevention],
     content: `You can lower your cholesterol by eating healthily and getting more exercise. Some people also need medicine — if you have been prescribed one, keep taking it.
 
 Eat more of:
@@ -287,7 +287,7 @@ Aim for at least 150 minutes of moderate-intensity exercise, or 75 minutes of vi
     section: 'Why they are prescribed and what to watch for',
     category: 'pharmacology',
     tags: ['statins', 'cholesterol medicine', 'side effects', 'muscle pain', 'grapefruit'],
-    sources: [S.nhsStatins, S.nhsAtorvastatinSideEffects],
+    sources: [S.nhsStatins, S.nhsAtorvastatinSideEffects, S.csi2024Dyslipidemia],
     content: `Statins are medicines that lower cholesterol and help stop your body producing too much of it. They are usually taken long term, as a tablet once a day.
 
 - Keep taking your statin as prescribed. Stopping can affect your cholesterol levels, so talk to your doctor or pharmacist before stopping.
@@ -309,7 +309,7 @@ Contact your clinic or a doctor the same day if you have muscle cramps with seve
     section: 'An emergency — call an ambulance',
     category: 'emergency',
     tags: ['heart attack', 'chest pain', 'emergency', 'ambulance', 'cpr'],
-    sources: [S.nhsHeartAttack, S.whoCardiovascular],
+    sources: [S.nhsHeartAttack, S.whoCardiovascular, S.esc2023Acs],
     content: `A heart attack is a medical emergency. Call an ambulance immediately for:
 - chest pain that may feel like crushing or squeezing, which can spread to the arm, neck and jaw
 - pain or discomfort in the centre of the chest, or in the arms, left shoulder, elbows, jaw or back
@@ -368,7 +368,7 @@ Contact your clinic the same day if your angina feels worse than before, happens
     section: 'Treatment and everyday care',
     category: 'coronary_heart_disease',
     tags: ['coronary heart disease', 'heart attack recovery', 'medicines', 'lifestyle'],
-    sources: [S.nhsCoronaryHeartDisease, S.nhsHeartAttack],
+    sources: [S.nhsCoronaryHeartDisease, S.nhsHeartAttack, S.esc2024Ccs, S.esc2023Acs],
     content: `Coronary heart disease is what happens when the heart's blood supply is blocked or interrupted by a build-up of fatty substances in the coronary arteries. Its main symptoms are chest pain (angina), shortness of breath, pain in the neck, shoulders, jaw or arms, feeling faint and feeling sick.
 
 It cannot be cured, but treatment can help manage the symptoms and reduce the chances of problems such as heart attacks. Treatment can include lifestyle changes, medicines, angioplasty with stents, and surgery.
@@ -390,7 +390,7 @@ It is common to feel anxious or low after a heart attack. Talk to your doctor if
     section: 'Why they must not be stopped',
     category: 'anticoagulation',
     tags: ['antiplatelet', 'clopidogrel', 'stent', 'bleeding', 'heart attack'],
-    sources: [S.nhsClopidogrelHow, S.nhsClopidogrelSideEffects, S.nhsHeartAttack, S.nhsStomachAche],
+    sources: [S.nhsClopidogrelHow, S.nhsClopidogrelSideEffects, S.nhsHeartAttack, S.nhsStomachAche, S.esc2023Acs, S.esc2024Ccs],
     content: `Antiplatelet medicines, such as clopidogrel, help stop your arteries getting blocked. People often take them after a heart attack or a stent.
 
 - You may need to take clopidogrel for a few weeks or months, or for the rest of your life. Your doctor will tell you how long.
@@ -408,7 +408,7 @@ Go to the nearest hospital emergency department now if you cough up blood, vomit
     section: 'Recovering after a heart problem',
     category: 'cardiac_rehabilitation',
     tags: ['cardiac rehabilitation', 'recovery', 'exercise', 'heart attack', 'heart failure'],
-    sources: [S.cdcCardiacRehabilitation, S.nhsHeartAttack, S.nhsHeartFailure],
+    sources: [S.cdcCardiacRehabilitation, S.nhsHeartAttack, S.nhsHeartFailure, S.esc2026CardiacRehab, S.esc2023Acs],
     content: `Cardiac rehabilitation ("cardiac rehab") is a programme for people recovering from a heart attack, heart failure, or another heart problem that needed surgery or medical care.
 
 It usually includes:
@@ -428,7 +428,7 @@ Ask your cardiologist whether cardiac rehabilitation is right for you and how to
     section: 'How much, and staying safe',
     category: 'exercise',
     tags: ['exercise', 'physical activity', 'walking', 'heart', 'safety'],
-    sources: [S.whoHypertension, S.whoPhysicalActivity, S.cdcCardiacRehabilitation, S.nhsAngina, S.nhsFainting, S.nhsBetaBlockers],
+    sources: [S.whoHypertension, S.whoPhysicalActivity, S.cdcCardiacRehabilitation, S.nhsAngina, S.nhsFainting, S.nhsBetaBlockers, S.esc2021Prevention, S.esc2026CardiacRehab],
     content: `Regular physical activity is good for your heart. For adults, the World Health Organization advises at least 150 minutes a week of moderate-intensity aerobic activity, or 75 minutes of vigorous activity. Any amount of physical activity is better than none, and all activity counts. Try to limit the time you spend sitting still. Muscle-strengthening activity benefits everyone.
 
 If you have a heart condition:
@@ -449,7 +449,7 @@ Fainting while exercising needs emergency help — call an ambulance.`,
     section: 'Understanding heart failure',
     category: 'heart_failure',
     tags: ['heart failure', 'breathlessness', 'swelling', 'tiredness'],
-    sources: [S.nhsHeartFailure],
+    sources: [S.nhsHeartFailure, S.esc2026HeartFailure],
     content: `Heart failure means your heart cannot pump blood around your body properly. It does not mean your heart has stopped working or is about to stop working.
 
 Main symptoms include:
@@ -468,7 +468,7 @@ Treatment may include medicines such as water tablets (diuretics), medicines tha
     section: 'Everyday self-care',
     category: 'heart_failure',
     tags: ['heart failure', 'weight', 'fluid', 'salt', 'self-care', 'vaccination'],
-    sources: [S.nhsHeartFailure, S.nhlbiLivingWithHeartFailure, S.imdHeatWave],
+    sources: [S.nhsHeartFailure, S.nhlbiLivingWithHeartFailure, S.imdHeatWave, S.esc2026CardiacRehab],
     content: `Things that help every day:
 
 - Take your medicines exactly as your doctor has prescribed.
@@ -512,7 +512,7 @@ Watch for new or worsening symptoms and tell your care team about them. Do not t
     section: 'Symptoms, treatment and when to get help',
     category: 'atrial_fibrillation',
     tags: ['atrial fibrillation', 'af', 'irregular heartbeat', 'palpitations', 'stroke risk'],
-    sources: [S.nhsAtrialFibrillation],
+    sources: [S.nhsAtrialFibrillation, S.esc2024AtrialFibrillation],
     content: `Atrial fibrillation (AF) is a heart rhythm problem where your heartbeat is not steady. It can cause:
 - an irregular pulse
 - heart palpitations that last a few seconds or minutes
@@ -534,7 +534,7 @@ See your doctor if you think you may have symptoms of AF, if palpitations keep h
     section: 'Everyday safety',
     category: 'anticoagulation',
     tags: ['anticoagulant', 'blood thinner', 'warfarin', 'apixaban', 'bleeding', 'interactions'],
-    sources: [S.nhsAnticoagulants, S.nhsApixabanInteractions, S.nhsApixabanSideEffects, S.nhsWarfarin],
+    sources: [S.nhsAnticoagulants, S.nhsApixabanInteractions, S.nhsApixabanSideEffects, S.nhsWarfarin, S.esc2024AtrialFibrillation],
     content: `Anticoagulants are medicines that help prevent blood clots. Examples include warfarin, apixaban, rivaroxaban, dabigatran and edoxaban, and heparin injections.
 
 - Your doctor or nurse should tell you how much to take and when. Take it exactly as prescribed.
@@ -573,7 +573,7 @@ Do not stop your blood thinner yourself. Tell the doctors treating you which blo
     section: 'Living with warfarin',
     category: 'anticoagulation',
     tags: ['warfarin', 'inr', 'vitamin k', 'interactions', 'alcohol'],
-    sources: [S.nhsWarfarin],
+    sources: [S.nhsWarfarin, S.esc2024AtrialFibrillation],
     content: `Warfarin is an anticoagulant (a blood thinner) that treats and prevents blood clots. It is used, for example, to lower the risk of clots in people with atrial fibrillation or an artificial heart valve.
 
 - While you take warfarin you need regular blood tests, called INR tests, to measure how quickly your blood clots. Go to every test your clinic arranges.
@@ -670,7 +670,7 @@ You may get results the same day, or it can take a few weeks. Your doctor will e
     section: 'Why it matters and where to get help',
     category: 'preventive_care',
     tags: ['smoking', 'tobacco', 'quitting', 'quit line', 'second-hand smoke'],
-    sources: [S.whoTobacco, S.nhsLowerCholesterol, S.ntcpQuitLine, S.whoIndiaQuitline],
+    sources: [S.whoTobacco, S.nhsLowerCholesterol, S.ntcpQuitLine, S.whoIndiaQuitline, S.esc2021Prevention],
     content: `Tobacco use is a major risk factor for diseases of the heart and blood vessels. Smoking can raise your cholesterol and makes heart attacks and strokes more likely.
 
 There is no safe level of exposure to second-hand tobacco smoke. It causes serious diseases, including coronary heart disease.
@@ -687,7 +687,7 @@ If you would like help to quit, talk to your doctor, including about whether a m
     section: 'What a healthy diet looks like',
     category: 'diet',
     tags: ['diet', 'healthy eating', 'fruit', 'vegetables', 'whole grains', 'fat', 'sugar'],
-    sources: [S.whoHealthyDiet, S.nhsLowerCholesterol],
+    sources: [S.whoHealthyDiet, S.nhsLowerCholesterol, S.esc2021Prevention],
     content: `A healthy diet helps protect your heart. The World Health Organization advises:
 - Eat at least 400 grams of fruit and vegetables a day.
 - Base meals on whole grains, vegetables, fruit and pulses; whole grains include unprocessed maize, millet, oats, wheat and brown rice.
@@ -705,7 +705,7 @@ If you have heart failure, kidney disease or diabetes, or have been given a spec
     section: 'Why a yearly flu vaccine matters',
     category: 'preventive_care',
     tags: ['flu', 'influenza', 'vaccine', 'heart disease', 'stroke'],
-    sources: [S.cdcFluHeartDisease, S.nhsFlu, S.nhsHeartFailure],
+    sources: [S.cdcFluHeartDisease, S.nhsFlu, S.nhsHeartFailure, S.esc2023Acs, S.esc2026HeartFailure, S.esc2024Ccs],
     content: `People with heart disease, and people who have had a stroke, are at higher risk of serious complications from flu. Flu illness is linked with an increase in heart attacks and strokes: one study found the risk of a heart attack was six times higher in the week after a confirmed flu infection.
 
 If you have heart disease or have had a stroke, it is especially important to have a flu vaccine every flu season. People with heart failure should have the vaccinations they are offered, such as the flu vaccine. Ask your clinic about flu vaccination.
@@ -720,7 +720,7 @@ Call an ambulance if you have flu symptoms with sudden chest pain, severe diffic
     section: 'Risk factors you can and cannot change',
     category: 'cardiovascular',
     tags: ['risk factors', 'heart disease', 'stroke', 'prevention', 'lifestyle'],
-    sources: [S.whoCardiovascular, S.whoHypertension, S.nhsHighCholesterol],
+    sources: [S.whoCardiovascular, S.whoHypertension, S.nhsHighCholesterol, S.esc2021Prevention],
     content: `Cardiovascular diseases are disorders of the heart and blood vessels, such as heart attacks and strokes. An estimated 19.8 million people died from them in 2022, about a third of all deaths worldwide.
 
 The most important behaviours that raise the risk of heart disease and stroke are an unhealthy diet, physical inactivity, tobacco use and harmful use of alcohol. These can show up as raised blood pressure, raised blood sugar, raised blood fats (lipids), and overweight or obesity.
@@ -755,7 +755,7 @@ Call an ambulance if the person is still unwell after 30 minutes of cooling, has
     section: 'Keep taking them, and ask before stopping',
     category: 'pharmacology',
     tags: ['medicines', 'beta blockers', 'bisoprolol', 'adherence', 'stopping medicines'],
-    sources: [S.whoHypertension, S.nhsBisoprololHow, S.nhsStatins, S.nhsClopidogrelHow, S.nhsAnticoagulants],
+    sources: [S.whoHypertension, S.nhsBisoprololHow, S.nhsStatins, S.nhsClopidogrelHow, S.nhsAnticoagulants, S.esc2024Hypertension],
     content: `Heart and blood pressure medicines work only when they are taken regularly, exactly as prescribed.
 
 - Do not stop a heart or blood pressure medicine without talking to your doctor. Stopping some of them can make your condition worse: the advice for bisoprolol, a beta blocker, is not to stop it without talking to your doctor, and stopping clopidogrel, an antiplatelet, can raise the risk of a heart attack or stroke.
@@ -771,7 +771,7 @@ If you think a medicine is causing side effects, do not stop it yourself — con
     section: 'What to report, and what is an emergency',
     category: 'pharmacology',
     tags: ['side effects', 'ace inhibitors', 'ramipril', 'beta blockers', 'cough', 'angioedema'],
-    sources: [S.nhsRamiprilSideEffects, S.nhsBetaBlockers, S.nhsAtorvastatinSideEffects],
+    sources: [S.nhsRamiprilSideEffects, S.nhsBetaBlockers, S.nhsAtorvastatinSideEffects, S.esc2024Hypertension],
     content: `Most people take heart medicines without serious problems. Some side effects are worth knowing about:
 
 - ACE inhibitors, such as ramipril, can cause a dry, persistent cough, and dizziness or light-headedness, especially when you stand up or sit up quickly.

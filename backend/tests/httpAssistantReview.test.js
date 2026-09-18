@@ -121,6 +121,15 @@ const cardiologyStatus = async (member) => {
 
 const say = (patient, text) => as(patient.token).post('/chat/message', { text });
 
+/** Approve & turn on, at the versions the doctor's own screen shows. */
+async function approveAssistant(member) {
+  const status = await cardiologyStatus(member);
+  return as(member.token).post(`/doctor/knowledge/assistants/${w.cardiology._id}/approve`, {
+    version: status.scopeText.version,
+    knowledgeVersion: status.knowledgeVersion,
+  });
+}
+
 describe('an AI-drafted assistant reaches patients only through a clinician of the specialty', () => {
   before(async () => {
     globalThis.fetch = localOnly;
@@ -200,13 +209,17 @@ describe('an AI-drafted assistant reaches patients only through a clinician of t
     await approveAllDrafts(w.a.cardiologist);
     const path = `/doctor/knowledge/assistants/${w.cardiology._id}/approve`;
 
-    assert.equal((await as(w.a.cardiologist.token).post(path, {})).status, 400, 'approved without naming the version read');
-    assert.equal((await as(w.a.cardiologist.token).post(path, { version: 2 })).status, 409);
-    assert.equal((await as(w.a.physician.token).post(path, { version: 1 })).status, 403);
+    const { knowledgeVersion } = await cardiologyStatus(w.a.cardiologist);
 
-    const approved = await as(w.a.cardiologist.token).post(path, { version: 1 });
+    assert.equal((await as(w.a.cardiologist.token).post(path, {})).status, 400, 'approved without naming the version read');
+    assert.equal((await as(w.a.cardiologist.token).post(path, { version: 1 })).status, 400, 'approved without naming the knowledge read');
+    assert.equal((await as(w.a.cardiologist.token).post(path, { version: 2, knowledgeVersion })).status, 409);
+    assert.equal((await as(w.a.physician.token).post(path, { version: 1, knowledgeVersion })).status, 403);
+
+    const approved = await as(w.a.cardiologist.token).post(path, { version: 1, knowledgeVersion });
     assert.equal(approved.status, 200, JSON.stringify(approved.body));
-    assert.equal(approved.body.status.enabled, true, `${approved.body.status.reasons}`);
+    assert.equal(approved.body.item.enabled, true, `${approved.body.item.reasons}`);
+    assert.equal(approved.body.item.state, 'on');
 
     const answered = await say(w.a.patient, 'what is a normal blood pressure');
     assert.equal(answered.status, 200);
@@ -226,13 +239,13 @@ describe('an AI-drafted assistant reaches patients only through a clinician of t
   });
 
   test('withdrawing the scope silences the assistant at once', async () => {
-    await approveAllDrafts(w.a.cardiologist);
-    await as(w.a.cardiologist.token).post(`/doctor/knowledge/assistants/${w.cardiology._id}/approve`, { version: 1 });
+    assert.equal((await approveAssistant(w.a.cardiologist)).status, 200);
     assert.ok((await say(w.a.patient, 'hello heart clinic')).body.reply);
 
     const withdrawn = await as(w.a.cardiologist.token).post(`/doctor/knowledge/assistants/${w.cardiology._id}/withdraw`, {});
     assert.equal(withdrawn.status, 200);
-    assert.equal(withdrawn.body.status.enabled, false);
+    assert.equal(withdrawn.body.item.enabled, false);
+    assert.equal(withdrawn.body.item.state, 'withdrawn');
     assert.equal((await say(w.a.patient, 'hello again heart clinic')).body.reply, null);
   });
 
@@ -267,8 +280,7 @@ describe('an AI-drafted assistant reaches patients only through a clinician of t
     assert.equal(cardiology.hasAssistant, false, 'a draft scope was listed as an assistant');
     assert.equal(cardiology.assistant.reason, 'scope_not_approved');
 
-    await approveAllDrafts(w.a.cardiologist);
-    await as(w.a.cardiologist.token).post(`/doctor/knowledge/assistants/${w.cardiology._id}/approve`, { version: 1 });
+    assert.equal((await approveAssistant(w.a.cardiologist)).status, 200);
 
     const afterApproval = await as(w.a.cardiologist.token).get('/departments');
     assert.equal(afterApproval.body.items.find((d) => d.key === 'cardiology').hasAssistant, true);

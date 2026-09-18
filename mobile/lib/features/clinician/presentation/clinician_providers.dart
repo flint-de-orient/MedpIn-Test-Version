@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../shared/models/paged.dart';
 import '../data/clinician_repository.dart';
+import '../domain/ai_assistant.dart';
 import '../domain/appointment.dart';
 import '../../medications/domain/medication.dart';
 import '../domain/chat_review.dart';
@@ -31,6 +32,13 @@ final teamProvider = FutureProvider<TeamRoster>((ref) {
 /// Not `autoDispose`: the practice screen reads it for a count and the
 /// departments screen reads it for the list, and disposing between the two
 /// means a refetch every time somebody taps through.
+/// This doctor's specialty assistants. Auto-disposed, so every visit to the
+/// screen asks the server afresh — a status remembered from last time could
+/// show an assistant ON that a colleague has since withdrawn.
+final aiAssistantsProvider = FutureProvider.autoDispose<List<AiAssistant>>((ref) {
+  return ref.watch(clinicianRepositoryProvider).aiAssistants();
+});
+
 final departmentsProvider = FutureProvider<List<Department>>((ref) {
   return ref.watch(clinicianRepositoryProvider).departments();
 });

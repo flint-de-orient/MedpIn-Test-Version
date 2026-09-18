@@ -425,7 +425,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get chatClinicRepliesOnly =>
-      'Replies come from your clinic only, not the assistant';
+      'This AI assistant is currently unavailable for your care team. Your clinic will reply here.';
 
   @override
   String get chatThinking => 'MedPin Assistant is typing…';

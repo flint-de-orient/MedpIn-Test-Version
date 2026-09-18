@@ -5,6 +5,8 @@ import { boot, shutdown, wipe, as, allText } from './helpers/httpHarness.js';
 import { makePractice, makeMember, makePatient } from './helpers/factories.js';
 import { ChatSession } from '../src/models/ChatSession.js';
 import { ChatMessage } from '../src/models/ChatMessage.js';
+import { Department } from '../src/models/Department.js';
+import { KnowledgeChunk } from '../src/models/KnowledgeChunk.js';
 import { Enrollment, ENROLLMENT_STATUS, DIETICIAN_SOURCE } from '../src/models/Enrollment.js';
 import { PatientProfile } from '../src/models/PatientProfile.js';
 import { Prescription } from '../src/models/Prescription.js';
@@ -427,6 +429,32 @@ describe('the assistant speaks for the practice the conversation is with', () =>
     assert.equal(quiet.body.reply, null, 'the assistant answered for a practice whose type has none');
     const refused = await AiUsage.findOne({ practice: centre._id }).lean();
     assert.equal(refused?.refused, 1, 'the refusal was not recorded against the practice the conversation is with');
+
+    // Salt Lake's assistant, approved by its own diabetologist. No assistant
+    // answers anywhere without that — the one this conversation had used to be
+    // on for every practice, approved by nobody.
+    const diabetology = await Department.create({
+      key: 'diabetology',
+      names: { en: 'Diabetes & Endocrinology' },
+      practice: null,
+      assistantScope: {
+        role: 'the AI health assistant',
+        approvals: [{ practice: w.a.practice._id, version: 1, approvedBy: w.a.doctor.user._id, approvedAt: new Date() }],
+      },
+    });
+    for (let i = 0; i < 10; i += 1) {
+      await KnowledgeChunk.create({
+        docId: `salt-lake-diab-${i}`,
+        title: `Diabetes guidance ${i}`,
+        content: 'Approved diabetes guidance long enough to count as a real passage.',
+        category: i === 0 ? 'emergency' : 'insulin',
+        language: 'en',
+        status: 'approved',
+        origin: 'platform_seed',
+        practice: null,
+        department: diabetology._id,
+      });
+    }
 
     const answered = await as(w.patient.token).post('/chat/message', {
       sessionId: String(w.legacy._id),

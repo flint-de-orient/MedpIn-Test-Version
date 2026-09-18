@@ -139,7 +139,7 @@
   "chatSessions": "চ্যাটের ইতিহাস",
   "chatSessionsEmpty": "এখনও কোনো পুরনো চ্যাট নেই",
   "chatDisclaimer": "AI-এর সহায়তা, এটি কোনো রোগ নির্ণয় নয়",
-  "chatClinicRepliesOnly": "শুধু আপনার ক্লিনিক উত্তর দেবে, সহায়ক নয়",
+  "chatClinicRepliesOnly": "এই AI সহায়ক এখন আপনার চিকিৎসা দলের জন্য উপলব্ধ নয়। আপনার ক্লিনিক এখানে উত্তর দেবে।",
   "chatThinking": "MedPin সহায়ক লিখছে…",
   "chatEmergencyTitle": "জরুরি অবস্থা — এখনই ব্যবস্থা নিন",
   "chatEmergencyBody": "অবিলম্বে নিকটবর্তী হাসপাতালে যান",

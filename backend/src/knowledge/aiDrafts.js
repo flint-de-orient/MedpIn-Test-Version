@@ -1,5 +1,6 @@
 import { CARDIOLOGY_ASSISTANT_SCOPE, CARDIOLOGY_DRAFTS } from './seedContentCardiology.js';
 import { GENERAL_MEDICINE_ASSISTANT_SCOPE, GENERAL_MEDICINE_DRAFTS } from './seedContentGeneralMedicine.js';
+import { DRAFT_TRANSLATIONS, TRANSLATED_LANGUAGES } from './draftTranslations.js';
 
 /**
  * The AI-drafted scopes and passages, in the shape the knowledge seed writes.
@@ -41,19 +42,47 @@ export function citationFor(sources) {
   return line.length > 500 ? `${line.slice(0, 497)}...` : line;
 }
 
+/**
+ * A draft's Bengali and Hindi versions, as passages of their own.
+ *
+ * The same category and sources as the English: the English is what was
+ * checked against the guidance, and a translation claims nothing it does not.
+ * `translationOf` names the original for tests and reviewers; the seed does not
+ * store it.
+ */
+function translationsOf(english, departmentKey) {
+  return TRANSLATED_LANGUAGES.flatMap((language) => {
+    const t = DRAFT_TRANSLATIONS[departmentKey]?.[language]?.[english.docId];
+    if (!t) return [];
+    return [
+      Object.freeze({
+        ...english,
+        docId: `${english.docId}-${language}`,
+        language,
+        title: t.title,
+        section: t.section,
+        tags: t.tags,
+        content: t.content,
+        translationOf: english.docId,
+      }),
+    ];
+  });
+}
+
 /** Every AI-drafted passage, ready to seed. Never approved — see above. */
 export const AI_DRAFT_SEED = Object.freeze(
   DRAFT_SETS.flatMap(({ scope, drafts }) =>
-    drafts.map((d) =>
-      Object.freeze({
+    drafts.flatMap((d) => {
+      const english = Object.freeze({
         ...d,
         language: d.language ?? 'en',
         departmentKey: scope.departmentKey,
         origin: DRAFT_ORIGIN,
         status: DRAFT_STATUS,
         sourceCitation: citationFor(d.sources),
-      }),
-    ),
+      });
+      return [english, ...translationsOf(english, scope.departmentKey)];
+    }),
   ),
 );
 

@@ -67,13 +67,15 @@ import { ENDOCRINE } from './prompts.js';
  * corpus switches a Bengali thread on, and the count per language is reported
  * so nobody mistakes that for Bengali content existing.
  *
- * ---- The one deliberate exception --------------------------------------------
+ * ---- No exception for the founding scope ------------------------------------
  *
- * A practice's general thread with no specialty on the practice keeps the
- * assistant it has always had, unchanged. That is every conversation on the
- * founding clinic today, and it is pinned by assistantSpecialty.test.js; the
- * status reports it as `legacy_default_scope` so an operator can see which
- * practices are still relying on it and set their specialty.
+ * A practice's general thread with no specialty on the practice is answered by
+ * the diabetology assistant, with the prompt it has always had — and, like
+ * every other, only once a diabetologist at that practice has approved it. It
+ * used to be on everywhere with no approval at all, which made the one scope
+ * nobody reviewed the one scope every practice received. The status reports
+ * the route as `via: 'legacy_default'` so an operator can see which practices
+ * still rely on it and set their specialty.
  */
 
 /** The fewest approved passages a department's assistant may answer from. See above. */
@@ -198,7 +200,9 @@ function summariseKnowledge(docs, { practiceId, language }) {
 export function statusFrom(department, docs, { practiceId = null, language = 'en' } = {}) {
   const scopeReview = scopeReviewFor(department.assistantScope, practiceId);
   const knowledge = summariseKnowledge(docs, { practiceId, language });
-  knowledge.includesCrossSpecialty = scopeReview.state === 'legacy';
+  // The diabetes corpus predates departments and may still be filed under
+  // none; it is the diabetology assistant's knowledge, and nobody else's.
+  knowledge.includesCrossSpecialty = department.key === LEGACY_DEPARTMENT_KEY;
 
   const reasons = [];
   if (department.isActive === false) reasons.push(OFF_REASONS.DEPARTMENT_INACTIVE);
@@ -214,7 +218,10 @@ export function statusFrom(department, docs, { practiceId = null, language = 'en
   if (!knowledge.redFlagGuidanceApproved) reasons.push(OFF_REASONS.NO_APPROVED_RED_FLAG_GUIDANCE);
 
   const scope = department.assistantScope ?? {};
-  const currentApprovals = (scope.approvals ?? []).filter((a) => a.version === scope.version);
+  const currentApprovals = (scope.approvals ?? []).filter(
+    (a) => a.version === scopeReview.version && !a.withdrawnAt,
+  );
+  const approval = scopeReview.approval;
 
   return {
     department: {
@@ -234,8 +241,14 @@ export function statusFrom(department, docs, { practiceId = null, language = 'en
       reviewStatus: scope.status ?? null,
       origin: scope.origin ?? null,
       version: scopeReview.version,
-      approvedAt: scopeReview.approval?.approvedAt ?? null,
-      approvedBy: scopeReview.approval?.approvedBy ? String(scopeReview.approval.approvedBy) : null,
+      approvedAt: approval?.approvedAt ?? null,
+      approvedBy: approval?.approvedBy ? String(approval.approvedBy) : null,
+      approvedByName: approval?.approvedByName ?? null,
+      approvedVersion: approval?.version ?? null,
+      approvedKnowledgeVersion: approval?.knowledgeVersion ?? null,
+      withdrawnAt: approval?.withdrawnAt ?? null,
+      withdrawnBy: approval?.withdrawnBy ? String(approval.withdrawnBy) : null,
+      withdrawnByName: approval?.withdrawnByName ?? null,
       // Across the platform, how many practices have signed off the current
       // wording. The console's answer to "is anybody using this draft".
       practicesApproved: currentApprovals.length,
@@ -265,8 +278,8 @@ async function knowledgeRows(departmentIds, { practiceId, withCrossSpecialty }) 
     .lean();
 }
 
-function rowsFor(department, rows, practiceId) {
-  const legacy = scopeReviewFor(department.assistantScope, practiceId).state === 'legacy';
+function rowsFor(department, rows) {
+  const legacy = department.key === LEGACY_DEPARTMENT_KEY;
   return rows.filter((r) => same(r.department, department._id) || (legacy && r.department == null));
 }
 
@@ -299,9 +312,9 @@ export async function assistantStatus({ department = null, departmentId = null, 
   }
 
   const effectivePractice = practiceId ?? row.practice ?? null;
-  const legacy = scopeReviewFor(row.assistantScope, effectivePractice).state === 'legacy';
+  const legacy = row.key === LEGACY_DEPARTMENT_KEY;
   const rows = await knowledgeRows([row._id], { practiceId: effectivePractice, withCrossSpecialty: legacy });
-  return statusFrom(row, rowsFor(row, rows, effectivePractice), { practiceId: effectivePractice, language });
+  return statusFrom(row, rowsFor(row, rows), { practiceId: effectivePractice, language });
 }
 
 /**
@@ -322,14 +335,12 @@ export async function assistantStatusForPractice({ practiceId = null, language =
       .lean());
 
   const visible = rows.filter((d) => d.practice == null || !practiceId || same(d.practice, practiceId));
-  const withCrossSpecialty = visible.some(
-    (d) => scopeReviewFor(d.assistantScope, practiceId).state === 'legacy',
-  );
+  const withCrossSpecialty = visible.some((d) => d.key === LEGACY_DEPARTMENT_KEY);
   const knowledge = visible.length
     ? await knowledgeRows(visible.map((d) => d._id), { practiceId, withCrossSpecialty })
     : [];
 
-  return visible.map((d) => statusFrom(d, rowsFor(d, knowledge, practiceId), { practiceId, language }));
+  return visible.map((d) => statusFrom(d, rowsFor(d, knowledge), { practiceId, language }));
 }
 
 /**
@@ -374,8 +385,9 @@ export async function departmentForSpecialty(specialty, practiceId = null) {
  *   thread               the session names a department
  *   practice_specialty   a general thread at a practice whose specialty names one
  *   legacy_default       a general thread at a practice with no specialty — the
- *                        founding clinic's case — which keeps its assistant and
- *                        its prompt exactly as they were
+ *                        founding clinic's case — answered by the diabetology
+ *                        assistant with its original prompt, once that
+ *                        practice's diabetologist has approved it
  *
  * A specialty that names no department gets no assistant: there is no approved
  * scope to answer from, and the thin remit the prompt used to improvise for it
@@ -410,15 +422,21 @@ export async function conversationAssistant({ session, practiceId = null, langua
   const specialty = practice?.specialty?.trim() || null;
 
   if (!specialty) {
-    const legacy = await Department.findOne({ practice: null, key: LEGACY_DEPARTMENT_KEY }).select('_id').lean();
+    // The diabetology assistant, with the prompt this thread has always had —
+    // on only where this practice's diabetologist approved it. It was on
+    // everywhere, approved by nobody.
+    const legacy = await Department.findOne({ practice: null, key: LEGACY_DEPARTMENT_KEY }).lean();
+    const status = legacy
+      ? await assistantStatus({ department: legacy, practiceId, language })
+      : noDepartment(practiceId, language);
     return {
-      enabled: true,
-      reason: ON_REASONS.LEGACY_DEFAULT_SCOPE,
+      enabled: status.enabled,
+      reason: status.enabled ? ON_REASONS.LEGACY_DEFAULT_SCOPE : status.reason,
       via: 'legacy_default',
-      department: null,
+      department: legacy,
       retrievalDepartment: legacy?._id ?? null,
       useDepartmentBlock: false,
-      status: null,
+      status,
     };
   }
 
@@ -442,7 +460,9 @@ export async function conversationAssistant({ session, practiceId = null, langua
     via: 'practice_specialty',
     department,
     retrievalDepartment: department._id,
-    useDepartmentBlock: status.scope.state !== 'legacy',
+    // The endocrine practice keeps the prompt it has always had; approval
+    // decides whether it answers, not what it says.
+    useDepartmentBlock: department.key !== LEGACY_DEPARTMENT_KEY,
     status,
   };
 }

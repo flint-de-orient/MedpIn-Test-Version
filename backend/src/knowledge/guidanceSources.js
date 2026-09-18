@@ -35,6 +35,29 @@ const CDC = 'Centers for Disease Control and Prevention (United States)';
 
 const src = (organisation, title, year, url) => Object.freeze({ title, organisation, year, url, accessed: ACCESSED });
 
+/**
+ * The day the heart-specialist guidelines below were opened and compared.
+ *
+ * ---- How these were checked --------------------------------------------------
+ *
+ * Each guideline's own article page was opened. The page shows only the start
+ * of a document this long, so the full text was read from the publisher's PDF
+ * of the same article, reached from that page, and every statement a passage
+ * relies on was found in it word for word. The words found are kept, with where
+ * they are, in specialistEvidence.js — a citation here is a claim a reviewer can
+ * check in minutes, not an assertion.
+ *
+ * A passage cites one of these only where the guideline supports what it says.
+ * Where a guideline says something different, it is not cited for that passage
+ * and the difference is shown to the doctor before they approve instead — see
+ * reviewNotes.js. The US ACC/AHA guidelines could not be opened (their
+ * publishers refused the request) and are cited nowhere.
+ */
+export const SPECIALIST_ACCESSED = '2026-09-18';
+
+const specialist = (organisation, title, year, url) =>
+  Object.freeze({ title, organisation, year, url, accessed: SPECIALIST_ACCESSED });
+
 export const SOURCES = Object.freeze({
   // ---- NHS -------------------------------------------------------------------
   nhsHighBloodPressure: src(NHS, 'High blood pressure (hypertension)', 2024, 'https://www.nhs.uk/conditions/high-blood-pressure/'),
@@ -137,5 +160,54 @@ export const SOURCES = Object.freeze({
     `Dos and Don'ts for Heat wave`,
     null,
     'https://imdagrimet.gov.in/Files/Dos_Donts/Heat_wave_Dos_and_Donts.pdf',
+  ),
+  // ---- Heart-specialist guidelines -----------------------------------------
+  esc2024Hypertension: specialist(
+    "European Society of Cardiology",
+    "2024 ESC Guidelines for the management of elevated blood pressure and hypertension",
+    2024,
+    "https://academic.oup.com/eurheartj/article/45/38/3912/7741010",
+  ),
+  esc2026HeartFailure: specialist(
+    "European Society of Cardiology",
+    "2026 ESC Guidelines for the management of heart failure",
+    2026,
+    "https://academic.oup.com/eurheartj/advance-article/doi/10.1093/eurheartj/ehag100/8766302",
+  ),
+  esc2026CardiacRehab: specialist(
+    "European Society of Cardiology",
+    "2026 ESC Guidelines on cardiac rehabilitation",
+    2026,
+    "https://academic.oup.com/eurheartj/advance-article/doi/10.1093/eurheartj/ehag099/8766284",
+  ),
+  esc2024AtrialFibrillation: specialist(
+    "European Society of Cardiology",
+    "2024 ESC Guidelines for the management of atrial fibrillation developed in collaboration with the European Association for Cardio-Thoracic Surgery (EACTS)",
+    2024,
+    "https://academic.oup.com/eurheartj/article/45/36/3314/7738779",
+  ),
+  esc2023Acs: specialist(
+    "European Society of Cardiology",
+    "2023 ESC Guidelines for the management of acute coronary syndromes",
+    2023,
+    "https://academic.oup.com/eurheartj/article/44/38/3720/7243210",
+  ),
+  esc2024Ccs: specialist(
+    "European Society of Cardiology",
+    "2024 ESC Guidelines for the management of chronic coronary syndromes",
+    2024,
+    "https://academic.oup.com/eurheartj/article/45/36/3415/7743115",
+  ),
+  esc2021Prevention: specialist(
+    "European Society of Cardiology",
+    "2021 ESC Guidelines on cardiovascular disease prevention in clinical practice",
+    2021,
+    "https://academic.oup.com/eurheartj/article/42/34/3227/6358713",
+  ),
+  csi2024Dyslipidemia: specialist(
+    "Cardiological Society of India",
+    "CSI clinical practice guidelines for dyslipidemia management: Executive summary",
+    2024,
+    "https://csi.org.in/frontend/assets/assets/CSI-clinical-practice-guidelines-for-dyslipidemia-_240413_141815.pdf",
   ),
 });

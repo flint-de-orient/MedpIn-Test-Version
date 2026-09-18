@@ -241,19 +241,34 @@ describe('whether a department’s assistant is on', () => {
     assert.deepEqual(bengali.knowledge.approved.byLanguage, { en: 0, bn: 0, hi: 10 });
   });
 
-  test('the legacy diabetology scope stays on, counting the corpus seeded with no department', async () => {
-    // Role, no review status: the remit lifted from the original prompt. Its
-    // passages were seeded without a department and are still that way until
-    // the knowledge seed files them under diabetology.
+  test('the diabetology scope is off until this practice approves it, and counts the corpus seeded with no department', async () => {
+    // Role, no review status: the remit lifted from the original prompt. It
+    // was on for every practice, approved by nobody. It is now reviewed at
+    // version 1 like any scope. Its passages were seeded without a department
+    // and are still that way until the knowledge seed files them.
     const diabetology = await department('diabetology', { role: 'the AI health assistant', covers: ['Diabetes.'] });
     for (let i = 0; i < 11; i += 1) {
       await passage({ department: null, category: i === 0 ? 'emergency' : 'hypoglycaemia', origin: 'platform_seed' });
     }
 
-    const status = await assistantStatus({ departmentId: diabetology._id, practiceId: A });
-    assert.equal(status.enabled, true, `${status.reasons}`);
-    assert.equal(status.scope.state, 'legacy');
-    assert.equal(status.knowledge.includesCrossSpecialty, true);
+    const before = await assistantStatus({ departmentId: diabetology._id, practiceId: A });
+    assert.equal(before.enabled, false, 'the diabetes assistant was on with no doctor’s approval');
+    assert.equal(before.reason, 'scope_not_approved');
+    assert.equal(before.scope.state, 'pending_review');
+    assert.equal(before.scope.version, 1);
+    assert.equal(before.knowledge.includesCrossSpecialty, true);
+    assert.equal(before.knowledge.approved.total, 11, 'the corpus seeded with no department was not counted');
+
+    await Department.updateOne(
+      { _id: diabetology._id },
+      { $push: { 'assistantScope.approvals': { practice: A, version: 1, approvedBy: DOCTOR, approvedAt: new Date() } } },
+    );
+    assert.equal((await assistantStatus({ departmentId: diabetology._id, practiceId: A })).enabled, true);
+    assert.equal(
+      (await assistantStatus({ departmentId: diabetology._id, practiceId: B })).enabled,
+      false,
+      'one practice’s approval switched the assistant on at another',
+    );
   });
 
   test('a practice’s own department answers only that practice', async () => {
@@ -311,20 +326,32 @@ describe('which department a conversation is', () => {
 
   const practiceWith = (specialty) => Practice.create({ name: `Practice ${(n += 1)}`, ...(specialty ? { specialty } : {}) });
 
-  test('a general thread at a practice with no specialty keeps the assistant it always had', async () => {
+  test('a general thread at a practice with no specialty is the diabetology assistant, off until that practice approves', async () => {
     const diabetology = await department('diabetology', { role: 'the AI health assistant' });
+    for (let i = 0; i < 10; i += 1) {
+      await passage({ department: diabetology._id, category: i === 0 ? 'emergency' : 'insulin', origin: 'platform_seed' });
+    }
     const practice = await practiceWith(null);
 
+    const before = await conversationAssistant({ session: { department: null }, practiceId: practice._id });
+    assert.equal(before.enabled, false, 'the founding scope answered with no doctor’s approval');
+    assert.equal(before.via, 'legacy_default');
+    assert.equal(before.reason, 'scope_not_approved');
+
+    await Department.updateOne(
+      { _id: diabetology._id },
+      { $push: { 'assistantScope.approvals': { practice: practice._id, version: 1, approvedBy: DOCTOR, approvedAt: new Date() } } },
+    );
     const answer = await conversationAssistant({ session: { department: null }, practiceId: practice._id });
-    assert.equal(answer.enabled, true);
+    assert.equal(answer.enabled, true, `${answer.reason}`);
     assert.equal(answer.via, 'legacy_default');
     assert.equal(answer.useDepartmentBlock, false, 'the founding clinic’s prompt would change');
     assert.equal(String(answer.retrievalDepartment), String(diabetology._id));
   });
 
-  test('and with no department rows at all, it still answers', async () => {
+  test('and with no department rows at all, it does not answer', async () => {
     const answer = await conversationAssistant({ session: {}, practiceId: null });
-    assert.equal(answer.enabled, true);
+    assert.equal(answer.enabled, false, 'an assistant answered with nothing approved anywhere');
     assert.equal(answer.retrievalDepartment, null);
   });
 
@@ -367,6 +394,15 @@ describe('which department a conversation is', () => {
       await passage({ department: diabetology._id, category: i === 0 ? 'emergency' : 'insulin', origin: 'platform_seed' });
     }
     const practice = await practiceWith('Diabetes & Endocrinology');
+    assert.equal(
+      (await conversationAssistant({ session: {}, practiceId: practice._id })).enabled,
+      false,
+      'an endocrine practice was answered before its diabetologist approved',
+    );
+    await Department.updateOne(
+      { _id: diabetology._id },
+      { $push: { 'assistantScope.approvals': { practice: practice._id, version: 1, approvedBy: DOCTOR, approvedAt: new Date() } } },
+    );
     const answer = await conversationAssistant({ session: {}, practiceId: practice._id });
     assert.equal(answer.enabled, true, `${answer.reason}`);
     assert.equal(answer.useDepartmentBlock, false, 'a diabetology practice lost the prompt it has always had');

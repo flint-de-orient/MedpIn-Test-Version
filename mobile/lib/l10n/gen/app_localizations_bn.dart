@@ -422,7 +422,7 @@ class AppLocalizationsBn extends AppLocalizations {
 
   @override
   String get chatClinicRepliesOnly =>
-      'শুধু আপনার ক্লিনিক উত্তর দেবে, সহায়ক নয়';
+      'এই AI সহায়ক এখন আপনার চিকিৎসা দলের জন্য উপলব্ধ নয়। আপনার ক্লিনিক এখানে উত্তর দেবে।';
 
   @override
   String get chatThinking => 'MedPin সহায়ক লিখছে…';

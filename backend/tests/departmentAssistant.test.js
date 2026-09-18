@@ -39,13 +39,17 @@ describe('no scope means no assistant, not a general one', () => {
     assert.equal(d.toPublic().hasAssistant, false);
   });
 
-  test('one with a role reports it has one', () => {
+  test('a role alone is not an assistant — a doctor’s approval at the practice is', () => {
+    // A scope with no review status used to read as approved for every
+    // practice. Nothing but a doctor of the specialty, at the practice, switches
+    // one on, and a department row on its own cannot say which practice is asking.
     const d = new Department({
       key: 'derm',
       names: { en: 'Dermatologist' },
       assistantScope: { role: 'a dermatology assistant' },
     });
-    assert.equal(d.toPublic().hasAssistant, true);
+    assert.equal(d.toPublic().hasAssistant, false);
+    assert.equal(d.toPublic('en', { assistant: { enabled: true } }).hasAssistant, true);
   });
 
   test('the service returns null rather than falling back', () => {

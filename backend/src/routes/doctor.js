@@ -29,11 +29,14 @@ import { Department } from '../models/Department.js';
 import { assistantStatusForPractice } from '../services/ai/assistantAvailability.js';
 import {
   adoptSharedDraft,
-  approveScope,
+  approveAssistant,
   clinicianDepartmentIds,
   isClinicianOf,
+  knowledgeVersionFor,
   withdrawScope,
 } from '../services/ai/assistantReview.js';
+import { AuditLog } from '../models/AuditLog.js';
+import { reviewNotesFor } from '../knowledge/reviewNotes.js';
 import { Hba1cRecord } from '../models/Hba1cRecord.js';
 import { FootAssessment } from '../models/FootAssessment.js';
 import { LabResult } from '../models/LabResult.js';
@@ -2590,12 +2593,21 @@ router.post(
 // ---------------------------------------------------------------------------
 
 /**
- * Every department this practice can see, with whether its assistant is on and
- * why — the approved and pending passages, the sources, the scope's review
- * state — and the scope itself for a clinician to read.
+ * The AI assistants for this doctor's own specialties, at this practice.
  *
- * The same function the assistant asks before it answers a patient, so what
- * this screen says and what the patient gets cannot disagree.
+ * ---- Only their own ----------------------------------------------------------
+ *
+ * A cardiologist sees the cardiology assistant: the one they may approve, and
+ * the one their approval switches on. Every other department's assistant is
+ * somebody else's decision, and listing it here invited the question "why can
+ * I not approve this". A doctor whose practice has placed them in no specialty
+ * sees none, and the screen says who can change that.
+ *
+ * ---- The same answer the patient gets --------------------------------------
+ *
+ * Every field comes from the function the assistant itself asks before it
+ * answers a patient, so this screen cannot show ON while the patient is told
+ * the assistant is unavailable. The app never decides; it shows this.
  */
 router.get(
   '/knowledge/assistants',
@@ -2603,68 +2615,139 @@ router.get(
   asyncHandler(async (req, res) => {
     const practiceId = await practiceOf(req);
     const language = ['en', 'bn', 'hi'].includes(req.query.language) ? req.query.language : req.user.language ?? 'en';
+    const specialties = await clinicianDepartmentIds({ userId: req.user._id, practiceId });
     const departments = await Department.find({
+      _id: { $in: [...specialties] },
       isActive: true,
+      'assistantScope.role': { $nin: [null, ''] },
       $or: [{ practice: null }, ...(practiceId ? [{ practice: practiceId }] : [])],
     })
       .sort({ sortIndex: 1, 'names.en': 1 })
       .lean();
-    const [statuses, specialties] = await Promise.all([
-      assistantStatusForPractice({ practiceId, language, departments }),
-      clinicianDepartmentIds({ userId: req.user._id, practiceId }),
-    ]);
+    const statuses = departments.length
+      ? await assistantStatusForPractice({ practiceId, language, departments })
+      : [];
     const byId = new Map(departments.map((d) => [String(d._id), d]));
+    const versions = await Promise.all(departments.map((d) => knowledgeVersionFor(d)));
+    const knowledgeVersionById = new Map(departments.map((d, i) => [String(d._id), versions[i]]));
 
     res.json({
-      items: statuses.map((status) => {
-        const scope = byId.get(status.department.id)?.assistantScope ?? {};
-        const awaiting = Boolean(scope.role) && ['draft', 'pending_review'].includes(scope.status);
-        return {
-          ...status,
-          scopeText: scope.role
-            ? {
-                role: scope.role,
-                covers: scope.covers ?? [],
-                refuses: scope.refuses ?? [],
-                redFlags: scope.redFlags ?? [],
-                sources: scope.sources ?? [],
-                version: scope.version ?? null,
-                isAiDrafted: scope.origin === 'ai_draft',
-              }
-            : null,
-          // Whether the button should be offered to this person: a scope
-          // awaiting review, not already approved here in this version, and a
-          // clinician of the specialty looking at it.
-          canApproveScope: awaiting && status.scope.state !== 'approved' && specialties.has(status.department.id),
-          canWithdrawScope: status.scope.state === 'approved' && Boolean(status.scope.approvedAt) && specialties.has(status.department.id),
-        };
-      }),
+      items: statuses.map((status) => assistantItem(status, byId.get(status.department.id), {
+        knowledgeVersion: knowledgeVersionById.get(status.department.id),
+        practiceId,
+      })),
     });
   }),
 );
 
+/**
+ * One assistant as the doctor screen shows it. `state` is the whole of what the
+ * doctor needs to read — ON, OFF or WITHDRAWN — and `reason` says why it is off
+ * in terms they can act on; the rest is detail for the card.
+ */
+function assistantItem(status, department, { knowledgeVersion, practiceId }) {
+  const scope = department?.assistantScope ?? {};
+  const review = status.scope;
+  const state = status.enabled ? 'on' : review.state === 'withdrawn' ? 'withdrawn' : 'off';
+  const approvedHere = review.state === 'approved';
+  // Approved, but the knowledge base has been revised since: still ON with what
+  // was approved, and the doctor is told there is something new to review.
+  const updatesAvailable =
+    (approvedHere && review.approvedKnowledgeVersion != null && review.approvedKnowledgeVersion !== knowledgeVersion) ||
+    review.state === 'approval_outdated';
+  return {
+    ...status,
+    practiceId: practiceId ? String(practiceId) : null,
+    state,
+    updatesAvailable,
+    knowledgeVersion,
+    scopeText: {
+      role: scope.role,
+      covers: scope.covers ?? [],
+      refuses: scope.refuses ?? [],
+      redFlags: scope.redFlags ?? [],
+      sources: scope.sources ?? [],
+      version: review.version,
+      isAiDrafted: scope.origin === 'ai_draft',
+    },
+    // What the doctor should know before approving — where the drafts and the
+    // specialist guidance differ, and what was machine-translated.
+    reviewNotes: reviewNotesFor(department?.key),
+    approval: review.approvedAt
+      ? {
+          version: review.approvedVersion,
+          knowledgeVersion: review.approvedKnowledgeVersion,
+          approvedAt: review.approvedAt,
+          approvedBy: review.approvedBy ? { id: review.approvedBy, name: review.approvedByName } : null,
+          withdrawnAt: review.withdrawnAt,
+          withdrawnBy: review.withdrawnBy ? { id: review.withdrawnBy, name: review.withdrawnByName } : null,
+        }
+      : null,
+    // Every item here is one of the doctor's own specialties, so eligibility
+    // is settled; what remains is whether there is anything to do.
+    canApprove: scope.status !== 'retired' && (!approvedHere || updatesAvailable),
+    canWithdraw: approvedHere,
+  };
+}
+
+/** The audit row for a decision about an assistant. Metadata only, no PHI. */
+function assistantAuditEntry(req, action, { department, practiceId, approval = null, knowledge = null }) {
+  return {
+    actor: req.user._id,
+    actorRole: req.user.role,
+    action,
+    resource: 'AiAssistant',
+    resourceId: department._id,
+    ip: req.ip,
+    userAgent: req.get('user-agent')?.slice(0, 300),
+    meta: {
+      doctorId: String(req.user._id),
+      doctorName: req.user.name ?? null,
+      practiceId: String(practiceId),
+      specialty: department.key,
+      departmentId: String(department._id),
+      assistantId: `${department.key}:${practiceId}`,
+      configurationVersion: approval?.version ?? null,
+      knowledgeVersion: approval?.knowledgeVersion ?? null,
+      ...(knowledge ? { knowledge } : {}),
+      at: new Date().toISOString(),
+    },
+  };
+}
+
+/**
+ * Approve & turn on: this practice's approval of the assistant — its scope and
+ * its knowledge base — at the versions the doctor read.
+ *
+ * Refused unless the doctor is a clinician of that specialty at this practice,
+ * and unless both versions are still the current ones. A repeat of an approval
+ * already in force changes nothing and writes no second audit row.
+ */
 router.post(
   '/knowledge/assistants/:departmentId/approve',
-  // Approving a scope is half of what switches an assistant on for patients.
   requireDoctor,
   requireClinician,
-  audit('update', 'Department'),
-  validate({ body: z.object({ version: z.number().int().min(1) }) }),
+  validate({
+    body: z.object({
+      version: z.number().int().min(1),
+      knowledgeVersion: z.string().trim().min(1).max(64),
+    }),
+  }),
   asyncHandler(async (req, res) => {
     const practiceId = await practiceOf(req);
     if (!practiceId) throw notFound('Department not found');
-    const approval = await approveScope({
+    const { department, approval, knowledge } = await approveAssistant({
       departmentId: req.params.departmentId,
       practiceId,
       userId: req.user._id,
       version: req.body.version,
+      knowledgeVersion: req.body.knowledgeVersion,
     });
-    const [status] = await assistantStatusForPractice({
-      practiceId,
-      language: req.user.language ?? 'en',
-      departments: [await Department.findById(req.params.departmentId).lean()],
-    });
-    res.json({ approval: { version: approval.version, approvedAt: approval.approvedAt }, status });
+    if (!approval.unchanged) {
+      await AuditLog.create(assistantAuditEntry(req, 'AI_ASSISTANT_APPROVED', { department, practiceId, approval, knowledge }));
+    }
+    const item = await assistantItemFor(department._id, { practiceId, language: req.user.language ?? 'en' });
+    res.json({ unchanged: Boolean(approval.unchanged), knowledge, item });
   }),
 );
 
@@ -2672,23 +2755,28 @@ router.post(
   '/knowledge/assistants/:departmentId/withdraw',
   requireDoctor,
   requireClinician,
-  audit('update', 'Department'),
   asyncHandler(async (req, res) => {
     const practiceId = await practiceOf(req);
     if (!practiceId) throw notFound('Department not found');
-    const outcome = await withdrawScope({
+    const { department, withdrawn } = await withdrawScope({
       departmentId: req.params.departmentId,
       practiceId,
       userId: req.user._id,
     });
-    const [status] = await assistantStatusForPractice({
-      practiceId,
-      language: req.user.language ?? 'en',
-      departments: [await Department.findById(req.params.departmentId).lean()],
-    });
-    res.json({ ...outcome, status });
+    if (withdrawn) {
+      await AuditLog.create(assistantAuditEntry(req, 'AI_ASSISTANT_APPROVAL_WITHDRAWN', { department, practiceId }));
+    }
+    const item = await assistantItemFor(department._id, { practiceId, language: req.user.language ?? 'en' });
+    res.json({ withdrawn, item });
   }),
 );
+
+/** The item for one department, read back after a change. */
+async function assistantItemFor(departmentId, { practiceId, language }) {
+  const department = await Department.findById(departmentId).lean();
+  const [status] = await assistantStatusForPractice({ practiceId, language, departments: [department] });
+  return assistantItem(status, department, { knowledgeVersion: await knowledgeVersionFor(department), practiceId });
+}
 
 async function embedChunk(id, content, title) {
   const vector = await embed(content, { taskType: 'RETRIEVAL_DOCUMENT', title });

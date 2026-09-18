@@ -7,7 +7,9 @@ import { Department } from '../src/models/Department.js';
 import { KnowledgeChunk, KNOWLEDGE_CATEGORIES } from '../src/models/KnowledgeChunk.js';
 import { KNOWLEDGE_SEED } from '../src/knowledge/seedContent.js';
 import { AI_DRAFT_SEED, AI_DRAFT_SCOPES } from '../src/knowledge/aiDrafts.js';
-import { SOURCES } from '../src/knowledge/guidanceSources.js';
+import { SOURCES, SPECIALIST_ACCESSED } from '../src/knowledge/guidanceSources.js';
+import { SPECIALIST_EVIDENCE } from '../src/knowledge/specialistEvidence.js';
+import { REVIEW_NOTES } from '../src/knowledge/reviewNotes.js';
 import { planKnowledgeSeed, applyKnowledgeSeed } from '../scripts/seedKnowledge.js';
 import { SEED_DOC_IDS } from '../scripts/backfillKnowledgePractice.js';
 import { assistantStatusForPractice, RED_FLAG_CATEGORY } from '../src/services/ai/assistantAvailability.js';
@@ -41,7 +43,8 @@ describe('the drafts as written', () => {
 
   test('each specialty has a sized set, its red-flag guidance, and a complete scope', () => {
     for (const key of ['cardiology', 'general_physician']) {
-      const drafts = AI_DRAFT_SEED.filter((d) => d.departmentKey === key);
+      // The English originals. Their translations are counted below.
+      const drafts = AI_DRAFT_SEED.filter((d) => d.departmentKey === key && d.language === 'en');
       assert.ok(drafts.length >= 25 && drafts.length <= 40, `${key} has ${drafts.length} drafts`);
       assert.ok(drafts.some((d) => d.category === RED_FLAG_CATEGORY), `${key} has no red-flag guidance to approve`);
 
@@ -70,19 +73,84 @@ describe('the drafts as written', () => {
   test('drafts use real categories, are complete enough to review, and never collide with the platform corpus', () => {
     for (const d of AI_DRAFT_SEED) {
       assert.ok(KNOWLEDGE_CATEGORIES.includes(d.category), `${d.docId}: unknown category ${d.category}`);
-      assert.equal(d.language, 'en');
+      // English, or a translation that names its English original.
+      assert.equal(d.language === 'en', !d.translationOf, `${d.docId}: language ${d.language}`);
       assert.ok(d.title && d.content.length > 200, `${d.docId} is too thin`);
     }
     const ids = KNOWLEDGE_SEED.map((e) => e.docId);
     assert.equal(new Set(ids).size, ids.length, 'a draft docId collides');
   });
 
+  test('every English draft has a Bengali and a Hindi version, saying it with the same sources', () => {
+    const english = AI_DRAFT_SEED.filter((d) => d.language === 'en');
+    for (const d of english) {
+      for (const language of ['bn', 'hi']) {
+        const t = AI_DRAFT_SEED.find((x) => x.docId === `${d.docId}-${language}`);
+        assert.ok(t, `${d.docId} has no ${language} version`);
+        assert.equal(t.language, language);
+        assert.equal(t.translationOf, d.docId);
+        assert.equal(t.departmentKey, d.departmentKey);
+        assert.equal(t.category, d.category, `${t.docId} is filed differently from its English`);
+        assert.deepEqual(t.sources, d.sources, `${t.docId} cites differently from its English`);
+        assert.equal(t.status, 'pending_review');
+        assert.equal(t.origin, 'ai_draft');
+        // Western digits, so the dose and phone checks below read them.
+        assert.ok(!/[০-৯०-९]/.test(t.content), `${t.docId} writes a number in native digits`);
+      }
+    }
+    for (const t of AI_DRAFT_SEED.filter((d) => d.translationOf)) {
+      assert.ok(english.some((d) => d.docId === t.translationOf), `${t.docId} translates nothing`);
+    }
+  });
+
+  test('every heart-specialist citation is backed by the guideline’s own words', () => {
+    // Which sources are the specialist guidelines, by the date they were opened.
+    const specialist = new Map(
+      Object.entries(SOURCES).filter(([, s]) => s.accessed === SPECIALIST_ACCESSED).map(([key, s]) => [s, key]),
+    );
+    assert.ok(specialist.size >= 5, 'the specialist guidelines are missing');
+    let cited = 0;
+    for (const d of AI_DRAFT_SEED.filter((x) => x.language === 'en')) {
+      for (const s of d.sources) {
+        const key = specialist.get(s);
+        if (!key) continue;
+        cited += 1;
+        const evidence = (SPECIALIST_EVIDENCE[d.docId] ?? []).filter((e) => e.source === key);
+        assert.ok(evidence.length > 0, `${d.docId} cites ${key} with no quote from it`);
+        for (const e of evidence) {
+          assert.ok(e.quote.split(/\s+/).length <= 40 && e.location, `${d.docId}: ${key} evidence incomplete`);
+        }
+      }
+    }
+    assert.ok(cited >= 25, `only ${cited} specialist citations`);
+    // And no evidence is kept for a citation that was not made.
+    for (const [docId, entries] of Object.entries(SPECIALIST_EVIDENCE)) {
+      const d = AI_DRAFT_SEED.find((x) => x.docId === docId);
+      assert.ok(d, `evidence for a passage that does not exist: ${docId}`);
+      for (const e of entries) assert.ok(d.sources.includes(SOURCES[e.source]), `${docId} does not cite ${e.source}`);
+    }
+  });
+
+  test('the notes a doctor reads before approving name passages that exist', () => {
+    const english = new Set(AI_DRAFT_SEED.filter((x) => x.language === 'en').map((x) => x.docId));
+    for (const [key, notes] of Object.entries(REVIEW_NOTES)) {
+      for (const note of notes) {
+        assert.ok(note.title && note.detail, `${key}: a note with nothing to say`);
+        for (const id of note.docIds) assert.ok(english.has(id), `${key} note names ${id}, which is not a passage`);
+      }
+    }
+    assert.ok(REVIEW_NOTES.cardiology.length > 1, 'the cardiology guideline differences are not shown to the doctor');
+  });
+
   test('no brand names, no doses, and no phone number but the national quit line', () => {
     // Brand names commonly sold in India for the medicines these passages
     // discuss. A passage that names one is a passage recommending a product.
     const brands = /\b(crocin|dolo|calpol|combiflam|brufen|disprin|ecosprin|clopilet|plavix|eliquis|xarelto|pradaxa|lipitor|atorva|rosuvas|concor|cardace|telma|amlong|lasix|sorbitrate|epipen|augmentin|electral)\b/i;
-    // An amount of a medicine is a dose.
-    const dose = /\b\d+(\.\d+)?\s?(mg|mcg|µg|g|ml|units?)\b(?![^.]*\b(salt|sodium|sugar|fruit|vegetables)\b)/i;
+    // An amount of a medicine is a dose. An amount of salt, sugar or food is
+    // not — in the translations' words for them as well as in English, and to
+    // the end of the sentence, which Bengali and Hindi close with "।".
+    const food = String.raw`\b(salt|sodium|sugar|fruit|vegetables)\b|নুন|লবণ|সোডিয়াম|চিনি|ফল|সবজি|नमक|सोडियम|चीनी|फल|सब्ज़ी|सब्जी`;
+    const dose = new RegExp(String.raw`\b\d+(\.\d+)?\s?(mg|mcg|µg|g|ml|units?)\b(?![^.।]*(${food}))`, 'i');
     for (const d of AI_DRAFT_SEED) {
       assert.ok(!brands.test(d.content), `${d.docId} names a brand`);
       assert.ok(!dose.test(d.content), `${d.docId} states an amount that reads as a dose: ${d.content.match(dose)?.[0]}`);
@@ -176,12 +244,14 @@ describe('the knowledge seed', () => {
     assert.deepEqual(afterRun.map((r) => String(r.updatedAt)), before.map((r) => String(r.updatedAt)));
   });
 
-  test('on a fresh seed no new assistant is on; diabetology still is', async () => {
+  test('on a fresh seed no assistant is on, diabetology included — only a doctor switches one on', async () => {
     await seedOnce();
     const statuses = await assistantStatusForPractice({ practiceId: null, language: 'en' });
     const byKey = Object.fromEntries(statuses.map((s) => [s.department.key, s]));
 
-    assert.equal(byKey.diabetology.enabled, true, `${byKey.diabetology.reasons}`);
+    // Its knowledge is approved and ready; its scope waits for a diabetologist.
+    assert.equal(byKey.diabetology.enabled, false, 'seeding switched the diabetes assistant on');
+    assert.deepEqual(byKey.diabetology.reasons, ['scope_not_approved']);
     for (const key of ['cardiology', 'general_physician']) {
       assert.equal(byKey[key].enabled, false, `${key} switched on by seeding`);
       assert.deepEqual(byKey[key].reasons, ['scope_not_approved', 'too_little_approved_knowledge', 'no_approved_red_flag_guidance']);

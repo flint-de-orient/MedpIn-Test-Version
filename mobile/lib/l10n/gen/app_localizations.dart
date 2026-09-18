@@ -883,7 +883,7 @@ abstract class AppLocalizations {
   /// No description provided for @chatClinicRepliesOnly.
   ///
   /// In en, this message translates to:
-  /// **'Replies come from your clinic only, not the assistant'**
+  /// **'This AI assistant is currently unavailable for your care team. Your clinic will reply here.'**
   String get chatClinicRepliesOnly;
 
   /// No description provided for @chatThinking.

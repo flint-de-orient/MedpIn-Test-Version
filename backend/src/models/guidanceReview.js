@@ -63,8 +63,20 @@ export const scopeApprovalSchema = new mongoose.Schema(
   {
     practice: { type: mongoose.Schema.Types.ObjectId, ref: 'Practice', required: true },
     version: { type: Number, required: true },
+    /// The department's knowledge base as the doctor saw it — see
+    /// knowledgeVersionFor in services/ai/assistantReview.js. Absent on
+    /// approvals written before it was recorded.
+    knowledgeVersion: { type: String, trim: true, maxlength: 64, default: null },
     approvedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+    /// The doctor's name when they approved, so the record still says who it
+    /// was after an account is renamed or removed.
+    approvedByName: { type: String, trim: true, maxlength: 200, default: null },
     approvedAt: { type: Date, required: true },
+    /// Withdrawn rather than deleted: the practice sees who switched it off
+    /// and when, and the approval it withdrew stays on the record.
+    withdrawnAt: { type: Date, default: null },
+    withdrawnBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+    withdrawnByName: { type: String, trim: true, maxlength: 200, default: null },
   },
   { _id: false },
 );
@@ -72,18 +84,29 @@ export const scopeApprovalSchema = new mongoose.Schema(
 /**
  * Where a department's assistant scope stands for one practice.
  *
+ * ---- One rule, for every specialty -----------------------------------------
+ *
+ * Live only where a doctor of the specialty at this practice approved the
+ * version in use, and has not withdrawn it. Nothing else switches an assistant
+ * on: not writing a scope, not a status set in the database, not a practice
+ * somewhere else having approved it.
+ *
+ * The diabetology remit used to be the exception. It predates review, carried
+ * no status, and was read as approved for every practice on the platform —
+ * including ones whose diabetologist had never seen it. It is now reviewed like
+ * the rest, at version 1 when it has no version of its own, and is off for a
+ * practice until that practice's diabetologist approves it. `approved` in place
+ * is read the same way: a status is not a doctor.
+ *
  * ---- The states ------------------------------------------------------------
  *
  *   none               no scope written. No assistant.
- *   legacy             a role and no review status: the diabetology remit, lifted
- *                      verbatim from the prompt that clinic already used before
- *                      scopes existed. Live, exactly as it has been.
- *   approved           approved in place (a practice's own department), or this
- *                      practice approved the current version of a shared draft.
+ *   approved           this practice approved the current version. Live.
+ *   withdrawn          this practice approved and then withdrew. Not live.
  *   approval_outdated  this practice approved an earlier version. Not live: the
  *                      words changed after they were read.
- *   draft, pending_review, retired
- *                      not live.
+ *   pending_review     awaiting this practice's approval (also `draft`).
+ *   retired            withdrawn from the platform. Not live anywhere.
  *
  * Pure, so a model's `toPublic` can call it without a query.
  *
@@ -92,17 +115,21 @@ export const scopeApprovalSchema = new mongoose.Schema(
 export function scopeReviewFor(scope, practiceId = null) {
   if (!scope?.role) return { state: 'none', live: false, version: null, approval: null };
 
-  const version = scope.version ?? null;
-  if (scope.status == null) return { state: 'legacy', live: true, version, approval: null };
+  const version = scopeVersionOf(scope);
   if (scope.status === 'retired') return { state: 'retired', live: false, version, approval: null };
-  if (scope.status === 'approved') return { state: 'approved', live: true, version, approval: null };
 
   const approval = practiceId
     ? (scope.approvals ?? []).find((a) => String(a.practice) === String(practiceId)) ?? null
     : null;
+  if (approval?.withdrawnAt) return { state: 'withdrawn', live: false, version, approval };
   if (approval && approval.version === version) {
     return { state: 'approved', live: true, version, approval };
   }
   if (approval) return { state: 'approval_outdated', live: false, version, approval };
-  return { state: scope.status, live: false, version, approval: null };
+  return { state: scope.status === 'draft' ? 'draft' : 'pending_review', live: false, version, approval: null };
+}
+
+/** The version a doctor approves: the scope's own, or 1 for one that has none. */
+export function scopeVersionOf(scope) {
+  return scope?.version ?? 1;
 }

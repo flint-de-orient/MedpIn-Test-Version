@@ -189,7 +189,7 @@
   "chatSessions": "Chat history",
   "chatSessionsEmpty": "No previous chats yet",
   "chatDisclaimer": "AI-assisted guidance, not a diagnosis",
-  "chatClinicRepliesOnly": "Replies come from your clinic only, not the assistant",
+  "chatClinicRepliesOnly": "This AI assistant is currently unavailable for your care team. Your clinic will reply here.",
   "chatThinking": "MedPin Assistant is typing…",
   "chatEmergencyTitle": "Emergency — act now",
   "chatEmergencyBody": "Go to the nearest hospital immediately",

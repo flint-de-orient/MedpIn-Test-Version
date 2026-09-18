@@ -332,16 +332,36 @@ router.get(
     // one practice what another one's specialties are.
     await assertColleague(req, req.params.id);
 
-    const rows = await DoctorDepartment.find({ doctor: req.params.id, endedOn: null })
+    // This practice's rows only. A doctor who also works elsewhere has
+    // departments there too, and those are the other practice's business.
+    const practice = await practiceOf(req);
+    const rows = await DoctorDepartment.find({
+      doctor: req.params.id,
+      endedOn: null,
+      ...(practice ? { practice } : {}),
+    })
       .populate('department')
       .lean();
 
     const language = req.user.language ?? 'en';
+    const departments = rows.map((r) => r.department).filter(Boolean);
+    // Whether each assistant is on here, from the function the assistant asks,
+    // not from the scope alone — which no longer says "on" for any practice.
+    const statuses = departments.length
+      ? await assistantStatusForPractice({
+          practiceId: practice,
+          language: ['en', 'bn', 'hi'].includes(language) ? language : 'en',
+          departments,
+        })
+      : [];
+    const byId = new Map(statuses.map((s) => [s.department.id, s]));
     res.json({
       items: rows
         .filter((r) => r.department)
         .map((r) => ({
-          ...Department.hydrate(r.department).toPublic(language),
+          ...Department.hydrate(r.department).toPublic(language, {
+            assistant: byId.get(String(r.department._id)) ?? null,
+          }),
           isPrimary: Boolean(r.isPrimary),
         })),
     });
