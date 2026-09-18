@@ -6,8 +6,31 @@ class ApiException implements Exception {
     required this.code,
     required this.message,
     this.details = const [],
+    this.detailsMap = const {},
     this.statusCode,
   });
+
+  /// From the server's `{ "error": { code, message, details } }` envelope.
+  ///
+  /// `details` is a list of field problems on VALIDATION_ERROR and an object
+  /// on some refusals (API_CONTRACT.md) — the question "which practice is this
+  /// message for?" among them, which carries the triage verdict and the
+  /// emergency instructions. Each shape lands in its own field; neither is
+  /// dropped for being the other.
+  factory ApiException.fromErrorBody(Map<String, dynamic> error, {int? statusCode}) {
+    final rawDetails = error['details'];
+    return ApiException(
+      code: error['code']?.toString() ?? 'UNKNOWN',
+      message: error['message']?.toString() ?? 'Request failed',
+      details: [
+        if (rawDetails is List)
+          for (final d in rawDetails)
+            if (d is Map<String, dynamic>) ApiErrorDetail.fromJson(d),
+      ],
+      detailsMap: rawDetails is Map<String, dynamic> ? rawDetails : const {},
+      statusCode: statusCode,
+    );
+  }
 
   /// One of the backend's documented error codes (e.g. `VALIDATION_ERROR`),
   /// or a client-side synthetic code such as `NETWORK_ERROR`/`UNKNOWN`.
@@ -20,6 +43,9 @@ class ApiException implements Exception {
 
   /// Field-level validation problems, when the server sent any.
   final List<ApiErrorDetail> details;
+
+  /// The server's `details` when it sent an object rather than a list.
+  final Map<String, dynamic> detailsMap;
 
   final int? statusCode;
 

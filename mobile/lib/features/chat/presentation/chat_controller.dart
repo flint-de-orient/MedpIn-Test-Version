@@ -6,6 +6,36 @@ import '../data/chat_repository.dart';
 import '../domain/chat_message.dart';
 import 'package:flutter/foundation.dart';
 
+/// A message the server would not place, kept until the patient says where it
+/// goes.
+///
+/// A patient with more than one practice who writes into no conversation and
+/// names no practice is asked which, with a 409, rather than guessed for. The
+/// composer has already cleared by then, so without this the words they typed
+/// were simply gone.
+@immutable
+class HeldMessage {
+  const HeldMessage({
+    required this.text,
+    required this.language,
+    this.attachments = const [],
+    this.emergencyInstructions,
+  });
+
+  final String text;
+  final String language;
+
+  /// Ids of files already uploaded — a photo, or a voice note whose transcript
+  /// is [text]. Sent again as they are.
+  final List<String> attachments;
+
+  /// What to do now, when the server triaged the message as an emergency
+  /// before asking. The clinic has already been alerted by then; this is the
+  /// half of the answer the patient needs, and it cannot wait for them to
+  /// choose a doctor either.
+  final String? emergencyInstructions;
+}
+
 class ChatState {
   const ChatState({
     this.sessionId,
@@ -14,6 +44,7 @@ class ChatState {
     this.isSending = false,
     this.isLoadingHistory = false,
     this.error,
+    this.held,
   });
 
   final String? sessionId;
@@ -28,6 +59,10 @@ class ChatState {
   final bool isLoadingHistory;
   final ApiException? error;
 
+  /// Set when the server asked which practice a message is for. The chat tab
+  /// answers by showing the list; see [ChatController.sendHeld].
+  final HeldMessage? held;
+
   ChatState copyWith({
     String? sessionId,
     List<ChatMessage>? messages,
@@ -35,6 +70,8 @@ class ChatState {
     bool? isLoadingHistory,
     ApiException? error,
     bool clearError = false,
+    HeldMessage? held,
+    bool clearHeld = false,
   }) {
     return ChatState(
       sessionId: sessionId ?? this.sessionId,
@@ -43,6 +80,7 @@ class ChatState {
       isSending: isSending ?? this.isSending,
       isLoadingHistory: isLoadingHistory ?? this.isLoadingHistory,
       error: clearError ? null : (error ?? this.error),
+      held: clearHeld ? null : (held ?? this.held),
     );
   }
 }
@@ -89,15 +127,18 @@ class ChatController extends StateNotifier<ChatState> {
       messages: [...state.messages, optimisticUser],
     );
 
+    // Only until the first message has opened the conversation.
+    final sessionId = state.sessionId;
+    final practiceId = sessionId == null ? state.practiceId : null;
+
     // Non-streaming send. The production API sits behind an Apache reverse proxy
     // that buffers Server-Sent Events, so the streaming endpoint hangs and the
     // assistant appears dead. The plain endpoint returns the whole reply at once
     // and is reliable on every network and proxy.
     try {
       final result = await _repository.sendMessage(
-        sessionId: state.sessionId,
-        // Only until the first message has opened the conversation.
-        practiceId: state.sessionId == null ? state.practiceId : null,
+        sessionId: sessionId,
+        practiceId: practiceId,
         text: trimmed,
         language: language,
         attachments: attachments,
@@ -116,10 +157,23 @@ class ChatController extends StateNotifier<ChatState> {
         ],
       );
     } on ApiException catch (e) {
-      state = state.copyWith(
-        messages: state.messages.where((m) => m.id != tempUserId).toList(),
-        error: e,
-      );
+      final withoutTemp = state.messages.where((m) => m.id != tempUserId).toList();
+      if (_askedWhichPractice(e, sessionId: sessionId, practiceId: practiceId)) {
+        // Not an error the patient can act on here. The tab shows the list,
+        // and the message goes wherever they choose. A quote belongs to the
+        // conversation it came from, so it does not travel.
+        state = state.copyWith(
+          messages: withoutTemp,
+          held: HeldMessage(
+            text: trimmed,
+            language: language,
+            attachments: attachments ?? const [],
+            emergencyInstructions: _instructionsIn(e),
+          ),
+        );
+      } else {
+        state = state.copyWith(messages: withoutTemp, error: e);
+      }
     } catch (_) {
       // Anything that is not an ApiException — a malformed payload, a socket
       // dropped mid-request, a cast on a field that came back the wrong shape.
@@ -177,22 +231,32 @@ class ChatController extends StateNotifier<ChatState> {
       messages: [...state.messages, optimistic],
     );
 
+    String? sessionId;
+    String? practiceId;
+    HeldMessage? uploaded;
     try {
       final asset = await _uploadRepository.uploadImage(
         path: localPath,
         filename: localPath.split(RegExp(r'[/\\]')).last,
         kind: UploadKind.voiceNote,
       );
-      final result = await _repository.sendMessage(
-        sessionId: state.sessionId,
-        // Only until the first message has opened the conversation.
-        practiceId: state.sessionId == null ? state.practiceId : null,
-        // The transcript becomes the text so deterministic triage reads a spoken
-        // "chest pain" the same as a typed one; empty is fine (the audio is still
-        // stored and sent).
+      // The transcript becomes the text so deterministic triage reads a spoken
+      // "chest pain" the same as a typed one; empty is fine (the audio is still
+      // stored and sent).
+      uploaded = HeldMessage(
         text: asset.transcript?.trim() ?? '',
         language: language,
         attachments: [asset.id],
+      );
+      sessionId = state.sessionId;
+      // Only until the first message has opened the conversation.
+      practiceId = sessionId == null ? state.practiceId : null;
+      final result = await _repository.sendMessage(
+        sessionId: sessionId,
+        practiceId: practiceId,
+        text: uploaded.text,
+        language: language,
+        attachments: uploaded.attachments,
       );
       final withoutTemp = state.messages.where((m) => m.id != tempId).toList();
       state = state.copyWith(
@@ -206,10 +270,22 @@ class ChatController extends StateNotifier<ChatState> {
         ],
       );
     } on ApiException catch (e) {
-      state = state.copyWith(
-        messages: state.messages.where((m) => m.id != tempId).toList(),
-        error: e,
-      );
+      final withoutTemp = state.messages.where((m) => m.id != tempId).toList();
+      // Held only once the recording is uploaded: a refused upload has nothing
+      // to send again, and is an ordinary failure.
+      if (uploaded != null && _askedWhichPractice(e, sessionId: sessionId, practiceId: practiceId)) {
+        state = state.copyWith(
+          messages: withoutTemp,
+          held: HeldMessage(
+            text: uploaded.text,
+            language: uploaded.language,
+            attachments: uploaded.attachments,
+            emergencyInstructions: _instructionsIn(e),
+          ),
+        );
+      } else {
+        state = state.copyWith(messages: withoutTemp, error: e);
+      }
     } catch (_) {
       // The upload is the likeliest thrower here: a file that vanished, a
       // codec the transcriber rejects, a connection lost mid-upload. None of
@@ -408,7 +484,8 @@ class ChatController extends StateNotifier<ChatState> {
   }
 
   Future<void> openSession(String sessionId) async {
-    state = ChatState(sessionId: sessionId, isLoadingHistory: true);
+    // A held message waits for the conversation the patient is choosing.
+    state = ChatState(sessionId: sessionId, isLoadingHistory: true, held: state.held);
     try {
       final paged = await _repository.getThread(sessionId: state.sessionId, limit: 200);
       final messages = [...paged.items]..sort((a, b) {
@@ -439,7 +516,38 @@ class ChatController extends StateNotifier<ChatState> {
   /// rather than guessed at. This names it until the first message comes back
   /// with the conversation it opened.
   void startConversation(String practiceId) {
-    state = ChatState(practiceId: practiceId);
+    state = ChatState(practiceId: practiceId, held: state.held);
+  }
+
+  /// Sends the held message into the conversation now open — the one the
+  /// patient chose after the server asked. Does nothing when none is held.
+  Future<void> sendHeld() async {
+    final held = state.held;
+    if (held == null) return;
+    state = state.copyWith(clearHeld: true);
+    await send(text: held.text, language: held.language, attachments: held.attachments);
+  }
+
+  /// The patient would rather not send it after all.
+  void discardHeld() {
+    if (state.held != null) state = state.copyWith(clearHeld: true);
+  }
+
+  /// The server's "which practice?": a 409 on a send that named neither a
+  /// conversation nor a practice. Nothing else on the send path is a 409, and
+  /// a send that did name one is refused for some other reason — asking the
+  /// patient to choose again would not help.
+  static bool _askedWhichPractice(
+    ApiException e, {
+    required String? sessionId,
+    required String? practiceId,
+  }) => e.code == 'CONFLICT' && sessionId == null && practiceId == null;
+
+  /// The written emergency instructions the server sent with that question —
+  /// present only when it triaged the message as an emergency.
+  static String? _instructionsIn(ApiException e) {
+    final text = e.detailsMap['instructions'];
+    return text is String && text.trim().isNotEmpty ? text : null;
   }
 
   /// Opens the patient's existing conversation when the chat tab is first shown.

@@ -94,6 +94,18 @@ Practice sign-up adds four, each because a client has to do something different 
 `alert` is `null` when urgency is `routine`/`advice`.
 **Client must render an emergency banner whenever `triage.urgency === "emergency"`.**
 
+A patient with more than one practice who sends with neither `sessionId` nor `practiceId` is asked which practice, not guessed for: `409 CONFLICT`. The message is not saved, but it **is** triaged first, and an urgent or emergency message raises its alert to every practice caring for the patient before the 409 is sent. The same applies to `POST /chat/message/stream` and `POST /chat/nutrition`.
+```json
+{ "error": { "code": "CONFLICT", "message": "You are with more than one practice. Choose which one this message is for.",
+  "details": {
+    "reason": "CHOOSE_PRACTICE",
+    "triage": { "urgency": "emergency", "ruleDriven": true, "redFlags": [...], "findings": ["..."] },
+    "alert": { "id","severity":"emergency","type":"chest_pain","title":"..." },
+    "instructions": "This needs medical attention right now. ..."
+  } } }
+```
+`instructions` is the written emergency script in the request's language (no clinic number, since no practice has been chosen), and `null` below emergency. `alert` is `null` below urgent. The client should show `instructions` at once, ask which practice, and resend with `practiceId` or `sessionId`. That resend reuses the open alert rather than paging again. If triage itself fails, the 409 still comes with only `reason`.
+
 ### `GET /chat/sessions?page=&limit=` → paged `ChatSession`
 ### `GET /chat/sessions/:id/messages?page=&limit=` → paged `ChatMessage`
 ### `POST /chat/sessions/:id/archive` → `204`

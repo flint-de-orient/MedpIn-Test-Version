@@ -30,8 +30,8 @@ import { paged, pageParams } from '../utils/pagination.js';
 import { threadsFor } from '../services/threads.js';
 import { attachableAssetIds } from '../services/mediaAccess.js';
 import { quotableMessageId, quotePreview, QUOTE_FIELDS } from '../services/quotedMessage.js';
+import { sessionForPatientMessage } from '../services/unplacedMessage.js';
 import {
-  sessionForPatientSend,
   sessionForEnrolment,
   relationshipSessions,
   relationshipOfSession,
@@ -205,14 +205,17 @@ router.post(
 
     // And the conversation it goes into, for the same reason. A patient with two
     // practices who has not chosen one is asked which, and that answer has to
-    // arrive as a status rather than as an event the client may never read.
+    // arrive as a status rather than as an event the client may never read —
+    // triaged first, so an emergency is escalated whether or not they answer.
     const text = req.body.text;
-    const session = await sessionForPatientSend({
+    const session = await sessionForPatientMessage({
       patientId,
       sessionId: req.body.sessionId,
       practiceId: req.body.practiceId,
       language: req.body.language ?? req.user.language ?? 'en',
       title: text.length > 60 ? `${text.slice(0, 57)}...` : text,
+      text,
+      attachments: req.body.attachments,
     });
 
     res.set({
@@ -792,12 +795,17 @@ router.post(
     // The nutrition conversation this message belongs to, and the practice it
     // is with — which decides whose dietician's plan and words the assistant
     // quotes and whose allowance it spends. See services/conversationPractice.js.
-    const session = await sessionForPatientSend({
+    // Asked which practice, the message is triaged before the refusal leaves.
+    const session = await sessionForPatientMessage({
       patientId,
       practiceId: req.body.practiceId,
       kind: 'nutrition',
       language: req.user.language ?? 'en',
+      // The language the reply below is written in, for the emergency script.
+      replyLanguage: req.body.language ?? req.user.language ?? 'en',
       title: 'Nutrition',
+      text,
+      attachments: req.body.attachments,
     });
     const relationship = await relationshipOfSession(session);
 

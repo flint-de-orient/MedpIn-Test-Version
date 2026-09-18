@@ -12,7 +12,8 @@ import { clinicIdentity } from '../clinicIdentity.js';
 import { assistantContextFor } from './departmentAssistant.js';
 import { conversationAssistant } from './assistantAvailability.js';
 import { mayAssistantReply, countReply } from './allowance.js';
-import { sessionForPatientSend, relationshipOfSession } from '../conversationPractice.js';
+import { relationshipOfSession } from '../conversationPractice.js';
+import { sessionForPatientMessage } from '../unplacedMessage.js';
 import { careTeamNotesFor } from '../careTeamNotes.js';
 import { raiseAlert } from '../alerts.js';
 import { detectAppointmentIntent } from '../triage/appointmentIntent.js';
@@ -144,7 +145,16 @@ export async function handlePatientMessage({
   // That practice decides what the assistant reads, whose clinicians it
   // quotes, who it speaks for and whose allowance it spends — see
   // services/conversationPractice.js.
-  const session = await sessionForPatientSend({ patientId, sessionId, practiceId, language, title: titleFrom(text) });
+  // Asked which practice, the message is triaged before the refusal leaves.
+  const session = await sessionForPatientMessage({
+    patientId,
+    sessionId,
+    practiceId,
+    language,
+    title: titleFrom(text),
+    text,
+    attachments,
+  });
   const relationship = await relationshipOfSession(session);
 
   const context = await buildPatientContext(patientId, relationship);
@@ -516,7 +526,16 @@ export async function* streamPatientMessage({
   text = await resolveVoiceText(text, attachments);
   // The same conversation, and the same practice deciding everything below, as
   // the plain send. See services/conversationPractice.js.
-  const session = await sessionForPatientSend({ patientId, sessionId, practiceId, language, title: titleFrom(text) });
+  // Asked which practice, the message is triaged before the refusal leaves.
+  const session = await sessionForPatientMessage({
+    patientId,
+    sessionId,
+    practiceId,
+    language,
+    title: titleFrom(text),
+    text,
+    attachments,
+  });
   const relationship = await relationshipOfSession(session);
   const context = await buildPatientContext(patientId, relationship);
   const triage = triageMessage({ text, targets: context.targets, latestGlucose: context.latestGlucose });

@@ -6,10 +6,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/push/chat_push_signal.dart';
 import '../../../core/theme/tokens.dart';
 import '../../../shared/widgets/load_failed.dart';
+import '../../../shared/widgets/surfaces.dart';
 import '../data/chat_repository.dart';
 import '../domain/chat_message.dart';
 import 'chat_controller.dart';
 import 'chat_screen.dart';
+import 'widgets/emergency_card.dart';
 import 'widgets/thread_picker.dart';
 
 /// What the Chat tab shows: a conversation, or a list of them.
@@ -116,20 +118,58 @@ class _ChatTabState extends ConsumerState<ChatTab> with WidgetsBindingObserver {
     }());
   }
 
+  /// The server asked which practice a message is for.
+  ///
+  /// It happens where the screen opened with no conversation to write into:
+  /// the list failed to load and fell through to it, or a second practice
+  /// enrolled the patient since the list was last read. Either way the list is
+  /// re-read, and the message waits in the controller for the patient's choice.
+  void _askWhichPractice() {
+    setState(() {
+      _openThreadId = null;
+      _openTitle = null;
+      _openClinicRepliesOnly = false;
+    });
+    ref.invalidate(threadListProvider);
+  }
+
   @override
   Widget build(BuildContext context) {
     final threads = ref.watch(threadListProvider);
+    final holding = ref.watch(chatControllerProvider.select((s) => s.held != null));
+    final instructions = ref.watch(chatControllerProvider.select((s) => s.held?.emergencyInstructions));
+
+    ref.listen<bool>(chatControllerProvider.select((s) => s.held != null), (was, now) {
+      if (now && was != true) _askWhichPractice();
+    });
+
+    // What to do now, above everything else while the patient chooses. The
+    // clinic was alerted when the server asked; this must not wait either.
+    final emergency = instructions == null
+        ? null
+        : Padding(
+            padding: const EdgeInsets.fromLTRB(T.s4, T.s4, T.s4, 0),
+            child: EmergencyCard(content: instructions),
+          );
 
     return threads.when(
       // A skeleton would flash for a patient who has one thread and is about to
       // be sent straight into it. The screen underneath has its own loading
       // state, so this stays out of the way.
-      loading: () => const SizedBox.shrink(),
+      loading: () => emergency ?? const SizedBox.shrink(),
 
       // The thread list failing must not cost a patient their conversation.
       // With one practice the answer is the same whether the grouping loaded or
-      // not, so fall through to the screen.
-      error: (_, _) => const ChatScreen(),
+      // not, so fall through to the screen — unless the server has already said
+      // there is more than one, when the list is the only way to answer it.
+      error: (_, _) => holding
+          ? ListView(
+              children: [
+                if (emergency != null) emergency,
+                ThreadListFailed(onRetry: () => ref.invalidate(threadListProvider)),
+              ],
+            )
+          : const ChatScreen(),
 
       data: (list) {
         if (_openThreadId != null && list.needsList) {
@@ -150,34 +190,56 @@ class _ChatTabState extends ConsumerState<ChatTab> with WidgetsBindingObserver {
             automaticallyImplyLeading: false,
             title: const Text('Your conversations'),
           ),
-          body: RefreshIndicator(
-            onRefresh: () async => ref.invalidate(threadListProvider),
-            child: ThreadPicker(
-              threads: list,
-              onOpen: (thread, group) async {
-                // The controller already knows how to move to a named session,
-                // so opening one is a call rather than a rebuild of the screen
-                // around a new key.
-                await ref.read(chatControllerProvider.notifier).openSession(thread.id);
-                if (!mounted) return;
-                setState(() {
-                  _openThreadId = thread.id;
-                  _openTitle = thread.nameWithin(group);
-                  _openClinicRepliesOnly = !thread.hasAssistant;
-                });
-              },
-              onStart: (group) {
-                // A practice the patient has not written to yet. The first
-                // message opens the conversation, so the screen starts empty with
-                // the practice named for that send.
-                ref.read(chatControllerProvider.notifier).startConversation(group.practiceId!);
-                setState(() {
-                  _openThreadId = 'new:${group.practiceId}';
-                  _openTitle = group.doctorName ?? group.practiceName;
-                  _openClinicRepliesOnly = group.newConversationHasAssistant == false;
-                });
-              },
-            ),
+          body: Column(
+            children: [
+              if (emergency != null) emergency,
+              if (holding)
+                _WhichPractice(
+                  // An emergency is not withdrawn with a tap: it is already on
+                  // the clinic's alert list, and the conversation it belongs in
+                  // is the one thing still missing.
+                  onCancel: instructions != null
+                      ? null
+                      : () => ref.read(chatControllerProvider.notifier).discardHeld(),
+                ),
+              Expanded(
+                child: RefreshIndicator(
+                  onRefresh: () async => ref.invalidate(threadListProvider),
+                  child: ThreadPicker(
+                    threads: list,
+                    onOpen: (thread, group) async {
+                      // The controller already knows how to move to a named
+                      // session, so opening one is a call rather than a rebuild
+                      // of the screen around a new key.
+                      final chat = ref.read(chatControllerProvider.notifier);
+                      await chat.openSession(thread.id);
+                      if (!mounted) return;
+                      setState(() {
+                        _openThreadId = thread.id;
+                        _openTitle = thread.nameWithin(group);
+                        _openClinicRepliesOnly = !thread.hasAssistant;
+                      });
+                      // Into the conversation just chosen, if the patient was
+                      // asked where a message goes.
+                      unawaited(chat.sendHeld());
+                    },
+                    onStart: (group) {
+                      // A practice the patient has not written to yet. The first
+                      // message opens the conversation, so the screen starts
+                      // empty with the practice named for that send.
+                      final chat = ref.read(chatControllerProvider.notifier);
+                      chat.startConversation(group.practiceId!);
+                      setState(() {
+                        _openThreadId = 'new:${group.practiceId}';
+                        _openTitle = group.doctorName ?? group.practiceName;
+                        _openClinicRepliesOnly = group.newConversationHasAssistant == false;
+                      });
+                      unawaited(chat.sendHeld());
+                    },
+                  ),
+                ),
+              ),
+            ],
           ),
         );
       },
@@ -185,11 +247,54 @@ class _ChatTabState extends ConsumerState<ChatTab> with WidgetsBindingObserver {
   }
 }
 
+/// Above the list while a message waits for the patient to say where it goes.
+///
+/// Says what happened to it — it has not gone, and it has not been sent — so
+/// the list reads as a question rather than as the screen having thrown them
+/// out of the conversation they were typing in.
+class _WhichPractice extends StatelessWidget {
+  const _WhichPractice({required this.onCancel});
+
+  /// Null when the message may not be withdrawn, and no Cancel is offered.
+  final VoidCallback? onCancel;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(T.s4, T.s4, T.s4, 0),
+      child: SectionCard(
+        padding: const EdgeInsets.fromLTRB(T.s4, T.s3, T.s2, T.s3),
+        child: Row(
+          children: [
+            const Icon(Icons.forum_outlined, color: T.primary),
+            const SizedBox(width: T.s3),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Who is this message for?', style: T.bodyStrong.copyWith(color: T.ink)),
+                  const SizedBox(height: T.s1),
+                  Text(
+                    'You see more than one doctor. Choose a conversation and your message will be sent there.',
+                    style: T.label.copyWith(color: T.inkMuted),
+                  ),
+                ],
+              ),
+            ),
+            if (onCancel != null) TextButton(onPressed: onCancel, child: const Text('Cancel')),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 /// The failure state, kept for the case where a patient genuinely has several
 /// conversations and the list is the only way to reach any of them.
 ///
-/// Unused while falling through to [ChatScreen] gives the same answer. It
-/// becomes the right response the moment a list is load-bearing.
+/// Shown once the server has asked which practice a message is for. Falling
+/// through to [ChatScreen] gives the right answer for a patient with one
+/// practice, and for one with several it would only be asked again.
 class ThreadListFailed extends StatelessWidget {
   const ThreadListFailed({super.key, required this.onRetry});
 

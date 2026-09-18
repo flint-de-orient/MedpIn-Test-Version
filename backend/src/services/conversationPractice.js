@@ -37,6 +37,13 @@ import { practiceOf, practicePatientIds, practiceOfPatient } from '../middleware
 
 const CURRENT = Object.freeze({ status: ENROLLMENT_STATUS.ACTIVE, revokedAt: null });
 
+/**
+ * `details.reason` on the 409 that asks a patient which practice a message is
+ * for, so the send can tell it from any other conflict — see
+ * services/unplacedMessage.js, which triages the message before it is refused.
+ */
+export const CHOOSE_PRACTICE = 'CHOOSE_PRACTICE';
+
 function kindFilter(kind) {
   // `$ne: 'nutrition'`, never `kind: 'care'`: sessions written before `kind`
   // existed have none. See the note on ChatSession.kind.
@@ -232,7 +239,9 @@ export async function sessionForPatientSend({
     if (shown) return shown;
   }
 
-  throw conflict('You are with more than one practice. Choose which one this message is for.');
+  throw conflict('You are with more than one practice. Choose which one this message is for.', {
+    reason: CHOOSE_PRACTICE,
+  });
 }
 
 /**

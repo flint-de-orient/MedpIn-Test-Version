@@ -325,18 +325,8 @@ class ApiClient {
 
     final data = response.data;
     if (data is Map<String, dynamic> && data['error'] is Map<String, dynamic>) {
-      final error = data['error'] as Map<String, dynamic>;
-      final rawDetails = error['details'];
-      final details = <ApiErrorDetail>[];
-      if (rawDetails is List) {
-        for (final d in rawDetails) {
-          if (d is Map<String, dynamic>) details.add(ApiErrorDetail.fromJson(d));
-        }
-      }
-      return ApiException(
-        code: error['code']?.toString() ?? 'UNKNOWN',
-        message: error['message']?.toString() ?? 'Request failed',
-        details: details,
+      return ApiException.fromErrorBody(
+        data['error'] as Map<String, dynamic>,
         statusCode: response.statusCode,
       );
     }
