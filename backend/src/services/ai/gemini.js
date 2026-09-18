@@ -27,10 +27,26 @@ export class AiUnavailableError extends Error {
   }
 }
 
+const statusOf = (err) => err?.status ?? err?.response?.status;
+
 function isRetryable(err) {
-  const status = err?.status ?? err?.response?.status;
+  const status = statusOf(err);
   if (status === 429 || status === 503 || status === 500) return true;
   return /fetch failed|ECONNRESET|ETIMEDOUT|network/i.test(err?.message ?? '');
+}
+
+/**
+ * Whether the model refused `thinkingConfig`, rather than the request.
+ *
+ * At module level because both `generate` and `generateStream` ask. It was
+ * declared inside `generate`, so in `generateStream` the name did not exist:
+ * every failed stream (a 404, a 429, an outage) threw "isInvalidThinkingArg is
+ * not defined" instead of AiUnavailableError. The chat caught that and sent
+ * the scripted reply, but the log showed the ReferenceError instead of
+ * Google's error, and the stream never retried without thinking.
+ */
+function isInvalidThinkingArg(err) {
+  return statusOf(err) === 400 && /invalid argument|thinking/i.test(err?.message ?? '');
 }
 
 async function withRetry(fn, { attempts = 3, baseDelayMs = 400, label = 'gemini' } = {}) {
@@ -116,11 +132,6 @@ export async function generate({
     return withRetry(() => client.generateContent({ contents }), { label: model });
   };
 
-  const isInvalidThinkingArg = (err) => {
-    const status = err?.status ?? err?.response?.status;
-    return status === 400 && /invalid argument|thinking/i.test(err?.message ?? '');
-  };
-
   try {
     let result;
     if (MODELS_REJECTING_THINKING.has(model)) {
@@ -183,7 +194,7 @@ export async function generate({
     };
   } catch (err) {
     if (err instanceof AiUnavailableError) throw err;
-    logger.error({ err: err?.message, model }, 'gemini generation failed');
+    logger.error({ err: err?.message, status: statusOf(err), model }, 'gemini generation failed');
     throw new AiUnavailableError(err);
   }
 }
@@ -268,22 +279,28 @@ export async function* generateStream({
     return client.generateContentStream({ contents });
   };
 
+  const failed = (err) => {
+    logger.error({ err: err?.message, status: statusOf(err), model }, 'gemini stream failed');
+    return new AiUnavailableError(err);
+  };
+
   let result;
   try {
     result = await withRetry(run, { label: `${model}:stream` });
   } catch (err) {
-    if (isInvalidThinkingArg(err) && !MODELS_REJECTING_THINKING.has(model)) {
-      MODELS_REJECTING_THINKING.add(model);
-      logger.warn({ model }, 'model rejects thinkingConfig on stream; retrying without it');
-      const client = genAI.getGenerativeModel({
-        model,
-        systemInstruction: system,
-        safetySettings: SAFETY_SETTINGS,
-        generationConfig: { temperature, maxOutputTokens: Math.max(maxOutputTokens, 2400) },
-      });
-      result = await client.generateContentStream({ contents });
-    } else {
-      throw new AiUnavailableError(err);
+    if (!isInvalidThinkingArg(err) || MODELS_REJECTING_THINKING.has(model)) throw failed(err);
+    MODELS_REJECTING_THINKING.add(model);
+    logger.warn({ model }, 'model rejects thinkingConfig on stream; retrying without it');
+    const client = genAI.getGenerativeModel({
+      model,
+      systemInstruction: system,
+      safetySettings: SAFETY_SETTINGS,
+      generationConfig: { temperature, maxOutputTokens: Math.max(maxOutputTokens, 2400) },
+    });
+    try {
+      result = await withRetry(() => client.generateContentStream({ contents }), { label: `${model}:stream` });
+    } catch (retryErr) {
+      throw failed(retryErr);
     }
   }
 

@@ -4,6 +4,52 @@ import { z } from 'zod';
 dotenv.config();
 
 /**
+ * A Gemini model name, with what a hand-edited `.env` can add to it removed.
+ *
+ * The SDK puts this string into the request path unchanged:
+ * `/v1beta/models/<name>:generateContent`. A trailing space, quotes an env
+ * loader kept, a hyphen pasted from a web page (U+2011) or a zero-width space
+ * each make a different URL. Google answers 404 "models/gemini-2.5-flash is
+ * not found for API version v1beta", and the name in that message looks
+ * right because the difference cannot be seen, while a curl typed by hand
+ * against the same URL works.
+ *
+ * So those characters are removed here, along with a `models/` prefix the SDK
+ * adds anyway. A value that is still not a plain model name stops the server
+ * at start, rather than failing at the first patient's message.
+ */
+export function cleanModelName(raw) {
+  return String(raw)
+    .replace(/[​-‍⁠﻿]/g, '')
+    .trim()
+    .replace(/^(['"])(.*)\1$/, '$2')
+    .trim()
+    .replace(/[‐-―−﹘﹣－]/g, '-')
+    .replace(/^models\//, '');
+}
+
+/** [value] with every character outside printable ASCII written as \uXXXX. */
+export function visibleChars(value) {
+  return String(value).replace(/[^\x21-\x7e]/g, (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, '0')}`);
+}
+
+const MODEL_NAME = /^(tunedModels\/)?[a-z0-9][a-z0-9.-]*$/i;
+
+const geminiModel = (fallback) =>
+  z
+    .string()
+    .default(fallback)
+    .transform((raw, ctx) => {
+      const name = cleanModelName(raw);
+      if (MODEL_NAME.test(name)) return name;
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `is not a Gemini model name: "${visibleChars(raw)}"`,
+      });
+      return z.NEVER;
+    });
+
+/**
  * Fail fast on misconfiguration. A healthcare service silently starting with a
  * missing JWT secret or no AI key is worse than not starting at all.
  */
@@ -53,9 +99,9 @@ const schema = z.object({
   REFRESH_TOKEN_TTL: z.string().default('60d'),
 
   GEMINI_API_KEY: z.string().min(1, 'GEMINI_API_KEY is required'),
-  GEMINI_CHAT_MODEL: z.string().default('gemini-2.5-flash'),
-  GEMINI_VISION_MODEL: z.string().default('gemini-2.5-flash'),
-  GEMINI_EMBED_MODEL: z.string().default('text-embedding-004'),
+  GEMINI_CHAT_MODEL: geminiModel('gemini-2.5-flash'),
+  GEMINI_VISION_MODEL: geminiModel('gemini-2.5-flash'),
+  GEMINI_EMBED_MODEL: geminiModel('text-embedding-004'),
 
   // Absolute path to the Firebase service-account JSON. Optional: without it
   // notifications are logged rather than sent, so a development machine needs

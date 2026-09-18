@@ -2,6 +2,7 @@ import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 /**
  * Catches a function that is called but never defined or imported.
@@ -19,7 +20,10 @@ import { join } from 'node:path';
  * question — is every locally-called name reachable from this file?
  */
 
-const SRC = new URL('../src/', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1');
+// fileURLToPath, not `.pathname`: a checkout in a folder with a space in its
+// name ("MedpIn New") read as "MedpIn%20New", so this test found no folder and
+// checked nothing there.
+const SRC = fileURLToPath(new URL('../src/', import.meta.url));
 
 /** Everything a module can call without declaring it. */
 const AMBIENT = new Set([

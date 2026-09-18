@@ -1,5 +1,5 @@
 import pino from 'pino';
-import { env, isProd } from './env.js';
+import { env, isProd, visibleChars } from './env.js';
 
 /**
  * Patient data must never land in logs. `redact` covers the fields most likely
@@ -49,3 +49,13 @@ logger.info(
   { env: env.NODE_ENV, chatModel: env.GEMINI_CHAT_MODEL },
   'logger initialised',
 );
+
+// A model name env.js had to clean (see cleanModelName). The server works, but
+// the file still holds the bad value, so it is shown with the hidden
+// characters written out.
+for (const key of ['GEMINI_CHAT_MODEL', 'GEMINI_VISION_MODEL', 'GEMINI_EMBED_MODEL']) {
+  const raw = process.env[key];
+  if (raw !== undefined && raw !== env[key]) {
+    logger.warn({ key, found: visibleChars(raw), using: env[key] }, 'Gemini model name cleaned; correct it in .env');
+  }
+}
