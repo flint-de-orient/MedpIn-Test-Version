@@ -885,6 +885,19 @@ class AppLocalizationsBn extends AppLocalizations {
       'আপনার নোটিফিকেশন সেটিংস সংরক্ষিত হয়েছে এবং এই ফোনে অ্যালার্ট আসা শুরু হলেই তা কার্যকর হবে। আপনি যা জানান, আপনার ডাক্তার তা এখনই দেখতে পান।';
 
   @override
+  String get notifOffTitle => 'এই ফোনে নোটিফিকেশন বন্ধ আছে';
+
+  @override
+  String get notifOffBody =>
+      'চালু না করা পর্যন্ত MedPin-এর মেসেজ ও সতর্কবার্তা আপনার কাছে পৌঁছাবে না।';
+
+  @override
+  String get notifOffTurnOn => 'চালু করুন';
+
+  @override
+  String get notifOffNotNow => 'এখন নয়';
+
+  @override
   String get healthHeight => 'উচ্চতা (সেমি)';
 
   @override

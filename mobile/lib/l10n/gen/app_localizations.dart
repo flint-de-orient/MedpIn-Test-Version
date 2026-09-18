@@ -1780,6 +1780,30 @@ abstract class AppLocalizations {
   /// **'Your notification settings are saved and will apply as soon as alerts start arriving on this phone. Your doctor already sees everything you raise.'**
   String get notifDeliveryNote;
 
+  /// No description provided for @notifOffTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Notifications are off on this phone'**
+  String get notifOffTitle;
+
+  /// No description provided for @notifOffBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Messages and alerts from MedPin won\'t reach you until you turn them on.'**
+  String get notifOffBody;
+
+  /// No description provided for @notifOffTurnOn.
+  ///
+  /// In en, this message translates to:
+  /// **'Turn on'**
+  String get notifOffTurnOn;
+
+  /// No description provided for @notifOffNotNow.
+  ///
+  /// In en, this message translates to:
+  /// **'Not now'**
+  String get notifOffNotNow;
+
   /// No description provided for @healthHeight.
   ///
   /// In en, this message translates to:

@@ -25,9 +25,31 @@ class PushService {
   StreamSubscription<RemoteMessage>? _onMessage;
   StreamSubscription<RemoteMessage>? _onOpened;
 
+  /// Whether a signed-in session has registered this device.
+  bool _started = false;
+
+  /// The start, stop or refresh in progress. Each waits for the one before.
+  ///
+  /// Switching straight from one account to another calls [stop] and then
+  /// [start] without waiting. Run side by side, the old session's sign-out
+  /// could delete the token after the new session had registered it, and
+  /// then delete it from the device too. The new account then had no working
+  /// token and got no notifications until the app was next opened.
+  Future<void> _last = Future.value();
+
+  Future<void> _inTurn(Future<void> Function() job) {
+    final next = _last.then((_) => job()).catchError((Object e) {
+      debugPrint('push: $e');
+    });
+    _last = next;
+    return next;
+  }
+
   /// Called once the user is signed in — a token is only useful when the
   /// server knows whose device it belongs to.
-  Future<void> start() async {
+  Future<void> start() => _inTurn(_start);
+
+  Future<void> _start() async {
     final messaging = FirebaseMessaging.instance;
 
     // Android 13+ requires this at runtime. Declining is a legitimate choice;
@@ -38,13 +60,18 @@ class PushService {
       sound: true,
     );
 
+    // Registered either way. This used to stop here when notifications were
+    // blocked, so the server never learned this device existed. Turning
+    // notifications on afterwards then changed nothing until the app was
+    // closed and reopened. The banner in notifications_off_banner.dart tells
+    // the person they are off.
     if (settings.authorizationStatus == AuthorizationStatus.denied) {
-      debugPrint('push: permission denied — notifications will not arrive');
-      return;
+      debugPrint('push: notifications are blocked on this phone');
     }
 
     final token = await messaging.getToken();
     if (token != null) await _register(token);
+    _started = true;
 
     // FCM rotates tokens on reinstall, restore and occasionally on its own. A
     // stale token silently swallows every notification, so the rotation is
@@ -245,9 +272,27 @@ class PushService {
     }
   }
 
+  /// Registers this device's token again, for the person already signed in.
+  ///
+  /// Called whenever the app comes back to the foreground. The server can
+  /// lose a token without the phone knowing: another account signs in on the
+  /// same app, or FCM rejects it once and it is pruned. Until now nothing
+  /// re-registered it until the next sign-in, so that phone got no
+  /// notifications in the meantime. One small request, and the server
+  /// ignores a token it already has.
+  Future<void> refresh() => _inTurn(() async {
+    if (!_started) return;
+    if (_ref.read(authControllerProvider).user == null) return;
+    final token = await FirebaseMessaging.instance.getToken();
+    if (token != null) await _register(token);
+  });
+
   /// Detaches the token on sign-out so the next person to use this device does
   /// not receive the previous patient's clinical notifications.
-  Future<void> stop() async {
+  Future<void> stop() => _inTurn(_stop);
+
+  Future<void> _stop() async {
+    _started = false;
     await _tokenRefresh?.cancel();
     _tokenRefresh = null;
     await _onMessage?.cancel();

@@ -69,7 +69,16 @@ export async function deliver({ tokens, title, body, data }) {
       logger.info({ removed: dead.length }, 'pruned dead device tokens');
     }
 
-    logger.info({ title, delivered: response.successCount, failed: response.failureCount }, 'push sent');
+    // FCM's reason for each failure, not just how many. A server key from a
+    // different Firebase project than the app's fails every send with
+    // `messaging/mismatched-credential`, and a count alone never says so.
+    const errors = [...new Set(response.responses.map((r) => r.error?.code).filter(Boolean))];
+    const log = response.failureCount && !response.successCount ? logger.warn : logger.info;
+    log.call(
+      logger,
+      { title, delivered: response.successCount, failed: response.failureCount, ...(errors.length ? { errors } : {}) },
+      'push sent',
+    );
     return { delivered: response.successCount };
   } catch (err) {
     logger.error({ err, title }, 'push delivery failed');
@@ -106,6 +115,10 @@ async function deliverData({ tokens, data }) {
     });
     if (dead.length) {
       await User.updateMany({ deviceTokens: { $in: dead } }, { $pull: { deviceTokens: { $in: dead } } });
+    }
+    if (response.failureCount) {
+      const errors = [...new Set(response.responses.map((r) => r.error?.code).filter(Boolean))];
+      logger.warn({ delivered: response.successCount, failed: response.failureCount, errors }, 'data push failed');
     }
     return { delivered: response.successCount };
   } catch (err) {

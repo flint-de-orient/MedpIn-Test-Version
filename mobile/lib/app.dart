@@ -11,6 +11,7 @@ import 'core/theme/app_theme.dart';
 import 'l10n/gen/app_localizations.dart';
 import 'shared/providers/locale_provider.dart';
 import 'shared/providers/preferences_provider.dart';
+import 'core/push/notifications_off_banner.dart';
 import 'core/push/push_service.dart';
 import 'features/auth/presentation/auth_controller.dart';
 import 'features/glucose/presentation/glucose_providers.dart';
@@ -44,7 +45,11 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
     // Coming back to the app, pull the latest medications and rebuild the
     // reminders — so a medicine the doctor just prescribed starts reminding
     // without the patient having to open the Track screen.
-    if (state == AppLifecycleState.resumed) _syncMedsIfPatient();
+    if (state == AppLifecycleState.resumed) {
+      _syncMedsIfPatient();
+      // And make sure the server still has this phone. See PushService.refresh.
+      ref.read(pushServiceProvider).refresh();
+    }
   }
 
   void _syncMedsIfPatient() {
@@ -166,7 +171,11 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
           child: MediaQuery(
             data: mq.copyWith(textScaler: TextScaler.linear(scale)),
             child: _VersionGate(
-              child: AppLockGate(child: child ?? const SizedBox.shrink()),
+              child: AppLockGate(
+                child: NotificationsOffBanner(
+                  child: child ?? const SizedBox.shrink(),
+                ),
+              ),
             ),
           ),
         );

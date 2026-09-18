@@ -1,6 +1,8 @@
 import { test, describe, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 import { allowedOrigins, env } from '../src/config/env.js';
 import { readiness, readinessSummary } from '../src/config/readiness.js';
@@ -528,5 +530,69 @@ describe('the operator console cannot be locked out silently', () => {
       );
       assert.match(source, /allowedOrigins\(\)/, `${name} does not use the shared list`);
     }
+  });
+});
+
+describe('a server that cannot push says so', () => {
+  /*
+   * Every notification goes through Firebase: a patient's message to the
+   * clinic, the reply, the emergency alert. With no key, or a key file that is
+   * missing or wrong, each one is logged and none is sent, and neither phone
+   * shows anything. This reported `off` or `ready` for all of those, so the
+   * console never listed it.
+   */
+  const dir = mkdtempSync(join(tmpdir(), 'medpin-push-'));
+  const keyFile = (name, body) => {
+    const path = join(dir, name);
+    writeFileSync(path, typeof body === 'string' ? body : JSON.stringify(body));
+    return path;
+  };
+
+  test('a live server with no key is degraded, and says who is not told', () => {
+    withEnv({ NODE_ENV: 'production', DEPLOY_ENV: 'production', GOOGLE_APPLICATION_CREDENTIALS: '' });
+    const check = find('push');
+    assert.equal(check.state, 'degraded');
+    assert.match(check.affects, /emergency alerts/);
+  });
+
+  test('staging with no key is off, because that is on purpose there', () => {
+    withEnv({ NODE_ENV: 'production', DEPLOY_ENV: 'staging', GOOGLE_APPLICATION_CREDENTIALS: '' });
+    assert.equal(find('push').state, 'off');
+  });
+
+  test('a key file that is not there is degraded, not ready', () => {
+    withEnv({ GOOGLE_APPLICATION_CREDENTIALS: join(dir, 'never-copied.json') });
+    const check = find('push');
+    assert.equal(check.state, 'degraded');
+    assert.match(check.because, /does not exist/);
+  });
+
+  test('so is a file that is not a service-account key', () => {
+    // The app's own google-services.json is the likely mistake: it is JSON and
+    // it names the project, and it cannot send anything.
+    withEnv({
+      GOOGLE_APPLICATION_CREDENTIALS: keyFile('google-services.json', {
+        project_info: { project_id: 'clinq-38abe' },
+        client: [],
+      }),
+    });
+    assert.equal(find('push').state, 'degraded');
+
+    withEnv({ GOOGLE_APPLICATION_CREDENTIALS: keyFile('broken.json', '{ not json') });
+    assert.equal(find('push').state, 'degraded');
+  });
+
+  test('a service-account key is ready, and names its project', () => {
+    withEnv({
+      GOOGLE_APPLICATION_CREDENTIALS: keyFile('service-account.json', {
+        type: 'service_account',
+        project_id: 'clinq-38abe',
+        client_email: 'firebase-adminsdk@clinq-38abe.iam.gserviceaccount.com',
+        private_key: '-----BEGIN PRIVATE KEY-----\nnot a real key\n-----END PRIVATE KEY-----\n',
+      }),
+    });
+    const check = find('push');
+    assert.equal(check.state, 'ready');
+    assert.match(check.because, /clinq-38abe/);
   });
 });

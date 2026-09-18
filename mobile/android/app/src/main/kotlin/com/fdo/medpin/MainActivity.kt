@@ -33,6 +33,10 @@ class MainActivity : FlutterFragmentActivity() {
                         requestIgnoreBatteryOptimizations()
                         result.success(null)
                     }
+                    "openNotificationSettings" -> {
+                        openNotificationSettings(call.argument<String>("channelId"))
+                        result.success(null)
+                    }
                     else -> result.notImplemented()
                 }
             }
@@ -79,6 +83,38 @@ class MainActivity : FlutterFragmentActivity() {
     private fun isIgnoringBatteryOptimizations(): Boolean {
         val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
         return pm.isIgnoringBatteryOptimizations(packageName)
+    }
+
+    /**
+     * This app's page in the phone's notification settings, or one channel's
+     * page when only that channel is switched off.
+     *
+     * After a second "don't allow", Android stops showing the permission
+     * prompt, and this page is the only place left to turn notifications on.
+     */
+    private fun openNotificationSettings(channelId: String?) {
+        val intent = if (channelId != null) {
+            Intent(Settings.ACTION_CHANNEL_NOTIFICATION_SETTINGS)
+                .putExtra(Settings.EXTRA_APP_PACKAGE, packageName)
+                .putExtra(Settings.EXTRA_CHANNEL_ID, channelId)
+        } else {
+            Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+                .putExtra(Settings.EXTRA_APP_PACKAGE, packageName)
+        }
+        try {
+            startActivity(intent)
+        } catch (e: Exception) {
+            // Some OEM builds do not have the page. The app's own settings
+            // page has a Notifications row on all of them.
+            try {
+                startActivity(
+                    Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                        data = Uri.parse("package:$packageName")
+                    },
+                )
+            } catch (_: Exception) {
+            }
+        }
     }
 
     @SuppressLint("BatteryLife")

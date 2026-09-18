@@ -1,9 +1,10 @@
 import 'package:flutter/services.dart';
 
-/// Native bridge for the one reliability lever Flutter can't pull itself:
+/// Native bridge for the reliability levers Flutter can't pull itself:
 /// exemption from OEM battery optimization, which otherwise kills scheduled
-/// dose alarms on MIUI/Oppo/Vivo/Samsung. (Notification and exact-alarm
-/// permissions are handled by flutter_local_notifications.)
+/// dose alarms on MIUI/Oppo/Vivo/Samsung, and the notification settings page.
+/// (The notification and exact-alarm permission prompts are handled by
+/// flutter_local_notifications.)
 class ReminderReliability {
   const ReminderReliability._();
 
@@ -25,6 +26,17 @@ class ReminderReliability {
   static Future<void> requestIgnoreBatteryOptimizations() async {
     try {
       await _ch.invokeMethod('requestIgnoreBatteryOptimizations');
+    } catch (_) {}
+  }
+
+  /// Opens this app's page in the phone's notification settings, or the page
+  /// for one channel when [channelId] is given. Once Android has stopped
+  /// showing the permission prompt, this is the only way back.
+  static Future<void> openNotificationSettings({String? channelId}) async {
+    try {
+      await _ch.invokeMethod('openNotificationSettings', {
+        'channelId': channelId,
+      });
     } catch (_) {}
   }
 }

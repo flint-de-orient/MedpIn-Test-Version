@@ -893,6 +893,19 @@ class AppLocalizationsHi extends AppLocalizations {
       'आपकी नोटिफ़िकेशन सेटिंग्स सहेज ली गई हैं और इस फ़ोन पर अलर्ट आते ही लागू हो जाएँगी। आप जो भी बताते हैं, आपके डॉक्टर उसे अभी देख पाते हैं।';
 
   @override
+  String get notifOffTitle => 'इस फ़ोन पर नोटिफ़िकेशन बंद हैं';
+
+  @override
+  String get notifOffBody =>
+      'चालू करने तक MedPin के संदेश और अलर्ट आप तक नहीं पहुँचेंगे।';
+
+  @override
+  String get notifOffTurnOn => 'चालू करें';
+
+  @override
+  String get notifOffNotNow => 'अभी नहीं';
+
+  @override
   String get healthHeight => 'कद (सेमी)';
 
   @override

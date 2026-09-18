@@ -892,6 +892,19 @@ class AppLocalizationsEn extends AppLocalizations {
       'Your notification settings are saved and will apply as soon as alerts start arriving on this phone. Your doctor already sees everything you raise.';
 
   @override
+  String get notifOffTitle => 'Notifications are off on this phone';
+
+  @override
+  String get notifOffBody =>
+      'Messages and alerts from MedPin won\'t reach you until you turn them on.';
+
+  @override
+  String get notifOffTurnOn => 'Turn on';
+
+  @override
+  String get notifOffNotNow => 'Not now';
+
+  @override
   String get healthHeight => 'Height (cm)';
 
   @override

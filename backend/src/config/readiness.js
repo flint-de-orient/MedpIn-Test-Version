@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+
 import { allowedOrigins, env } from './env.js';
 
 /**
@@ -68,6 +70,39 @@ function originOf(url) {
   } catch {
     return null;
   }
+}
+
+/**
+ * The Firebase project a service-account key file belongs to, or what is wrong
+ * with it.
+ *
+ * Read the way firebase.js reads it. Remembered per path, because the server
+ * also reads the key only once, at the first push: a file changed afterwards
+ * changes nothing on either side until a restart.
+ */
+const keyFiles = new Map();
+
+function serviceAccountAt(path) {
+  if (!keyFiles.has(path)) keyFiles.set(path, readServiceAccount(path));
+  return keyFiles.get(path);
+}
+
+function readServiceAccount(path) {
+  let key;
+  try {
+    key = JSON.parse(readFileSync(path, 'utf8'));
+  } catch (err) {
+    return {
+      problem:
+        err?.code === 'ENOENT'
+          ? `the Firebase key file ${path} does not exist`
+          : `the Firebase key file ${path} cannot be read (${err?.code ?? 'not JSON'})`,
+    };
+  }
+  if (key?.type !== 'service_account' || !set(key.project_id) || !set(key.client_email) || !set(key.private_key)) {
+    return { problem: `${path} is not a Firebase service-account key` };
+  }
+  return { projectId: key.project_id };
 }
 
 /**
@@ -189,18 +224,47 @@ export function readiness() {
   );
 
   // ---- push ---------------------------------------------------------------
-  checks.push(
-    set(env.GOOGLE_APPLICATION_CREDENTIALS)
-      ? { key: 'push', state: READY, because: 'service account configured' }
-      : {
-          key: 'push',
-          state: OFF,
-          because: 'GOOGLE_APPLICATION_CREDENTIALS is not set',
-          affects:
-            'Notifications are logged rather than delivered. Medication reminders ' +
-            'still fire from the handset; the server backstop does not.',
-        },
-  );
+  /*
+   * Every notification the app gets comes through here: a patient's message
+   * to the clinic, the clinic's reply, and the emergency alert. Without a key
+   * they are all logged and none is sent, and nothing on either phone says so.
+   *
+   * So a live server without one is degraded, the way a live server without
+   * SMS is. Staging is left `off`, because it has no key on purpose.
+   *
+   * A path that is set is also read. This used to report `ready` whenever the
+   * variable was set, so a key file that was never copied to the server, or a
+   * file that is not a service-account key, looked ready while firebase.js
+   * failed at the first push and logged every notification after it.
+   */
+  const pushMustSend = running('production') && env.DEPLOY_ENV !== 'staging';
+  if (!set(env.GOOGLE_APPLICATION_CREDENTIALS)) {
+    checks.push({
+      key: 'push',
+      state: pushMustSend ? DEGRADED : OFF,
+      because: 'GOOGLE_APPLICATION_CREDENTIALS is not set',
+      affects: pushMustSend
+        ? 'No phone is notified of anything. Patient messages, clinic replies and ' +
+          'emergency alerts wait until somebody opens the app. Medication reminders ' +
+          'still fire from the handset.'
+        : 'Notifications are logged rather than delivered. Medication reminders ' +
+          'still fire from the handset; the server backstop does not.',
+    });
+  } else {
+    const key = serviceAccountAt(env.GOOGLE_APPLICATION_CREDENTIALS.trim());
+    checks.push(
+      key.projectId
+        ? { key: 'push', state: READY, because: `Firebase project ${key.projectId}` }
+        : {
+            key: 'push',
+            state: DEGRADED,
+            because: key.problem,
+            affects:
+              'Every notification is logged instead of sent: patient messages, clinic ' +
+              'replies and emergency alerts reach no phone.',
+          },
+    );
+  }
 
   // ---- text messages, which are how everybody signs in --------------------
   /*

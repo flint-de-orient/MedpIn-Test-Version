@@ -103,6 +103,17 @@ int medDailyReminderId(String medId, String hhmm) {
       (hash % NotificationService.medIdWindow);
 }
 
+/// What stops messages and alerts from showing. See
+/// [NotificationService.whatBlocksMessages].
+enum NotificationBlock {
+  /// Every notification from the app is switched off. On Android 13 and later
+  /// this is also what an unanswered or refused permission prompt leaves.
+  app,
+
+  /// The app is allowed, but the channel messages arrive on is switched off.
+  channel,
+}
+
 /// Local notifications: short in-the-moment updates via [show], and repeating
 /// medication reminders via [scheduleMedicationReminders].
 ///
@@ -196,7 +207,7 @@ class NotificationService {
   static const int _checkInId = 850000;
 
   static const AndroidNotificationChannel _channel = AndroidNotificationChannel(
-    'clinq_updates',
+    updatesChannelId,
     'MedPin updates',
     description: 'Appointments and messages from the clinic',
     importance: Importance.high,
@@ -349,6 +360,57 @@ class NotificationService {
     return await android?.canScheduleExactNotifications() ?? true;
   }
 
+  /// The channel messages and alerts arrive on, both the ones this app draws
+  /// and the ones FCM draws while the app is closed (see AndroidManifest.xml).
+  static const String updatesChannelId = 'clinq_updates';
+
+  /// What stops MedPin's messages and alerts from showing on this phone, or
+  /// null when nothing does.
+  ///
+  /// Either every notification from the app is switched off, or only the
+  /// channel messages arrive on is. The second one is easy to miss: the app's
+  /// switch is on and medicine alarms still ring, but no message ever shows.
+  Future<NotificationBlock?> whatBlocksMessages() async {
+    try {
+      await init();
+      final android =
+          _plugin
+              .resolvePlatformSpecificImplementation<
+                AndroidFlutterLocalNotificationsPlugin
+              >();
+      if (android == null) return null;
+      if (await android.areNotificationsEnabled() == false) {
+        return NotificationBlock.app;
+      }
+      for (final c in await android.getNotificationChannels() ?? const []) {
+        if (c.id == updatesChannelId && c.importance == Importance.none) {
+          return NotificationBlock.channel;
+        }
+      }
+    } catch (_) {
+      // Unknown is not blocked. A warning on a phone that works is how people
+      // learn to ignore it.
+    }
+    return null;
+  }
+
+  /// Shows Android's "allow notifications?" prompt, where Android will still
+  /// show it. True when notifications are allowed afterwards.
+  ///
+  /// Android shows the prompt twice at most. After a second "don't allow" it
+  /// returns straight away, and only the phone's settings can turn them on.
+  Future<bool> askToShowNotifications() async {
+    await init();
+    final android =
+        _plugin
+            .resolvePlatformSpecificImplementation<
+              AndroidFlutterLocalNotificationsPlugin
+            >();
+    if (android == null) return true;
+    await android.requestNotificationsPermission();
+    return await android.areNotificationsEnabled() ?? true;
+  }
+
   /// Show a notification now. Keep [title]/[body] short and specific. [payload]
   /// (an FCM data map as JSON) is handed back to [onNotificationTap] on tap, so
   /// the app can open the conversation the notification is about.
@@ -360,7 +422,7 @@ class NotificationService {
     await init();
     const details = NotificationDetails(
       android: AndroidNotificationDetails(
-        'clinq_updates',
+        updatesChannelId,
         'MedPin updates',
         channelDescription: 'Appointments and messages from the clinic',
         importance: Importance.high,
