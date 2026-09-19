@@ -434,7 +434,7 @@ class AppLocalizationsBn extends AppLocalizations {
   String get chatEmergencyTitle => 'জরুরি অবস্থা — এখনই ব্যবস্থা নিন';
 
   @override
-  String get chatEmergencyBody => 'এটির জন্য জরুরি চিকিৎসার প্রয়োজন হতে পারে';
+  String get chatEmergencyBody => 'জরুরি অবস্থা';
 
   @override
   String get chatCallClinic => 'ক্লিনিকে ফোন করুন';

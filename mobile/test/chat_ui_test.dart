@@ -85,7 +85,7 @@ void main() {
 
       expect(find.byType(EmergencyCard), findsOneWidget);
       expect(
-        find.text('This may need urgent medical attention'),
+        find.text('Emergency'),
         findsOneWidget,
       );
       expect(find.text('Call clinic'), findsOneWidget);
@@ -131,7 +131,7 @@ void main() {
 
         expect(find.byType(EmergencyCard), findsOneWidget);
         expect(
-          find.text('This may need urgent medical attention'),
+          find.text('Emergency'),
           findsOneWidget,
         );
         expect(find.text('Call clinic'), findsNothing);
