@@ -68,7 +68,7 @@ export async function threadsFor(patientId, { language = 'en' } = {}) {
     .select('name logoLightAssetId')
     .lean();
   const practiceById = new Map(practices.map((p) => [String(p._id), p]));
-  const doctors = await namedDoctors(enrollments);
+  const doctors = await namedDoctors(enrollments, patientId);
 
   // Sessions whose enrollment was never backfilled belong to the patient's
   // first practice — it is the only one they had when the row was written.
@@ -131,10 +131,11 @@ const uploadUrl = (assetId) => (assetId ? `/api/v1/uploads/${assetId}/raw` : nul
  *
  * @returns {Promise<Map<string, {id, name, avatarUrl}>>} keyed by enrolment id
  */
-async function namedDoctors(enrollments) {
+async function namedDoctors(enrollments, patientId) {
   // careDoctor.js, the one answer to "who is this patient's doctor", which the
-  // assistant also gives when it names them.
-  const doctors = await currentDoctorsOf(enrollments);
+  // assistant also gives when it names them. The patient, so an enrolment from
+  // before doctors were named on it can use the one on their profile.
+  const doctors = await currentDoctorsOf(enrollments, { patientId });
   const out = new Map();
   for (const [enrollmentId, d] of doctors) {
     out.set(enrollmentId, { id: d.id, name: d.displayName, avatarUrl: uploadUrl(d.avatarAssetId) });

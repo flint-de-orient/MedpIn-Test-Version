@@ -77,12 +77,27 @@ import { currentDoctorOf } from '../careDoctor.js';
  *
  * The patient's own doctor's: a cardiologist's patient is answered by the
  * cardiology assistant and a general physician's by the general-medicine one,
- * so a practice with both is answered in both. A patient with no assigned
- * doctor has no doctor's chat, and no assistant. A doctor placed in no
+ * so a practice with both is answered in both. A doctor placed in no
  * department is taken to practise the practice's specialty, and at a practice
  * with none — the founding diabetes clinic's case — the diabetology assistant
  * answers with the prompt it has always had (`via: 'legacy_default'`). See
  * conversationAssistant.
+ *
+ * ---- No doctor, no assistant: deliberate, and why --------------------------
+ *
+ * A patient with no current doctor here gets no assistant; their messages
+ * still reach the clinic, and triage and alerts still run. A product decision
+ * (19 Sep 2026), kept explicit here rather than implied:
+ *   - which assistant answers is decided by the patient's doctor, and without
+ *     one the old answer was "the practice's specialty, else diabetes", which
+ *     is how a cardiologist's patient came to be answered as a diabetes one;
+ *   - the assistant speaks for a named doctor (dose changes, what to contact
+ *     them about), and there is nobody to speak for.
+ * The reason first given, that such a patient has no doctor's chat, was
+ * wrong: patients enrolled before enrolments named a doctor have one. They now
+ * resolve their doctor through the legacy link in careDoctor.js, so this rule
+ * no longer catches them. Whether to answer doctor-less patients anyway, in
+ * neutral words, is an open product decision.
  */
 
 /** The fewest approved passages a department's assistant may answer from. See above. */
@@ -421,8 +436,9 @@ async function doctorSpecialty({ enrollmentId = null, patientId = null, practice
  * ---- Which department a conversation is ------------------------------------
  *
  *   thread               the session names a department
- *   no_doctor            the patient has no assigned doctor here (or theirs has
- *                        left): no doctor's chat, so no assistant
+ *   no_doctor            the patient has no current doctor here, even through
+ *                        the legacy link (careDoctor.js): no assistant, by the
+ *                        decision recorded at the top of this file
  *   doctor               the patient's own doctor here is placed in a
  *                        specialty: that specialty's assistant, or none if the
  *                        specialty has none
