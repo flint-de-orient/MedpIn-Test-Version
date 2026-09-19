@@ -47,6 +47,12 @@ export async function boot() {
   await mongoose.connect(mongod.getUri('medpin_http_test'));
 
   const { createApp } = await import('../../src/app.js');
+  // Every model's indexes, built before the first request. Mongoose builds
+  // them in the background, and until a unique index exists the database
+  // accepts duplicates. Chat messages numbered twice in one conversation
+  // passed every test here and were refused on the real server, where the
+  // index was long built. See tests/chatMessageNumbering.test.js.
+  await Promise.all(mongoose.modelNames().map((name) => mongoose.model(name).init()));
   server = createApp().listen(0);
   await new Promise((resolve, reject) => {
     server.once('listening', resolve);

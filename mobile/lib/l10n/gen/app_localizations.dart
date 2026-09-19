@@ -826,6 +826,12 @@ abstract class AppLocalizations {
   /// **'Seen by the clinic'**
   String get chatSeenByClinic;
 
+  /// No description provided for @chatNotSent.
+  ///
+  /// In en, this message translates to:
+  /// **'Not sent. Tap to try again.'**
+  String get chatNotSent;
+
   /// No description provided for @chatReplyingTo.
   ///
   /// In en, this message translates to:

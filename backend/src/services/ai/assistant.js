@@ -1,4 +1,5 @@
 ﻿import { ChatMessage } from '../../models/ChatMessage.js';
+import { ChatSession } from '../../models/ChatSession.js';
 import { nextMessageSeq } from '../chatSequence.js';
 import { triageMessage } from '../triage/engine.js';
 import { buildPatientContext } from '../patientContext.js';
@@ -118,6 +119,64 @@ async function assistantShouldReply(session, relationship = null, availability =
   return true;
 }
 
+/** Whether triage wants the clinic told now. */
+const isEscalated = (triage) => triage.urgency === 'emergency' || triage.urgency === 'urgent';
+
+/** The clinical alert for an urgent or emergency chat message. */
+function raiseChatAlert({ patientId, triage, text, messageId = null }) {
+  return raiseAlert({
+    patientId,
+    severity: triage.urgency === 'emergency' ? 'emergency' : 'urgent',
+    type: triage.alertType ?? 'chat_escalation',
+    title: triage.redFlags[0]?.label ?? triage.findings[0]?.summary ?? 'Patient reported a concerning symptom',
+    detail: `Patient message: "${text.slice(0, 500)}"\n\nTriage findings:\n${triage.findings.map((f) => `- ${f.summary}`).join('\n')}`,
+    source: { kind: 'chat', ...(messageId ? { ref: messageId } : {}) },
+    matchedRules: triage.matchedRules,
+  });
+}
+
+/**
+ * Saves the patient's message and counts it.
+ *
+ * Numbered by the same allocator as every other message in the conversation
+ * (see chatSequence.js). It used to take `session.messageCount + 1`, which
+ * drifted from the allocator until the two handed out the same number, and
+ * the conversation then refused every message the patient sent.
+ *
+ * An urgent or emergency message is escalated even if it cannot be saved.
+ * Escalation came only after this write, so a refused "I have a chest pain"
+ * reached nobody: it was not in the thread and the clinic was not told.
+ */
+async function savePatientMessage({ session, patientId, text, language, attachments, replyTo, triage }) {
+  try {
+    const message = await ChatMessage.create({
+      session: session._id,
+      patient: patientId,
+      seq: await nextMessageSeq(session._id),
+      role: 'user',
+      content: text,
+      language,
+      attachments,
+      replyTo: replyTo ?? undefined,
+      triage: {
+        urgency: triage.urgency,
+        matchedRules: triage.matchedRules,
+        redFlags: triage.redFlags.map((r) => r.label),
+        ruleDriven: triage.ruleDriven,
+      },
+    });
+    await ChatSession.updateOne({ _id: session._id }, { $inc: { messageCount: 1 } });
+    return message;
+  } catch (err) {
+    if (isEscalated(triage)) {
+      await raiseChatAlert({ patientId, triage, text }).catch((alertErr) =>
+        logger.error({ err: alertErr, patientId: String(patientId) }, 'could not escalate an unsaved patient message'),
+      );
+    }
+    throw err;
+  }
+}
+
 /**
  * Handles one patient turn end to end.
  *
@@ -165,23 +224,8 @@ export async function handlePatientMessage({
     latestGlucose: context.latestGlucose,
   });
 
-  const seq = session.messageCount + 1;
-  const userMessage = await ChatMessage.create({
-    session: session._id,
-    patient: patientId,
-    seq,
-    role: 'user',
-    content: text,
-    language,
-    attachments,
-    replyTo: replyTo ?? undefined,
-    triage: {
-      urgency: triage.urgency,
-      matchedRules: triage.matchedRules,
-      redFlags: triage.redFlags.map((r) => r.label),
-      ruleDriven: triage.ruleDriven,
-    },
-  });
+  const userMessage = await savePatientMessage({ session, patientId, text, language, attachments, replyTo, triage });
+  const { seq } = userMessage;
 
   // Populate the quoted turn so the send response carries its text preview.
   if (replyTo) await userMessage.populate('replyTo', QUOTE_FIELDS);
@@ -192,16 +236,8 @@ export async function handlePatientMessage({
   // Escalate before generating. The clinic learns about a chest-pain message
   // whether or not the model ever responds.
   let alert = null;
-  if (triage.urgency === 'emergency' || triage.urgency === 'urgent') {
-    alert = await raiseAlert({
-      patientId,
-      severity: triage.urgency === 'emergency' ? 'emergency' : 'urgent',
-      type: triage.alertType ?? 'chat_escalation',
-      title: triage.redFlags[0]?.label ?? triage.findings[0]?.summary ?? 'Patient reported a concerning symptom',
-      detail: `Patient message: "${text.slice(0, 500)}"\n\nTriage findings:\n${triage.findings.map((f) => `- ${f.summary}`).join('\n')}`,
-      source: { kind: 'chat', ref: userMessage._id },
-      matchedRules: triage.matchedRules,
-    });
+  if (isEscalated(triage)) {
+    alert = await raiseChatAlert({ patientId, triage, text, messageId: userMessage._id });
     await ChatMessage.findByIdAndUpdate(userMessage._id, { alert: alert._id });
   }
 
@@ -240,7 +276,6 @@ export async function handlePatientMessage({
   });
 
   if (!(await assistantShouldReply(session, relationship, availability))) {
-    session.messageCount = seq;
     session.lastMessageAt = new Date();
     session.highestUrgency = maxUrgency(session.highestUrgency, triage.urgency);
     if (triage.urgency === 'emergency' || triage.urgency === 'urgent') session.flaggedForReview = true;
@@ -419,13 +454,6 @@ ${forceLanguageInstruction(language)}`,
   // No disclaimer is appended to the content: the app already renders one
   // footer line under every assistant reply, and appending here produced a
   // duplicate (sometimes triple, when the model added its own too).
-  // Counted against the month's allowance now the model has actually answered.
-  // Before this point a failed request has cost the practice nothing, and
-  // charging them for it would spend a limit on an outage.
-  // The token figures ride along. The allowance still compares replies; what
-  // the practice actually costs is tokens, and that number was stored per
-  // message and aggregated nowhere anybody could read it.
-  countReply(relationship.practiceId, usage);
 
   // Drawn after the model has answered, not claimed as the patient's message
   // plus one: a doctor replying while the assistant was thinking took that
@@ -473,7 +501,19 @@ ${forceLanguageInstruction(language)}`,
     alert: alert?._id,
   });
 
-  session.messageCount = replySeq + 1;
+  // Counted against the month's allowance now the reply is saved. Before this
+  // point a failed request has cost the practice nothing, and charging them for
+  // it would spend a limit on an outage. It was counted before the save, so a
+  // reply the database refused was charged and never shown.
+  // The token figures ride along. The allowance still compares replies; what
+  // the practice actually costs is tokens, and that number was stored per
+  // message and aggregated nowhere anybody could read it.
+  countReply(relationship.practiceId, usage);
+
+  // A count of messages, like every other writer keeps it, and not the reply's
+  // number plus one: that assignment is what let the patient's numbering
+  // drift from everyone else's. See chatSequence.js.
+  await ChatSession.updateOne({ _id: session._id }, { $inc: { messageCount: 1 } });
   session.lastMessageAt = new Date();
   session.highestUrgency = maxUrgency(session.highestUrgency, triage.urgency);
   if (triage.urgency === 'emergency' || triage.urgency === 'urgent') session.flaggedForReview = true;
@@ -540,23 +580,8 @@ export async function* streamPatientMessage({
   const context = await buildPatientContext(patientId, relationship);
   const triage = triageMessage({ text, targets: context.targets, latestGlucose: context.latestGlucose });
 
-  const seq = session.messageCount + 1;
-  const userMessage = await ChatMessage.create({
-    session: session._id,
-    patient: patientId,
-    seq,
-    role: 'user',
-    content: text,
-    language,
-    attachments,
-    replyTo: replyTo ?? undefined,
-    triage: {
-      urgency: triage.urgency,
-      matchedRules: triage.matchedRules,
-      redFlags: triage.redFlags.map((r) => r.label),
-      ruleDriven: triage.ruleDriven,
-    },
-  });
+  const userMessage = await savePatientMessage({ session, patientId, text, language, attachments, replyTo, triage });
+  const { seq } = userMessage;
 
   // Populate the quoted turn so the send response carries its text preview.
   if (replyTo) await userMessage.populate('replyTo', QUOTE_FIELDS);
@@ -571,16 +596,8 @@ export async function* streamPatientMessage({
   // Escalate BEFORE the first token â€” the clinic learns about a chest-pain
   // message whether or not any reply is ever generated.
   let alert = null;
-  if (triage.urgency === 'emergency' || triage.urgency === 'urgent') {
-    alert = await raiseAlert({
-      patientId,
-      severity: triage.urgency === 'emergency' ? 'emergency' : 'urgent',
-      type: triage.alertType ?? 'chat_escalation',
-      title: triage.redFlags[0]?.label ?? triage.findings[0]?.summary ?? 'Patient reported a concerning symptom',
-      detail: `Patient message: "${text.slice(0, 500)}"\n\nTriage findings:\n${triage.findings.map((f) => `- ${f.summary}`).join('\n')}`,
-      source: { kind: 'chat', ref: userMessage._id },
-      matchedRules: triage.matchedRules,
-    });
+  if (isEscalated(triage)) {
+    alert = await raiseChatAlert({ patientId, triage, text, messageId: userMessage._id });
     await ChatMessage.findByIdAndUpdate(userMessage._id, { alert: alert._id });
   }
 
@@ -595,7 +612,6 @@ export async function* streamPatientMessage({
   });
 
   if (!(await assistantShouldReply(session, relationship, availability))) {
-    session.messageCount = seq;
     session.lastMessageAt = new Date();
     session.highestUrgency = maxUrgency(session.highestUrgency, triage.urgency);
     if (triage.urgency === 'emergency' || triage.urgency === 'urgent') session.flaggedForReview = true;
@@ -765,13 +781,6 @@ ${forceLanguageInstruction(language)}`,
     yield { type: 'replace', data: replyText };
   }
 
-  // Counted against the month's allowance now the model has actually answered.
-  // Before this point a failed request has cost the practice nothing, and
-  // charging them for it would spend a limit on an outage.
-  // The token figures ride along. The allowance still compares replies; what
-  // the practice actually costs is tokens, and that number was stored per
-  // message and aggregated nowhere anybody could read it.
-  countReply(relationship.practiceId, usage);
 
   // Drawn after the model has answered, not claimed as the patient's message
   // plus one: a doctor replying while the assistant was thinking took that
@@ -795,7 +804,19 @@ ${forceLanguageInstruction(language)}`,
     alert: alert?._id,
   });
 
-  session.messageCount = replySeq + 1;
+  // Counted against the month's allowance now the reply is saved. Before this
+  // point a failed request has cost the practice nothing, and charging them for
+  // it would spend a limit on an outage. It was counted before the save, so a
+  // reply the database refused was charged and never shown.
+  // The token figures ride along. The allowance still compares replies; what
+  // the practice actually costs is tokens, and that number was stored per
+  // message and aggregated nowhere anybody could read it.
+  countReply(relationship.practiceId, usage);
+
+  // A count of messages, like every other writer keeps it, and not the reply's
+  // number plus one: that assignment is what let the patient's numbering
+  // drift from everyone else's. See chatSequence.js.
+  await ChatSession.updateOne({ _id: session._id }, { $inc: { messageCount: 1 } });
   session.lastMessageAt = new Date();
   session.highestUrgency = maxUrgency(session.highestUrgency, triage.urgency);
   if (triage.urgency === 'emergency' || triage.urgency === 'urgent') session.flaggedForReview = true;

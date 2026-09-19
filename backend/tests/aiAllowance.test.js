@@ -112,18 +112,20 @@ describe('the gate is where silence already lives', () => {
 });
 
 describe('a reply is counted only once it exists', () => {
-  test('after the model answered, not before', () => {
+  test('after the reply is saved, not before', () => {
     // A request that fails on the provider's side has cost the practice
-    // nothing, and charging them for it spends a limit on an outage.
+    // nothing, and charging them for it spends a limit on an outage. Nor has a
+    // reply the database refused: counted just before the save, it was
+    // charged and never shown. chatMessageNumbering.test.js checks that over
+    // HTTP; this checks both paths keep the order.
     const uses = [...assistant.matchAll(/countReply\(/g)];
     assert.equal(uses.length, 2, 'the two reply paths do not both count');
 
     for (const m of uses) {
-      const after = assistant.slice(m.index, m.index + 400);
-      assert.match(
-        after,
-        /ChatMessage\.create\(\{/,
-        'a reply is counted somewhere other than immediately before it is saved',
+      const saved = assistant.lastIndexOf('const assistantMessage = await ChatMessage.create({', m.index);
+      assert.ok(
+        saved > -1 && m.index - saved < 2500,
+        'a reply is counted somewhere other than right after it is saved',
       );
     }
   });

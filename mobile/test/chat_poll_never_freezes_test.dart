@@ -116,16 +116,23 @@ void main() {
       );
     });
 
-    test('after $description, the optimistic bubble is taken back', () async {
+    test('after $description, the message stays, marked as not sent', () async {
       final controller = controllerThatFailsWith(error);
       addTearDown(controller.dispose);
 
       await controller.send(text: 'Hi', language: 'en');
 
-      // Leaving it there shows the patient a message that was never sent, and
-      // the next successful poll would silently delete it in front of them.
-      expect(controller.state.messages, isEmpty);
+      // It used to be taken back, so the patient watched it vanish. It stays,
+      // and says it was not sent, so it is never shown as a message the
+      // clinic has.
+      final kept = controller.state.messages.single;
+      expect(kept.content, 'Hi');
+      expect(kept.sendFailed, isTrue);
       expect(controller.state.error, isNotNull);
+
+      // And a poll that succeeds does not delete it in front of them.
+      await controller.pollForUpdates();
+      expect(controller.state.messages.single.sendFailed, isTrue);
     });
   });
 

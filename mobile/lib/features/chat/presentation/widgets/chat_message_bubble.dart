@@ -34,6 +34,7 @@ class ChatMessageBubble extends StatelessWidget {
     this.repliedTo,
     this.onQuoteTap,
     this.onCitationTap,
+    this.onResend,
     this.isClinicianView = false,
   });
 
@@ -76,6 +77,9 @@ class ChatMessageBubble extends StatelessWidget {
   /// Present only on an AI-unavailable fallback reply â€” lets the patient
   /// resend the question once the service is back.
   final VoidCallback? onRetry;
+
+  /// Sends the patient's own message again, when [ChatMessage.sendFailed].
+  final VoidCallback? onResend;
 
   /// A compact tappable icon in the assistant message footer (copy, flag).
   Widget _footerIcon(
@@ -490,7 +494,42 @@ class ChatMessageBubble extends StatelessWidget {
                           ),
                 ),
               ),
-            if (message.createdAt != null) ...[
+            // In place of the time: a message the server does not have has
+            // no time on the record, and "Seen by the clinic" cannot apply.
+            if (message.sendFailed)
+              Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: InkWell(
+                  onTap: onResend,
+                  borderRadius: BorderRadius.circular(8),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 4,
+                      vertical: 6,
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(
+                          Icons.error_outline_rounded,
+                          size: 16,
+                          color: AppColors.danger,
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          l10n.chatNotSent,
+                          style: const TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            color: AppColors.danger,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              )
+            else if (message.createdAt != null) ...[
               const SizedBox(height: 4),
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 4),

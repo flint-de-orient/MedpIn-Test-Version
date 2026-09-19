@@ -130,6 +130,7 @@
   "chatDeleteForEveryoneConfirm": "यह संदेश चैट में सबके लिए हटा दिया जाएगा। इसे पूर्ववत नहीं किया जा सकता।",
   "chatPinned": "पिन किया गया",
   "chatSeenByClinic": "क्लिनिक ने देखा",
+  "chatNotSent": "नहीं भेजा गया। दोबारा कोशिश करने के लिए टैप करें।",
   "chatReplyingTo": "उत्तर दे रहे हैं",
   "chatCannotHideEmergency": "यह आपातकालीन रिकॉर्ड का हिस्सा है, छिपाया नहीं जा सकता",
   "chatReplyToPatient": "इस मरीज़ को उत्तर दें…",

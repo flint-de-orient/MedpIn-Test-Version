@@ -111,7 +111,15 @@ class ChatMessage {
     this.voiceNotes = const [],
     this.documents = const [],
     this.action,
+    this.sendFailed = false,
   });
+
+  /// True for a message of the patient's that the server did not accept.
+  ///
+  /// Set on this phone only, and never read from the server. The message used
+  /// to be removed from the screen when a send failed, so the patient saw it
+  /// vanish with nothing to tap. It now stays, marked, until it is sent again.
+  final bool sendFailed;
 
   /// Recordings attached to this turn. Kept separate from [attachmentPaths]
   /// because a voice note renders as a player, not a thumbnail.
@@ -420,6 +428,7 @@ class ChatMessage {
       voiceNotes: voiceNotes,
       documents: documents,
       action: action,
+      sendFailed: sendFailed,
     );
   }
 }

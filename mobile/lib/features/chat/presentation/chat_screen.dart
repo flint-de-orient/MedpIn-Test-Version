@@ -530,6 +530,19 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
                             }
 
                             final message = entry.message!;
+                            // Not on the server, so nothing that acts on the
+                            // server's copy is offered: only sending it again.
+                            if (message.sendFailed) {
+                              return RepaintBoundary(
+                                child: ChatMessageBubble(
+                                  message: message,
+                                  onResend:
+                                      () => ref
+                                          .read(chatControllerProvider.notifier)
+                                          .resend(message.id),
+                                ),
+                              );
+                            }
                             // Each bubble is its own repaint layer, so a keyboard
                             // resize or a new message repaints one row, not the
                             // whole transcript.

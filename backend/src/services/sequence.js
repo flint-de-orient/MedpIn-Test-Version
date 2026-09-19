@@ -19,15 +19,24 @@ import { Counter } from '../models/Counter.js';
  * duplicate key, and retrying finds the document the winner made — so the
  * retry is bounded and cannot loop.
  *
+ * ---- `floor`, for a sequence something else can also write -------------
+ *
+ * A seed is read once, so a counter that falls behind stays behind. `floor`
+ * is read on every call, and the counter is raised to it with `$max` before
+ * the increment, so the number handed out is always above it. See
+ * chatSequence.js for the sequence that needed it.
+ *
  * @param {string} key the sequence's name, e.g. `prescription:2026`
- * @param {{ seed?: () => Promise<number> }} options where to start, if new
+ * @param {{ seed?: () => Promise<number>, floor?: () => Promise<number> }} options
+ *   where to start, if new; or the highest number already taken, every time
  * @returns {Promise<number>}
  */
-export async function nextInSequence(key, { seed = null } = {}) {
+export async function nextInSequence(key, { seed = null, floor = null } = {}) {
   for (let attempt = 0; attempt < 3; attempt += 1) {
     try {
-      const exists = await Counter.exists({ _id: key });
-      if (!exists && seed) {
+      if (floor) {
+        await Counter.updateOne({ _id: key }, { $max: { seq: await floor() } }, { upsert: true });
+      } else if (seed && !(await Counter.exists({ _id: key }))) {
         await Counter.updateOne(
           { _id: key },
           { $setOnInsert: { seq: await seed() } },

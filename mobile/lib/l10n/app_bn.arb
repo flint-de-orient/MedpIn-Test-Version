@@ -130,6 +130,7 @@
   "chatDeleteForEveryoneConfirm": "এই বার্তাটি চ্যাটে সবার জন্য সরিয়ে ফেলা হবে। এটি আর ফেরানো যাবে না।",
   "chatPinned": "পিন করা",
   "chatSeenByClinic": "ক্লিনিক দেখেছে",
+  "chatNotSent": "পাঠানো যায়নি। আবার চেষ্টা করতে ট্যাপ করুন।",
   "chatReplyingTo": "উত্তর দিচ্ছেন",
   "chatCannotHideEmergency": "এটি জরুরি রেকর্ডের অংশ, লুকানো যাবে না",
   "chatReplyToPatient": "এই রোগীকে উত্তর দিন…",

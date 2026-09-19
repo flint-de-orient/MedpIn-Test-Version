@@ -393,6 +393,9 @@ class AppLocalizationsBn extends AppLocalizations {
   String get chatSeenByClinic => 'ক্লিনিক দেখেছে';
 
   @override
+  String get chatNotSent => 'পাঠানো যায়নি। আবার চেষ্টা করতে ট্যাপ করুন।';
+
+  @override
   String get chatReplyingTo => 'উত্তর দিচ্ছেন';
 
   @override

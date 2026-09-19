@@ -36,6 +36,21 @@ class HeldMessage {
   final String? emergencyInstructions;
 }
 
+/// A message the server did not accept, as it has to be sent again.
+class _Unsent {
+  const _Unsent({
+    required this.text,
+    required this.language,
+    required this.attachments,
+    this.replyToId,
+  });
+
+  final String text;
+  final String language;
+  final List<String> attachments;
+  final String? replyToId;
+}
+
 class ChatState {
   const ChatState({
     this.sessionId,
@@ -172,7 +187,15 @@ class ChatController extends StateNotifier<ChatState> {
           ),
         );
       } else {
-        state = state.copyWith(messages: withoutTemp, error: e);
+        state = state.copyWith(
+          messages: _keepAsUnsent(
+            tempUserId,
+            language: language,
+            attachments: attachments,
+            replyToId: replyToId,
+          ),
+          error: e,
+        );
       }
     } catch (_) {
       // Anything that is not an ApiException — a malformed payload, a socket
@@ -180,7 +203,12 @@ class ChatController extends StateNotifier<ChatState> {
       // Caught for the same reason as the finally below: this used to escape,
       // and the escape was the bug.
       state = state.copyWith(
-        messages: state.messages.where((m) => m.id != tempUserId).toList(),
+        messages: _keepAsUnsent(
+          tempUserId,
+          language: language,
+          attachments: attachments,
+          replyToId: replyToId,
+        ),
         error: const ApiException(
           code: 'NETWORK_ERROR',
           message: 'Could not send that message. Please try again.',
@@ -315,6 +343,108 @@ class ChatController extends StateNotifier<ChatState> {
   /// Drops the fallback pair (the question and the scripted reply) first, so the
   /// retry replaces them rather than stacking a second copy. The question itself
   /// is preserved and resent.
+  /// What to send again for each message marked [ChatMessage.sendFailed].
+  final _unsent = <String, _Unsent>{};
+  int _unsentIds = 0;
+
+  /// The optimistic copy [tempId], kept on screen and marked as not sent.
+  ///
+  /// It used to be removed. A patient whose message failed watched it vanish,
+  /// with only "Something went wrong" above the conversation, and had to type
+  /// it again, if they noticed at all.
+  List<ChatMessage> _keepAsUnsent(
+    String tempId, {
+    required String language,
+    List<String>? attachments,
+    String? replyToId,
+  }) {
+    return [
+      for (final m in state.messages)
+        if (m.id == tempId) _unsentCopyOf(m, language, attachments, replyToId) else m,
+    ];
+  }
+
+  ChatMessage _unsentCopyOf(
+    ChatMessage m,
+    String language,
+    List<String>? attachments,
+    String? replyToId,
+  ) {
+    final id = '__unsent_${_unsentIds++}__';
+    _unsent[id] = _Unsent(
+      text: m.content,
+      language: language,
+      attachments: attachments ?? const [],
+      replyToId: replyToId,
+    );
+    return ChatMessage(
+      id: id,
+      seq: -1,
+      role: 'user',
+      content: m.content,
+      language: m.language,
+      urgency: m.urgency,
+      createdAt: m.createdAt,
+      sendFailed: true,
+    );
+  }
+
+  /// Sends a message marked as not sent, again.
+  Future<void> resend(String id) async {
+    if (state.isSending) return;
+    final unsent = _unsent.remove(id);
+    if (unsent == null) return;
+    state = state.copyWith(
+      messages: state.messages.where((m) => m.id != id).toList(),
+    );
+    await send(
+      text: unsent.text,
+      language: unsent.language,
+      attachments: unsent.attachments,
+      replyToId: unsent.replyToId,
+    );
+  }
+
+  /// [local] without the messages marked as not sent that the server has.
+  ///
+  /// A send can fail after the server saved the patient's message, when it
+  /// was the reply that failed. The next read then brings the message back,
+  /// and the marked copy would show it twice, once as not sent. Matched on
+  /// the text, against messages this screen has not shown before, sent within
+  /// a few minutes either way (the phone's clock and the server's differ).
+  List<ChatMessage> _withoutUnsentTheServerHas(
+    List<ChatMessage> local,
+    List<ChatMessage> remote,
+  ) {
+    if (!local.any((m) => m.sendFailed)) return local;
+    final shown = {for (final m in local) m.id};
+    final claimed = <String>{};
+    final sent = <String>{};
+    for (final u in local.where((m) => m.sendFailed)) {
+      for (final r in remote) {
+        if (!r.isUser ||
+            r.content != u.content ||
+            shown.contains(r.id) ||
+            claimed.contains(r.id)) {
+          continue;
+        }
+        final at = u.createdAt;
+        final rAt = r.createdAt;
+        if (at != null &&
+            rAt != null &&
+            rAt.difference(at).abs() > const Duration(minutes: 5)) {
+          continue;
+        }
+        claimed.add(r.id);
+        sent.add(u.id);
+        _unsent.remove(u.id);
+        break;
+      }
+    }
+    if (sent.isEmpty) return local;
+    return local.where((m) => !sent.contains(m.id)).toList();
+  }
+
   Future<void> retryLast({required String language}) async {
     if (state.isSending) return;
     final messages = state.messages;
@@ -396,7 +526,10 @@ class ChatController extends StateNotifier<ChatState> {
       // against. A message the patient just sent survives a server that has
       // not echoed it yet, and a doctor's reply lands whatever else is on
       // screen.
-      final merged = _merge(state.messages, messages);
+      final merged = _merge(
+        _withoutUnsentTheServerHas(state.messages, messages),
+        messages,
+      );
       // Unchanged polls do nothing, so the list never rebuilds under the
       // patient's scrolling.
       if (!_messagesDiffer(merged, state.messages)) return;

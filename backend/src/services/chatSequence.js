@@ -20,20 +20,37 @@ import { nextInSequence } from './sequence.js';
  * that number first, and the assistant's reply was lost.
  *
  * One allocator now, drawing from a per-conversation counter the database
- * increments atomically, seeded from the highest `seq` already written so the
- * conversations that exist carry on where they are.
+ * increments atomically.
+ *
+ * ---- The ninth copy, and why the counter is checked every time ------------
+ *
+ * The patient's own message was left out of that change: it still took
+ * `session.messageCount + 1`, and after each reply `messageCount` was set to
+ * the reply's number plus one. The counter never saw the patient's numbers,
+ * so about three messages into any conversation it drew a number a patient
+ * message already had. The assistant's reply was refused as a duplicate after
+ * the model had answered, and the patient saw "Something went wrong". Then
+ * `messageCount` was never updated, so every later patient message asked for
+ * the same taken number and was refused before it was saved, emergencies
+ * included.
+ *
+ * So every writer draws from here, and the counter is first raised to the
+ * highest `seq` actually written (`floor`, not a one-off seed). A counter that
+ * fell behind, like the ones those conversations were left with, catches up
+ * on its next use, and those conversations work again without a migration.
+ * The cost is one read of the last message, on the (session, seq) index.
  *
  * @param {import('mongoose').Types.ObjectId|string} sessionId
  * @returns {Promise<number>}
  */
 export function nextMessageSeq(sessionId) {
   return nextInSequence(`chat:${sessionId}`, {
-    seed: async () => {
+    floor: async () => {
       const last = await ChatMessage.findOne({ session: sessionId })
         .sort({ seq: -1 })
         .select('seq')
         .lean();
-      // A conversation's first message is 0, so an empty one seeds at -1.
+      // A conversation's first message is 0, so an empty one starts at -1.
       return last?.seq ?? -1;
     },
   });

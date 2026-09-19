@@ -65,7 +65,16 @@ export function errorHandler(err, req, res, next) {
     status = 409;
     code = 'DUPLICATE';
     const field = Object.keys(err.keyPattern ?? {})[0] ?? 'field';
-    message = `An account with that ${field} already exists`;
+    // Only a phone or email is an account. Any other duplicate is two writes
+    // that collided: a chat message numbered twice came back as "An account
+    // with that session already exists", which pointed nobody at the cause.
+    message = ['phone', 'email'].includes(field)
+      ? `An account with that ${field} already exists`
+      : 'That was changed by someone else at the same moment. Please try again.';
+    // Logged, unlike other 4xx errors. At debug level a duplicate never
+    // reached a production log, so conversations refusing every patient
+    // message left no trace on the server.
+    logger.warn({ path: req.originalUrl, method: req.method, index: err.keyPattern }, 'duplicate key');
   }
 
   // Driver errors carry their own numeric `code` — MongoServerError 13 is

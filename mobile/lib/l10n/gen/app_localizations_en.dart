@@ -396,6 +396,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get chatSeenByClinic => 'Seen by the clinic';
 
   @override
+  String get chatNotSent => 'Not sent. Tap to try again.';
+
+  @override
   String get chatReplyingTo => 'Replying to';
 
   @override

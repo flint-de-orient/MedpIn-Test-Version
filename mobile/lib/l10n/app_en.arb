@@ -180,6 +180,7 @@
   "chatDeleteForEveryoneConfirm": "This message will be removed for everyone in the chat. This can't be undone.",
   "chatPinned": "Pinned",
   "chatSeenByClinic": "Seen by the clinic",
+  "chatNotSent": "Not sent. Tap to try again.",
   "chatReplyingTo": "Replying to",
   "chatCannotHideEmergency": "This is part of an emergency record and cannot be hidden",
   "chatReplyToPatient": "Reply to this patient…",
