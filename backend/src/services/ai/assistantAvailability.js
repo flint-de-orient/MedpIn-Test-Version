@@ -2,13 +2,12 @@ import mongoose from 'mongoose';
 
 import { Department } from '../../models/Department.js';
 import { DoctorDepartment } from '../../models/DoctorDepartment.js';
-import { Enrollment, ENROLLMENT_STATUS } from '../../models/Enrollment.js';
-import { Membership, MEMBERSHIP_STATUS } from '../../models/Membership.js';
 import { Practice } from '../../models/Practice.js';
 import { KnowledgeChunk } from '../../models/KnowledgeChunk.js';
 import { scopeReviewFor } from '../../models/guidanceReview.js';
 import { searchLanguagesFor } from './rag.js';
 import { ENDOCRINE } from './prompts.js';
+import { currentDoctorOf } from '../careDoctor.js';
 
 /**
  * Is the assistant on for this department, here, in this language — and why.
@@ -383,34 +382,19 @@ export async function departmentForSpecialty(specialty, practiceId = null) {
 async function doctorSpecialty({ enrollmentId = null, patientId = null, practiceId = null }) {
   const practice = oid(practiceId);
   if (!practice) return { doctor: null, department: null, hasDepartment: false };
-  const enrollment = oid(enrollmentId)
-    ? await Enrollment.findOne({ _id: oid(enrollmentId), practice }).select('primaryDoctor').lean()
-    : oid(patientId)
-      ? await Enrollment.findOne({
-          patient: oid(patientId),
-          practice,
-          status: ENROLLMENT_STATUS.ACTIVE,
-          revokedAt: null,
-        })
-          .select('primaryDoctor')
-          .lean()
-      : null;
-  const doctor = oid(enrollment?.primaryDoctor);
-  if (!doctor) return { doctor: null, department: null, hasDepartment: false };
+  // The doctor this patient is told is theirs (careDoctor.js), so the specialty
+  // that answers and the doctor the answer names are always the same person.
+  const mine = await currentDoctorOf({ patientId, practiceId: practice, enrollmentId });
+  // No assigned doctor, or theirs has left: nobody decides the specialty.
+  if (!mine) return { doctor: null, department: null, hasDepartment: false };
+  const doctor = oid(mine.id);
 
-  const [membership, rows] = await Promise.all([
-    Membership.findOne({ user: doctor, practice, status: MEMBERSHIP_STATUS.ACTIVE, endedOn: null })
-      .select('department')
-      .lean(),
-    DoctorDepartment.find({ doctor, practice, endedOn: null }).select('department isPrimary').lean(),
-  ]);
-  // A doctor who has left the practice decides nothing about its conversations.
-  if (!membership) return { doctor: null, department: null, hasDepartment: false };
+  const rows = await DoctorDepartment.find({ doctor, practice, endedOn: null }).select('department isPrimary').lean();
 
   const ids = [
     ...new Set(
       [
-        membership.department,
+        mine.department,
         ...rows.filter((r) => r.isPrimary).map((r) => r.department),
         ...rows.filter((r) => !r.isPrimary).map((r) => r.department),
       ]

@@ -51,30 +51,30 @@ const BLOCKS = {
 };
 
 const PROMPTS = {
-'legacy|en|routine|diabetology': 'eeb872c09ac4bcd862c239e7c412631851176702852b323b7825bfbb5b20f63a',
-  'department|en|routine|diabetology': 'abc1eb812616503eb0cc625b0614d81cdb6987624488c5539c9332be96fa0601',
-  'legacy|en|routine|noNumber': '425c81ffa9cc20733ba75cfc97ef736d1bc4c5b0522d9b6f4f87060b9c7b9711',
-  'department|en|routine|noNumber': '2e7ed5096677594462b17d69d5c16d1db545f23af49348fff88fcabb23b01249',
-  'legacy|en|emergency|diabetology': '3596ca0c4e01aebdd7590d23fc173143442fd7793399976f1a3de7e04d10927d',
-  'department|en|emergency|diabetology': '1198067f6f1f71d72dd32801ac214cf6debcf86f30948899c6f100363d745eb6',
-  'legacy|en|emergency|noNumber': 'be0522d134681ffc440052c2c0c060e2fc35b009d4d4c8a808b4ec7d93a7f277',
-  'department|en|emergency|noNumber': 'dc538e91d917f65460a91b2ae7bed9c16df73bc8aa7bf0d758ab546f4c4911d5',
-  'legacy|bn|routine|diabetology': '9a8b20aa33ebde1b7d30c9d6439583fec127d6510e207529f6ac845e36a8886a',
-  'department|bn|routine|diabetology': '2afc9a16c2896947f6fe9194c8b27ff2663e3d8ef68b467a815883c682e06eb0',
-  'legacy|bn|routine|noNumber': '5f190c5a3f71c874eeac789a1313b72a60162349abd439c60c5496f5edf4216e',
-  'department|bn|routine|noNumber': '0a726f70cc8b0a0ef10243ca6ab54b4f9f4509ff52d935c70c4daf5a95c98d9c',
-  'legacy|bn|emergency|diabetology': '4f7d75a93dfdff8c136f010ae711024ad5e2ae4197f6bcfc3358cd58c88439d5',
-  'department|bn|emergency|diabetology': 'd0e59360b5edc0a2fe4dec63145a6a827d07c807090660cc90acfcaeaa6e24ed',
-  'legacy|bn|emergency|noNumber': '05e848a5009887537f71a4170f24385653f29f311a2c96975ec39c9776707f53',
-  'department|bn|emergency|noNumber': 'c0dc73ee184a3dc32c0b0eb1d77b4535c8c90e97ba10b9d2365ee2447e0f3851',
-  'legacy|hi|routine|diabetology': 'a8b10b5dcc9257efaced1ea9bf042776b94ca3e7fe6bf2218a18ec8f0115c5ab',
-  'department|hi|routine|diabetology': 'd557c3871d4749dd4354408f5cf3f21f58478ab13acc46c64fff837cd6d0f3de',
-  'legacy|hi|routine|noNumber': '37ef70cb1a7b25387be5e5b700d00ff439fbaf2e9c41753cc73a4f8d0554ece2',
-  'department|hi|routine|noNumber': 'fb87524322a60da340e1d56998590e84eeff3d55c7e422966d696fad657bbefe',
-  'legacy|hi|emergency|diabetology': '07437d66ffd270fed6839b8fa0edbc5cafcd6afa3ded672c0213cd7ba3537702',
-  'department|hi|emergency|diabetology': 'a609d68155566fc859754df588f0e76babbadbbebb21e32fe1d80bf36f5ac0d0',
-  'legacy|hi|emergency|noNumber': '3bf8992864c1554416cc22c812cd4497f12f4f373bdc6e91ef5f3c9c11441aef',
-  'department|hi|emergency|noNumber': '66b39c818a1371d56e61ca389a275e561fc9b9abb789b59881dba3241c7e0d9c',
+'legacy|en|routine|diabetology': '5f51e5602194949aa73497f37007a8c48cf9144b27188157da440eaf04b52b67',
+  'department|en|routine|diabetology': '55880554c750ba2920742986b8e5682a60d9faa4d335590139e8cdee369f4eb2',
+  'legacy|en|routine|noNumber': 'f5d9f057d06b701b02ac120ddafce7c813c0b50f533e972e0ecfa1b234642c9f',
+  'department|en|routine|noNumber': 'aa0b1118c7a7249b24aadbccae98a2d500ef56f7ff26c0e9d3944ef20c334ec5',
+  'legacy|en|emergency|diabetology': '9be4302c6b1ecdeac26f00b4e763ae78a6bf48d614310b2d93a26c9bbd3d4f47',
+  'department|en|emergency|diabetology': '2c67703c8c944ee3a0d6f6143a5b67d919785c0fe25bddf760bbaf474445e9e5',
+  'legacy|en|emergency|noNumber': 'c3679ffc9adce9a3678bfdd6ccde8f2729bd6d5b370f10981dfdbbd636d1b1cb',
+  'department|en|emergency|noNumber': '3c571aa27290d11ee047d18f99028eb1a74fd314659305c188a7bdd41c939d9b',
+  'legacy|bn|routine|diabetology': '4f54cf405e7962bbf8af3dc80c445ddfe3e51a2f8cb3fd0a2c0576810a462066',
+  'department|bn|routine|diabetology': '8c5787ffc229c4efb0c984ec9a4bff8d23befde0915b058db25e93fe804e5de3',
+  'legacy|bn|routine|noNumber': '2d7c00cd6d6c54626d8c1e34b727aa05b1378eec76eaa22af705ba3da37bb289',
+  'department|bn|routine|noNumber': '1fa03ce453990424597a7d1d1299c6a2e73f6488ef051888ab3d4a8822961f94',
+  'legacy|bn|emergency|diabetology': '56246b4ef3d655d24c5a74a63632c328c588ec0522b5c16f5e6b1ddf88c46021',
+  'department|bn|emergency|diabetology': '72ea5eb902c8cab967c9cec7a1f2b0ceaeb690d0e5436115d8bf91a8e8c24a0c',
+  'legacy|bn|emergency|noNumber': 'f9b3a0d878acc0dd1ac5f00c84865a9824d5026b4539b0a3be735f03885aea0b',
+  'department|bn|emergency|noNumber': 'ee66bd13ac2c0f6e48acf2e6dcb01243d650ccceca7d91ad644a55a0b966f821',
+  'legacy|hi|routine|diabetology': '77a83643ee0914817837155c9d5cea8293f13f4b70b0fdb06ad4d29f66842e52',
+  'department|hi|routine|diabetology': '803a2989dc583296a677f823693a8a719db0b93a53334769dbdf5e6289dd5735',
+  'legacy|hi|routine|noNumber': 'fb0ae57e255d683ac54bbf8121ad0262c8a1814ffb52683d4ecb29e1b02d7c77',
+  'department|hi|routine|noNumber': '4c6ba00a16f153f3e4148f72341136c6a87d6c3cf210f715c90ea8d6cbcd82af',
+  'legacy|hi|emergency|diabetology': 'cb7fab7b4ba9feca01e7014b8394ca8629a450917d6128785ed8499914ef8daf',
+  'department|hi|emergency|diabetology': '41088499e5e91e9b8a967e27e4533690fe61219c46c18694263adb74dc1b5281',
+  'legacy|hi|emergency|noNumber': '9852ed5e7d13a21ef01f81bf3df72296f2cb95fdaa860a2d2163d5e3c5c0643d',
+  'department|hi|emergency|noNumber': 'e93b5aae9c0ebc140ea04a973077aad51601c2d79ec5cfe80e39bdc9663c7c65',
 };
 
 const TRIAGES = {
@@ -114,6 +114,11 @@ describe('the diabetology assistant’s prompt did not move', () => {
             groundingContext: '[1] What to do when blood sugar is low\nTake 15 grams of fast-acting sugar.',
             careTeamNotes: '- Dr Test: walk after dinner',
             identity,
+            // The patient's own doctor (careDoctor.js), and whether an alert
+            // was raised, as the assistant passes them. The identity's
+            // doctorName is no longer read.
+            careDoctorName: 'Dr Test',
+            alerted: triageName !== 'routine',
           };
           const block = buildScopeBlock({ department, role: row.assistantScope.role, conditions: NO_CONDITIONS, language });
 

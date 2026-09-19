@@ -10,6 +10,7 @@ import { buildSystemPrompt, fallbackReply, languagePrimer, forceLanguageInstruct
 // Who this assistant works for, read from the practice. Cached for a minute
 // inside the service, so this is not a database round trip per message.
 import { clinicIdentity } from '../clinicIdentity.js';
+import { currentDoctorOf } from '../careDoctor.js';
 import { assistantContextFor } from './departmentAssistant.js';
 import { conversationAssistant } from './assistantAvailability.js';
 import { mayAssistantReply, countReply } from './allowance.js';
@@ -363,6 +364,17 @@ export async function handlePatientMessage({
   // This patient's practice. Asked without it, this was the first clinic on
   // the platform, for every patient on it.
   const identity = await clinicIdentity(null, { practiceId: relationship.practiceId });
+  // The patient's own doctor, from the same place the chat header asks, and
+  // the name every sentence below uses. Null says "your doctor" / "your
+  // healthcare team". See careDoctor.js.
+  const careDoctorName =
+    (
+      await currentDoctorOf({
+        patientId,
+        practiceId: relationship.practiceId,
+        enrollmentId: relationship.enrollment?._id ?? null,
+      })
+    )?.displayName ?? null;
 
   // The department this thread belongs to decides what the assistant is. Null
   // department is the practice's general thread, which answers as the
@@ -389,6 +401,10 @@ export async function handlePatientMessage({
     careTeamNotes,
     groundingContext: formatContext(chunks),
     identity,
+    careDoctorName,
+    // Whether the clinic was actually paged for this message, so the reply
+    // never says the doctor was alerted when nobody was.
+    alerted: alert != null,
     departmentBlock: departmentContext?.promptBlock ?? null,
   });
 
@@ -447,7 +463,10 @@ ${forceLanguageInstruction(language)}`,
     logger.error({ err: err.cause?.message }, 'assistant generation failed; using scripted fallback');
     // In an emergency the scripted emergency text is what matters, not an
     // apology about the service being down.
-    replyText = fallbackReply(triage.urgency === 'emergency' ? 'emergency' : 'unavailable', language, identity);
+    replyText = fallbackReply(triage.urgency === 'emergency' ? 'emergency' : 'unavailable', language, identity, {
+      doctorName: careDoctorName,
+      alerted: alert != null,
+    });
     isFallback = true;
   }
 
@@ -683,6 +702,17 @@ export async function* streamPatientMessage({
   // This patient's practice. Asked without it, this was the first clinic on
   // the platform, for every patient on it.
   const identity = await clinicIdentity(null, { practiceId: relationship.practiceId });
+  // The patient's own doctor, from the same place the chat header asks, and
+  // the name every sentence below uses. Null says "your doctor" / "your
+  // healthcare team". See careDoctor.js.
+  const careDoctorName =
+    (
+      await currentDoctorOf({
+        patientId,
+        practiceId: relationship.practiceId,
+        enrollmentId: relationship.enrollment?._id ?? null,
+      })
+    )?.displayName ?? null;
 
   // The department this thread belongs to decides what the assistant is. Null
   // department is the practice's general thread, which answers as the
@@ -709,6 +739,10 @@ export async function* streamPatientMessage({
     careTeamNotes,
     groundingContext: formatContext(chunks),
     identity,
+    careDoctorName,
+    // Whether the clinic was actually paged for this message, so the reply
+    // never says the doctor was alerted when nobody was.
+    alerted: alert != null,
     departmentBlock: departmentContext?.promptBlock ?? null,
   });
 
@@ -775,7 +809,10 @@ ${forceLanguageInstruction(language)}`,
     }
   } catch (err) {
     logger.error({ err: err?.cause?.message ?? err?.message }, 'stream generation failed; scripted fallback');
-    replyText = fallbackReply(triage.urgency === 'emergency' ? 'emergency' : 'unavailable', language, identity);
+    replyText = fallbackReply(triage.urgency === 'emergency' ? 'emergency' : 'unavailable', language, identity, {
+      doctorName: careDoctorName,
+      alerted: alert != null,
+    });
     isFallback = true;
     // Tell the client to discard the partial and show the scripted text.
     yield { type: 'replace', data: replyText };

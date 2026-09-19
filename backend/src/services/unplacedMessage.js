@@ -111,6 +111,10 @@ async function escalateUnplaced({ patientId, text, attachments, language, kind }
       findings: triage.findings.map((f) => f.summary),
     },
     alert: alert ? { id: alert._id, severity: alert.severity, type: alert.type, title: alert.title } : null,
-    instructions: triage.urgency === 'emergency' ? fallbackReply('emergency', language, NO_PRACTICE) : null,
+    // No practice is chosen yet, so no doctor is named: "your healthcare team".
+    instructions:
+      triage.urgency === 'emergency'
+        ? fallbackReply('emergency', language, NO_PRACTICE, { doctorName: null, alerted: alert != null })
+        : null,
   };
 }

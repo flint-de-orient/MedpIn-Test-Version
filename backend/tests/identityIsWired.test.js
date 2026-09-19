@@ -141,16 +141,21 @@ describe('a second practice gets its own assistant', () => {
   const other = { doctorName: 'Dr. Meera Iyer', clinicName: 'Lake Town Heart Centre' };
 
   test('the system prompt names the practice that was passed in', () => {
+    // The practice comes from the identity; the doctor is the patient's own,
+    // passed on its own (careDoctor.js). The identity's `doctorName` is the
+    // practice's head doctor, and must not reach the prompt.
     const prompt = buildSystemPrompt({
       language: 'en',
       triage: { urgency: 'routine' },
       patientContext: '',
       groundingContext: '',
       careTeamNotes: '',
-      identity: other,
+      identity: { ...other, doctorName: 'Dr. Head Of Practice' },
+      careDoctorName: 'Dr. Meera Iyer',
     });
 
     assert.ok(prompt.includes('Dr. Meera Iyer'), 'the prompt does not name the passed doctor');
+    assert.ok(!prompt.includes('Head Of Practice'), 'the practice head doctor was named to a patient');
     assert.ok(prompt.includes('Lake Town Heart Centre'), 'the prompt does not name the passed clinic');
     assert.ok(
       !prompt.includes('Amit Kumar Dey'),
@@ -161,8 +166,11 @@ describe('a second practice gets its own assistant', () => {
   test('the outage message names the right doctor too', () => {
     // The fallback replies are a module-level constant evaluated once at load,
     // which is exactly why they needed a placeholder rather than a baked name.
-    const reply = fallbackReply('unavailable', 'en', other);
+    const reply = fallbackReply('unavailable', 'en', { ...other, doctorName: 'Dr. Head Of Practice' }, {
+      doctorName: 'Dr. Meera Iyer',
+    });
     assert.ok(reply.includes('Dr. Meera Iyer'));
+    assert.ok(!reply.includes('Head Of Practice'));
     assert.ok(!reply.includes('Amit Kumar Dey'));
   });
 

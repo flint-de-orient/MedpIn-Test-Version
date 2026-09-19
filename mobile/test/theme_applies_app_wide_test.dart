@@ -103,7 +103,7 @@ void main() {
       // Safety-critical: the loudest element on the screen must survive a
       // theme it was not originally designed against.
       expect(
-        find.text('Go to the nearest hospital immediately'),
+        find.text('This may need urgent medical attention'),
         findsOneWidget,
       );
       expect(find.text('Call clinic'), findsOneWidget);

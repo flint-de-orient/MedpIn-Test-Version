@@ -90,11 +90,23 @@ class _NotificationsOffBannerState extends ConsumerState<NotificationsOffBanner>
     final block = _block;
     if (block == null) return;
     final gate = ref.read(notificationGateProvider);
-    if (block == NotificationBlock.app && await gate.ask()) {
-      await _check();
-      // Registered now, not at the next launch.
-      await ref.read(pushServiceProvider).refresh();
-      return;
+    if (block == NotificationBlock.app) {
+      var allowed = false;
+      try {
+        allowed = await gate.ask();
+      } catch (e) {
+        // The prompt could not be shown. flutter_local_notifications refuses a
+        // second request while one it started is still unanswered
+        // (`permissionRequestInProgress`), and that error used to escape this
+        // handler, so "Turn on" did nothing at all. Settings instead.
+        debugPrint('notifications: could not show the prompt: $e');
+      }
+      if (allowed) {
+        await _check();
+        // Registered now, not at the next launch.
+        await ref.read(pushServiceProvider).refresh();
+        return;
+      }
     }
     // Checked again when the person comes back from settings.
     await gate.openSettings(block);

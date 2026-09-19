@@ -7,7 +7,7 @@ import { Department } from '../src/models/Department.js';
 import { DoctorDepartment } from '../src/models/DoctorDepartment.js';
 import { Enrollment, ENROLLMENT_STATUS } from '../src/models/Enrollment.js';
 import { Membership, MEMBERSHIP_STATUS } from '../src/models/Membership.js';
-import { ROLES } from '../src/models/User.js';
+import { ROLES, User } from '../src/models/User.js';
 import { Practice } from '../src/models/Practice.js';
 import { KnowledgeChunk } from '../src/models/KnowledgeChunk.js';
 import {
@@ -94,8 +94,24 @@ async function approvedCorpus(dept, count, { practice = null, language = 'en', r
  * doctor's chat and no assistant, so every conversation that expects one needs
  * this.
  */
+/**
+ * A doctor with a real account. The patient's doctor is a person the app names
+ * (careDoctor.js), so an id with nobody behind it is nobody's doctor.
+ */
+let doctorPhones = 0;
+async function doctorAccount() {
+  doctorPhones += 1;
+  const user = await User.create({
+    name: `Dr. Test ${doctorPhones}`,
+    phone: `+91711${String(doctorPhones).padStart(7, '0')}`,
+    role: ROLES.DOCTOR,
+    isActive: true,
+  });
+  return user._id;
+}
+
 async function assignedConversation(practice, { department: dept = null } = {}) {
-  const doctor = new mongoose.Types.ObjectId();
+  const doctor = await doctorAccount();
   await Membership.create({
     user: doctor,
     practice: practice._id,
@@ -398,7 +414,7 @@ describe('which department a conversation is', () => {
     }
 
     async function doctorIn(practice, { department: dept = null, rows = [], left = false } = {}) {
-      const doctor = new mongoose.Types.ObjectId();
+      const doctor = await doctorAccount();
       await Membership.create({
         user: doctor,
         practice: practice._id,

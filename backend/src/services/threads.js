@@ -1,10 +1,9 @@
 import { ChatMessage } from '../models/ChatMessage.js';
 import { ChatSession } from '../models/ChatSession.js';
 import { Department } from '../models/Department.js';
-import { Membership } from '../models/Membership.js';
 import { Practice } from '../models/Practice.js';
-import { User } from '../models/User.js';
 import { practicesFor } from './enrollments.js';
+import { currentDoctorsOf } from './careDoctor.js';
 import { conversationAssistant } from './ai/assistantAvailability.js';
 
 /**
@@ -133,20 +132,12 @@ const uploadUrl = (assetId) => (assetId ? `/api/v1/uploads/${assetId}/raw` : nul
  * @returns {Promise<Map<string, {id, name, avatarUrl}>>} keyed by enrolment id
  */
 async function namedDoctors(enrollments) {
-  const named = enrollments.filter((e) => e.primaryDoctor);
-  if (!named.length) return new Map();
-
-  const users = await User.find({ _id: { $in: [...new Set(named.map((e) => e.primaryDoctor))] } })
-    .select('name avatarAssetId')
-    .lean();
-  const userById = new Map(users.map((u) => [String(u._id), u]));
-
+  // careDoctor.js, the one answer to "who is this patient's doctor", which the
+  // assistant also gives when it names them.
+  const doctors = await currentDoctorsOf(enrollments);
   const out = new Map();
-  for (const e of named) {
-    const user = userById.get(e.primaryDoctor);
-    // eslint-disable-next-line no-await-in-loop
-    if (!user || !(await Membership.exists(Membership.currentFilter(user._id, e.practice)))) continue;
-    out.set(e.id, { id: String(user._id), name: user.name ?? null, avatarUrl: uploadUrl(user.avatarAssetId) });
+  for (const [enrollmentId, d] of doctors) {
+    out.set(enrollmentId, { id: d.id, name: d.displayName, avatarUrl: uploadUrl(d.avatarAssetId) });
   }
   return out;
 }

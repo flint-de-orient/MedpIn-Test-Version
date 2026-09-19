@@ -108,6 +108,9 @@ export function resolveIdentity(doc) {
     clinicName: practice?.name || location?.name || null,
     locationName: location?.name || null,
     tagline: location?.tagline || practice?.tagline || null,
+    // The name a document prints: the practice's display name or head doctor.
+    // Never what a patient is told about their own doctor, who may be somebody
+    // else at this practice; that is careDoctor.js.
     doctorName:
       practice?.doctorDisplayName || location?.doctorDisplayName || head?.name || null,
     phone: location?.phone || null,
@@ -267,11 +270,21 @@ export async function identitySnapshot(clinicId = null, { practiceId = null } = 
 export const NEUTRAL_WORDS = Object.freeze({
   doctor: Object.freeze({ en: 'your doctor', bn: 'আপনার চিকিৎসক', hi: 'अपने डॉक्टर' }),
   clinic: Object.freeze({ en: 'your clinic', bn: 'আপনার ক্লিনিক', hi: 'आपका क्लिनिक' }),
+  team: Object.freeze({ en: 'your healthcare team', bn: 'আপনার চিকিৎসা দল', hi: 'आपकी स्वास्थ्य देखभाल टीम' }),
 });
 
-/** The doctor's name for a sentence, or the neutral words in that language. */
-export function doctorNameOr(identity, language = 'en') {
-  return identity?.doctorName || NEUTRAL_WORDS.doctor[language] || NEUTRAL_WORDS.doctor.en;
+/**
+ * The patient's doctor for a sentence, or the neutral words in that language.
+ *
+ * Takes the name from careDoctor.js, not an identity. It used to take the
+ * identity and read its `doctorName`, which is the practice's display name or
+ * head doctor: the right name for a letterhead and the wrong one to tell a
+ * patient whose own doctor is somebody else. Anything that is not a non-empty
+ * string, an identity included, reads as nobody.
+ */
+export function doctorOr(doctorName, language = 'en') {
+  const name = typeof doctorName === 'string' ? doctorName.trim() : '';
+  return name || NEUTRAL_WORDS.doctor[language] || NEUTRAL_WORDS.doctor.en;
 }
 
 /** The clinic's name for a sentence, or the neutral words in that language. */

@@ -40,7 +40,10 @@ const base = {
   careTeamNotes: '',
 };
 
-const promptFor = (identity, extra = {}) => buildSystemPrompt({ ...base, identity, ...extra });
+// The doctor is the patient's own (careDoctor.js), passed on its own: the
+// prompt no longer reads a doctor off the practice identity.
+const promptFor = (identity, extra = {}) =>
+  buildSystemPrompt({ ...base, identity, careDoctorName: identity?.doctorName ?? null, ...extra });
 
 describe('the assistant does not invent a specialty', () => {
   test('a practice that has said nothing gets no credential', () => {

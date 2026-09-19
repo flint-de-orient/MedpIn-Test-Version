@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show PlatformException;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -21,7 +22,10 @@ import 'package:medpin/shared/services/notification_service.dart';
 
 /// A phone whose notifications are [block]ed, or not.
 class _Phone extends NotificationGate {
-  _Phone(this.block, {this.promptAllows = false});
+  _Phone(this.block, {this.promptAllows = false, this.promptThrows = false});
+
+  /// The plugin refuses the request (`permissionRequestInProgress`).
+  final bool promptThrows;
 
   NotificationBlock? block;
 
@@ -37,6 +41,12 @@ class _Phone extends NotificationGate {
   @override
   Future<bool> ask() async {
     asked++;
+    if (promptThrows) {
+      throw PlatformException(
+        code: 'permissionRequestInProgress',
+        message: 'Another permission request is already in progress',
+      );
+    }
     if (promptAllows) block = null;
     return block == null;
   }
@@ -220,5 +230,23 @@ void main() {
       findsOneWidget,
       reason: 'the strip going away closed the screen the person was on',
     );
+  });
+
+  testWidgets('when the prompt cannot be shown, "Turn on" opens the settings instead of doing nothing', (
+    tester,
+  ) async {
+    // The plugin throws permissionRequestInProgress while a request it started
+    // is unanswered. That escaped the handler, and the button did nothing.
+    final phone = _Phone(NotificationBlock.app, promptThrows: true);
+    await _open(tester, phone);
+    await tester.tap(find.text('Turn on'));
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+    expect(phone.asked, 1);
+    expect(phone.opened, [NotificationBlock.app]);
+
+    phone.block = null; // turned on in the phone's settings
+    await _comeBackToTheApp(tester);
+    expect(find.text(_off), findsNothing);
   });
 }

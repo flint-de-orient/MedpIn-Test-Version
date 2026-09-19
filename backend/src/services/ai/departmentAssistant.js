@@ -150,8 +150,8 @@ export function buildScopeBlock({ department, role, conditions, language }) {
     for (const f of redFlags) lines.push(`- ${f}`);
     lines.push(
       'If the patient describes any of these, treat it as an emergency even if the triage',
-      'verdict did not: say plainly it needs immediate medical attention and tell them to go',
-      'to the nearest hospital emergency department now. Never suggest waiting to see.',
+      'verdict did not, and answer exactly as the safety rules below say for an EMERGENCY',
+      'verdict: emergency care now, first. Never suggest waiting to see.',
     );
     lines.push('');
   }

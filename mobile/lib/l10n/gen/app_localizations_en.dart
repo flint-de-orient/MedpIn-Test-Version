@@ -437,7 +437,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get chatEmergencyTitle => 'Emergency — act now';
 
   @override
-  String get chatEmergencyBody => 'Go to the nearest hospital immediately';
+  String get chatEmergencyBody => 'This may need urgent medical attention';
 
   @override
   String get chatCallClinic => 'Call clinic';

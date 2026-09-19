@@ -907,7 +907,7 @@ abstract class AppLocalizations {
   /// No description provided for @chatEmergencyBody.
   ///
   /// In en, this message translates to:
-  /// **'Go to the nearest hospital immediately'**
+  /// **'This may need urgent medical attention'**
   String get chatEmergencyBody;
 
   /// No description provided for @chatCallClinic.

@@ -90,6 +90,7 @@ router.post(
           language: req.user.language ?? 'en',
           patientContext: context.text,
           practiceId: await practiceForPatient(req.patientId),
+          patientId: req.patientId,
         })
       : null;
 
@@ -255,6 +256,7 @@ router.post(
       language: req.user.language ?? 'en',
       patientContext: context.text,
       practiceId: await practiceForPatient(req.patientId),
+      patientId: req.patientId,
     });
 
     const urgency = aiExplanation?.referralUrgency ?? 'routine';

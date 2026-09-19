@@ -143,7 +143,7 @@
   "chatClinicRepliesOnly": "এই AI সহায়ক এখন আপনার চিকিৎসা দলের জন্য উপলব্ধ নয়। আপনার ক্লিনিক এখানে উত্তর দেবে।",
   "chatThinking": "MedPin সহায়ক লিখছে…",
   "chatEmergencyTitle": "জরুরি অবস্থা — এখনই ব্যবস্থা নিন",
-  "chatEmergencyBody": "অবিলম্বে নিকটবর্তী হাসপাতালে যান",
+  "chatEmergencyBody": "এটির জন্য জরুরি চিকিৎসার প্রয়োজন হতে পারে",
   "chatCallClinic": "ক্লিনিকে ফোন করুন",
   "chatUrgentTitle": "দ্রুত মনোযোগ প্রয়োজন",
   "chatCitations": "তথ্যসূত্র",

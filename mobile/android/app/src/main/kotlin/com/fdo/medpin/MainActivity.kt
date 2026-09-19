@@ -101,6 +101,12 @@ class MainActivity : FlutterFragmentActivity() {
             Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
                 .putExtra(Settings.EXTRA_APP_PACKAGE, packageName)
         }
+        // Which copy of the app. On a Samsung Dual App (or another cloned
+        // app) the package name is the same in both profiles, and the uid is
+        // what tells them apart: it carries the profile. Samsung's settings,
+        // and Android's before 8.0, read these two extras.
+        intent.putExtra("app_package", packageName)
+        intent.putExtra("app_uid", applicationInfo.uid)
         try {
             startActivity(intent)
         } catch (e: Exception) {

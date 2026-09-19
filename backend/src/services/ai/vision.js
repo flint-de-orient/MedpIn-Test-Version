@@ -1,6 +1,7 @@
 import { generateFromImage, generate, AiUnavailableError } from './gemini.js';
 import { retrieve, formatContext } from './rag.js';
-import { clinicIdentity, doctorNameOr } from '../clinicIdentity.js';
+import { doctorOr } from '../clinicIdentity.js';
+import { currentDoctorOf } from '../careDoctor.js';
 import { logger } from '../../config/logger.js';
 import { countAiCall } from './allowance.js';
 
@@ -28,7 +29,7 @@ const FOOT_SCHEMA = {
   required: ['riskLevel', 'observations', 'recommendations', 'confidence'],
 };
 
-export async function assessFootImages({ images, symptoms, language = 'en', patientContext, practiceId = null }) {
+export async function assessFootImages({ images, symptoms, language = 'en', patientContext, practiceId = null, patientId = null }) {
   if (!images?.length) return null;
 
   const grounding = await retrieve('diabetic foot ulcer assessment wound infection signs care', {
@@ -37,9 +38,10 @@ export async function assessFootImages({ images, symptoms, language = 'en', pati
     limit: 4,
   }).catch(() => []);
 
-  // The practice's doctor, or "the patient's doctor". Not a credential either:
-  // "a Consultant Diabetologist" was printed after every practice's doctor.
-  const doctorName = doctorNameOr(await clinicIdentity(null, { practiceId }), 'en');
+  // The patient's own doctor at this practice, or "your doctor". Not a
+  // credential either: "a Consultant Diabetologist" was printed after every
+  // practice's doctor. Not the practice's head doctor: see careDoctor.js.
+  const doctorName = doctorOr((await currentDoctorOf({ patientId, practiceId }))?.displayName, 'en');
   const system = `You are a clinical triage assistant supporting ${doctorName} in reviewing diabetic foot photographs submitted by patients.
 
 Your role is strictly limited:
@@ -121,14 +123,15 @@ const EYE_SCHEMA = {
   required: ['summary', 'whatItMeans', 'recommendedActions', 'referralUrgency'],
 };
 
-export async function explainEyeReport({ reportText, images, reportedGrade, language = 'en', patientContext, practiceId = null }) {
+export async function explainEyeReport({ reportText, images, reportedGrade, language = 'en', patientContext, practiceId = null, patientId = null }) {
   const grounding = await retrieve('diabetic retinopathy grading what it means follow up screening', {
     categories: ['eye_care'],
     language: 'en',
     limit: 4,
   }).catch(() => []);
 
-  const doctorName = doctorNameOr(await clinicIdentity(null, { practiceId }), 'en');
+  // The patient's own doctor, as the foot reader above.
+  const doctorName = doctorOr((await currentDoctorOf({ patientId, practiceId }))?.displayName, 'en');
   const system = `You explain eye examination reports to patients of ${doctorName}. Many of these patients have diabetic retinopathy.
 
 Rules:

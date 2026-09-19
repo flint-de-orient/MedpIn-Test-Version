@@ -1,5 +1,5 @@
 import { orCallClinic, clinicEmergencyPhone } from '../clinicContact.js';
-import { doctorNameOr, clinicNameOr } from '../clinicIdentity.js';
+import { doctorOr, clinicNameOr, NEUTRAL_WORDS } from '../clinicIdentity.js';
 
 /**
  * The number to offer this patient: their practice's, from the identity.
@@ -101,6 +101,8 @@ export function buildSystemPrompt({
   groundingContext,
   careTeamNotes,
   identity,
+  careDoctorName = null,
+  alerted = false,
   departmentBlock = null,
 }) {
   const lang = LANGUAGE_NAME[language] ?? LANGUAGE_NAME.en;
@@ -112,7 +114,17 @@ export function buildSystemPrompt({
   // With no practice, or a practice with no name saved, it is "your doctor" at
   // "your clinic" — never a name borrowed from another practice. The prompt is
   // written in English whatever the reply language, so the English words.
-  const doctorName = doctorNameOr(identity, 'en');
+  //
+  // The doctor is the patient's own, from careDoctor.js, and never the
+  // identity's `doctorName`: that is the practice's display name or head
+  // doctor, and a patient of another doctor at the practice was told to
+  // contact them. With no current doctor, "your doctor".
+  const doctorName = doctorOr(careDoctorName, 'en');
+  // Who to ring or message, and who was paged, in the emergency and urgent
+  // rules. Only the patient's own doctor is named; otherwise the team.
+  const team = NEUTRAL_WORDS.team.en;
+  const whoToContact = careDoctorName ? `${doctorName} or ${team}` : team;
+  const whoWasAlerted = careDoctorName ? `${doctorName} has been alerted.` : 'Your healthcare team has been alerted.';
   const clinicName = clinicNameOr(identity, 'en');
   // The clause naming the number to ring — this patient's practice's.
   const orCall = orCallClinic('en', emergencyPhoneOf(identity));
@@ -194,8 +206,15 @@ If the photo is something else (a meal, a glucose meter, a lab report), describe
 ## Safety rules — these override everything above
 1. A clinical triage system has ALREADY assessed this message. Its verdict is authoritative.
 2. You may RAISE the urgency if the patient describes something more serious than the triage caught. You must NEVER downplay, soften, or argue against the verdict.
-3. If the verdict is EMERGENCY, your entire reply must do three things and nothing else: state plainly that this needs immediate medical attention, give the one or two safe things to do right now, and tell them to go to the nearest hospital${orCall}. Do not offer reassurance, do not suggest waiting, do not answer unrelated parts of the question.
-3b. If the verdict is URGENT, tell the patient plainly that this needs prompt attention and that they should contact ${doctorName}'s clinic today${orCall} — not wait for their next appointment. Give the one or two safe things to do meanwhile.
+3. If the verdict is EMERGENCY, getting emergency care comes first and never waits on reaching anyone. Your entire reply is these sentences, in this order, and nothing else:
+   - One sentence saying that what they described can need urgent medical attention, in their words (for example "Chest pain can need urgent medical attention."). Never say what condition it is.
+   - "Please go to the nearest hospital emergency department or call an ambulance now."
+   - Only if one step is clearly safe and quick while they get help (for example fast-acting sugar for a low sugar), that step in one short sentence.
+   - ${alerted ? `"${whoWasAlerted}"` : 'Nothing about anyone having been alerted: for this message, nobody has been.'}
+   - "You can also contact ${whoToContact}${orCall}."
+   - "Do not wait for a reply in this chat."
+   Never tell them to contact ${doctorName} first, or to go to hospital only if they cannot reach anyone. Do not offer reassurance, do not suggest waiting, do not answer unrelated parts of the question.
+3b. If the verdict is URGENT, tell the patient plainly that this needs prompt attention: "Please contact ${whoToContact} today${orCall}. If you cannot reach them promptly, or your condition gets worse, seek urgent medical care." Never suggest waiting for their next appointment. Give the one or two safe things to do meanwhile.
 4. If the grounded knowledge below does not cover the question, say you do not have approved guidance on it and offer to escalate to ${doctorName}. Do not fill the gap with general knowledge.
 5. Never repeat back another patient's data. Only the context provided below belongs to this patient.
 6. These symptoms mean "go to hospital now", never "monitor it" or "mention it at your next visit": chest pain or pressure; sudden breathlessness; sudden weakness, drooping face or slurred speech; sudden vision loss; a seizure or unresponsiveness; vomiting that stops a steroid-dependent patient keeping tablets down; fever with a racing heart in someone with thyroid disease; confusion or drowsiness with very high sugar; a black, discharging or foul-smelling foot wound.
@@ -236,28 +255,25 @@ Write your reply in ${lang}. The earlier turns you have been shown are the histo
  * is down, so these are written out in full in all three languages.
  */
 export const FALLBACK_REPLIES = {
+  // Emergency care first, and never conditional on reaching the doctor. Then
+  // who has been alerted and who else to contact: the patient's own doctor by
+  // name, or their healthcare team. Filled in by fallbackReply.
   emergency: {
-    en: `This needs medical attention right now.
+    en: `This may need urgent medical attention. Please go to the nearest hospital emergency department or call an ambulance now.
 
-• Please go to the nearest hospital emergency department immediately{{orCall}}.
-• Do not wait to see if it improves on its own.
-• If you can, ask someone to go with you and carry your medicine list.
+{{alerted}}{{contact}}
 
-The clinic has been notified about this message.`,
-    bn: `এই অবস্থায় এখনই চিকিৎসকের সাহায্য প্রয়োজন।
+Do not wait for a reply in this chat.`,
+    bn: `এটির জন্য জরুরি চিকিৎসার প্রয়োজন হতে পারে। অনুগ্রহ করে এখনই নিকটতম হাসপাতালের জরুরি বিভাগে যান অথবা অ্যাম্বুলেন্স ডাকুন।
 
-• অনুগ্রহ করে এখনই নিকটতম হাসপাতালের জরুরি বিভাগে যান{{orCall}}।
-• নিজে থেকে ভালো হয়ে যায় কিনা দেখার জন্য অপেক্ষা করবেন না।
-• সম্ভব হলে কাউকে সঙ্গে নিয়ে যান এবং আপনার ওষুধের তালিকা সঙ্গে রাখুন।
+{{alerted}}{{contact}}
 
-আপনার এই বার্তাটি সম্পর্কে ক্লিনিককে জানানো হয়েছে।`,
-    hi: `इस स्थिति में तुरंत चिकित्सा सहायता की आवश्यकता है।
+এই চ্যাটে উত্তরের জন্য অপেক্ষা করবেন না।`,
+    hi: `इसके लिए तुरंत चिकित्सा सहायता की ज़रूरत हो सकती है। कृपया अभी नज़दीकी अस्पताल के आपातकालीन विभाग में जाएँ या एम्बुलेंस बुलाएँ।
 
-• कृपया तुरंत नज़दीकी अस्पताल के आपातकालीन विभाग में जाएँ{{orCall}}।
-• यह अपने आप ठीक होगा या नहीं, यह देखने के लिए प्रतीक्षा न करें।
-• यदि संभव हो तो किसी को साथ ले जाएँ और अपनी दवाओं की सूची साथ रखें।
+{{alerted}}{{contact}}
 
-आपके इस संदेश की सूचना क्लिनिक को दे दी गई है।`,
+इस चैट में जवाब का इंतज़ार न करें।`,
   },
   unavailable: {
     en: `I am not able to answer right now because the assistant service is temporarily unavailable.
@@ -357,7 +373,43 @@ export const DISCLAIMER = {
   hi: 'यह AI-सहायित मार्गदर्शन है, चिकित्सीय निदान नहीं। हमेशा अपने डॉक्टर की सलाह का पालन करें।',
 };
 
-export function fallbackReply(kind, language = 'en', identity = null) {
+/**
+ * Who was alerted and who else to contact, in the emergency fallback, in each
+ * language. With the patient's own doctor that doctor is named; without one,
+ * the healthcare team. Never anybody else.
+ */
+const EMERGENCY_CONTACT_WORDS = {
+  en: {
+    alerted: (name) => (name ? `${name} has been alerted. ` : 'Your healthcare team has been alerted. '),
+    contact: (name, orCall) =>
+      name ? `You can also contact ${name} or your healthcare team${orCall}.` : `You can also contact your healthcare team${orCall}.`,
+  },
+  bn: {
+    alerted: (name) => (name ? `${name}-কে জানানো হয়েছে। ` : 'আপনার চিকিৎসা দলকে জানানো হয়েছে। '),
+    contact: (name, orCall) =>
+      name
+        ? `আপনি ${name} অথবা আপনার চিকিৎসা দলের সঙ্গেও যোগাযোগ করতে পারেন${orCall}।`
+        : `আপনি আপনার চিকিৎসা দলের সঙ্গেও যোগাযোগ করতে পারেন${orCall}।`,
+  },
+  hi: {
+    alerted: (name) => (name ? `${name} को सूचित कर दिया गया है। ` : 'आपकी स्वास्थ्य देखभाल टीम को सूचित कर दिया गया है। '),
+    contact: (name, orCall) =>
+      name
+        ? `आप ${name} या अपनी स्वास्थ्य देखभाल टीम से भी संपर्क कर सकते हैं${orCall}।`
+        : `आप अपनी स्वास्थ्य देखभाल टीम से भी संपर्क कर सकते हैं${orCall}।`,
+  },
+};
+
+/**
+ * The scripted reply, for when the model is down or has not answered.
+ *
+ * [doctorName] is the patient's own doctor from careDoctor.js, or null. It
+ * used to be read off [identity], which names the practice's display name or
+ * head doctor; the identity now supplies only the number to ring. [alerted]
+ * says whether an alert was actually raised for this message, so "has been
+ * alerted" is never said about nobody.
+ */
+export function fallbackReply(kind, language = 'en', identity = null, { doctorName = null, alerted = true } = {}) {
   const set = FALLBACK_REPLIES[kind] ?? FALLBACK_REPLIES.unavailable;
   const text = set[language] ?? set.en;
   // The doctor and the number are placeholders in the stored strings rather
@@ -366,7 +418,12 @@ export function fallbackReply(kind, language = 'en', identity = null) {
   // for every practice on the platform. No doctor is "your doctor", in the
   // language the reply is written in.
   const replyLanguage = set[language] ? language : 'en';
+  const orCall = orCallClinic(replyLanguage, emergencyPhoneOf(identity));
+  const name = typeof doctorName === 'string' && doctorName.trim() ? doctorName.trim() : null;
+  const words = EMERGENCY_CONTACT_WORDS[replyLanguage] ?? EMERGENCY_CONTACT_WORDS.en;
   return text
-    .replaceAll('{{doctor}}', doctorNameOr(identity, replyLanguage))
-    .replaceAll('{{orCall}}', orCallClinic(set[language] ? language : 'en', emergencyPhoneOf(identity)));
+    .replaceAll('{{alerted}}', alerted ? words.alerted(name) : '')
+    .replaceAll('{{contact}}', words.contact(name, orCall))
+    .replaceAll('{{doctor}}', doctorOr(name, replyLanguage))
+    .replaceAll('{{orCall}}', orCall);
 }
